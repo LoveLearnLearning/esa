@@ -17,7 +17,7 @@ def main():
     )
 
     while True:
-        input = input("你: ");
+        input = input("User: ");
         if input.lower() == "exit":
             break
         result = llm.chat(input)
