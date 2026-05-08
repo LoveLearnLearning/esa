@@ -117,8 +117,12 @@ class Prompt:
         self.user_name = user_name
 
         # 会话历史存储目录
-        self.session_path = Path.cwd().parent / "data" / "session"
+        self.session_path = Path.cwd() / "data" / "session"
         self.session_path.mkdir(parents=True, exist_ok=True)
+        self.history = self.load_history()
+
+    def __del__(self):
+        self.save_history(self.history)
 
     # ── 内部工具方法 ──────────────────────────────────────────
 
@@ -169,7 +173,7 @@ class Prompt:
         except Exception as e:
             print(ERROR_MESSAGES["save_failed"].format(reason=e))
 
-    def update_history(self, user_input: str, response: str) -> None:
+    def update_history(self, response: str) -> None:
         """
         追加一轮对话到历史记录。
 
@@ -177,10 +181,8 @@ class Prompt:
             user_input: 用户输入。
             response:   助手回复。
         """
-        history = self.load_history()
-        history.append({"role": "user", "content": user_input})
-        history.append({"role": "assistant", "content": response})
-        self.save_history(history)
+        self.history.append({"role": "assistant", "content": response})
+        self.save_history(self.history)
 
     def clear_history(self) -> None:
         """清空当前 session 的历史记录"""
@@ -205,6 +207,5 @@ class Prompt:
         )
 
     def build_messages(self, user_input: str) -> list[dict]:
-        history = self.load_history()
-        history.append({"role": "user", "content": user_input})
-        return history
+        self.history.append({"role": "user", "content": user_input})
+        return self.history
