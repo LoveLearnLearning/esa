@@ -32,7 +32,11 @@ def main() -> None:
                 "description": "获取城市天气",
                 "parameters": {
                     "type": "object",
-                    "properties": {"city": {"type": "string"}},
+                    "properties": {
+                        "city": {
+                            "type": "string",
+                        }
+                    },
                     "required": ["city"],
                 },
             },
