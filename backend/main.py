@@ -25,10 +25,29 @@ def main() -> None:
                     "required": ["city"],
                 },
             },
-        }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "add_two_nums",
+                "description": "求两数之和",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "num1": {
+                            "type": "float",
+                        },
+                        "num2": {
+                            "type": "float",
+                        },
+                    },
+                    "required": ["num1", "num2"],
+                },
+            },
+        },
     ]
 
-    messages = [{"role": "user", "content": "北京天气怎么样"}]
+    messages = [{"role": "user", "content": "北京天气怎么样, 并给我计算2 和 3的和"}]
 
     llm_provider = LLM_Provider(
         MODEL_PATH,
