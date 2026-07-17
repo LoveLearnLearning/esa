@@ -7,12 +7,6 @@ import torch
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 
-from backend.core.log.logger import setup_logging
-
-MODEL_PATH = "Qwen/Qwen3.5-9B"
-
-
-setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +23,7 @@ class LLM_Provider:
 
         # 加载模型
         self.llm = LLM(
-            model=MODEL_PATH,
+            model=str(self.model_path),
             tensor_parallel_size=1,
             max_model_len=4096,
             enforce_eager=True,
@@ -95,39 +89,3 @@ class LLM_Provider:
         assert self.llm is not None
         outputs = self.llm.generate(prompt, self.sampling_params)
         return outputs[0].outputs[0].text
-
-
-def main() -> None:
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "get_weather",
-                "description": "获取城市天气",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "city": {
-                            "type": "string",
-                        }
-                    },
-                    "required": ["city"],
-                },
-            },
-        }
-    ]
-
-    messages = [{"role": "user", "content": "北京天气怎么样"}]
-
-    llm_provider = LLM_Provider(
-        MODEL_PATH,
-        gpu_memory_utilization=0.85,
-        max_model_len=4096,
-    )
-
-    prompt = llm_provider.build_prompt(messages, tools)
-    print(llm_provider.generate([prompt]))
-
-
-if __name__ == "__main__":
-    main()
