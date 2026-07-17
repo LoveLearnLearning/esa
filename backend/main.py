@@ -36,8 +36,10 @@ def main() -> None:
         max_model_len=4096,
     )
 
+    llm_provider.load_model()
     prompt = llm_provider.build_prompt(messages, tools)
     print(llm_provider.generate([prompt]))
+    llm_provider.unload_model()
 
 
 if __name__ == "__main__":

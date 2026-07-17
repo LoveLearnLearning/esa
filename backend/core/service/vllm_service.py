@@ -21,14 +21,7 @@ class LLM_Provider:
         self.gpu_memory_utilization = gpu_memory_utilization
         self.max_model_len = max_model_len
 
-        # 加载模型
-        self.llm = LLM(
-            model=str(self.model_path),
-            tensor_parallel_size=1,
-            max_model_len=4096,
-            enforce_eager=True,
-            gpu_memory_utilization=0.85,
-        )
+        self.llm = None
 
     def load_model(self) -> None:
         """
