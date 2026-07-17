@@ -2,6 +2,7 @@
 
 from backend.core.log.logger import setup_logging
 from backend.core.service.vllm_service import LLM_Provider
+from backend.core.utils.parser import parse_output
 
 MODEL_PATH = "Qwen/Qwen3.5-9B"
 
@@ -57,7 +58,7 @@ def main() -> None:
 
     llm_provider.load_model()
     prompt = llm_provider.build_prompt(messages, tools)
-    print(llm_provider.generate([prompt]))
+    print(parse_output(llm_provider.generate([prompt])))
     llm_provider.unload_model()
 
 

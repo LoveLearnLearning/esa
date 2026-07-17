@@ -1,7 +1,8 @@
 # backend/core/agent/utils.py
 
 import re
-from dataclasses import dataclass, field
+
+from backend.core.utils.models import ParsedOutput, ToolCall
 
 OUTPUT = """
 用户问了两个问题：
@@ -31,19 +32,6 @@ OUTPUT = """
 """
 
 
-@dataclass
-class ToolCall:
-    name: str
-    arguments: dict
-
-
-@dataclass
-class ParsedOutput:
-    reasoning: str | None = None
-    content: str | None = None
-    tool_calls: list[ToolCall] = field(default_factory=list)
-
-
 def _try_cast(value: str):
     """参数值尝试转成 int/float/bool,转不了就保留字符串"""
     value = value.strip()
@@ -62,12 +50,12 @@ def _try_cast(value: str):
 def parse_output(raw_text: str) -> ParsedOutput:
     result = ParsedOutput()
 
-    # 1. 提取 reasoning(<think>...</think>,注意你的样本里开头标签可能被截掉了,做兼容)
+    # 提取 reasoning
     think_match = re.search(r"(?:<think>)?(.*?)</think>", raw_text, re.DOTALL)
     if think_match:
         result.reasoning = think_match.group(1).strip()
 
-    # 2. 提取所有 <tool_call>...</tool_call> 块
+    # 提取所有 <tool_call>...</tool_call> 块
     tool_call_blocks = re.findall(r"<tool_call>(.*?)</tool_call>", raw_text, re.DOTALL)
 
     if not tool_call_blocks:
