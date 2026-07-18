@@ -22,11 +22,11 @@ class Agent:
         if not self.llm_provider.llm:
             self.llm_provider.load_model()
 
-        prompt = build_system_prompt()
-        messages: list = [{"role": "system", "content": prompt}]
+        system_prompt = build_system_prompt()
+        messages: list = [{"role": "system", "content": system_prompt}]
         messages.append({"role": "user", "content": input})
         for _ in range(self.loop_times):
-            response = self.llm_provider.generate(messages)
+            response = self.llm_provider.generate(messages, tr.schemas)
             po: ParsedOutput = parse_output(response)
             messages.append({"role": "assistant", "content": response})
             tcs: list[ToolCall] = po.tool_calls

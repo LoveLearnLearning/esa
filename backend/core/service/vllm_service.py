@@ -78,7 +78,12 @@ class LLM_Provider:
             add_generation_prompt=True,
         )
 
-    def generate(self, prompt: list) -> str:
+    def generate(self, prompts: list, tools: list) -> str:
         assert self.llm is not None
-        outputs = self.llm.chat(prompt, self.sampling_params)
+        outputs = self.llm.chat(
+            messages=prompts,
+            sampling_params=self.sampling_params,
+            tools=tools,
+            add_generation_prompt=True,
+        )
         return outputs[0].outputs[0].text
