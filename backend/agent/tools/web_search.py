@@ -23,7 +23,7 @@ SEARXNG_BASE_URL = "http://127.0.0.1:8888"
                         "description": "搜索内容",
                     },
                     "max_results": {
-                        "type": "int",
+                        "type": "integer",
                         "description": "最大搜索结果，默认为 5 ",
                         "default": 5,
                     },

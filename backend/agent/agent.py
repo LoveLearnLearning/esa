@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from backend.agent.tools.tools import tr
+from backend.agent.tools import tr
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.service.vllm_service import LLM_Provider
 from backend.core.utils.models import ParsedOutput, ToolCall
