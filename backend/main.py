@@ -1,6 +1,6 @@
 # backend/main.py
 
-from backend.core.agent.agent import Agent
+from backend.agent.agent import Agent
 
 # from backend.core.agent.tools.tools import tr
 from backend.core.log.logger import setup_logging

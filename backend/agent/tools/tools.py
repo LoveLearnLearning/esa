@@ -1,4 +1,4 @@
-from backend.core.agent.tools.tool_register import ToolRegistry
+from backend.agent.tools.tool_register import ToolRegistry
 
 tr = ToolRegistry()
 
