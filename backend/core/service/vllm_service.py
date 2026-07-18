@@ -14,8 +14,8 @@ class LLM_Provider:
     def __init__(
         self,
         model_path: str | Path,
-        gpu_memory_utilization: float,
-        max_model_len: int,
+        gpu_memory_utilization: float = 0.85,
+        max_model_len: int = 4096,
     ) -> None:
         self.model_path = Path(model_path)
         self.gpu_memory_utilization = gpu_memory_utilization
