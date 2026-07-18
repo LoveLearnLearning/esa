@@ -28,12 +28,7 @@ class Agent:
         for _ in range(self.loop_times):
             response = self.llm_provider.generate(messages)
             po: ParsedOutput = parse_output(response)
-            messages.append(
-                {
-                    "role": "system",
-                    "content": f"model_output:{po.content}\nmodel_think:{po.reasoning}",
-                }
-            )
+            messages.append({"role": "assistant", "content": response})
             tcs: list[ToolCall] = po.tool_calls
             print(po)
             if not tcs:

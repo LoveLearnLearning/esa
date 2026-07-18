@@ -80,5 +80,5 @@ class LLM_Provider:
 
     def generate(self, prompt: list) -> str:
         assert self.llm is not None
-        outputs = self.llm.generate(prompt, self.sampling_params)
+        outputs = self.llm.chat(prompt, self.sampling_params)
         return outputs[0].outputs[0].text
