@@ -136,14 +136,3 @@ def web_search(
             [],
         ),
     }
-
-
-if __name__ == "__main__":
-    from pprint import pprint
-
-    pprint(
-        web_search(
-            query="Qwen3.5 vLLM 使用方法",
-            max_results=5,
-        )
-    )

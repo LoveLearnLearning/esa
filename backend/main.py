@@ -29,7 +29,7 @@ def main() -> None:
     # llm_provider.unload_model()
     agent = Agent(MODEL_PATH)
 
-    agent.run("北京天气怎么样, 并给我计算2 和 3的和")
+    agent.run("帮我到网上搜一下世界杯现在的情况")
 
 
 if __name__ == "__main__":
