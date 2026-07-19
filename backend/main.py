@@ -1,4 +1,4 @@
-# backend/main.py
+# backend/man.py
 
 from backend.agent.agent import Agent
 
@@ -29,7 +29,11 @@ def main() -> None:
     # llm_provider.unload_model()
     agent = Agent(MODEL_PATH)
 
-    agent.run("帮我到网上搜一下世界杯现在的情况")
+    while True:
+        user_input: str = str(input("User: "))
+        if user_input == "q":
+            break
+        agent.run(user_input)
 
 
 if __name__ == "__main__":
