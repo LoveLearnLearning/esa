@@ -125,6 +125,8 @@ def web_search(
         for item in raw_results[:max_results]
     ]
 
+    # 2026-07-19 TODO: 给搜索引擎的结果做一个 Reranker
+
     return {
         "query": query,
         "result_count": len(results),

@@ -51,5 +51,20 @@ def add_two_num(num1: float, num2: float) -> float:
 
 
 @tr.register(
-
+    {
+        "type": "function",
+        "function": {
+            "name": "get_time",
+            "description": "获取当前时间",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    }
 )
+def get_time() -> str:
+    from datetime import datetime
+
+    return datetime.now().strftime("%D-%H:%M:%S")

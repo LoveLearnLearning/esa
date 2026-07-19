@@ -4,33 +4,6 @@ import re
 
 from backend.core.utils.models import ParsedOutput, ToolCall
 
-OUTPUT = """
-用户问了两个问题：
-1. 北京天气怎么样 - 我需要使用 get_weather 工具，参数是 city="北京"
-2. 计算2和3的和 - 我需要使用 add_two_nums 工具，参数是 num1=2, num2=3
-
-这两个请求都是独立的，我可以同时调用这两个工具。
-</think>
-
-<tool_call>
-<function=get_weather>
-<parameter=city>
-北京
-</parameter>
-</function>
-</tool_call>
-<tool_call>
-<function=add_two_nums>
-<parameter=num1>
-2
-</parameter>
-<parameter=num2>
-3
-</parameter>
-</function>
-</tool_call>
-"""
-
 
 def _try_cast(value: str):
     """参数值尝试转成 int/float/bool,转不了就保留字符串"""
@@ -83,6 +56,33 @@ def parse_output(raw_text: str) -> ParsedOutput:
 
 
 def main() -> None:
+    OUTPUT = """
+    用户问了两个问题：
+    1. 北京天气怎么样 - 我需要使用 get_weather 工具，参数是 city="北京"
+    2. 计算2和3的和 - 我需要使用 add_two_nums 工具，参数是 num1=2, num2=3
+
+    这两个请求都是独立的，我可以同时调用这两个工具。
+    </think>
+
+    <tool_call>
+    <function=get_weather>
+    <parameter=city>
+    北京
+    </parameter>
+    </function>
+    </tool_call>
+    <tool_call>
+    <function=add_two_nums>
+    <parameter=num1>
+    2
+    </parameter>
+    <parameter=num2>
+    3
+    </parameter>
+    </function>
+    </tool_call>
+    """
+
     print(parse_output(OUTPUT))
 
 
