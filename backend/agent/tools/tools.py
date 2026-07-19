@@ -48,3 +48,8 @@ def get_weather(city: str) -> str:
 )
 def add_two_num(num1: float, num2: float) -> float:
     return num1 + num2
+
+
+@tr.register(
+
+)
