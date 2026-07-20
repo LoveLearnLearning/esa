@@ -28,11 +28,11 @@ class Agent:
                 return False
         return True
 
-    def run(self, input: str) -> None:
-
+    def run(self, input: str, user_name: str) -> None:
         system_prompt = build_system_prompt(str(self.memory.messages))
         messages: list = [{"role": "system", "content": system_prompt}]
         messages.append({"role": "user", "content": input})
+        self.memory.add("user", input, user_name)
         for _ in range(self.loop_times):
             response = self.llm_provider.generate(messages, tr.schemas)
             po: ParsedOutput = parse_output(response)
@@ -45,4 +45,7 @@ class Agent:
                 result = tr.call(tc.name, tc.arguments)
                 messages.append(
                     {"role": "tool", "name": tc.name, "content": str(result)}
+                )
+                self.memory.add(
+                    "tool", f"name: {tc.name}, content: {str(result)}", user_name
                 )
