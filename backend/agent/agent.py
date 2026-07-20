@@ -18,9 +18,15 @@ class Agent:
         self.loop_times = loop_times
         self.llm_provider = LLM_Provider(model_path)
 
-    def run(self, input: str) -> None:
+    def start(self) -> bool:
+        """启动 Agent 加载模型"""
         if not self.llm_provider.llm:
             self.llm_provider.load_model()
+            if not self.llm_provider.llm:
+                return False
+        return True
+
+    def run(self, input: str) -> None:
 
         system_prompt = build_system_prompt()
         messages: list = [{"role": "system", "content": system_prompt}]

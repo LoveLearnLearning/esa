@@ -274,7 +274,7 @@ def math_solver(
 
             elif operation == "series":
                 pt = _safe_parse(point)
-                result = sp.series(expr, var, pt, n)
+                result = sp.series(expr, var, int(pt), n)
 
             elif operation == "solve":
                 result = sp.solve(expr, var)
