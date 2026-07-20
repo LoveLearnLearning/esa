@@ -22,15 +22,44 @@ class TempMemory:
         self,
         role: str,
         content: str,
-        name: str | None = None,
+        user_name: str | None = None,
     ) -> None:
         message = {
             "role": role,
             "content": content,
         }
 
-        if name is not None:
-            message["name"] = name
+        if user_name is not None:
+            message["user_name"] = user_name
 
         self.messages.append(message)
         self.__trim()
+
+    def build_context(self, user_name: str | None = None) -> str:
+        messages = self.messages
+        if user_name is not None:
+            messages = [
+                message for message in messages if message.get("user_name") == user_name
+            ]
+
+        if not messages:
+            return "暂无用户记忆"
+
+        lines: list[str] = []
+
+        for message in messages:
+            role = message["role"]
+            content = message["content"]
+
+            if role == "user":
+                role_name = "用户"
+            elif role == "assistant":
+                role_name = "助手"
+            elif role == "tool":
+                role_name = "工具"
+            else:
+                role_name = role
+
+            lines.append(f"{role_name}  {content}")
+
+        return "\n".join(lines)

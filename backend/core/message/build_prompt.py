@@ -19,9 +19,9 @@ def build_system_prompt(memory: str | None = None) -> str:
     memory_content = memory.strip() if memory else "暂无用户记忆"
 
     return f"""
-    {SYSTEM_PROMPT.strip()}
+{SYSTEM_PROMPT.strip()}
 
-    # 用户记忆
+# 用户记忆
 
-    {memory_content}
-    """.strip()
+{memory_content}
+""".strip()
