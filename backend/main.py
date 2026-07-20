@@ -35,7 +35,7 @@ def main() -> None:
         user_input: str = str(input("User: "))
         if user_input == "q":
             break
-        agent.run(user_input)
+        agent.run(user_input, "Fengqwq")
 
 
 if __name__ == "__main__":
