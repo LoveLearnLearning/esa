@@ -28,6 +28,8 @@ def main() -> None:
     # print(parse_output(llm_provider.generate([prompt])))
     # llm_provider.unload_model()
     agent = Agent(MODEL_PATH)
+    if not agent.start():
+        raise RuntimeError("Agent load failed!")
 
     while True:
         user_input: str = str(input("User: "))
