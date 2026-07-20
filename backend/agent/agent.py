@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from backend.agent.memories.temp_memory import TempMemory
 from backend.agent.tools import tr
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.service.vllm_service import LLM_Provider
@@ -17,6 +18,7 @@ class Agent:
     ) -> None:
         self.loop_times = loop_times
         self.llm_provider = LLM_Provider(model_path)
+        self.memory = TempMemory()
 
     def start(self) -> bool:
         """启动 Agent 加载模型"""
@@ -28,7 +30,7 @@ class Agent:
 
     def run(self, input: str) -> None:
 
-        system_prompt = build_system_prompt()
+        system_prompt = build_system_prompt(str(self.memory.messages))
         messages: list = [{"role": "system", "content": system_prompt}]
         messages.append({"role": "user", "content": input})
         for _ in range(self.loop_times):
