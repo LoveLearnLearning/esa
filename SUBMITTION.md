@@ -193,3 +193,38 @@
 - 核心记忆只应该保存用户偏好 学习目标 项目信息等长期稳定内容
 
 - 核心记忆不应该保存临时问题 reasoning 工具搜索结果 密码或 token
+
+## 2026-07-22 第五次提交
+
+> 修改人：zcx
+
+添加 arXiv 文献搜索工具 让 Agent 具备学术论文检索能力
+
+### 已实现
+
+- 添加 `arxiv_search` 文献搜索工具
+  - 通过 arXiv 公开 API 搜索学术论文
+  - 支持按字段搜索 all(全文) title(标题) author(作者) abstract(摘要) category(分类)
+  - 支持排序方式 relevance(相关度) lastUpdated(最后更新) submitted(提交时间)
+  - 支持升序降序排列
+  - 返回结构化信息包括 arXiv ID 标题 作者列表 摘要 PDF链接 发表日期 分类 DOI 期刊引用等
+  - 自动从 arXiv URL 提取论文 ID 并去除版本号
+  - 最大返回结果限制为 20 条
+
+- 实现网络请求健壮性
+  - 429 限流时自动重试 最多 5 次 间隔 10 秒
+  - 请求超时自动重试 最多 5 次
+  - 请求超时时间 60 秒
+  - 设置 User-Agent 头标识
+  - XML 解析错误捕获
+
+- 修复 ElementTree 命名空间解析 bug
+  - ElementTree 的 Element 对象无子节点时为 falsy
+  - 所有 `if elem and elem.text` 改为 `if elem is not None and elem.text`
+  - 确保 title author abstract 等文本字段正确解析
+
+### 当前注意事项
+
+- arXiv API 要求请求间隔 3 秒 工具内置重试机制处理限流
+
+- 已在 `backend/agent/tools/__init__.py` 中声明导入
