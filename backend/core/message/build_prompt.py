@@ -15,13 +15,21 @@ SYSTEM_PROMPT: str = """
 """
 
 
-def build_system_prompt(memory: str | None = None) -> str:
-    memory_content = memory.strip() if memory else "暂无用户记忆"
+def build_system_prompt(
+    temp_memory: str | None = None,
+    core_memory: str | None = None,
+) -> str:
+    core_memory = core_memory or "暂无核心记忆"
+    temp_memory = temp_memory or "暂无临时记忆"
 
     return f"""
 {SYSTEM_PROMPT.strip()}
 
-# 用户记忆
+# 核心记忆
 
-{memory_content}
+{core_memory}
+
+# 临时记忆
+
+{temp_memory}
 """.strip()

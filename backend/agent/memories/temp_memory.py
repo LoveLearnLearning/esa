@@ -5,61 +5,82 @@ from dataclasses import dataclass, field
 
 @dataclass
 class TempMemory:
-    max_messages: int = 20
-    messages: list[dict] = field(default_factory=list)
+    max_messages_per_user: int = 20
+    messages: list[dict[str, str]] = field(default_factory=list)
 
-    def get_messages(self) -> list[dict]:
-        return self.messages.copy()
+    def __trim(self, user_name: str) -> None:
+        user_message_indexes = [
+            index
+            for index, message in enumerate(self.messages)
+            if message["user_name"] == user_name
+        ]
 
-    def clear(self) -> None:
-        self.messages.clear()
+        overflow = len(user_message_indexes) - self.max_messages_per_user
 
-    def __trim(self) -> None:
-        if len(self.messages) > self.max_messages:
-            self.messages = self.messages[-self.max_messages :]
+        if overflow <= 0:
+            return
+
+        indexes_to_remove = set(user_message_indexes[:overflow])
+
+        self.messages = [
+            message
+            for index, message in enumerate(self.messages)
+            if index not in indexes_to_remove
+        ]
 
     def add(
         self,
         role: str,
         content: str,
-        user_name: str | None = None,
+        user_name: str,
     ) -> None:
-        message = {
-            "role": role,
-            "content": content,
-        }
+        content = content.strip()
 
-        if user_name is not None:
-            message["user_name"] = user_name
+        if not content:
+            return
 
-        self.messages.append(message)
-        self.__trim()
+        self.messages.append(
+            {
+                "role": role,
+                "content": content,
+                "user_name": user_name,
+            }
+        )
 
-    def build_context(self, user_name: str | None = None) -> str:
-        messages = self.messages
-        if user_name is not None:
-            messages = [
-                message for message in messages if message.get("user_name") == user_name
-            ]
+        self.__trim(user_name)
+
+    def get_messages(
+        self,
+        user_name: str,
+    ) -> list[dict[str, str]]:
+        return [
+            message.copy()
+            for message in self.messages
+            if message["user_name"] == user_name
+        ]
+
+    def build_context(self, user_name: str) -> str:
+        messages = self.get_messages(user_name)
 
         if not messages:
             return "暂无用户记忆"
 
-        lines: list[str] = []
+        role_names = {
+            "user": "用户",
+            "assistant": "助手",
+            "tool": "工具",
+        }
 
-        for message in messages:
-            role = message["role"]
-            content = message["content"]
+        return "\n".join(
+            f"{role_names.get(message['role'], message['role'])}  {message['content']}"
+            for message in messages
+        )
 
-            if role == "user":
-                role_name = "用户"
-            elif role == "assistant":
-                role_name = "助手"
-            elif role == "tool":
-                role_name = "工具"
-            else:
-                role_name = role
+    def clear(self, user_name: str | None = None) -> None:
+        if user_name is None:
+            self.messages.clear()
+            return
 
-            lines.append(f"{role_name}  {content}")
-
-        return "\n".join(lines)
+        self.messages = [
+            message for message in self.messages if message["user_name"] != user_name
+        ]

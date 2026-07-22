@@ -4,10 +4,13 @@ from pathlib import Path
 
 from backend.agent.memories.temp_memory import TempMemory
 from backend.agent.tools import tr
+from backend.agent.tools.memory_tools import core_memory, set_current_user
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.service.vllm_service import LLM_Provider
 from backend.core.utils.models import ParsedOutput, ToolCall
 from backend.core.utils.parser import parse_output
+
+ROOT_PATH: Path = Path.cwd().parent
 
 
 class Agent:
@@ -18,7 +21,9 @@ class Agent:
     ) -> None:
         self.loop_times = loop_times
         self.llm_provider = LLM_Provider(model_path)
-        self.memory = TempMemory()
+        self.temp_memory = TempMemory(
+            max_messages_per_user=20,
+        )
 
     def start(self) -> bool:
         """启动 Agent 加载模型"""
@@ -29,41 +34,61 @@ class Agent:
         return True
 
     def run(self, input: str, user_name: str) -> None:
-        system_prompt = build_system_prompt(self.memory.build_context(user_name))
+
+        set_current_user(user_name)
+
+        temp_context: str = self.temp_memory.build_context(user_name)
+        core_context: str = core_memory.build_context(user_name)
+
+        system_prompt: str = build_system_prompt(
+            temp_memory=temp_context,
+            core_memory=core_context,
+        )
+
         messages: list = [
             {
                 "role": "system",
                 "content": system_prompt,
-            }
-        ]
-        messages.append(
+            },
             {
                 "role": "user",
                 "content": input,
-            }
+            },
+        ]
+        self.temp_memory.add(
+            role="user",
+            content=input,
+            user_name=user_name,
         )
-        self.memory.add("user", input, user_name)
         for _ in range(self.loop_times):
-            response = self.llm_provider.generate(messages, tr.schemas)
+            response = self.llm_provider.generate(
+                messages,
+                tr.schemas,
+            )
+
             po: ParsedOutput = parse_output(response)
+
             messages.append(
                 {
                     "role": "assistant",
                     "content": response,
                 }
             )
+
             tcs: list[ToolCall] = po.tool_calls
-            print(po)
             if not tcs:
                 if po.content:
-                    self.memory.add(
-                        "assistant",
-                        po.content,
-                        user_name,
+                    self.temp_memory.add(
+                        role="assistant",
+                        content=po.content,
+                        user_name=user_name,
                     )
                 break
             for tc in tcs:
-                result = tr.call(tc.name, tc.arguments)
+                result = tr.call(
+                    tc.name,
+                    tc.arguments,
+                )
                 messages.append(
                     {
                         "role": "tool",
@@ -71,7 +96,7 @@ class Agent:
                         "content": str(result),
                     }
                 )
-                self.memory.add(
+                self.temp_memory.add(
                     "tool",
                     f"name: {tc.name}, content: {(str(result))}",
                     user_name,
