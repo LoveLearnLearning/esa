@@ -5,6 +5,7 @@ from pathlib import Path
 from backend.agent.memories.temp_memory import TempMemory
 from backend.agent.tools import tr
 from backend.agent.tools.memory_tools import core_memory, set_current_user
+from backend.agent.tools.skills import build_skills_context
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.service.vllm_service import LLM_Provider
 from backend.core.utils.models import ParsedOutput, ToolCall
@@ -39,10 +40,12 @@ class Agent:
 
         temp_context: str = self.temp_memory.build_context(user_name)
         core_context: str = core_memory.build_context(user_name)
+        skills_context: str = build_skills_context()
 
         system_prompt: str = build_system_prompt(
             temp_memory=temp_context,
             core_memory=core_context,
+            skills_context=skills_context,
         )
 
         messages: list = [

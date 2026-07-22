@@ -12,15 +12,25 @@ SYSTEM_PROMPT: str = """
 记忆与用户最新要求冲突时  以用户最新要求为准
 不要主动向用户暴露内部记忆结构
 不要编造记忆中不存在的信息
+
+# Skill 使用规则
+
+你可以根据用户任务选择可用的 skill
+当某个 skill 的描述与用户任务匹配时  先调用 load_skill 加载完整说明
+加载 skill 后按照其中的步骤完成任务
+不要调用与当前任务无关的 skill
+不要编造不存在的 skill
 """
 
 
 def build_system_prompt(
     temp_memory: str | None = None,
     core_memory: str | None = None,
+    skills_context: str | None = None,
 ) -> str:
     core_memory = core_memory or "暂无核心记忆"
     temp_memory = temp_memory or "暂无临时记忆"
+    skills_context = skills_context or "暂无可用 skill"
 
     return f"""
 {SYSTEM_PROMPT.strip()}
@@ -32,4 +42,8 @@ def build_system_prompt(
 # 临时记忆
 
 {temp_memory}
+
+# 可用 Skills
+
+{skills_context}
 """.strip()
