@@ -1,7 +1,5 @@
 # backend/agent/tools/__init__.py
 
-from pathlib import Path
-
 from backend.agent.tools import (
     bitwise_calculator,  # 触发注册  # noqa: E402, F401
     calculator,  # noqa: E402, F401
@@ -11,4 +9,4 @@ from backend.agent.tools import (
 )
 from backend.agent.tools.tools import tr  # noqa: E402, F401
 
-ROOT_DIR: Path = Path.cwd()
+__all__ = ["tr"]

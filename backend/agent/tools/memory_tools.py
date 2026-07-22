@@ -1,10 +1,10 @@
 # backend/agent/tools/memory_tools.py
 
 from contextvars import ContextVar
+from pathlib import Path
 from typing import Any
 
 from backend.agent.memories.core_memory import CoreMemory
-from backend.agent.tools import ROOT_DIR
 from backend.agent.tools.tools import tr
 
 current_user: ContextVar[str | None] = ContextVar(
@@ -12,8 +12,10 @@ current_user: ContextVar[str | None] = ContextVar(
     default=None,
 )
 
+MEMORIES_DIR = Path(__file__).resolve().parent.parent / "memories"
+
 core_memory = CoreMemory(
-    database_path=ROOT_DIR.parent / "memories" / "data" / "core_memory.db",
+    database_path=MEMORIES_DIR / "data" / "core_memory.db",
 )
 
 
@@ -64,8 +66,7 @@ def get_current_user() -> str:
                     "memory_key": {
                         "type": "string",
                         "description": (
-                            "记忆的唯一名称",
-                            "例如：response_style 或者是 learning goal",
+                            "记忆的唯一名称  例如 response_style 或 learning_goal"
                         ),
                     },
                     "content": {

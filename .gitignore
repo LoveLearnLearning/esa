@@ -1,2 +1,4 @@
 .zed/
 __pycache__/
+.idea/
+.vscode/
