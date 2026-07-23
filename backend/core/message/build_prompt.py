@@ -24,6 +24,7 @@ SYSTEM_PROMPT: str = """
 
 
 def build_system_prompt(
+    user_name: str | None = None,
     temp_memory: str | None = None,
     core_memory: str | None = None,
     skills_context: str | None = None,
@@ -34,6 +35,8 @@ def build_system_prompt(
 
     return f"""
 {SYSTEM_PROMPT.strip()}
+
+> 用户昵称: {user_name}
 
 # 核心记忆
 

@@ -70,6 +70,20 @@ class LLM_Provider:
             logger.info(f"模型{self.model_path.name}并未加载")
 
     def build_prompt(self, messages: list[dict], tools: list) -> str:
+        """构造 vllm 支持的输入提示词
+
+        Args:
+            messages: list[dict]    => 输入的提示词 dict 格式如下:
+                {
+                    "role": "消息的角色",
+                    "content": "消息的内容,
+                },
+
+            tools: list             => 包含 tools 的列表
+
+        Returns:
+            str                     => 构造好的 prompt
+        """
         assert self.tokenizer is not None
         return self.tokenizer.apply_chat_template(
             messages,
@@ -79,6 +93,19 @@ class LLM_Provider:
         )
 
     def generate(self, prompts: list, tools: list) -> str:
+        """生成 LLM 的返回信息
+        Args:
+            prompts: list           => 输入的提示词 dict 格式如下:
+                {
+                    "role": "消息的角色",
+                    "content": "消息的内容,
+                },
+
+            tools: list             => 包含 tools 的列表
+
+        Returns:
+            LLM 模型返回的信息
+        """
         assert self.llm is not None
         outputs = self.llm.chat(
             messages=prompts,

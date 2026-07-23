@@ -6,6 +6,12 @@ from pathlib import Path
 
 
 class CoreMemory:
+    """
+    核心记忆类
+
+    将用户的喜好 习惯 兴趣等等存储到 sqlite 的 database 中供长期调用
+    """
+
     def __init__(
         self,
         database_path: str | Path = "/data/core_memory.db",
@@ -19,6 +25,7 @@ class CoreMemory:
         self.__initialize()
 
     def __connect(self) -> sqlite3.Connection:
+        """辅助函数 链接 SQLite 数据库"""
         connection: sqlite3.Connection = sqlite3.connect(
             self.database_path,
         )
@@ -28,6 +35,7 @@ class CoreMemory:
         return connection
 
     def __initialize(self) -> None:
+        """辅助函数 初始化 SQLite 数据库"""
         with self.__connect() as connection:
             connection.execute(
                 """
@@ -51,6 +59,16 @@ class CoreMemory:
         content: str,
         category: str = "general",
     ) -> bool:
+        """在数据库中添加某条 core_memory
+        Args:
+            user_name: str             => 用户名
+            memory_key: str            => 唯一的记忆 key 属性
+            content: str               => 记忆内容
+            category: str = "general"  => 记忆类别 默认为 "general"
+
+        Returns:
+            bool                       => 写入数据是否成功
+        """
         user_name = user_name.strip()
         memory_key = memory_key.strip()
         content = content.strip()
@@ -102,6 +120,19 @@ class CoreMemory:
         user_name: str,
         memory_key: str,
     ) -> dict[str, str | int] | None:
+        """获取数据库中单条特定记忆
+        Args:
+            user_name: str              => 用户名
+            memory_key: str             => 唯一的记忆 key 属性
+
+        Returns:
+            dict[str, str | int] | None:
+                dict[str, str | int]    => 返回数据库中对应记忆:
+                    K: str              => 字段
+                    V: str | int        => 字段对应内容
+                None                    => 没有该 memory_key 对应的记忆
+        """
+
         with self.__connect() as connection:
             row = connection.execute(
                 """
@@ -132,6 +163,16 @@ class CoreMemory:
         self,
         user_name: str,
     ) -> list[dict[str, str | int]]:
+        """获取数据库中单个用户的所有 core_memories
+        Args:
+            user_name: str                => 用户名
+
+        Returns:
+            list[dict[str, str | int]]:
+                dict[str, str | int]      => 返回数据库中对应记忆:
+                        K: str            => 字段
+                        V: str | int      => 字段对应内容
+        """
         with self.__connect() as connection:
             rows = connection.execute(
                 """
@@ -157,6 +198,14 @@ class CoreMemory:
         user_name: str,
         memory_key: str,
     ) -> bool:
+        """删除用户对应 memory_key 的核心记忆
+        Args:
+            user_name: str  => 用户名
+            memory_key: str => 唯一的记忆 key 属性
+
+        Returns:
+            bool            => 是否成功删除
+        """
         with self.__connect() as connection:
             cursor = connection.execute(
                 """
@@ -173,6 +222,13 @@ class CoreMemory:
         return cursor.rowcount > 0
 
     def clear(self, user_name: str) -> int:
+        """删除特定用户所有核心记忆
+        Args:
+            user_name: str  => 用户名
+
+        Returns:
+            int             => 剩余记忆数量
+        """
         with self.__connect() as connection:
             cursor = connection.execute(
                 """
@@ -185,6 +241,14 @@ class CoreMemory:
         return cursor.rowcount
 
     def build_context(self, user_name: str) -> str:
+        """使用用户核心记忆构造提示词
+        Args:
+            user_name: str  => 用户名:
+
+        Returns:
+            str             => 构造好的提示词
+        """
+
         memories = self.get_all(user_name)
 
         if not memories:
