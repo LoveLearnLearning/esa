@@ -1,4 +1,4 @@
-# backend/core/service/vllm_service.py
+# backend/core/services/vllm_service.py
 
 import logging
 from pathlib import Path

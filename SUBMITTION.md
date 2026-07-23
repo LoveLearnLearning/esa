@@ -228,3 +228,63 @@
 - arXiv API 要求请求间隔 3 秒 工具内置重试机制处理限流
 
 - 已在 `backend/agent/tools/__init__.py` 中声明导入
+
+## 2026-07-23 第六次提交
+
+> 修改人：yyf
+
+迁移并适配用户认证服务 存储层从 JSON 全面切换到 SQLite 添加历史对话与聊天记录持久化 Agent 支持多轮对话历史
+
+### 已实现
+
+- 迁移并适配认证服务
+  - `AuthService` 提供登录和注册接口
+  - `PasswordService` 使用 bcrypt 对密码加盐哈希 不存明文
+  - 登录成功签发 2 小时有效期的 `SessionPrincipal` 会话
+  - 移除旧项目遗留的 `company_id` 参数
+  - 补齐缺失的 `UserStore` `SessionStore` 导入
+
+- 实现 SQLite 存储层 替换原 JSON 文件存储
+  - 添加 `BaseSQLiteStore` 基类
+    - 统一管理数据库连接 每次操作独立连接并正确关闭
+    - 提供 `query_one` `query_all` `execute` 通用方法
+    - 自动创建数据目录 子类各自初始化数据表
+  - 添加 `UserStore` 用户表
+    - `id` 主键 `username` 唯一约束
+    - 依靠数据库约束原子地拦截重复注册 避免先查后插的并发竞态
+  - 添加 `SessionStore` 会话表
+    - 支持创建 查询 注销 清理过期会话
+    - 时间统一存 UTC ISO 格式字符串 过期清理为单条 SQL
+  - 删除 `BaseJsonStore` 及相关 JSON 存储代码
+
+- 添加 `ChatStore` 聊天记录持久化
+  - `conversations` 表保存历史对话列表 按最近更新排序
+  - `messages` 表保存对话内消息 兼容 user assistant tool 三种角色
+  - 支持创建 查询 重命名 删除对话 删除时级联清理消息
+  - 追加消息与刷新对话更新时间在同一事务内完成
+  - `get_history` 返回完整消息记录 供前端展示
+  - `get_model_messages` 返回纯净模型格式 供多轮对话回放
+  - 所有方法返回 dict 可直接被 FastAPI 序列化为 JSON
+
+- Agent 支持多轮对话历史
+  - `Agent.run()` 新增 `history` 参数 接收历史消息拼入上下文
+  - `run()` 返回本轮新产生的消息 供调用方持久化
+  - 持久化的助手消息为解析后内容 不含 reasoning
+  - `main.py` CLI 循环接入历史 命令行下支持多轮对话
+
+- 统一注释格式
+  - 全部 docstring 对齐 `core_memory.py` 的 `参数: 类型 => 说明` 风格
+  - 修正 `password_service.py` 中的拼写错误
+  - 修正 `services` 目录迁移后遗留的文件头路径注释
+
+### 当前注意事项
+
+- 用户 会话 聊天记录默认共用一个数据库文件 `data/esa.db` 各自建表 初始化时自动创建
+
+- 后端 web 层尚未实现 `webAPI.py` 待接入 FastAPI 后暴露给前端 通信格式为 JSON
+
+- 多轮对话完整链路 `get_model_messages` 取历史 传入 `Agent.run()` 返回值交给 `append_messages` 存库
+
+- `PasswordService` 依赖 bcrypt 库 部署环境需要安装
+
+- 项目目前没有 requirements.txt 建议后续补充依赖清单

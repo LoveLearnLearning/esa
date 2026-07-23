@@ -14,7 +14,7 @@ class CoreMemory:
 
     def __init__(
         self,
-        database_path: str | Path = "/data/core_memory.db",
+        database_path: str | Path = "data/core_memory.db",
     ) -> None:
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(
