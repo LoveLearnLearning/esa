@@ -71,6 +71,9 @@ class Agent:
 
             po: ParsedOutput = parse_output(response)
 
+            print(f"Thinking: {po.reasoning}")
+            print(f"Agent: {po.content}")
+
             messages.append(
                 {
                     "role": "assistant",
