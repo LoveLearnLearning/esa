@@ -25,21 +25,21 @@ class AuthService:
 
     def login(
         self,
-        user_id: str,
+        username: str,
         password: str,
     ) -> SessionPrincipal | None:
-        """登陆接口
+        """登陆接口 通过用户名和密码验证并签发会话
         Args:
-            user_id: str  => 用户 id
+            username: str => 用户名
             password: str => 用户输入的密码
 
         Returns:
             SessionPrincipal | None:
                 SessionPrincipal => 登陆成功返回 RuntimeSession 数据对象
-                None             => 登陆失败
+                None             => 登陆失败 用户不存在或密码错误
         """
 
-        user: UserRecord | None = self.user_store.get_by_id(user_id)
+        user: UserRecord | None = self.user_store.get_by_username(username)
         if not user:
             return
         login_state: bool = PasswordService.verify_password(
@@ -54,7 +54,7 @@ class AuthService:
         expire_time = current_time + timedelta(hours=2)
         session: SessionPrincipal = SessionPrincipal(
             session_id=session_id,
-            user_id=user_id,
+            user_id=user.id,
             issued_at=current_time,
             expires_at=expire_time,
         )
@@ -64,26 +64,32 @@ class AuthService:
 
     def register(
         self,
-        user_id: str,
         username: str,
         password: str,
-    ) -> bool:
-        """给新用户提供注册服务
+    ) -> UserRecord | None:
+        """给新用户提供注册服务 user_id 由服务端生成
         Args:
-            user_id: str  => 用户 ID
             username: str => 用户名
             password: str => 密码
 
         Returns:
-            bool          => 是否注册成功 用户 id 或用户名已存在时返回 False
+            UserRecord | None:
+                UserRecord => 注册成功返回新用户数据对象
+                None       => 注册失败 用户名已存在
         """
+
+        if self.user_store.get_by_username(username) is not None:
+            return None
 
         pwd_hash = PasswordService.hash_password(password)
         new_user = UserRecord(
-            id=user_id,
+            id=str(uuid.uuid4()),
             username=username,
             password_hash=pwd_hash,
             status="active",
         )
 
-        return self.user_store.create(new_user)
+        if not self.user_store.create(new_user):
+            return None
+
+        return new_user
