@@ -1,9 +1,15 @@
 # backend/main.py
 
+from pathlib import Path
+
 from backend.agent.agent import Agent
 
 # from backend.core.agent.tools.tools import tr
 from backend.core.log.logger import setup_logging
+from backend.core.services.auth_service import AuthService
+from backend.core.stores.session_store import SessionStore
+from backend.core.stores.user_store import UserStore
+from backend.core.utils.models import SessionPrincipal, UserRecord
 
 # from backend.core.service.vllm_service import LLM_Provider
 # from backend.core.utils.parser import parse_output
@@ -32,6 +38,26 @@ def main() -> None:
         raise RuntimeError("Agent load failed!")
 
     history: list[dict] = []
+
+    db_path = Path(__file__).resolve().parent / "core" / "stores" / "data" / "user.db"
+
+    us = UserStore(db_path)
+    ss = SessionStore(db_path)
+    auth = AuthService(us, ss)
+
+    session: SessionPrincipal | None = auth.login("qwq", "123456")
+
+    if session is None:
+        raise RuntimeError("Login Failed!")
+
+    assert session is not None
+
+    user: UserRecord | None = us.get_by_id(session.user_id)
+
+    if user is None:
+        raise RuntimeError("User not found!")
+
+    assert user is not None
 
     while True:
         user_input: str = str(input("User: "))
