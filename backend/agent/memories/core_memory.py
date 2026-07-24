@@ -3,6 +3,7 @@
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import Union
 
 
 class CoreMemory:
@@ -14,7 +15,7 @@ class CoreMemory:
 
     def __init__(
         self,
-        database_path: str | Path = "data/core_memory.db",
+        database_path: Union[str, Path] = "data/core_memory.db",
     ) -> None:
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(

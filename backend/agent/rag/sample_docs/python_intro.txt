@@ -1,0 +1,195 @@
+Python 编程基础
+
+第一章 Python 简介
+
+1.1 什么是 Python
+
+Python 是一种高级编程语言，由 Guido van Rossum 于 1991 年首次发布。Python 以其简洁清晰的语法著称，广泛用于 Web 开发、数据分析、人工智能、科学计算等领域。
+
+Python 的主要特点包括：
+- 简单易学：Python 的语法非常接近自然语言，初学者容易上手
+- 开源免费：Python 是完全开源的，可以免费使用和分发
+- 跨平台：Python 可以在 Windows、Linux、Mac 等多种操作系统上运行
+- 丰富的库：Python 拥有大量的标准库和第三方库，涵盖各种应用场景
+
+1.2 安装 Python
+
+在 Windows 上安装 Python：
+1. 访问 Python 官网 python.org
+2. 下载最新版本的 Python 安装包
+3. 运行安装程序，勾选 "Add Python to PATH"
+4. 点击 "Install Now" 完成安装
+
+验证安装：打开命令行，输入 python --version，如果显示版本号则表示安装成功。
+
+第二章 基础语法
+
+2.1 变量和数据类型
+
+Python 中的变量不需要声明类型，直接赋值即可。常见的数据类型包括：
+
+- 整数（int）：如 1, -10, 100
+- 浮点数（float）：如 3.14, -0.5
+- 字符串（str）：如 "Hello", 'Python'
+- 布尔值（bool）：True 或 False
+- 列表（list）：如 [1, 2, 3]
+- 字典（dict）：如 {"name": "张三", "age": 20}
+
+示例代码：
+```python
+# 定义变量
+name = "张三"
+age = 20
+score = 95.5
+is_student = True
+
+# 打印变量类型
+print(type(name))    # <class 'str'>
+print(type(age))     # <class 'int'>
+print(type(score))   # <class 'float'>
+```
+
+2.2 条件语句
+
+Python 使用 if-elif-else 结构进行条件判断：
+
+```python
+score = 85
+
+if score >= 90:
+    print("优秀")
+elif score >= 80:
+    print("良好")
+elif score >= 60:
+    print("及格")
+else:
+    print("不及格")
+```
+
+2.3 循环语句
+
+Python 提供了 for 循环和 while 循环：
+
+for 循环示例：
+```python
+# 遍历列表
+fruits = ["苹果", "香蕉", "橙子"]
+for fruit in fruits:
+    print(fruit)
+
+# 使用 range 函数
+for i in range(5):
+    print(i)  # 输出 0, 1, 2, 3, 4
+```
+
+while 循环示例：
+```python
+count = 0
+while count < 5:
+    print(count)
+    count += 1
+```
+
+第三章 函数
+
+3.1 定义函数
+
+使用 def 关键字定义函数：
+
+```python
+def greet(name):
+    """问候函数"""
+    return f"你好，{name}！"
+
+# 调用函数
+message = greet("张三")
+print(message)  # 输出：你好，张三！
+```
+
+3.2 函数参数
+
+Python 函数支持多种参数类型：
+
+```python
+# 位置参数
+def add(a, b):
+    return a + b
+
+# 默认参数
+def greet(name, greeting="你好"):
+    return f"{greeting}，{name}！"
+
+# 可变参数
+def sum_all(*numbers):
+    return sum(numbers)
+
+# 关键字参数
+def print_info(**kwargs):
+    for key, value in kwargs.items():
+        print(f"{key}: {value}")
+```
+
+3.3 Lambda 表达式
+
+Lambda 是一种简洁的匿名函数：
+
+```python
+# 普通函数
+def square(x):
+    return x ** 2
+
+# Lambda 表达式
+square_lambda = lambda x: x ** 2
+
+# 使用示例
+print(square(5))         # 输出：25
+print(square_lambda(5))  # 输出：25
+```
+
+第四章 面向对象编程
+
+4.1 类和对象
+
+Python 是一门面向对象的语言，使用 class 关键字定义类：
+
+```python
+class Student:
+    """学生类"""
+    
+    def __init__(self, name, age):
+        self.name = name
+        self.age = age
+    
+    def study(self, subject):
+        print(f"{self.name} 正在学习 {subject}")
+
+# 创建对象
+student = Student("张三", 20)
+student.study("Python")  # 输出：张三 正在学习 Python
+```
+
+4.2 继承
+
+Python 支持类的继承：
+
+```python
+class Person:
+    def __init__(self, name):
+        self.name = name
+    
+    def say_hello(self):
+        print(f"你好，我是{self.name}")
+
+class Student(Person):
+    def __init__(self, name, grade):
+        super().__init__(name)
+        self.grade = grade
+    
+    def study(self):
+        print(f"{self.name} 正在{self.grade}年级学习")
+
+# 使用示例
+student = Student("李四", "大三")
+student.say_hello()  # 继承自父类的方法
+student.study()      # 子类自己的方法
+```

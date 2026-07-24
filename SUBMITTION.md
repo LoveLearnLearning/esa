@@ -341,4 +341,109 @@
 
 - 聊天相关路由 `routers/chat.py` 尚未实现 对话列表 历史消息 发消息接口待接入 `ChatStore` 与 `Agent`
 
-- 前端登录页密码校验规则为 大于 8 位 与后端 schema 的 8-128 位不一致 且前端对密码做了 trim 需要前端调整对齐
+- 前端登录页密码校验规则为 大于 8 位 与后端 schema 的 8-128 位不一致 且前端对密码做 trim 需要前端调整对齐
+
+## 2026-07-24 第八次提交
+
+> 修改人：zcx
+
+实现 RAG (检索增强生成) 模块基础架构 作为占位组件验证系统流程 为后续自研模型预留扩展接口
+
+### 已实现
+
+- **模块化架构设计**
+  - 定义抽象接口 `EmbeddingProvider` `VectorStore` `DocumentLoader`
+  - 采用依赖注入模式 核心组件可独立替换
+  - 配置化管理 参数集中存放在 `RAGConfig` dataclass
+
+- **文档处理模块**
+  - `TextLoader`: 支持 .txt/.md 格式文档加载
+  - `TextSplitter`: 固定大小分块 + 智能分隔符识别
+  - 保留来源元数据 (文件名、章节、页码)
+
+- **Embedding 实现占位**
+  - `SimpleEmbedding`: 使用哈希生成向量 作为占位实现
+  - `BGEEmbedding`: 使用 BAAI/bge-small-zh 真实语义向量 (512维)
+  - 支持批量向量化 向量维度自动归一化
+
+- **向量存储实现占位**
+  - `MemoryVectorStore`: 内存向量存储 测试用 不持久化
+  - `FAISSVectorStore`: FAISS 向量存储 支持持久化 L2/IP 相似度计算
+  - 相似度检索支持阈值过滤
+
+- **检索策略占位**
+  - `BM25Retriever`: BM25 关键词检索 (rank_bm25)
+  - `HybridRetriever`: 混合检索 (BM25 + 向量) RRF 融合算法
+  - 权重可配置 `bm25_weight` `vector_weight`
+
+- **Agent 工具集成**
+  - `retrieve_knowledge`: 从知识库检索相关文档
+  - `index_knowledge_base`: 索引文档目录到知识库
+  - `get_knowledge_base_stats`: 获取知识库统计
+  - `clear_knowledge_base`: 清空知识库
+  - 工具已注册到 `ToolRegistry` Agent 可自动调用
+
+- **来源可追溯**
+  - 每条检索结果标注来源文档 章节信息
+  - 格式化模板可自定义 默认格式 "【来源 1】文件名 · 章节 · 第N页"
+  - 满足赛题要求的答案来源标注
+
+- **文档与测试**
+  - `RAG_API.md`: 接口文档 包含使用示例和扩展指南
+  - `MIGRATION_GUIDE.md`: 自研模型迁移指南 详细步骤与兼容性说明
+  - `INSTALL.md`: 依赖安装说明
+  - `benchmark.py`: 性能基准测试脚本
+  - `test_rag.py`: 功能测试脚本
+  - 示例文档: math_basics.txt, python_intro.txt
+
+### 技术决策
+
+- **不使用 LangChain/LlamaIndex 等框架**: 采用底层库直接集成 避免与 Agent 工具注册机制冲突 保持轻量可控
+- **默认配置**: BGE Embedding + FAISS 存储 + 混合检索
+- **占位性质明确**: SimpleEmbedding 仅用于验证流程 无语义理解能力
+
+### 当前注意事项
+
+- **依赖安装**: 
+  ```bash
+  pip install sentence-transformers faiss-cpu rank_bm25
+  ```
+
+- **当前为占位实现**: 
+  - SimpleEmbedding 使用哈希向量 不具备语义理解能力
+  - MemoryVectorStore 不持久化 重启后数据丢失
+  - 生产环境应使用 BGEEmbedding + FAISSVectorStore
+
+- **后续改进方向**:
+  1. 替换为自研 Embedding 模型
+  2. 替换为自研向量数据库或优化检索算法
+  3. 扩展 PDF/Word 等文档格式支持
+  4. 添加知识图谱和用户掌握度模型
+  5. 实现个性化题目推荐引擎
+
+- **迁移指引**: 
+  - 自研模型只需继承 `EmbeddingProvider` 或 `VectorStore` 抽象类
+  - 详细步骤见 `backend/agent/rag/MIGRATION_GUIDE.md`
+
+- **Python 版本兼容性**:
+  - 已修复所有 Python 3.9 类型注解兼容性问题
+  - 使用 `Optional[Type]` 替代 `Type | None`
+  - 使用 `Union[Type1, Type2]` 替代 `Type1 | Type2`
+
+- **命名冲突已解决**:
+  - 检索策略目录重命名为 `retrieval_strategies/`
+  - 主检索器文件保持 `retriever.py`
+
+- **文件结构**:
+  ```
+  backend/agent/rag/
+  ├── document/           # 文档处理
+  ├── embeddings/         # Embedding 实现
+  ├── vectorstore/        # 向量存储
+  ├── retrieval_strategies/  # 检索策略
+  ├── sample_docs/        # 示例文档
+  ├── base.py             # 抽象接口
+  ├── config.py           # 配置管理
+  ├── retriever.py        # 主检索器
+  └── rag_tool.py         # Agent 工具注册
+  ```
