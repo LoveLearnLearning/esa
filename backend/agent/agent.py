@@ -2,6 +2,9 @@
 
 from pathlib import Path
 
+from vllm.config.model import ModelDType
+from vllm.model_executor.layers.quantization import QuantizationMethods
+
 from backend.agent.memories.temp_memory import TempMemory
 from backend.agent.tools import tr
 from backend.agent.tools.memory_tools import core_memory, set_current_user
@@ -19,9 +22,23 @@ class Agent:
         self,
         model_path: str | Path,
         loop_times: int = 3,
+        quantization: QuantizationMethods | None = None,
+        dtype: ModelDType = "auto",
+        kv_cache_dtype: str = "auto",
+        gpu_memory_utilization: float = 0.95,
+        max_model_len: int = 32768,
+        max_num_seqs: int = 1,
     ) -> None:
         self.loop_times = loop_times
-        self.llm_provider = LLM_Provider(model_path)
+        self.llm_provider = LLM_Provider(
+            model_path=model_path,
+            quantization=quantization,
+            dtype=dtype,
+            kv_cache_dtype=kv_cache_dtype,
+            gpu_memory_utilization=gpu_memory_utilization,
+            max_model_len=max_model_len,
+            max_num_seqs=max_num_seqs,
+        )
         self.temp_memory = TempMemory(
             max_messages_per_user=20,
         )
@@ -55,7 +72,11 @@ class Agent:
 
         set_current_user(user_name)
 
-        temp_context: str = self.temp_memory.build_context(user_name)
+        temp_context: str = (
+            "历史消息已经通过 messages 提供"
+            if history
+            else self.temp_memory.build_context(user_name)
+        )
         core_context: str = core_memory.build_context(user_name)
         skills_context: str = build_skills_context()
 

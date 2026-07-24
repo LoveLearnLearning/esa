@@ -288,3 +288,57 @@
 - `PasswordService` 依赖 bcrypt 库 部署环境需要安装
 
 - 项目目前没有 requirements.txt 建议后续补充依赖清单
+
+## 2026-07-24 第七次提交
+
+> 修改人：yyf
+
+接入 FastAPI 搭建后端 web 层 完成认证相关接口 打通 注册 登录 登出 完整链路 前后端通信格式定为 JSON
+
+### 已实现
+
+- 调整 `AuthService` 适配 web 层
+  - `login` 改为按 `username` 查询用户 与前端登录表单对齐
+  - 会话中保存的 `user_id` 仍为用户真实 uuid 供下游归属校验使用
+  - `register` 不再由外部传入 `user_id` 改为服务端 `uuid` 生成
+  - `register` 返回值从 `bool` 改为 `UserRecord | None` 路由层可直接取新用户信息构造响应
+
+- 搭建 FastAPI 应用骨架 `webAPI.py`
+  - 使用 `lifespan` 在启动时装配 `UserStore` `SessionStore` `ChatStore` `AuthService`
+  - 所有依赖挂载到 `app.state` 全局复用 不在请求内重复创建
+  - 数据库文件统一为 `backend/core/stores/data/user.db`
+  - 通过 `include_router` 挂载 auth 路由
+
+- 定义 JSON 通信契约 `schemas.py`
+  - 请求模型 `RegisterRequest` `LoginRequest` `SendMessageRequest`
+  - 响应模型 `LoginResponse` `MessageOut`
+  - 使用 pydantic `Field` 声明校验规则 用户名 1-32 位 密码 8-128 位
+  - 校验不通过由 FastAPI 自动返回 422 后端不手写校验逻辑
+
+- 实现会话认证依赖 `deps.py`
+  - `get_current_session` 从 `Authorization: Bearer <session_id>` 请求头解析令牌
+  - 校验会话存在性和有效期 过期会话顺手 `revoke` 清理
+  - 认证失败统一返回 401
+  - 业务接口通过 `Depends` 注入 自动拦截未登录请求
+
+- 实现认证路由 `routers/auth.py`
+  - `POST /auth/register` 注册 成功 201 用户名重复 409
+  - `POST /auth/login` 登录 成功返回 `LoginResponse` 失败 401
+  - `POST /auth/logout` 登出 注销当前会话 返回 204
+  - 登录失败时 用户不存在 和 密码错误 返回同一文案 避免泄露已注册用户名
+
+- 建立 `API.md` 接口文档 记录全部 endpoint 请求响应格式与错误码 作为前后端对接依据
+
+### 当前注意事项
+
+- web 层依赖 fastapi uvicorn pydantic 部署环境需要安装 启动命令 `uvicorn backend.core.web.webAPI:app --reload`
+
+- CORS 中间件尚未配置 Flutter web 端跨域请求会被浏览器拦截 对接前端前需要加上 `CORSMiddleware`
+
+- `deps.py` 中 401 错误文案为调试用玩笑话 会原样返回给客户端 对接前端前必须替换为正式文案
+
+- `backend/core/stores/data/user.db` 数据库文件被提交进了 git 内含测试用户密码哈希 建议从版本库移除并加入 `.gitignore`
+
+- 聊天相关路由 `routers/chat.py` 尚未实现 对话列表 历史消息 发消息接口待接入 `ChatStore` 与 `Agent`
+
+- 前端登录页密码校验规则为 大于 8 位 与后端 schema 的 8-128 位不一致 且前端对密码做了 trim 需要前端调整对齐

@@ -33,31 +33,39 @@ def main() -> None:
     # prompt = llm_provider.build_prompt(messages, tr.schemas)
     # print(parse_output(llm_provider.generate([prompt])))
     # llm_provider.unload_model()
-    agent = Agent(MODEL_PATH)
+    agent = Agent(
+        model_path=MODEL_PATH,
+        quantization="bitsandbytes",
+        dtype="bfloat16",
+        kv_cache_dtype="fp8",
+        gpu_memory_utilization=0.95,
+        max_model_len=32768,
+        max_num_seqs=1,
+    )
     if not agent.start():
         raise RuntimeError("Agent load failed!")
 
     history: list[dict] = []
 
-    db_path = Path(__file__).resolve().parent / "core" / "stores" / "data" / "user.db"
+    # db_path = Path(__file__).resolve().parent / "core" / "stores" / "data" / "user.db"
 
-    us = UserStore(db_path)
-    ss = SessionStore(db_path)
-    auth = AuthService(us, ss)
+    # us = UserStore(db_path)
+    # ss = SessionStore(db_path)
+    # auth = AuthService(us, ss)
 
-    session: SessionPrincipal | None = auth.login("qwq", "123456")
+    # session: SessionPrincipal | None = auth.login("qwq", "123456")
 
-    if session is None:
-        raise RuntimeError("Login Failed!")
+    # if session is None:
+    #     raise RuntimeError("Login Failed!")
 
-    assert session is not None
+    # assert session is not None
 
-    user: UserRecord | None = us.get_by_id(session.user_id)
+    # user: UserRecord | None = us.get_by_id(session.user_id)
 
-    if user is None:
-        raise RuntimeError("User not found!")
+    # if user is None:
+    #     raise RuntimeError("User not found!")
 
-    assert user is not None
+    # assert user is not None
 
     while True:
         user_input: str = str(input("User: "))

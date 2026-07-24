@@ -6,6 +6,8 @@ from pathlib import Path
 import torch
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
+from vllm.config.model import ModelDType
+from vllm.model_executor.layers.quantization import QuantizationMethods
 
 logger = logging.getLogger(__name__)
 
@@ -14,14 +16,24 @@ class LLM_Provider:
     def __init__(
         self,
         model_path: str | Path,
-        gpu_memory_utilization: float = 0.85,
-        max_model_len: int = 4096,
+        gpu_memory_utilization: float = 0.95,
+        max_model_len: int = 32768,
+        quantization: QuantizationMethods | None = None,
+        dtype: ModelDType = "auto",
+        kv_cache_dtype: str = "auto",
+        max_num_seqs: int = 1,
     ) -> None:
         self.model_path = Path(model_path)
         self.gpu_memory_utilization = gpu_memory_utilization
         self.max_model_len = max_model_len
+        self.quantization: QuantizationMethods | None = quantization
+        self.dtype: ModelDType = dtype
+        self.kv_cache_dtype = kv_cache_dtype
+        self.max_num_seqs = max_num_seqs
 
         self.llm = None
+        self.tokenizer = None
+        self.sampling_params = None
 
     def load_model(self) -> None:
         """
@@ -34,8 +46,12 @@ class LLM_Provider:
                 model=str(self.model_path),
                 gpu_memory_utilization=self.gpu_memory_utilization,
                 max_model_len=self.max_model_len,
+                max_num_seqs=self.max_num_seqs,
                 tensor_parallel_size=1,
                 enforce_eager=True,
+                quantization=self.quantization,
+                dtype=self.dtype,
+                kv_cache_dtype=self.kv_cache_dtype,
             )
 
             # 加载分词器
