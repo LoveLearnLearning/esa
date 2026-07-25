@@ -1,7 +1,6 @@
 # backend/agent/agent.py
 
 from pathlib import Path
-from typing import Union, Optional
 
 from vllm.config.model import ModelDType
 from vllm.model_executor.layers.quantization import QuantizationMethods
@@ -21,9 +20,9 @@ ROOT_PATH: Path = Path.cwd().parent
 class Agent:
     def __init__(
         self,
-        model_path: Union[str, Path],
+        model_path: str | Path,
         loop_times: int = 3,
-        quantization: Optional[QuantizationMethods] = None,
+        quantization: QuantizationMethods | None = None,
         dtype: ModelDType = "auto",
         kv_cache_dtype: str = "auto",
         gpu_memory_utilization: float = 0.95,

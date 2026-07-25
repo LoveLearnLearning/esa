@@ -20,6 +20,10 @@ class SendMessageRequest(BaseModel):
     content: str = Field(min_length=1)
 
 
+class RenameRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=64)
+
+
 # 响应
 class LoginResponse(BaseModel):
     session_id: str

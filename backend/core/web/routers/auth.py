@@ -48,6 +48,7 @@ def login(body: LoginRequest, request: Request) -> LoginResponse:
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(request: Request, session=Depends(get_current_session)):
+def logout(request: Request, session) -> None:
+    session = Depends(get_current_session)
     session_store: SessionStore = request.app.state.session_store
     session_store.revoke(session.session_id)

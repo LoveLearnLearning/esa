@@ -11,7 +11,7 @@ RAG 模块配置管理
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Union, Optional
+from typing import Literal, Optional, Union
 
 
 @dataclass
@@ -79,9 +79,7 @@ class RAGConfig:
             raise ValueError(f"chunk_size 必须大于 0，当前值: {self.chunk_size}")
 
         if self.chunk_overlap < 0:
-            raise ValueError(
-                f"chunk_overlap 不能为负数，当前值: {self.chunk_overlap}"
-            )
+            raise ValueError(f"chunk_overlap 不能为负数，当前值: {self.chunk_overlap}")
 
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError(
