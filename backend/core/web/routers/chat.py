@@ -1,4 +1,5 @@
 # backend/core/web/routers/chat.py
+<<<<<<< HEAD
 
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -111,3 +112,5 @@ def send_message(
     )
 
     return new_messages
+=======
+>>>>>>> 82c2f43bf79d394a54b1b8dd843f5cfd07923644
