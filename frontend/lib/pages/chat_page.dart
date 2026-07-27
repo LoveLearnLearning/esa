@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
@@ -12,6 +13,7 @@ import '../widgets/assistant_message.dart';
 import '../widgets/composer.dart';
 import '../widgets/history_drawer.dart';
 import '../widgets/message_bubble.dart';
+import '../widgets/tool_call_card.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -58,9 +60,11 @@ class _ChatPageState extends State<ChatPage> {
               onNewChat: app.newConversation,
             ),
             Expanded(
-              child: app.messages.isEmpty
-                  ? _EmptyState(name: app.username, onPick: app.send)
-                  : _messageList(context, app),
+              child: app.loadingMessages && app.messages.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : app.messages.isEmpty
+                      ? _EmptyState(name: app.username, onPick: app.send)
+                      : _messageList(context, app),
             ),
             Composer(busy: app.busy, onSend: app.send),
           ],
@@ -70,7 +74,10 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _messageList(BuildContext context, AppState app) {
-    final messages = app.messages;
+    // 关闭工具详情时过滤掉 tool 消息 避免残留分隔间距
+    final messages = app.toolsOn
+        ? app.messages
+        : app.messages.where((m) => !m.isTool).toList();
     return ListView.separated(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(20, 34, 20, 24),
@@ -78,13 +85,21 @@ class _ChatPageState extends State<ChatPage> {
       separatorBuilder: (_, _) => const SizedBox(height: EsaSpace.messageGap),
       itemBuilder: (context, index) {
         final m = messages[index];
-        final child = m.isUser
-            ? UserBubble(text: m.text)
-            : AssistantMessage(
-                message: m,
-                showTool: app.toolsOn,
-                onRegenerate: () => app.regenerate(m.id),
-              );
+        final Widget child;
+        switch (m.role) {
+          case MessageRole.user:
+            child = UserBubble(text: m.text);
+          case MessageRole.tool:
+            child = Align(
+              alignment: Alignment.centerLeft,
+              child: ToolCallCard(name: m.name ?? 'tool', output: m.text),
+            );
+          case MessageRole.assistant:
+            child = AssistantMessage(
+              message: m,
+              onRegenerate: () => app.regenerate(m.id),
+            );
+        }
         return Center(
           child: ConstrainedBox(
             constraints:

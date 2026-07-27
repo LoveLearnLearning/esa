@@ -1,5 +1,5 @@
 // 助手回复 —— 不用气泡 平铺左对齐 顶部 ESA 标签 正文 15/1.75
-// 正在输出时末尾红方块光标 结束后显示复制 / 重新生成按钮
+// 等待/输出时末尾红方块光标 完成后显示复制 / 重新生成按钮
 
 import 'dart:async';
 
@@ -10,18 +10,15 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../models/models.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
-import 'tool_call_card.dart';
 
 class AssistantMessage extends StatefulWidget {
   const AssistantMessage({
     super.key,
     required this.message,
-    required this.showTool,
     required this.onRegenerate,
   });
 
   final ChatMessage message;
-  final bool showTool;
   final VoidCallback onRegenerate;
 
   @override
@@ -55,12 +52,8 @@ class _AssistantMessageState extends State<AssistantMessage> {
       children: [
         Text('ESA', style: context.texts.labelSmall),
         const SizedBox(height: EsaSpace.sm),
-        if (m.tool != null && widget.showTool) ...[
-          ToolCallCard(tool: m.tool!),
-          const SizedBox(height: EsaSpace.md),
-        ],
         _body(context, m),
-        if (!m.typing) ...[
+        if (!m.typing && m.text.isNotEmpty) ...[
           const SizedBox(height: EsaSpace.sm),
           Row(
             children: [
@@ -121,7 +114,6 @@ class _BlinkingCursorState extends State<_BlinkingCursor> {
   @override
   void initState() {
     super.initState();
-    // 1s 步进闪烁
     _timer = Timer.periodic(const Duration(milliseconds: 530), (_) {
       if (mounted) setState(() => _on = !_on);
     });

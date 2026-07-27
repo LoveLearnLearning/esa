@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.agent.agent import Agent
 from backend.core.services.auth_service import AuthService
@@ -41,6 +42,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# 允许 Flutter web / 前端跨域调用 开发阶段放开所有来源
+# 部署时应把 allow_origins 收窄到前端实际域名
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,  # 用 Bearer 头认证 不依赖 cookie
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 app.include_router(auth.router)

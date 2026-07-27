@@ -25,6 +25,7 @@ class _LoginPageState extends State<LoginPage> {
   final _password2 = TextEditingController();
   AuthMode _mode = AuthMode.login;
   bool _showPw = false;
+  bool _loading = false;
   String? _error;
 
   @override
@@ -37,7 +38,7 @@ class _LoginPageState extends State<LoginPage> {
 
   bool get _isRegister => _mode == AuthMode.register;
 
-  void _submit() {
+  Future<void> _submit() async {
     final username = _username.text.trim();
     final password = _password.text; // 不 trim 密码
     // 校验与后端一致
@@ -57,9 +58,20 @@ class _LoginPageState extends State<LoginPage> {
       setState(() => _error = '两次输入的密码不一致');
       return;
     }
-    setState(() => _error = null);
-    // README：先不接真实后端 直接进入应用
-    AppScope.of(context).login(username);
+
+    setState(() {
+      _error = null;
+      _loading = true;
+    });
+    final app = AppScope.of(context);
+    final err = _isRegister
+        ? await app.register(username, password)
+        : await app.login(username, password);
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _error = err; // null 表示成功 root 会自动切到对话页
+    });
   }
 
   @override
@@ -74,7 +86,7 @@ class _LoginPageState extends State<LoginPage> {
             return SingleChildScrollView(
               child: Column(
                 children: [
-                  SizedBox(height: 260, child: poster),
+                  poster,
                   form,
                 ],
               ),
@@ -143,9 +155,11 @@ class _LoginPageState extends State<LoginPage> {
               ],
               const SizedBox(height: EsaSpace.xl),
               EsaRedButton(
-                label: _isRegister ? '创建账号' : '登录 ESA',
+                label: _loading
+                    ? '请稍候…'
+                    : (_isRegister ? '创建账号' : '登录 ESA'),
                 trailing: LucideIcons.arrowUp,
-                onPressed: _submit,
+                onPressed: _loading ? null : _submit,
               ),
               const SizedBox(height: EsaSpace.lg),
               Text(
@@ -240,91 +254,106 @@ class _Poster extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const white = EsaColors.onAccent;
+
+    final brand = Row(
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: white,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Text(
+            'E',
+            style: TextStyle(
+              color: EsaColors.accent,
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        const Text(
+          'EFFICIENT STUDY AGENT',
+          style: TextStyle(
+            color: white,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.54,
+          ),
+        ),
+      ],
+    );
+
+    final titleBlock = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '星知\n智链',
+          style: context.texts.displayLarge?.copyWith(
+            color: white,
+            fontSize: stacked ? 44 : 68,
+          ),
+        ),
+        const SizedBox(height: 20),
+        Container(
+          height: 2,
+          constraints: const BoxConstraints(maxWidth: 340),
+          color: white.withValues(alpha: 0.55),
+        ),
+        if (!stacked) ...[
+          const SizedBox(height: 20),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: const Text(
+              '面向学生与教师的学习智能体，检索课件、记住你的进度、调用工具，一步步陪你把问题学透。',
+              style: TextStyle(color: white, fontSize: 16, height: 1.6),
+            ),
+          ),
+        ],
+      ],
+    );
+
     return Container(
       color: EsaColors.accent,
       padding: EdgeInsets.symmetric(
         horizontal: 48,
         vertical: stacked ? 28 : 56,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // 顶部品牌
-          Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: white,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'E',
-                  style: TextStyle(
-                    color: EsaColors.accent,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
+      // 顶部留出状态栏/刘海 避免品牌行被裁切
+      child: SafeArea(
+        left: false,
+        right: false,
+        bottom: false,
+        child: stacked
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  brand,
+                  const SizedBox(height: 24),
+                  titleBlock,
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  brand,
+                  const SizedBox(height: 24),
+                  titleBlock,
+                  const Column(
+                    children: [
+                      _PosterRow('课件检索', 'RAG'),
+                      _PosterRow('学习记忆', 'MEMORY'),
+                      _PosterRow('工具调用', 'TOOLS'),
+                    ],
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 12),
-              const Text(
-                'EFFICIENT STUDY AGENT',
-                style: TextStyle(
-                  color: white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.54,
-                ),
-              ),
-            ],
-          ),
-          if (!stacked) const SizedBox(height: 24),
-          // 中部标题
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '星知\n智链',
-                style: context.texts.displayLarge?.copyWith(
-                  color: white,
-                  fontSize: stacked ? 44 : 68,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                height: 2,
-                constraints: const BoxConstraints(maxWidth: 340),
-                color: white.withValues(alpha: 0.55),
-              ),
-              if (!stacked) ...[
-                const SizedBox(height: 20),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 400),
-                  child: const Text(
-                    '面向学生与教师的学习智能体，检索课件、记住你的进度、调用工具，一步步陪你把问题学透。',
-                    style: TextStyle(color: white, fontSize: 16, height: 1.6),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          // 底部三行能力
-          if (!stacked)
-            Column(
-              children: const [
-                _PosterRow('课件检索', 'RAG'),
-                _PosterRow('学习记忆', 'MEMORY'),
-                _PosterRow('工具调用', 'TOOLS'),
-              ],
-            )
-          else
-            const SizedBox.shrink(),
-        ],
       ),
     );
   }

@@ -41,9 +41,8 @@ def _load_owned(
 @router.get("")
 def list_conversations(
     request: Request,
-    session: SessionPrincipal,
+    session: SessionPrincipal = Depends(get_current_session),
 ) -> list[dict]:
-    session = Depends(get_current_session)
     chat_store: ChatStore = request.app.state.chat_store
     return chat_store.list_conversations(session.user_id)
 
@@ -51,7 +50,7 @@ def list_conversations(
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_conversation(
     request: Request,
-    session: SessionPrincipal,
+    session: SessionPrincipal = Depends(get_current_session),
 ) -> dict:
     chat_store: ChatStore = request.app.state.chat_store
     return chat_store.create_conversation(session.user_id)
@@ -62,21 +61,30 @@ def rename_conversation(
     conversation_id: str,
     body: RenameRequest,
     request: Request,
-    session: SessionPrincipal,
+    session: SessionPrincipal = Depends(get_current_session),
 ) -> None:
-    session = Depends(get_current_session)
     _load_owned(request, conversation_id, session)
     chat_store: ChatStore = request.app.state.chat_store
     chat_store.rename_conversation(conversation_id, body.title)
+
+
+@router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_conversation(
+    conversation_id: str,
+    request: Request,
+    session: SessionPrincipal = Depends(get_current_session),
+) -> None:
+    _load_owned(request, conversation_id, session)
+    chat_store: ChatStore = request.app.state.chat_store
+    chat_store.delete_conversation(conversation_id)
 
 
 @router.get("/{conversation_id}/messages")
 def get_messages(
     conversation_id: str,
     request: Request,
-    session: SessionPrincipal,
+    session: SessionPrincipal = Depends(get_current_session),
 ) -> list[dict]:
-    session = Depends(get_current_session)
     _load_owned(request, conversation_id, session)
     chat_store: ChatStore = request.app.state.chat_store
     return chat_store.get_history(conversation_id)
@@ -87,7 +95,7 @@ def send_message(
     conversation_id: str,
     body: SendMessageRequest,
     request: Request,
-    session: SessionPrincipal,
+    session: SessionPrincipal = Depends(get_current_session),
 ) -> list[dict]:
     _load_owned(request, conversation_id, session)
     chat_store: ChatStore = request.app.state.chat_store

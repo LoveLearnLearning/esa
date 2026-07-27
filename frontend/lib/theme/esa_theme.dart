@@ -29,12 +29,12 @@ class EsaColors {
   static const lN600 = Color(0xFF7D7979);
   static const lN700 = Color(0xFF605D5D);
 
-  // shared
-  static const accent = Color(0xFFEC3013);
-  static const accent100 = Color(0xFFFFF2EF);
-  static const accent600 = Color(0xFFDD2B0F);
-  static const accent700 = Color(0xFFAE1800);
-  static const onAccent = Color(0xFFF3F2F2);
+  // shared —— 蓝色主色调
+  static const accent = Color(0xFF2563EB); // blue-600 主按钮 海报 强调
+  static const accent100 = Color(0xFFEAF1FF); // 浅蓝 提示条底色
+  static const accent600 = Color(0xFF1D4ED8);
+  static const accent700 = Color(0xFF1E40AF); // 深蓝 提示条文字
+  static const onAccent = Color(0xFFF4F7FE); // 蓝底上的文字/图标
 }
 
 /// Neutral ramp resolved for the current brightness.

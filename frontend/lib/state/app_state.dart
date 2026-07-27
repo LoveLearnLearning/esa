@@ -1,32 +1,36 @@
-// ESA 应用状态 —— 集中式 ChangeNotifier
-// README 建议 Riverpod 这里用 Flutter 自带的 ChangeNotifier 减少额外依赖
-// 助手回复按 README 用假数据 + 流式模拟 接后端时替换 _startReply 即可
-
-import 'dart:async';
+// ESA 应用状态 —— 集中式 ChangeNotifier 通过 ApiClient 调用真实后端
+// 认证 / 对话列表 / 历史消息 / 发消息 均对接 API.md 定义的接口
+// 置顶(pinned) 主题 设置为纯前端本地状态 后端无对应字段
 
 import 'package:flutter/material.dart';
 
+import '../api/api_client.dart';
 import '../models/models.dart';
 
 class AppState extends ChangeNotifier {
-  // ---- 主题与设置 ----
-  ThemeMode themeMode = ThemeMode.dark; // 深色为默认主题
-  bool streamOn = true; // 流式输出
-  bool toolsOn = true; // 工具调用详情
+  AppState({ApiClient? api}) : api = api ?? ApiClient();
 
-  // ---- 用户 ----
-  String username = '';
+  final ApiClient api;
+
+  // ---- 本地设置(不落后端) ----
+  ThemeMode themeMode = ThemeMode.dark;
+  bool streamOn = true;
+  bool toolsOn = true;
   String email = '';
-  String role = '学生'; // 学生 / 教师
+  String role = '学生';
 
-  // ---- 对话 ----
+  // ---- 对话数据 ----
   final List<ChatConversation> conversations = [];
   final Map<String, List<ChatMessage>> _messages = {};
+  final Set<String> _pinned = {}; // 本地置顶集合
   String? activeId;
-  bool busy = false; // 正在生成回复
 
-  Timer? _replyTimer;
-  Timer? _streamTimer;
+  bool busy = false; // 正在发消息
+  bool loadingConversations = false;
+  bool loadingMessages = false;
+
+  String get username => api.username ?? '';
+  bool get isLoggedIn => api.isLoggedIn;
 
   List<ChatMessage> get messages =>
       activeId == null ? const [] : (_messages[activeId] ?? const []);
@@ -39,97 +43,244 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
-
-  // ---- 会话生命周期 ----
-  void login(String name, {String mail = ''}) {
-    username = name;
-    email = mail.isEmpty ? '$name@esa.study' : mail;
-    _seedDemoConversations();
-    newConversation(); // 登录后进入一个空对话 显示欢迎空状态
+  // ============ 认证 ============
+  /// 返回 null 表示成功 否则返回错误文案
+  Future<String?> login(String username, String password) async {
+    try {
+      await api.login(username, password);
+      email = '$username@esa.study';
+      await _afterLogin();
+      return null;
+    } on ApiException catch (e) {
+      return e.detail;
+    } catch (_) {
+      return '无法连接服务器 请检查后端是否启动';
+    }
   }
 
-  void logout() {
-    _replyTimer?.cancel();
-    _streamTimer?.cancel();
+  /// 注册并自动登录 返回 null 表示成功 否则返回错误文案
+  Future<String?> register(String username, String password) async {
+    try {
+      await api.register(username, password);
+      await api.login(username, password);
+      email = '$username@esa.study';
+      await _afterLogin();
+      return null;
+    } on ApiException catch (e) {
+      return e.detail;
+    } catch (_) {
+      return '无法连接服务器 请检查后端是否启动';
+    }
+  }
+
+  Future<void> _afterLogin() async {
+    await loadConversations();
+    if (conversations.isNotEmpty) {
+      await setActive(conversations.first.id);
+    } else {
+      activeId = null;
+    }
+    notifyListeners();
+  }
+
+  Future<void> logout() async {
+    await api.logout();
+    _clearSession();
+  }
+
+  void _clearSession() {
+    api.sessionId = null;
+    api.userId = null;
+    api.username = null;
     conversations.clear();
     _messages.clear();
+    _pinned.clear();
     activeId = null;
     busy = false;
-    username = '';
-    email = '';
     notifyListeners();
   }
 
-  void _seedDemoConversations() {
-    final now = DateTime.now();
-    void add(String title, DateTime at, {bool pinned = false}) {
-      final id = _newId();
-      conversations.add(
-        ChatConversation(id: id, title: title, updatedAt: at, pinned: pinned),
-      );
-      _messages[id] = [];
+  /// 统一处理 401 会话失效 直接回登录页
+  bool _handled401(Object e) {
+    if (e is ApiException && e.isUnauthorized) {
+      _clearSession();
+      return true;
     }
-
-    add('线性代数 期末复习', now.subtract(const Duration(hours: 2)), pinned: true);
-    add('讲讲牛顿第二定律', now.subtract(const Duration(hours: 5)));
-    add('生成一周复习计划', now.subtract(const Duration(hours: 9)));
-    add('检索我的课件 · 概率论', now.subtract(const Duration(days: 3)));
-    add('英语作文批改', now.subtract(const Duration(days: 12)));
+    return false;
   }
 
-  void setActive(String id) {
-    if (activeId == id) return;
-    _stopGenerating();
+  // ============ 对话 ============
+  Future<void> loadConversations() async {
+    loadingConversations = true;
+    notifyListeners();
+    try {
+      final list = await api.listConversations();
+      for (final c in list) {
+        c.pinned = _pinned.contains(c.id);
+      }
+      conversations
+        ..clear()
+        ..addAll(list);
+    } catch (e) {
+      if (!_handled401(e)) rethrow;
+    } finally {
+      loadingConversations = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> setActive(String id) async {
     activeId = id;
     notifyListeners();
+    if (!_messages.containsKey(id)) {
+      await _loadMessages(id);
+    }
   }
 
-  void newConversation() {
-    _stopGenerating();
-    final id = _newId();
-    conversations.insert(
-      0,
-      ChatConversation(id: id, title: '新对话', updatedAt: DateTime.now()),
-    );
-    _messages[id] = [];
-    activeId = id;
+  Future<void> _loadMessages(String id) async {
+    loadingMessages = true;
     notifyListeners();
+    try {
+      final msgs = await api.getMessages(id);
+      _messages[id] = msgs;
+    } catch (e) {
+      if (_handled401(e)) return;
+      _messages[id] = [];
+    } finally {
+      loadingMessages = false;
+      notifyListeners();
+    }
   }
 
-  void renameConversation(String id, String title) {
+  Future<void> newConversation() async {
+    try {
+      final conv = await api.createConversation();
+      conversations.insert(0, conv);
+      _messages[conv.id] = [];
+      activeId = conv.id;
+      notifyListeners();
+    } catch (e) {
+      if (!_handled401(e)) rethrow;
+    }
+  }
+
+  Future<void> renameConversation(String id, String title) async {
     final t = title.trim();
     if (t.isEmpty) return;
     for (final c in conversations) {
-      if (c.id == id) {
-        c.title = t;
-        break;
-      }
+      if (c.id == id) c.title = t;
     }
     notifyListeners();
+    try {
+      await api.renameConversation(id, t);
+    } catch (e) {
+      if (!_handled401(e)) rethrow;
+    }
   }
 
-  void deleteConversation(String id) {
+  Future<void> deleteConversation(String id) async {
+    try {
+      await api.deleteConversation(id);
+    } catch (e) {
+      if (_handled401(e)) return;
+      rethrow;
+    }
     conversations.removeWhere((c) => c.id == id);
     _messages.remove(id);
+    _pinned.remove(id);
     if (activeId == id) {
-      _stopGenerating();
       activeId = conversations.isNotEmpty ? conversations.first.id : null;
+      if (activeId != null && !_messages.containsKey(activeId)) {
+        await _loadMessages(activeId!);
+      }
     }
     notifyListeners();
   }
 
   void togglePin(String id) {
+    if (_pinned.contains(id)) {
+      _pinned.remove(id);
+    } else {
+      _pinned.add(id);
+    }
     for (final c in conversations) {
-      if (c.id == id) {
-        c.pinned = !c.pinned;
-        break;
-      }
+      if (c.id == id) c.pinned = _pinned.contains(id);
     }
     notifyListeners();
   }
 
-  // ---- 设置 ----
+  // ============ 发送消息 ============
+  Future<void> send(String text) async {
+    final input = text.trim();
+    if (input.isEmpty || busy) return;
+
+    // 没有活动对话时先建一个
+    if (activeId == null) {
+      await newConversation();
+      if (activeId == null) return; // 建失败
+    }
+    final id = activeId!;
+    final list = _messages.putIfAbsent(id, () => []);
+
+    list.add(ChatMessage.user(input));
+    _touchConversation(id, input);
+
+    final placeholder = ChatMessage.typingPlaceholder();
+    list.add(placeholder);
+    busy = true;
+    notifyListeners();
+
+    try {
+      final newMsgs = await api.sendMessage(id, input);
+      list.remove(placeholder);
+      // 后端返回里包含用户消息本身 已乐观添加过 这里跳过
+      list.addAll(newMsgs.where((m) => m.role != MessageRole.user));
+    } catch (e) {
+      list.remove(placeholder);
+      if (_handled401(e)) return;
+      final detail = e is ApiException ? e.detail : '无法连接服务器 请检查后端是否启动';
+      list.add(ChatMessage(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        role: MessageRole.assistant,
+        text: '（出错了：$detail）',
+      ));
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
+  }
+
+  void regenerate(String assistantMessageId) {
+    final id = activeId;
+    if (id == null || busy) return;
+    final list = _messages[id];
+    if (list == null) return;
+    final index = list.indexWhere((m) => m.id == assistantMessageId);
+    if (index < 0) return;
+    String? prompt;
+    for (var i = index - 1; i >= 0; i--) {
+      if (list[i].isUser) {
+        prompt = list[i].text;
+        break;
+      }
+    }
+    if (prompt != null) send(prompt);
+  }
+
+  void _touchConversation(String id, String firstInput) {
+    final conv = activeConversation;
+    if (conv == null || conv.id != id) return;
+    conv.updatedAt = DateTime.now();
+    if (conv.title == '新对话') {
+      final title =
+          firstInput.length > 18 ? '${firstInput.substring(0, 18)}…' : firstInput;
+      conv.title = title;
+      // 持久化标题 忽略结果
+      api.renameConversation(id, title).catchError((_) {});
+    }
+  }
+
+  // ============ 设置 ============
   void setThemeMode(ThemeMode mode) {
     themeMode = mode;
     notifyListeners();
@@ -145,166 +296,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setRole(String v) {
-    role = v;
-    notifyListeners();
-  }
-
   void updateProfile({String? name, String? mail, String? roleValue}) {
-    if (name != null && name.trim().isNotEmpty) username = name.trim();
+    if (name != null && name.trim().isNotEmpty) api.username = name.trim();
     if (mail != null) email = mail.trim();
     if (roleValue != null) role = roleValue;
     notifyListeners();
-  }
-
-  // ---- 发送与回复 ----
-  void send(String text) {
-    final input = text.trim();
-    if (input.isEmpty || busy) return;
-    if (activeId == null) newConversation();
-    final id = activeId!;
-    final list = _messages[id]!;
-
-    list.add(ChatMessage(id: _newId(), role: MessageRole.user, text: input));
-
-    // 首条消息用输入内容作为标题
-    final conv = activeConversation;
-    if (conv != null) {
-      conv.updatedAt = DateTime.now();
-      if (conv.title == '新对话') {
-        conv.title = input.length > 18 ? '${input.substring(0, 18)}…' : input;
-      }
-    }
-    notifyListeners();
-
-    _startReply(id, input);
-  }
-
-  void regenerate(String assistantMessageId) {
-    final id = activeId;
-    if (id == null || busy) return;
-    final list = _messages[id]!;
-    final index = list.indexWhere((m) => m.id == assistantMessageId);
-    if (index < 0) return;
-    // 找到该助手消息之前最近的一条用户消息
-    String? prompt;
-    for (var i = index - 1; i >= 0; i--) {
-      if (list[i].isUser) {
-        prompt = list[i].text;
-        break;
-      }
-    }
-    if (prompt == null) return;
-    list.removeRange(index, list.length);
-    notifyListeners();
-    Future.delayed(const Duration(milliseconds: 250), () {
-      if (activeId == id) _startReply(id, prompt!);
-    });
-  }
-
-  void _startReply(String convId, String input) {
-    busy = true;
-    notifyListeners();
-
-    _replyTimer = Timer(const Duration(milliseconds: 420), () {
-      if (activeId != convId) return;
-      final list = _messages[convId]!;
-      final reply = ChatMessage(
-        id: _newId(),
-        role: MessageRole.assistant,
-        typing: true,
-        tool: (toolsOn && _needsTool(input)) ? _demoTool(input) : null,
-      );
-      list.add(reply);
-      notifyListeners();
-
-      final target = _replyFor(input);
-      if (!streamOn) {
-        reply.text = target;
-        reply.typing = false;
-        busy = false;
-        notifyListeners();
-        return;
-      }
-
-      var cursor = 0;
-      _streamTimer = Timer.periodic(const Duration(milliseconds: 26), (t) {
-        if (activeId != convId) {
-          t.cancel();
-          return;
-        }
-        cursor = (cursor + 3).clamp(0, target.length);
-        reply.text = target.substring(0, cursor);
-        if (cursor >= target.length) {
-          reply.typing = false;
-          busy = false;
-          t.cancel();
-        }
-        notifyListeners();
-      });
-    });
-  }
-
-  void _stopGenerating() {
-    _replyTimer?.cancel();
-    _streamTimer?.cancel();
-    if (busy) {
-      // 结束当前正在输出的消息的光标
-      final list = activeId == null ? null : _messages[activeId];
-      if (list != null && list.isNotEmpty && list.last.typing) {
-        list.last.typing = false;
-      }
-      busy = false;
-    }
-  }
-
-  bool _needsTool(String input) {
-    final v = input.toLowerCase();
-    return v.contains('检索') ||
-        v.contains('课件') ||
-        v.contains('rag') ||
-        v.contains('资料');
-  }
-
-  ToolInvocation _demoTool(String input) {
-    return ToolInvocation(
-      name: 'rag.search',
-      durationMs: 480,
-      output: 'query: "$input"\n'
-          'top_k: 3\n'
-          'hits:\n'
-          '  - 第3章 条件概率.pdf  (score 0.87)\n'
-          '  - 习题课_贝叶斯.md    (score 0.81)\n'
-          '  - 期中复习提纲.docx   (score 0.74)',
-    );
-  }
-
-  String _replyFor(String input) {
-    final v = input.toLowerCase();
-    if (v.contains('计划')) {
-      return '好的，我为你安排一周复习计划：\n'
-          '周一至周三主攻薄弱章节，每天两个番茄钟；'
-          '周四做一套综合卷并订正；周五整理错题；周末回顾记忆卡片。'
-          '需要我把它拆成每日清单吗？';
-    }
-    if (v.contains('批改') || v.contains('作文') || v.contains('作业')) {
-      return '把题目和你的作答发给我即可。我会先指出关键错误，再给出订正思路和一个更规范的范例，'
-          '最后总结这一类题的通用方法。';
-    }
-    if (_needsTool(input)) {
-      return '我已从你的课件里检索到最相关的三处内容（见上方工具块）。'
-          '概括来说：条件概率的核心是缩小样本空间，贝叶斯公式则是在此基础上做“原因反推”。'
-          '要不要我用其中一道例题带你走一遍？';
-    }
-    return '收到。我可以帮你讲解题目、制定复习计划、检索课件或批改作业。'
-        '告诉我你现在卡在哪一步，我们一步步来。';
-  }
-
-  @override
-  void dispose() {
-    _replyTimer?.cancel();
-    _streamTimer?.cancel();
-    super.dispose();
   }
 }
 

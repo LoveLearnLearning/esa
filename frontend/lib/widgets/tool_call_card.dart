@@ -1,16 +1,23 @@
-// 工具调用块 —— 1px 描边 圆角 12 底色 neutral-100 显示在助手正文之前
+// 工具调用块 —— 1px 描边 圆角 12 底色 neutral-100
+// 对应后端返回的 role == "tool" 的消息 name 为工具名 content 为结果
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-import '../models/models.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 
 class ToolCallCard extends StatelessWidget {
-  const ToolCallCard({super.key, required this.tool});
+  const ToolCallCard({
+    super.key,
+    required this.name,
+    required this.output,
+    this.durationMs,
+  });
 
-  final ToolInvocation tool;
+  final String name;
+  final String output;
+  final int? durationMs;
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +31,6 @@ class ToolCallCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 头部
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
@@ -35,7 +41,7 @@ class ToolCallCard extends StatelessWidget {
                 const Icon(LucideIcons.wrench, size: 14, color: EsaColors.accent),
                 const SizedBox(width: 8),
                 Text(
-                  'TOOL · ${tool.name}',
+                  'TOOL · $name',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -44,19 +50,16 @@ class ToolCallCard extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                if (tool.durationMs != null)
-                  Text(
-                    '${tool.durationMs} ms',
-                    style: TextStyle(fontSize: 11, color: context.n.n600),
-                  ),
+                if (durationMs != null)
+                  Text('$durationMs ms',
+                      style: TextStyle(fontSize: 11, color: context.n.n600)),
               ],
             ),
           ),
-          // 内容
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Text(
-              tool.output,
+              output,
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 12,
