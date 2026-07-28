@@ -1,6 +1,8 @@
 # backend/core/web/routers/chat.py
 
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from backend.agent.agent import Agent
@@ -11,6 +13,7 @@ from backend.core.web.deps import get_current_session
 from backend.core.web.schemas import RenameRequest, SendMessageRequest
 
 router = APIRouter(prefix="/conversations", tags=["chat"])
+CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 
 
 def _load_owned(
@@ -41,7 +44,7 @@ def _load_owned(
 @router.get("")
 def list_conversations(
     request: Request,
-    session: SessionPrincipal = Depends(get_current_session),
+    session: CurrentSession,
 ) -> list[dict]:
     chat_store: ChatStore = request.app.state.chat_store
     return chat_store.list_conversations(session.user_id)
@@ -50,7 +53,7 @@ def list_conversations(
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_conversation(
     request: Request,
-    session: SessionPrincipal = Depends(get_current_session),
+    session: CurrentSession,
 ) -> dict:
     chat_store: ChatStore = request.app.state.chat_store
     return chat_store.create_conversation(session.user_id)
@@ -61,7 +64,7 @@ def rename_conversation(
     conversation_id: str,
     body: RenameRequest,
     request: Request,
-    session: SessionPrincipal = Depends(get_current_session),
+    session: CurrentSession,
 ) -> None:
     _load_owned(request, conversation_id, session)
     chat_store: ChatStore = request.app.state.chat_store
@@ -72,7 +75,7 @@ def rename_conversation(
 def delete_conversation(
     conversation_id: str,
     request: Request,
-    session: SessionPrincipal = Depends(get_current_session),
+    session: CurrentSession,
 ) -> None:
     _load_owned(request, conversation_id, session)
     chat_store: ChatStore = request.app.state.chat_store
@@ -83,7 +86,7 @@ def delete_conversation(
 def get_messages(
     conversation_id: str,
     request: Request,
-    session: SessionPrincipal = Depends(get_current_session),
+    session: CurrentSession,
 ) -> list[dict]:
     _load_owned(request, conversation_id, session)
     chat_store: ChatStore = request.app.state.chat_store
@@ -95,7 +98,7 @@ def send_message(
     conversation_id: str,
     body: SendMessageRequest,
     request: Request,
-    session: SessionPrincipal = Depends(get_current_session),
+    session: CurrentSession,
 ) -> list[dict]:
     _load_owned(request, conversation_id, session)
     chat_store: ChatStore = request.app.state.chat_store

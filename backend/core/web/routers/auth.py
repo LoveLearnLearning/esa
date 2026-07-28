@@ -1,5 +1,7 @@
 # backend/core/web/routers/auth.py
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from backend.core.services.auth_service import AuthService
@@ -10,6 +12,7 @@ from backend.core.web.deps import get_current_session
 from backend.core.web.schemas import LoginRequest, LoginResponse, RegisterRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
@@ -48,7 +51,6 @@ def login(body: LoginRequest, request: Request) -> LoginResponse:
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(request: Request, session) -> None:
-    session = Depends(get_current_session)
+def logout(request: Request, session: CurrentSession) -> None:
     session_store: SessionStore = request.app.state.session_store
     session_store.revoke(session.session_id)

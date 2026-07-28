@@ -72,7 +72,11 @@ def _parse_entry(entry: ET.Element) -> dict[str, Any]:
     """
     # 标题（去除多余空白）
     title_elem = entry.find("atom:title", _NS)
-    title = " ".join(title_elem.text.split()) if title_elem is not None and title_elem.text else ""
+    title = (
+        " ".join(title_elem.text.split())
+        if title_elem is not None and title_elem.text
+        else ""
+    )
 
     # 摘要（去除多余空白）
     summary_elem = entry.find("atom:summary", _NS)
@@ -108,10 +112,18 @@ def _parse_entry(entry: ET.Element) -> dict[str, Any]:
 
     # 发表日期和更新日期
     published_elem = entry.find("atom:published", _NS)
-    published = published_elem.text.strip() if published_elem is not None and published_elem.text else ""
+    published = (
+        published_elem.text.strip()
+        if published_elem is not None and published_elem.text
+        else ""
+    )
 
     updated_elem = entry.find("atom:updated", _NS)
-    updated = updated_elem.text.strip() if updated_elem is not None and updated_elem.text else ""
+    updated = (
+        updated_elem.text.strip()
+        if updated_elem is not None and updated_elem.text
+        else ""
+    )
 
     # 主分类
     primary_cat_elem = entry.find("arxiv:primary_category", _NS)
@@ -121,12 +133,18 @@ def _parse_entry(entry: ET.Element) -> dict[str, Any]:
 
     # 所有分类
     categories = [
-        cat.get("term", "") for cat in entry.findall("atom:category", _NS) if cat.get("term")
+        cat.get("term", "")
+        for cat in entry.findall("atom:category", _NS)
+        if cat.get("term")
     ]
 
     # 扩展字段（可选）
     comment_elem = entry.find("arxiv:comment", _NS)
-    comment = comment_elem.text.strip() if comment_elem is not None and comment_elem.text else ""
+    comment = (
+        comment_elem.text.strip()
+        if comment_elem is not None and comment_elem.text
+        else ""
+    )
 
     doi_elem = entry.find("arxiv:doi", _NS)
     doi = doi_elem.text.strip() if doi_elem is not None and doi_elem.text else ""
@@ -279,13 +297,16 @@ def arxiv_search(
             raise RuntimeError(f"无法连接到 arXiv API：{exc}") from exc
 
     try:
+        assert response is not None
         root = ET.fromstring(response.text)
     except ET.ParseError as exc:
         raise RuntimeError(f"arXiv API 返回的 XML 解析失败：{exc}") from exc
 
     # OpenSearch 总结果数
     total_elem = root.find("opensearch:totalResults", _NS)
-    total_results = int(total_elem.text) if total_elem is not None and total_elem.text else 0
+    total_results = (
+        int(total_elem.text) if total_elem is not None and total_elem.text else 0
+    )
 
     # 解析所有 entry
     entries = root.findall("atom:entry", _NS)

@@ -1,6 +1,75 @@
-.zed/
-__pycache__/
+# Operating-system files
+.DS_Store
+Thumbs.db
+
+# Editors and local AI tools
 .idea/
 .vscode/
+.zed/
 .claude/
+*.iml
+*.swp
+*.swo
+
+# Python caches, environments, tests and coverage
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.venv/
+venv/
+env/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime data and logs
+logs/
+*.log
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# RAG indexes and local model artifacts
+data/faiss_index/
+**/faiss_index/
+*.faiss
+*.pkl
+/models/
+/checkpoints/
+
+# Flutter / Dart generated files
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.packages
+frontend/.pub-cache/
+frontend/.pub/
+frontend/build/
+frontend/coverage/
+frontend/android/.gradle/
+frontend/android/local.properties
+frontend/android/app/debug/
+frontend/android/app/profile/
+frontend/android/app/release/
+frontend/ios/.symlinks/
+frontend/ios/Pods/
+frontend/ios/Flutter/ephemeral/
+frontend/ios/Flutter/Generated.xcconfig
+frontend/ios/Flutter/flutter_export_environment.sh
+frontend/macos/Flutter/ephemeral/
+frontend/linux/flutter/ephemeral/
+frontend/windows/flutter/ephemeral/
+
+# Local design handoff material
 design_handoff_esa_chat/

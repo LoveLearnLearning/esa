@@ -13,7 +13,7 @@ def get_current_session(
     authorization: str = Header(...),
 ) -> SessionPrincipal:
     if not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Bro 我通你滴木马 你个表把格式搞错了！！！")
+        raise HTTPException(401, "格式错误")
 
     token = authorization.removeprefix("Bearer ").strip()
 
@@ -21,9 +21,9 @@ def get_current_session(
     session: SessionPrincipal | None = session_store.get(token)
 
     if session is None:
-        raise HTTPException(401, "Bro 我通你滴木马 你个表的会话是无效的！！！")
+        raise HTTPException(401, "会话无效")
     if session.expires_at <= datetime.now(UTC):
         session_store.revoke(session.session_id)
-        raise HTTPException(401, "Bro 你个表滴会话早过期了！！")
+        raise HTTPException(401, "会话过期")
 
     return session
