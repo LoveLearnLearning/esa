@@ -41,10 +41,25 @@ class ChatStore(BaseSQLiteStore):
                     role TEXT NOT NULL,
                     content TEXT NOT NULL,
                     name TEXT,
+                    is_visible INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL
                 )
                 """
             )
+
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(messages)").fetchall()
+            }
+
+            if "is_visible" not in columns:
+                connection.execute(
+                    """
+                    ALTER TABLE messages
+                    ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1
+                    """
+                )
+
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_messages_conversation
@@ -217,9 +232,10 @@ class ChatStore(BaseSQLiteStore):
                     role,
                     content,
                     name,
+                    is_visible,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -227,6 +243,7 @@ class ChatStore(BaseSQLiteStore):
                         message["role"],
                         message["content"],
                         message.get("name"),
+                        1 if message.get("is_visible", True) else 0,
                         current_time,
                     )
                     for message in messages
@@ -254,6 +271,7 @@ class ChatStore(BaseSQLiteStore):
             SELECT id, role, content, name, created_at
             FROM messages
             WHERE conversation_id = ?
+              AND is_visible = 1
             ORDER BY id ASC
             """,
             (conversation_id,),
@@ -272,16 +290,28 @@ class ChatStore(BaseSQLiteStore):
         Returns:
             list[dict]           => 模型格式的消息列表
         """
+
+        rows = self.query_all(
+            """
+            SELECT role, content, name
+            FROM messages
+            WHERE conversation_id = ?
+            ORDER BY id ASC
+            """,
+            (conversation_id,),
+        )
+
         model_messages: list[dict] = []
 
-        for message in self.get_history(conversation_id):
-            item: dict = {
-                "role": message["role"],
-                "content": message["content"],
+        for row in rows:
+            message: dict = {
+                "role": row["role"],
+                "content": row["content"],
             }
-            if message["name"] is not None:
-                item["name"] = message["name"]
 
-            model_messages.append(item)
+            if row["name"] is not None:
+                message["name"] = row["name"]
+
+            model_messages.append(message)
 
         return model_messages

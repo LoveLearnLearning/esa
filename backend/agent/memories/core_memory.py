@@ -1,9 +1,8 @@
 # backend/agent/memories/core_memory.py
 
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Union
 
 
 class CoreMemory:
@@ -15,7 +14,7 @@ class CoreMemory:
 
     def __init__(
         self,
-        database_path: Union[str, Path] = "data/core_memory.db",
+        database_path: str | Path = "data/core_memory.db",
     ) -> None:
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(
@@ -84,7 +83,7 @@ class CoreMemory:
         if not content:
             return False
 
-        now = datetime.now().isoformat()
+        now = datetime.now(UTC).isoformat()
 
         with self.__connect() as connection:
             connection.execute(

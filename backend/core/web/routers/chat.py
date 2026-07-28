@@ -121,4 +121,4 @@ def send_message(
         new_messages,
     )
 
-    return new_messages
+    return [message for message in new_messages if message.get("is_visible", True)]

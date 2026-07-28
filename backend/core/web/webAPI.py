@@ -11,11 +11,18 @@ from backend.core.services.auth_service import AuthService
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
+from backend.core.utils.config import (
+    MODEL_DTYPE,
+    MODEL_GPU_MEMORY_UTILIZATION,
+    MODEL_KV_CACHE_DTYPE,
+    MODEL_MAX_MODEL_LENGTH,
+    MODEL_MAX_NUM_SEQS,
+    MODEL_PATH,
+    MODEL_QUANTIZATION,
+)
 from backend.core.web.routers import auth, chat
 
 DB_PATH = Path(__file__).resolve().parent.parent / "stores" / "data" / "user.db"
-
-MODEL_PATH = "Qwen/Qwen3.5-9B"
 
 
 @asynccontextmanager
@@ -29,12 +36,12 @@ async def lifespan(app: FastAPI):
     )
     app.state.agent = Agent(
         model_path=MODEL_PATH,
-        dtype="bfloat16",
-        kv_cache_dtype="fp8",
-        gpu_memory_utilization=0.95,
-        max_model_len=32768,
-        max_num_seqs=1,
-        quantization="bitsandbytes",
+        dtype=MODEL_DTYPE,
+        kv_cache_dtype=MODEL_KV_CACHE_DTYPE,
+        gpu_memory_utilization=MODEL_GPU_MEMORY_UTILIZATION,
+        max_model_len=MODEL_MAX_MODEL_LENGTH,
+        max_num_seqs=MODEL_MAX_NUM_SEQS,
+        quantization=MODEL_QUANTIZATION,
     )
     if not app.state.agent.start():
         raise RuntimeError("Agent load failed!")

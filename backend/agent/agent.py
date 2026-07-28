@@ -11,6 +11,7 @@ from backend.agent.tools.memory_tools import core_memory, set_current_user
 from backend.agent.tools.skills import build_skills_context
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.services.vllm_service import LLM_Provider
+from backend.core.utils.config import DEBUG_MODE
 from backend.core.utils.models import ParsedOutput, ToolCall
 from backend.core.utils.parser import parse_output
 
@@ -100,7 +101,12 @@ class Agent:
             user_message,
         ]
 
-        new_messages: list[dict] = [user_message]
+        new_messages: list[dict] = [
+            {
+                **user_message,
+                "is_visible": True,
+            }
+        ]
 
         self.temp_memory.add(
             role="user",
@@ -114,9 +120,37 @@ class Agent:
             )
 
             po: ParsedOutput = parse_output(response)
+            tcs: list[ToolCall] = po.tool_calls
 
-            print(f"Thinking: {po.reasoning}")
-            print(f"Agent: {po.content}")
+            if DEBUG_MODE:
+                print(f"Thinking: {po.reasoning}")
+                print(f"Agent: {po.content}")
+
+            if not tcs:
+                assistant_content = po.content or response.strip()
+
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": assistant_content,
+                    }
+                )
+
+                new_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": assistant_content,
+                        "is_visible": True,
+                    }
+                )
+
+                self.temp_memory.add(
+                    role="assistant",
+                    content=assistant_content,
+                    user_name=user_name,
+                )
+
+                break
 
             messages.append(
                 {
@@ -124,39 +158,44 @@ class Agent:
                     "content": response,
                 }
             )
-            if po.content:
-                new_messages.append(
-                    {
-                        "role": "assistant",
-                        "content": po.content,
-                    }
-                )
 
-            tcs: list[ToolCall] = po.tool_calls
-            if not tcs:
-                if po.content:
-                    self.temp_memory.add(
-                        role="assistant",
-                        content=po.content,
-                        user_name=user_name,
-                    )
-                break
+            new_messages.append(
+                {
+                    "role": "assistant",
+                    "content": response,
+                    "is_visible": False,
+                }
+            )
+
             for tc in tcs:
                 result = tr.call(
                     tc.name,
                     tc.arguments,
                 )
-                tool_message: dict = {
-                    "role": "tool",
-                    "name": tc.name,
-                    "content": str(result),
-                }
-                messages.append(tool_message)
-                new_messages.append(tool_message)
+
+                result_text = str(result)
+
+                messages.append(
+                    {
+                        "role": "tool",
+                        "name": tc.name,
+                        "content": result_text,
+                    }
+                )
+
+                new_messages.append(
+                    {
+                        "role": "tool",
+                        "name": tc.name,
+                        "content": result_text,
+                        "is_visible": True,
+                    }
+                )
+
                 self.temp_memory.add(
-                    "tool",
-                    f"name: {tc.name}, content: {(str(result))}",
-                    user_name,
+                    role="tool",
+                    content=f"name: {tc.name}, content: {result_text}",
+                    user_name=user_name,
                 )
 
         return new_messages
