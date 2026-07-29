@@ -1,20 +1,21 @@
 # backend/main.py
 
-from pathlib import Path
+# from pathlib import Path
 
-from backend.agent.agent import Agent
+# from backend.agent.agent import Agent
+import uvicorn
 
 # from backend.core.agent.tools.tools import tr
 from backend.core.log.logger import setup_logging
-from backend.core.services.auth_service import AuthService
-from backend.core.stores.session_store import SessionStore
-from backend.core.stores.user_store import UserStore
-from backend.core.utils.models import SessionPrincipal, UserRecord
+
+# from backend.core.services.auth_service import AuthService
+# from backend.core.stores.session_store import SessionStore
+# from backend.core.stores.user_store import UserStore
+# from backend.core.utils.models import SessionPrincipal, UserRecord
 
 # from backend.core.service.vllm_service import LLM_Provider
 # from backend.core.utils.parser import parse_output
 
-MODEL_PATH = "Qwen/Qwen3.5-9B"
 
 setup_logging()
 
@@ -33,19 +34,19 @@ def main() -> None:
     # prompt = llm_provider.build_prompt(messages, tr.schemas)
     # print(parse_output(llm_provider.generate([prompt])))
     # llm_provider.unload_model()
-    agent = Agent(
-        model_path=MODEL_PATH,
-        quantization="bitsandbytes",
-        dtype="bfloat16",
-        kv_cache_dtype="fp8",
-        gpu_memory_utilization=0.95,
-        max_model_len=32768,
-        max_num_seqs=1,
-    )
-    if not agent.start():
-        raise RuntimeError("Agent load failed!")
+    # agent = Agent(
+    #     model_path=MODEL_PATH,
+    #     quantization="bitsandbytes",
+    #     dtype="bfloat16",
+    #     kv_cache_dtype="fp8",
+    #     gpu_memory_utilization=0.95,
+    #     max_model_len=32768,
+    #     max_num_seqs=1,
+    # )
+    # if not agent.start():
+    #     raise RuntimeError("Agent load failed!")
 
-    history: list[dict] = []
+    # history: list[dict] = []
 
     # db_path = Path(__file__).resolve().parent / "core" / "stores" / "data" / "user.db"
 
@@ -67,12 +68,20 @@ def main() -> None:
 
     # assert user is not None
 
-    while True:
-        user_input: str = str(input("User: "))
-        if user_input == "q":
-            break
-        new_messages = agent.run(user_input, "Fengqwq", history=history)
-        history += new_messages
+    # while True:
+    #     user_input: str = str(input("User: "))
+    #     if user_input == "q":
+    #         break
+    #     new_messages = agent.run(user_input, "Fengqwq", history=history)
+    #     history += new_messages
+
+    uvicorn.run(
+        "backend.core.web.webAPI:app",
+        host="0.0.0.0",
+        port=51024,
+        reload=False,
+        log_level="info",
+    )
 
 
 if __name__ == "__main__":
