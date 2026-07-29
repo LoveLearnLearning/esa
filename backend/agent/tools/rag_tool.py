@@ -1,4 +1,4 @@
-# backend/agent/rag/rag_tool.py
+# backend/agent/tools/rag_tool.py
 """
 RAG 工具注册
 
