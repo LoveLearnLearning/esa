@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from backend.agent.agent import Agent
 from backend.core.stores.chat_store import ChatStore
+from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
 from backend.core.web.deps import get_current_session
@@ -107,18 +108,36 @@ def send_message(
 
     user: UserRecord | None = user_store.get_by_id(session.user_id)
 
-    assert user is not None
+    if user is None:
+        session_store: SessionStore = request.app.state.session_store
+        session_store.revoke(session.session_id)
+
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在！")
 
     history: list[dict] = chat_store.get_model_messages(conversation_id)
+
+    user_message: dict = {
+        "role": "user",
+        "content": body.content,
+        "is_visible": True,
+    }
+    chat_store.append_messages(
+        conversation_id,
+        [user_message],
+    )
+
     new_messages: list[dict] = agent.run(
         body.content,
         user.username,
         history=history,
     )
 
-    chat_store.append_messages(
-        conversation_id,
-        new_messages,
-    )
+    generated_messages: list[dict] = new_messages[1:]
+
+    if generated_messages:
+        chat_store.append_messages(
+            conversation_id,
+            generated_messages,
+        )
 
     return [message for message in new_messages if message.get("is_visible", True)]

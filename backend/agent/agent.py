@@ -82,6 +82,7 @@ class Agent:
         skills_context: str = build_skills_context()
 
         system_prompt: str = build_system_prompt(
+            user_name=user_name,
             temp_memory=temp_context,
             core_memory=core_context,
             skills_context=skills_context,
