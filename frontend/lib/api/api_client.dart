@@ -28,7 +28,7 @@ class ApiClient {
       : baseUrl = baseUrl ??
             const String.fromEnvironment(
               'ESA_API_BASE',
-              defaultValue: 'http://127.0.0.1:8000',
+              defaultValue: 'http://115.29.197.244:51024',
             );
 
   final String baseUrl;

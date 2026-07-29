@@ -7,6 +7,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import 'esa_markdown.dart';
 
 class Composer extends StatefulWidget {
   const Composer({super.key, required this.busy, required this.onSend});
@@ -22,6 +23,7 @@ class _ComposerState extends State<Composer> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
   String? _attachment; // 模拟附件文件名
+  bool _markdownMode = false;
 
   @override
   void dispose() {
@@ -78,6 +80,18 @@ class _ComposerState extends State<Composer> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (_markdownMode && _controller.text.isNotEmpty) ...[
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 180),
+                        child: SingleChildScrollView(
+                          child: EsaMarkdown(data: _controller.text),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Divider(height: 1, color: context.n.divider),
+                      ),
+                    ],
                     Focus(
                       onKeyEvent: _onKey,
                       child: TextField(
@@ -100,11 +114,15 @@ class _ComposerState extends State<Composer> {
                     Row(
                       children: [
                         _attachButton(context),
+                        const SizedBox(width: EsaSpace.sm),
+                        _markdownButton(context),
                         const SizedBox(width: EsaSpace.md),
                         Text(
                           'Enter 发送 · Shift + Enter 换行',
-                          style:
-                              TextStyle(fontSize: 11.5, color: context.n.n600),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: context.n.n600,
+                          ),
                         ),
                         const Spacer(),
                         _sendButton(context),
@@ -135,8 +153,10 @@ class _ComposerState extends State<Composer> {
           children: [
             Icon(LucideIcons.file, size: 14, color: context.n.n600),
             const SizedBox(width: 8),
-            Text(_attachment!,
-                style: TextStyle(fontSize: 12.5, color: context.scheme.onSurface)),
+            Text(
+              _attachment!,
+              style: TextStyle(fontSize: 12.5, color: context.scheme.onSurface),
+            ),
             const SizedBox(width: 8),
             GestureDetector(
               onTap: () => setState(() => _attachment = null),
@@ -165,6 +185,36 @@ class _ComposerState extends State<Composer> {
     );
   }
 
+  Widget _markdownButton(BuildContext context) {
+    final active = _markdownMode;
+
+    return Tooltip(
+      message: active ? '退出 Markdown 输入' : 'Markdown 输入',
+      child: InkWell(
+        onTap: () => setState(() => _markdownMode = !_markdownMode),
+        customBorder: const CircleBorder(),
+        child: AnimatedContainer(
+          duration: EsaMotion.fade,
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: active ? EsaColors.accent : Colors.transparent,
+            border: Border.all(
+              color: active ? EsaColors.accent : context.n.divider,
+            ),
+          ),
+          child: Icon(
+            LucideIcons.fileCode2,
+            size: 16,
+            color: active ? EsaColors.onAccent : context.n.n600,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _sendButton(BuildContext context) {
     final enabled = _canSend;
     return Opacity(
@@ -182,11 +232,14 @@ class _ComposerState extends State<Composer> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: const [
-                Text('发送',
-                    style: TextStyle(
-                        color: EsaColors.onAccent,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800)),
+                Text(
+                  '发送',
+                  style: TextStyle(
+                    color: EsaColors.onAccent,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 SizedBox(width: 6),
                 Icon(LucideIcons.arrowUp, size: 16, color: EsaColors.onAccent),
               ],

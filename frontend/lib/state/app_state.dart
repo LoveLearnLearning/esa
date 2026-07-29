@@ -210,6 +210,39 @@ class AppState extends ChangeNotifier {
   }
 
   // ============ 发送消息 ============
+  Future<void> _appendAssistantProgressively(
+    List<ChatMessage> list,
+    ChatMessage source,
+  ) async {
+    final streamed = ChatMessage(
+      id: source.id,
+      role: source.role,
+      name: source.name,
+      createdAt: source.createdAt,
+      typing: true,
+    );
+
+    list.add(streamed);
+    notifyListeners();
+
+    final characters = source.text.runes.map(String.fromCharCode).toList();
+    const chunkSize = 3;
+
+    for (var i = 0; i < characters.length; i += chunkSize) {
+      final end = i + chunkSize < characters.length
+          ? i + chunkSize
+          : characters.length;
+
+      streamed.text += characters.sublist(i, end).join();
+      notifyListeners();
+
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+    }
+
+    streamed.typing = false;
+    notifyListeners();
+  }
+
   Future<void> send(String text) async {
     final input = text.trim();
     if (input.isEmpty || busy) return;
@@ -233,17 +266,34 @@ class AppState extends ChangeNotifier {
     try {
       final newMsgs = await api.sendMessage(id, input);
       list.remove(placeholder);
+      notifyListeners();
+
       // 后端返回里包含用户消息本身 已乐观添加过 这里跳过
-      list.addAll(newMsgs.where((m) => m.role != MessageRole.user));
+      final responseMessages = newMsgs.where(
+        (message) => message.role != MessageRole.user,
+      );
+
+      for (final message in responseMessages) {
+        if (streamOn &&
+            message.role == MessageRole.assistant &&
+            message.text.isNotEmpty) {
+          await _appendAssistantProgressively(list, message);
+        } else {
+          list.add(message);
+          notifyListeners();
+        }
+      }
     } catch (e) {
       list.remove(placeholder);
       if (_handled401(e)) return;
       final detail = e is ApiException ? e.detail : '无法连接服务器 请检查后端是否启动';
-      list.add(ChatMessage(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
-        role: MessageRole.assistant,
-        text: '（出错了：$detail）',
-      ));
+      list.add(
+        ChatMessage(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          role: MessageRole.assistant,
+          text: '（出错了：$detail）',
+        ),
+      );
     } finally {
       busy = false;
       notifyListeners();
@@ -272,8 +322,9 @@ class AppState extends ChangeNotifier {
     if (conv == null || conv.id != id) return;
     conv.updatedAt = DateTime.now();
     if (conv.title == '新对话') {
-      final title =
-          firstInput.length > 18 ? '${firstInput.substring(0, 18)}…' : firstInput;
+      final title = firstInput.length > 18
+          ? '${firstInput.substring(0, 18)}…'
+          : firstInput;
       conv.title = title;
       // 持久化标题 忽略结果
       api.renameConversation(id, title).catchError((_) {});
@@ -307,7 +358,7 @@ class AppState extends ChangeNotifier {
 /// 通过 InheritedNotifier 把 AppState 传给整棵子树
 class AppScope extends InheritedNotifier<AppState> {
   const AppScope({super.key, required AppState state, required super.child})
-      : super(notifier: state);
+    : super(notifier: state);
 
   static AppState of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<AppScope>();

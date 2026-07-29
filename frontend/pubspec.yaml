@@ -37,6 +37,9 @@ dependencies:
   google_fonts: ^8.2.0
   lucide_icons: ^0.257.0
   http: ^1.6.0
+  flutter_markdown_plus: ^1.0.7
+  flutter_markdown_plus_latex: ^1.0.5
+  markdown: ^7.3.0
 
 dev_dependencies:
   flutter_test:
