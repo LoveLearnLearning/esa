@@ -1,7 +1,7 @@
 # backend/agent/memories/core_memory.py
 
 import sqlite3
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -83,7 +83,7 @@ class CoreMemory:
         if not content:
             return False
 
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         with self.__connect() as connection:
             connection.execute(
