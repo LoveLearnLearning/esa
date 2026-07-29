@@ -1,7 +1,7 @@
 # backend/core/stores/session_store.py
 
 import sqlite3
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.core.stores.base_sqlite_store import BaseSQLiteStore
@@ -111,7 +111,7 @@ class SessionStore(BaseSQLiteStore):
         Returns:
             int => 清除掉的过期会话数量
         """
-        current_time: str = datetime.now(UTC).isoformat()
+        current_time: str = datetime.now(timezone.utc).isoformat()
 
         return self.execute(
             """
