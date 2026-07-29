@@ -10,6 +10,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../models/models.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import 'esa_markdown.dart';
 
 class AssistantMessage extends StatefulWidget {
   const AssistantMessage({
@@ -78,24 +79,19 @@ class _AssistantMessageState extends State<AssistantMessage> {
   }
 
   Widget _body(BuildContext context, ChatMessage m) {
-    final style = context.texts.bodyLarge;
-    if (!m.typing) {
-      return Text(m.text, style: style);
-    }
-    return Text.rich(
-      TextSpan(
-        text: m.text,
-        style: style,
-        children: const [
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Padding(
-              padding: EdgeInsets.only(left: 2),
-              child: _BlinkingCursor(),
-            ),
-          ),
-        ],
-      ),
+    final markdown = EsaMarkdown(data: m.text, selectable: !m.typing);
+
+    if (!m.typing) return markdown;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        markdown,
+        const Padding(
+          padding: EdgeInsets.only(top: 2),
+          child: _BlinkingCursor(),
+        ),
+      ],
     );
   }
 }

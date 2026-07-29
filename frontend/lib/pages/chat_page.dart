@@ -25,6 +25,7 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _scrollController = ScrollController();
+  bool _followOutput = true;
 
   @override
   void dispose() {
@@ -33,11 +34,32 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _scrollToBottom() {
+    if (!_followOutput) return;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      if (_followOutput && _scrollController.hasClients) {
         _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       }
     });
+  }
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _followOutput = false;
+    }
+
+    if (notification is ScrollUpdateNotification &&
+        notification.dragDetails != null &&
+        notification.metrics.extentAfter <= 24) {
+      _followOutput = true;
+    }
+
+    if (notification is ScrollEndNotification) {
+      _followOutput = notification.metrics.extentAfter <= 24;
+    }
+
+    return false;
   }
 
   @override
@@ -63,8 +85,8 @@ class _ChatPageState extends State<ChatPage> {
               child: app.loadingMessages && app.messages.isEmpty
                   ? const Center(child: CircularProgressIndicator())
                   : app.messages.isEmpty
-                      ? _EmptyState(name: app.username, onPick: app.send)
-                      : _messageList(context, app),
+                  ? _EmptyState(name: app.username, onPick: app.send)
+                  : _messageList(context, app),
             ),
             Composer(busy: app.busy, onSend: app.send),
           ],
@@ -78,36 +100,40 @@ class _ChatPageState extends State<ChatPage> {
     final messages = app.toolsOn
         ? app.messages
         : app.messages.where((m) => !m.isTool).toList();
-    return ListView.separated(
-      controller: _scrollController,
-      padding: const EdgeInsets.fromLTRB(20, 34, 20, 24),
-      itemCount: messages.length,
-      separatorBuilder: (_, _) => const SizedBox(height: EsaSpace.messageGap),
-      itemBuilder: (context, index) {
-        final m = messages[index];
-        final Widget child;
-        switch (m.role) {
-          case MessageRole.user:
-            child = UserBubble(text: m.text);
-          case MessageRole.tool:
-            child = Align(
-              alignment: Alignment.centerLeft,
-              child: ToolCallCard(name: m.name ?? 'tool', output: m.text),
-            );
-          case MessageRole.assistant:
-            child = AssistantMessage(
-              message: m,
-              onRegenerate: () => app.regenerate(m.id),
-            );
-        }
-        return Center(
-          child: ConstrainedBox(
-            constraints:
-                const BoxConstraints(maxWidth: EsaSpace.contentMaxWidth),
-            child: SizedBox(width: double.infinity, child: child),
-          ),
-        );
-      },
+    return NotificationListener<ScrollNotification>(
+      onNotification: _handleScrollNotification,
+      child: ListView.separated(
+        controller: _scrollController,
+        padding: const EdgeInsets.fromLTRB(20, 34, 20, 24),
+        itemCount: messages.length,
+        separatorBuilder: (_, _) => const SizedBox(height: EsaSpace.messageGap),
+        itemBuilder: (context, index) {
+          final m = messages[index];
+          final Widget child;
+          switch (m.role) {
+            case MessageRole.user:
+              child = UserBubble(text: m.text);
+            case MessageRole.tool:
+              child = Align(
+                alignment: Alignment.centerLeft,
+                child: ToolCallCard(name: m.name ?? 'tool', output: m.text),
+              );
+            case MessageRole.assistant:
+              child = AssistantMessage(
+                message: m,
+                onRegenerate: () => app.regenerate(m.id),
+              );
+          }
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: EsaSpace.contentMaxWidth,
+              ),
+              child: SizedBox(width: double.infinity, child: child),
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -187,7 +213,10 @@ class _TopBar extends StatelessWidget {
             Icon(LucideIcons.plus, size: 16, color: context.scheme.onSurface),
             if (!narrow) ...[
               const SizedBox(width: 8),
-              Text('新对话', style: context.texts.titleMedium?.copyWith(fontSize: 13)),
+              Text(
+                '新对话',
+                style: context.texts.titleMedium?.copyWith(fontSize: 13),
+              ),
             ],
           ],
         ),
@@ -242,9 +271,12 @@ class _EmptyState extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('WELCOME',
-                  style:
-                      context.texts.labelSmall?.copyWith(color: EsaColors.accent)),
+              Text(
+                'WELCOME',
+                style: context.texts.labelSmall?.copyWith(
+                  color: EsaColors.accent,
+                ),
+              ),
               const SizedBox(height: EsaSpace.md),
               Text('你好，$name。', style: context.texts.headlineMedium),
               const SizedBox(height: EsaSpace.md),
@@ -315,19 +347,25 @@ class _SuggestionCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style:
-                          context.texts.titleMedium?.copyWith(fontSize: 15)),
+                  Text(
+                    title,
+                    style: context.texts.titleMedium?.copyWith(fontSize: 15),
+                  ),
                   const SizedBox(height: 2),
-                  Text(desc,
-                      style: TextStyle(fontSize: 12.5, color: context.n.n600)),
+                  Text(
+                    desc,
+                    style: TextStyle(fontSize: 12.5, color: context.n.n600),
+                  ),
                 ],
               ),
             ),
             Opacity(
               opacity: 0.5,
-              child: Icon(LucideIcons.chevronRight,
-                  size: 18, color: context.n.n600),
+              child: Icon(
+                LucideIcons.chevronRight,
+                size: 18,
+                color: context.n.n600,
+              ),
             ),
           ],
         ),

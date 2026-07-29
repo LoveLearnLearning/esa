@@ -1,6 +1,6 @@
 # backend/core/web/deps.py
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from fastapi import Header, HTTPException, Request
 
@@ -22,7 +22,7 @@ def get_current_session(
 
     if session is None:
         raise HTTPException(401, "会话无效")
-    if session.expires_at <= datetime.now(UTC):
+    if session.expires_at <= datetime.now(timezone.utc):
         session_store.revoke(session.session_id)
         raise HTTPException(401, "会话过期")
 

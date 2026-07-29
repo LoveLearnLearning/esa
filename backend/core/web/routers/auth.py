@@ -40,7 +40,11 @@ def login(body: LoginRequest, request: Request) -> LoginResponse:
 
     user: UserRecord | None = user_store.get_by_id(session.user_id)
 
-    assert user is not None
+    if user is None:
+        session_store: SessionStore = request.app.state.session_store
+        session_store.revoke(session.session_id)
+
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在")
 
     return LoginResponse(
         session_id=session.session_id,

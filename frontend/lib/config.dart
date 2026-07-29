@@ -6,4 +6,4 @@
 //   false => 正常模式 通过 ApiClient 调用真实后端 (见 API.md)
 //
 // 上线前记得改回 false
-const bool kOfflineMode = true;
+const bool kOfflineMode = false;

@@ -2,7 +2,7 @@
 
 import uuid
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.core.stores.base_sqlite_store import BaseSQLiteStore
@@ -76,7 +76,7 @@ class ChatStore(BaseSQLiteStore):
     @staticmethod
     def _now() -> str:
         """辅助函数 当前 UTC 时间的 ISO 字符串"""
-        return datetime.now(UTC).isoformat()
+        return datetime.now(timezone.utc).isoformat()
 
     def create_conversation(
         self,

@@ -1,7 +1,7 @@
 # backend/core/services/auth_service.py
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from backend.core.services.password_service import PasswordService
 from backend.core.stores.session_store import SessionStore
@@ -50,7 +50,7 @@ class AuthService:
 
         session_id = str(uuid.uuid4())
 
-        current_time = datetime.now(UTC)
+        current_time = datetime.now(timezone.utc)
         expire_time = current_time + timedelta(hours=2)
         session: SessionPrincipal = SessionPrincipal(
             session_id=session_id,
