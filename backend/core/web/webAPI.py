@@ -43,9 +43,10 @@ async def lifespan(app: FastAPI):
         max_num_seqs=MODEL_MAX_NUM_SEQS,
         quantization=MODEL_QUANTIZATION,
     )
-    if not app.state.agent.start():
-        raise RuntimeError("Agent load failed!")
-    yield
+    try:
+        yield
+    finally:
+        app.state.agent.llm_provider.engine.shutdown()
 
 
 app = FastAPI(lifespan=lifespan)

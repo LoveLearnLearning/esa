@@ -1,9 +1,12 @@
 # backend/core/web/routers/chat.py
 
 
+import asyncio
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 
 from backend.agent.agent import Agent
 from backend.core.stores.chat_store import ChatStore
@@ -12,6 +15,7 @@ from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
 from backend.core.web.deps import get_current_session
 from backend.core.web.schemas import RenameRequest, SendMessageRequest
+from backend.core.web.sse import encode_sse
 
 router = APIRouter(prefix="/conversations", tags=["chat"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
@@ -95,7 +99,7 @@ def get_messages(
 
 
 @router.post("/{conversation_id}/messages")
-def send_message(
+async def send_message(
     conversation_id: str,
     body: SendMessageRequest,
     request: Request,
@@ -126,7 +130,7 @@ def send_message(
         [user_message],
     )
 
-    new_messages: list[dict] = agent.run(
+    new_messages: list[dict] = await agent.run(
         body.content,
         user.username,
         history=history,
@@ -141,3 +145,51 @@ def send_message(
         )
 
     return [message for message in new_messages if message.get("is_visible", True)]
+
+
+@router.post("/{conversation_id}/messages/stream")
+async def stream_message(
+    conversation_id: str,
+    body: SendMessageRequest,
+    request: Request,
+    session: CurrentSession,
+) -> StreamingResponse:
+    _load_owned(request, conversation_id, session)
+
+    async def event_stream() -> AsyncIterator[str]:
+        yield encode_sse(
+            "start",
+            {
+                "conversation_id": conversation_id,
+            },
+        )
+
+        try:
+            yield encode_sse(
+                "content",
+                {
+                    "delta": "部分文本",
+                },
+            )
+            yield encode_sse("done", {})
+
+        except asyncio.CancelledError:
+            raise
+
+        except Exception:
+            yield encode_sse(
+                "error",
+                {
+                    "detail": "生成回复失败",
+                },
+            )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

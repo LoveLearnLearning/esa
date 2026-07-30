@@ -9,29 +9,7 @@ bcrypt
 # Model inference
 torch
 transformers
-vllm
-bitsandbytes
-
-# Agent tools
-sympy
-httpx
-
-# RAG
-numpy
-sentence-transformers
-rank-bm25
-# Web
-fastapi
-uvicorn[standard]
-pydantic
-
-# Authentication
-bcrypt
-
-# Model inference
-torch
-transformers
-vllm
+vllm==0.24.0
 bitsandbytes
 
 # Agent tools

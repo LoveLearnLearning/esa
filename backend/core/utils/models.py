@@ -18,6 +18,12 @@ class ParsedOutput:
 
 
 @dataclass
+class AgentStreamEvent:
+    event: str
+    data: dict
+
+
+@dataclass
 class UserRecord:
     """
     用来存放用户数据

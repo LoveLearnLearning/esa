@@ -1,7 +1,10 @@
 # backend/agent/agent.py
 
+import asyncio
+from collections.abc import AsyncIterator
 from pathlib import Path
 
+from vllm.config.cache import CacheDType
 from vllm.config.model import ModelDType
 from vllm.model_executor.layers.quantization import QuantizationMethods
 
@@ -10,9 +13,9 @@ from backend.agent.tools import tr
 from backend.agent.tools.memory_tools import core_memory, set_current_user
 from backend.agent.tools.skills import build_skills_context
 from backend.core.message.build_prompt import build_system_prompt
-from backend.core.services.vllm_service import LLM_Provider
+from backend.core.services.vllm_service import LLMProvider
 from backend.core.utils.config import DEBUG_MODE
-from backend.core.utils.models import ParsedOutput, ToolCall
+from backend.core.utils.models import AgentStreamEvent, ParsedOutput, ToolCall
 from backend.core.utils.parser import parse_output
 
 ROOT_PATH: Path = Path.cwd().parent
@@ -25,13 +28,13 @@ class Agent:
         loop_times: int = 3,
         quantization: QuantizationMethods | None = None,
         dtype: ModelDType = "auto",
-        kv_cache_dtype: str = "auto",
+        kv_cache_dtype: CacheDType = "auto",
         gpu_memory_utilization: float = 0.95,
         max_model_len: int = 32768,
         max_num_seqs: int = 1,
     ) -> None:
         self.loop_times = loop_times
-        self.llm_provider = LLM_Provider(
+        self.llm_provider = LLMProvider(
             model_path=model_path,
             quantization=quantization,
             dtype=dtype,
@@ -44,15 +47,59 @@ class Agent:
             max_messages_per_user=20,
         )
 
-    def start(self) -> bool:
-        """启动 Agent 加载模型"""
-        if not self.llm_provider.llm:
-            self.llm_provider.load_model()
-            if not self.llm_provider.llm:
-                return False
-        return True
+    def _prepare_run(
+        self,
+        input: str,
+        user_name: str,
+        history: list[dict] | None,
+    ) -> tuple[list[dict], list[dict]]:
+        set_current_user(user_name)
 
-    def run(
+        temp_context = (
+            "历史消息已由 messages 提供"
+            if history
+            else self.temp_memory.build_context(user_name)
+        )
+        core_context = core_memory.build_context(user_name)
+        skills_context = build_skills_context()
+
+        system_prompt = build_system_prompt(
+            user_name=user_name,
+            temp_memory=temp_context,
+            core_memory=core_context,
+            skills_context=skills_context,
+        )
+
+        user_message = {
+            "role": "user",
+            "content": input,
+        }
+
+        messages = [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            *(history or []),
+            user_message,
+        ]
+
+        new_messages = [
+            {
+                **user_message,
+                "is_visible": True,
+            }
+        ]
+
+        self.temp_memory.add(
+            role="user",
+            content=input,
+            user_name=user_name,
+        )
+
+        return messages, new_messages
+
+    async def run(
         self,
         input: str,
         user_name: str,
@@ -71,51 +118,14 @@ class Agent:
                           调用方可直接交给 ChatStore.append_messages() 持久化
         """
 
-        set_current_user(user_name)
-
-        temp_context: str = (
-            "历史消息已经通过 messages 提供"
-            if history
-            else self.temp_memory.build_context(user_name)
-        )
-        core_context: str = core_memory.build_context(user_name)
-        skills_context: str = build_skills_context()
-
-        system_prompt: str = build_system_prompt(
-            user_name=user_name,
-            temp_memory=temp_context,
-            core_memory=core_context,
-            skills_context=skills_context,
+        messages, new_messages = self._prepare_run(
+            input,
+            user_name,
+            history,
         )
 
-        user_message: dict = {
-            "role": "user",
-            "content": input,
-        }
-
-        messages: list = [
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            *(history or []),
-            user_message,
-        ]
-
-        new_messages: list[dict] = [
-            {
-                **user_message,
-                "is_visible": True,
-            }
-        ]
-
-        self.temp_memory.add(
-            role="user",
-            content=input,
-            user_name=user_name,
-        )
         for _ in range(self.loop_times):
-            response = self.llm_provider.generate(
+            response = await self.llm_provider.generate(
                 messages,
                 tr.schemas,
             )
@@ -169,7 +179,8 @@ class Agent:
             )
 
             for tc in tcs:
-                result = tr.call(
+                result = await asyncio.to_thread(
+                    tr.call,
                     tc.name,
                     tc.arguments,
                 )
@@ -200,3 +211,126 @@ class Agent:
                 )
 
         return new_messages
+
+    async def run_stream(
+        self,
+        input: str,
+        user_name: str,
+        history: list[dict] | None = None,
+    ) -> AsyncIterator[AgentStreamEvent]:
+        messages, new_messages = self._prepare_run(
+            input,
+            user_name,
+            history,
+        )
+
+        for _ in range(self.loop_times):
+            chunks: list[str] = []
+
+            async for chunk in self.llm_provider.generate_stream(
+                messages,
+                tr.schemas,
+            ):
+                chunks.append(chunk)
+
+            response = "".join(chunks)
+            parsed = parse_output(response)
+
+            tool_calls = parsed.tool_calls
+
+            if not tool_calls:
+                assistant_content = parsed.content or response.strip()
+                reasoning = parsed.reasoning or ""
+
+                if reasoning:
+                    yield AgentStreamEvent(
+                        event="reasoing",
+                        data={"delta": reasoning},
+                    )
+
+                if assistant_content:
+                    yield AgentStreamEvent(
+                        event="content",
+                        data={"delta": assistant_content},
+                    )
+
+                assistant_message = {
+                    "role": "assistant",
+                    "content": assistant_content,
+                    "reasoning": reasoning,
+                    "is_visible": True,
+                }
+
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": assistant_content,
+                    }
+                )
+
+                new_messages.append(assistant_message)
+
+                self.temp_memory.add(
+                    role="assistant",
+                    content=assistant_content,
+                    user_name=user_name,
+                )
+
+                break
+
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": response,
+                }
+            )
+            new_messages.append(
+                {
+                    "role": "assistant",
+                    "content": response,
+                    "is_visible": False,
+                }
+            )
+
+            for tool_call in tool_calls:
+                result = await asyncio.to_thread(
+                    tr.call,
+                    tool_call.name,
+                    tool_call.arguments,
+                )
+
+                result_text = str(result)
+
+                tool_message = {
+                    "role": "tool",
+                    "name": tool_call.name,
+                    "content": result_text,
+                    "is_visible": True,
+                }
+
+                messages.append(
+                    {
+                        "role": "tool",
+                        "name": tool_call.name,
+                        "content": result_text,
+                    }
+                )
+                new_messages.append(tool_message)
+
+                yield AgentStreamEvent(
+                    event="tool",
+                    data={
+                        "name": tool_call.name,
+                        "content": result_text,
+                    },
+                )
+
+                self.temp_memory.add(
+                    role="tool",
+                    content=f"name: {tool_call.name}, content: {result_text}",
+                    user_name=user_name,
+                )
+        yield AgentStreamEvent(
+            event="complete",
+            data={"messages": new_messages},
+        )
