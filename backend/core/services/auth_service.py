@@ -93,3 +93,41 @@ class AuthService:
             return None
 
         return new_user
+
+    def change_password(
+        self,
+        user_id: str,
+        old_password: str,
+        new_password: str,
+    ) -> bool:
+        """修改密码
+
+        Args:
+            user_id: str        => 用户 id
+            old_password: str   => 旧密码
+            new_password: str   => 新密码
+
+        Returns:
+            bool                => 是否修改成功
+        """
+
+        user: UserRecord | None = self.user_store.get_by_id(user_id)
+
+        if user is None:
+            return False
+
+        if not PasswordService.verify_password(
+            old_password,
+            user.password_hash,
+        ):
+            return False
+
+        if PasswordService.verify_password(
+            new_password,
+            user.password_hash,
+        ):
+            raise ValueError("新密码不能与旧密码相同")
+
+        new_password_hash = PasswordService.hash_password(new_password)
+
+        return self.user_store.update_password(user_id, new_password_hash)

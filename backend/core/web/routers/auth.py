@@ -9,7 +9,12 @@ from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
 from backend.core.web.deps import get_current_session
-from backend.core.web.schemas import LoginRequest, LoginResponse, RegisterRequest
+from backend.core.web.schemas import (
+    ChangePasswordRequest,
+    LoginRequest,
+    LoginResponse,
+    RegisterRequest,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
@@ -58,3 +63,31 @@ def login(body: LoginRequest, request: Request) -> LoginResponse:
 def logout(request: Request, session: CurrentSession) -> None:
     session_store: SessionStore = request.app.state.session_store
     session_store.revoke(session.session_id)
+
+
+@router.post(
+    "/change-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    session: CurrentSession,
+) -> None:
+    auth_service: AuthService = request.app.state.auth
+
+    try:
+        changed = auth_service.change_password(
+            user_id=session.user_id,
+            old_password=body.old_password,
+            new_password=body.new_password,
+        )
+    except ValueError as error:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{error}") from error
+
+    if not changed:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "旧密码错误")
+
+    session_store: SessionStore = request.app.state.session_store
+
+    session_store.revoke_all_for_user(session.user_id)

@@ -88,7 +88,10 @@ class _ChatPageState extends State<ChatPage> {
                   ? _EmptyState(name: app.username, onPick: app.send)
                   : _messageList(context, app),
             ),
-            Composer(busy: app.busy, onSend: app.send),
+            Composer(
+              busy: app.busy,
+              onSend: (text, markdown) => app.send(text, markdown: markdown),
+            ),
           ],
         ),
       ),
@@ -112,7 +115,7 @@ class _ChatPageState extends State<ChatPage> {
           final Widget child;
           switch (m.role) {
             case MessageRole.user:
-              child = UserBubble(text: m.text);
+              child = UserBubble(text: m.text, markdown: m.markdown);
             case MessageRole.tool:
               child = Align(
                 alignment: Alignment.centerLeft,

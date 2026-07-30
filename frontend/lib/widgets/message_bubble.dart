@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import 'esa_markdown.dart';
 
 class UserBubble extends StatelessWidget {
-  const UserBubble({super.key, required this.text});
+  const UserBubble({super.key, required this.text, this.markdown = false});
 
   final String text;
+  final bool markdown;
 
   @override
   Widget build(BuildContext context) {
@@ -24,10 +26,12 @@ class UserBubble extends StatelessWidget {
             color: context.n.n200,
             borderRadius: BorderRadius.circular(EsaRadii.bubble),
           ),
-          child: Text(
-            text,
-            style: context.texts.bodyMedium, // 15 / 1.65 保留换行
-          ),
+          child: markdown
+              ? EsaMarkdown(data: text, selectable: true)
+              : Text(
+                  text,
+                  style: context.texts.bodyMedium, // 15 / 1.65 保留换行
+                ),
         ),
       ),
     );

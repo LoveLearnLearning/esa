@@ -120,3 +120,21 @@ class SessionStore(BaseSQLiteStore):
             """,
             (current_time,),
         )
+
+    def revoke_all_for_user(self, user_id: str) -> int:
+        """注销指定用户所有的登陆会话
+
+        Args:
+            user_id: str    => 用户 id
+
+        Returns:
+            int             => 受影响的行数
+        """
+
+        return self.execute(
+            """
+            DELETE FROM sessions
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        )

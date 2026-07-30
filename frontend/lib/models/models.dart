@@ -25,6 +25,7 @@ class ChatMessage {
     this.name,
     this.createdAt,
     this.typing = false,
+    this.markdown = false,
   });
 
   final String id;
@@ -33,6 +34,7 @@ class ChatMessage {
   final String? name; // 仅 tool 消息有 工具名
   final String? createdAt;
   bool typing; // 等待后端回复时显示光标
+  final bool markdown; // 仅前端使用：用户是否通过 Markdown 模式发送
 
   bool get isUser => role == MessageRole.user;
   bool get isTool => role == MessageRole.tool;
@@ -47,14 +49,15 @@ class ChatMessage {
     );
   }
 
-  static ChatMessage user(String text) =>
-      ChatMessage(id: _nextId(), role: MessageRole.user, text: text);
+  static ChatMessage user(String text, {bool markdown = false}) => ChatMessage(
+    id: _nextId(),
+    role: MessageRole.user,
+    text: text,
+    markdown: markdown,
+  );
 
-  static ChatMessage typingPlaceholder() => ChatMessage(
-        id: _nextId(),
-        role: MessageRole.assistant,
-        typing: true,
-      );
+  static ChatMessage typingPlaceholder() =>
+      ChatMessage(id: _nextId(), role: MessageRole.assistant, typing: true);
 }
 
 /// 一个历史对话 对应 /conversations 的元素
@@ -77,7 +80,7 @@ class ChatConversation {
       title: (j['title'] as String?) ?? '新对话',
       updatedAt:
           DateTime.tryParse(j['updated_at'] as String? ?? '')?.toLocal() ??
-              DateTime.now(),
+          DateTime.now(),
     );
   }
 }

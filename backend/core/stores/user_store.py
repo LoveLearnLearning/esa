@@ -116,3 +116,27 @@ class UserStore(BaseSQLiteStore):
             return False
 
         return True
+
+    def update_password(self, user_id: str, password_hash: str) -> bool:
+        """更新用户密码的哈希值
+
+        Args:
+            user_id: str        => 用户 id
+            password_hash: str  => 更改的目标密码哈希值
+
+        Returns:
+            bool                => 是否修改成功
+        """
+        count = self.execute(
+            """
+            UPDATE users
+            SET password_hash = ?
+            WHERE id = ?
+            """,
+            (
+                password_hash,
+                user_id,
+            ),
+        )
+
+        return count > 0

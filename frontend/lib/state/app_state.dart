@@ -243,7 +243,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> send(String text) async {
+  Future<void> send(String text, {bool markdown = false}) async {
     final input = text.trim();
     if (input.isEmpty || busy) return;
 
@@ -255,7 +255,7 @@ class AppState extends ChangeNotifier {
     final id = activeId!;
     final list = _messages.putIfAbsent(id, () => []);
 
-    list.add(ChatMessage.user(input));
+    list.add(ChatMessage.user(input, markdown: markdown));
     _touchConversation(id, input);
 
     final placeholder = ChatMessage.typingPlaceholder();
@@ -314,7 +314,12 @@ class AppState extends ChangeNotifier {
         break;
       }
     }
-    if (prompt != null) send(prompt);
+    if (prompt != null) {
+      final source = list.lastWhere(
+        (message) => message.isUser && message.text == prompt,
+      );
+      send(prompt, markdown: source.markdown);
+    }
   }
 
   void _touchConversation(String id, String firstInput) {

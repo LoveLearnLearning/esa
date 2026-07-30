@@ -13,7 +13,7 @@ class Composer extends StatefulWidget {
   const Composer({super.key, required this.busy, required this.onSend});
 
   final bool busy;
-  final ValueChanged<String> onSend;
+  final void Function(String text, bool markdown) onSend;
 
   @override
   State<Composer> createState() => _ComposerState();
@@ -36,7 +36,7 @@ class _ComposerState extends State<Composer> {
 
   void _send() {
     if (!_canSend) return;
-    widget.onSend(_controller.text);
+    widget.onSend(_controller.text, _markdownMode);
     _controller.clear();
     setState(() => _attachment = null);
     _focus.requestFocus();
@@ -94,20 +94,37 @@ class _ComposerState extends State<Composer> {
                     ],
                     Focus(
                       onKeyEvent: _onKey,
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focus,
-                        minLines: 2,
-                        maxLines: 6,
-                        onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          isCollapsed: true,
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          hintText: '问点什么…',
-                        ),
+                      child: Stack(
+                        children: [
+                          if (_controller.text.isEmpty)
+                            Positioned(
+                              left: 2,
+                              top: 1,
+                              child: IgnorePointer(
+                                child: Text(
+                                  '问点什么…',
+                                  style: TextStyle(
+                                    color: context.n.n600,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          TextField(
+                            controller: _controller,
+                            focusNode: _focus,
+                            minLines: 2,
+                            maxLines: 6,
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              isCollapsed: true,
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: EsaSpace.sm),
