@@ -88,6 +88,21 @@ class AppState extends ChangeNotifier {
     _clearSession();
   }
 
+  /// 修改成功后服务端会注销全部会话，前端同步回到登录页。
+  /// 返回 null 表示成功，否则返回可直接展示的错误信息。
+  Future<String?> changePassword(String oldPassword, String newPassword) async {
+    try {
+      await api.changePassword(oldPassword, newPassword);
+      _clearSession();
+      return null;
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) _clearSession();
+      return e.detail;
+    } catch (_) {
+      return '无法连接服务器 请稍后重试';
+    }
+  }
+
   void _clearSession() {
     api.sessionId = null;
     api.userId = null;
@@ -225,19 +240,31 @@ class AppState extends ChangeNotifier {
     list.add(streamed);
     notifyListeners();
 
-    final characters = source.text.runes.map(String.fromCharCode).toList();
     const chunkSize = 3;
 
-    for (var i = 0; i < characters.length; i += chunkSize) {
-      final end = i + chunkSize < characters.length
-          ? i + chunkSize
-          : characters.length;
+    Future<void> appendProgressively(
+      String sourceText,
+      void Function(String chunk) append,
+    ) async {
+      final characters = sourceText.runes.map(String.fromCharCode).toList();
 
-      streamed.text += characters.sublist(i, end).join();
-      notifyListeners();
+      for (var i = 0; i < characters.length; i += chunkSize) {
+        final end = i + chunkSize < characters.length
+            ? i + chunkSize
+            : characters.length;
 
-      await Future<void>.delayed(const Duration(milliseconds: 25));
+        append(characters.sublist(i, end).join());
+        notifyListeners();
+
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
     }
+
+    await appendProgressively(
+      source.reasoning,
+      (chunk) => streamed.reasoning += chunk,
+    );
+    await appendProgressively(source.text, (chunk) => streamed.text += chunk);
 
     streamed.typing = false;
     notifyListeners();
@@ -276,7 +303,7 @@ class AppState extends ChangeNotifier {
       for (final message in responseMessages) {
         if (streamOn &&
             message.role == MessageRole.assistant &&
-            message.text.isNotEmpty) {
+            (message.text.isNotEmpty || message.reasoning.isNotEmpty)) {
           await _appendAssistantProgressively(list, message);
         } else {
           list.add(message);

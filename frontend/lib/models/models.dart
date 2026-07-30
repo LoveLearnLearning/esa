@@ -26,6 +26,7 @@ class ChatMessage {
     this.createdAt,
     this.typing = false,
     this.markdown = false,
+    this.reasoning = '',
   });
 
   final String id;
@@ -35,6 +36,7 @@ class ChatMessage {
   final String? createdAt;
   bool typing; // 等待后端回复时显示光标
   final bool markdown; // 仅前端使用：用户是否通过 Markdown 模式发送
+  String reasoning; // 后端可选返回：模型思考内容
 
   bool get isUser => role == MessageRole.user;
   bool get isTool => role == MessageRole.tool;
@@ -46,6 +48,7 @@ class ChatMessage {
       text: j['content'] as String? ?? '',
       name: j['name'] as String?,
       createdAt: j['created_at'] as String?,
+      reasoning: (j['reasoning'] ?? j['thinking']) as String? ?? '',
     );
   }
 

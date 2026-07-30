@@ -28,6 +28,7 @@ class AssistantMessage extends StatefulWidget {
 
 class _AssistantMessageState extends State<AssistantMessage> {
   bool _copied = false;
+  bool _reasoningExpanded = false;
   Timer? _copyTimer;
 
   @override
@@ -53,6 +54,10 @@ class _AssistantMessageState extends State<AssistantMessage> {
       children: [
         Text('ESA', style: context.texts.labelSmall),
         const SizedBox(height: EsaSpace.sm),
+        if (m.reasoning.isNotEmpty) ...[
+          _reasoning(context, m),
+          const SizedBox(height: EsaSpace.md),
+        ],
         _body(context, m),
         if (!m.typing && m.text.isNotEmpty) ...[
           const SizedBox(height: EsaSpace.sm),
@@ -78,6 +83,95 @@ class _AssistantMessageState extends State<AssistantMessage> {
     );
   }
 
+  Widget _reasoning(BuildContext context, ChatMessage message) {
+    final reasoning = message.reasoning.trim();
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: context.n.n100,
+        border: Border.all(color: context.n.divider),
+        borderRadius: BorderRadius.circular(EsaRadii.toolCard),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() => _reasoningExpanded = !_reasoningExpanded);
+            },
+            borderRadius: BorderRadius.circular(EsaRadii.toolCard),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: EsaSpace.md,
+                vertical: 10,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.brain,
+                    size: 15,
+                    color: message.typing ? EsaColors.accent : context.n.n600,
+                  ),
+                  const SizedBox(width: EsaSpace.sm),
+                  Text(
+                    message.typing ? '正在思考' : '思考过程',
+                    style: context.texts.titleMedium?.copyWith(fontSize: 13),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    _reasoningExpanded
+                        ? LucideIcons.chevronUp
+                        : LucideIcons.chevronDown,
+                    size: 16,
+                    color: context.n.n600,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: EsaMotion.fade,
+            alignment: Alignment.topCenter,
+            child: _reasoningExpanded
+                ? Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(
+                      EsaSpace.md,
+                      0,
+                      EsaSpace.md,
+                      EsaSpace.md,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border(top: BorderSide(color: context.n.divider)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: EsaSpace.md),
+                      child: EsaMarkdown(data: reasoning, selectable: true),
+                    ),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      EsaSpace.md,
+                      0,
+                      EsaSpace.md,
+                      EsaSpace.md,
+                    ),
+                    child: Text(
+                      reasoning.replaceAll(RegExp(r'\s+'), ' '),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.texts.bodySmall?.copyWith(
+                        color: context.n.n600,
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _body(BuildContext context, ChatMessage m) {
     final markdown = EsaMarkdown(data: m.text, selectable: !m.typing);
 
@@ -86,7 +180,7 @@ class _AssistantMessageState extends State<AssistantMessage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        markdown,
+        if (m.text.isNotEmpty) markdown,
         const Padding(
           padding: EdgeInsets.only(top: 2),
           child: _BlinkingCursor(),

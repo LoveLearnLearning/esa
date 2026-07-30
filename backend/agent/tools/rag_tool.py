@@ -5,10 +5,10 @@ RAG 工具注册
 将 RAG 检索功能注册为 Agent 工具，使其能够被 Agent 自动调用。
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from backend.agent.rag.config import RAGConfig
-from backend.agent.rag.retriever import get_retriever, reset_retriever
+from backend.agent.rag.retriever import get_retriever
 from backend.agent.tools.tools import tr
 
 
@@ -87,7 +87,7 @@ def retrieve_knowledge(
         },
     }
 )
-def index_knowledge_base(dir_path: Optional[str] = None) -> dict[str, Any]:
+def index_knowledge_base(dir_path: str | None = None) -> dict[str, Any]:
     """索引文档目录到知识库
 
     Args:

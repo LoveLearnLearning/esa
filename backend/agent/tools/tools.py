@@ -1,5 +1,7 @@
 # backend/agent/tools/tools.py
 
+from datetime import timezone
+
 from backend.agent.tools.tool_register import ToolRegistry
 
 tr = ToolRegistry()
@@ -69,4 +71,4 @@ def add_two_num(num1: float, num2: float) -> float:
 def get_time() -> str:
     from datetime import datetime
 
-    return datetime.now().strftime("%D-%H:%M:%S")
+    return datetime.now(timezone.utc).strftime("%D-%H:%M:%S")

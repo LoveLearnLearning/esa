@@ -25,11 +25,12 @@ class ApiException implements Exception {
 
 class ApiClient {
   ApiClient({String? baseUrl})
-      : baseUrl = baseUrl ??
-            const String.fromEnvironment(
-              'ESA_API_BASE',
-              defaultValue: 'http://115.29.197.244:51024',
-            );
+    : baseUrl =
+          baseUrl ??
+          const String.fromEnvironment(
+            'ESA_API_BASE',
+            defaultValue: 'http://115.29.197.244:51024',
+          );
 
   final String baseUrl;
 
@@ -40,9 +41,9 @@ class ApiClient {
   bool get isLoggedIn => sessionId != null;
 
   Map<String, String> _headers({bool auth = false}) => {
-        'Content-Type': 'application/json',
-        if (auth && sessionId != null) 'Authorization': 'Bearer $sessionId',
-      };
+    'Content-Type': 'application/json',
+    if (auth && sessionId != null) 'Authorization': 'Bearer $sessionId',
+  };
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
@@ -113,10 +114,26 @@ class ApiClient {
     }
   }
 
+  Future<void> changePassword(String oldPassword, String newPassword) async {
+    if (kOfflineMode) return;
+    final r = await http.post(
+      _uri('/auth/change-password'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'old_password': oldPassword,
+        'new_password': newPassword,
+      }),
+    );
+    if (r.statusCode != 204) _fail(r);
+  }
+
   // ---------- 对话 ----------
   Future<List<ChatConversation>> listConversations() async {
     if (kOfflineMode) return List.of(_offConvs);
-    final r = await http.get(_uri('/conversations'), headers: _headers(auth: true));
+    final r = await http.get(
+      _uri('/conversations'),
+      headers: _headers(auth: true),
+    );
     if (r.statusCode != 200) _fail(r);
     final list = _decode(r) as List;
     return list
@@ -126,7 +143,10 @@ class ApiClient {
 
   Future<ChatConversation> createConversation() async {
     if (kOfflineMode) return _offlineNewConversation();
-    final r = await http.post(_uri('/conversations'), headers: _headers(auth: true));
+    final r = await http.post(
+      _uri('/conversations'),
+      headers: _headers(auth: true),
+    );
     if (r.statusCode != 201) _fail(r);
     return ChatConversation.fromJson(_decode(r) as Map<String, dynamic>);
   }
@@ -152,8 +172,10 @@ class ApiClient {
       _offMsgs.remove(id);
       return;
     }
-    final r =
-        await http.delete(_uri('/conversations/$id'), headers: _headers(auth: true));
+    final r = await http.delete(
+      _uri('/conversations/$id'),
+      headers: _headers(auth: true),
+    );
     if (r.statusCode != 204) _fail(r);
   }
 
@@ -165,7 +187,9 @@ class ApiClient {
     );
     if (r.statusCode != 200) _fail(r);
     final list = _decode(r) as List;
-    return list.map((e) => ChatMessage.fromJson(e as Map<String, dynamic>)).toList();
+    return list
+        .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<List<ChatMessage>> sendMessage(String id, String content) async {
@@ -177,7 +201,9 @@ class ApiClient {
     );
     if (r.statusCode != 200) _fail(r);
     final list = _decode(r) as List;
-    return list.map((e) => ChatMessage.fromJson(e as Map<String, dynamic>)).toList();
+    return list
+        .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   // ==================== 离线模式实现 ====================
@@ -189,8 +215,11 @@ class ApiClient {
 
   ChatMessage _um(String t) =>
       ChatMessage.fromJson({'role': 'user', 'content': t});
-  ChatMessage _am(String t) =>
-      ChatMessage.fromJson({'role': 'assistant', 'content': t});
+  ChatMessage _am(String t, {String reasoning = ''}) => ChatMessage.fromJson({
+    'role': 'assistant',
+    'content': t,
+    if (reasoning.isNotEmpty) 'reasoning': reasoning,
+  });
   ChatMessage _tm(String name, String out) =>
       ChatMessage.fromJson({'role': 'tool', 'name': name, 'content': out});
 
@@ -211,8 +240,10 @@ class ApiClient {
     _offConvs.add(c1);
     _offMsgs[c1.id] = [
       _um('帮我复习一下特征值怎么求'),
-      _am('特征值满足特征方程 det(A − λI) = 0。先算出这个行列式关于 λ 的多项式 '
-          '再解方程得到各 λ 就是特征值。需要我用一个 2×2 的例子带你走一遍吗？'),
+      _am(
+        '特征值满足特征方程 det(A − λI) = 0。先算出这个行列式关于 λ 的多项式 '
+        '再解方程得到各 λ 就是特征值。需要我用一个 2×2 的例子带你走一遍吗？',
+      ),
     ];
 
     final c2 = ChatConversation(
@@ -248,18 +279,28 @@ class ApiClient {
     final list = _offMsgs.putIfAbsent(id, () => []);
     final result = <ChatMessage>[];
     if (_needsTool(content)) {
-      result.add(_tm(
-        'rag.search',
-        'query: "$content"\ntop_k: 3\nhits:\n'
-            '  - 第3章 条件概率.pdf  (score 0.87)\n'
-            '  - 习题课_贝叶斯.md    (score 0.81)\n'
-            '  - 期中复习提纲.docx   (score 0.74)',
-      ));
-      result.add(_am('我已从课件里检索到最相关的三处内容（见上方工具块）。'
-          '要不要我挑其中一道例题带你走一遍？'));
+      result.add(
+        _tm(
+          'rag.search',
+          'query: "$content"\ntop_k: 3\nhits:\n'
+              '  - 第3章 条件概率.pdf  (score 0.87)\n'
+              '  - 习题课_贝叶斯.md    (score 0.81)\n'
+              '  - 期中复习提纲.docx   (score 0.74)',
+        ),
+      );
+      result.add(
+        _am(
+          '我已从课件里检索到最相关的三处内容（见上方工具块）。'
+          '要不要我挑其中一道例题带你走一遍？',
+        ),
+      );
     } else {
-      result.add(_am('（离线模式）收到：$content。'
-          '接真实后端后这里会返回模型的实际回复。'));
+      result.add(
+        _am(
+          '（离线模式）收到：$content。接真实后端后这里会返回模型的实际回复。',
+          reasoning: '先识别用户的问题类型，再结合当前对话上下文组织回答。',
+        ),
+      );
     }
     // 同时写入本地存储 保证切换会话后 getMessages 仍一致
     list

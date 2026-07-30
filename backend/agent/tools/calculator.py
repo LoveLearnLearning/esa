@@ -138,7 +138,7 @@ class _SafeCalculator(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> Any:
         if not isinstance(node.func, ast.Name):
-            raise ValueError("仅支持简单函数调用")
+            raise TypeError("仅支持简单函数调用")
         fn_name = node.func.id
         if fn_name not in _FUNCTIONS:
             raise ValueError(f"未知的函数: {fn_name!r}")

@@ -22,7 +22,7 @@ def _popcount(n: int) -> int:
     """统计二进制中 1 的个数（仅支持非负整数）"""
     if n < 0:
         raise ValueError("popcount 仅支持非负整数，负数在任意精度下无确定补码表示")
-    return bin(n).count("1")
+    return (n).bit_count()
 
 
 # 支持的二元运算符（含位运算与算术运算，便于混合表达式）
@@ -126,7 +126,7 @@ class _SafeBitwiseEvaluator(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> Any:
         if not isinstance(node.func, ast.Name):
-            raise ValueError("仅支持简单函数调用")
+            raise TypeError("仅支持简单函数调用")
         fn_name = node.func.id
         if fn_name not in _FUNCTIONS:
             raise ValueError(f"未知的函数: {fn_name!r}")
