@@ -52,6 +52,9 @@ class Agent:
         input: str,
         user_name: str,
         history: list[dict] | None,
+        preferred_style: str = "concise",
+        preferred_tone: str = "friendly",
+        custom_instruction: str = "",
     ) -> tuple[list[dict], list[dict]]:
         set_current_user(user_name)
 
@@ -68,6 +71,9 @@ class Agent:
             temp_memory=temp_context,
             core_memory=core_context,
             skills_context=skills_context,
+            preferred_style=preferred_style,
+            preferred_tone=preferred_tone,
+            custom_instruction=custom_instruction,
         )
 
         user_message = {
@@ -104,6 +110,9 @@ class Agent:
         input: str,
         user_name: str,
         history: list[dict] | None = None,
+        preferred_style: str = "concise",
+        preferred_tone: str = "friendly",
+        custom_instruction: str = "",
     ) -> list[dict]:
         """运行一轮对话
         Args:
@@ -112,6 +121,9 @@ class Agent:
             history: list[dict] | None = None => 历史消息 每条包含 role content
                                                  tool 消息可以额外带 name 字段
                                                  由 ChatStore.get_model_messages() 提供
+            preferred_style: str = "concise"  => 输出风格
+            preferred_tone: str = "friendly"  => 输出语调
+            custom_instruction: str = ""      => 用户自定义指令
 
         Returns:
             list[dict] => 本轮新产生的消息 (用户输入 + 助手回复 + 工具结果)
@@ -122,6 +134,9 @@ class Agent:
             input,
             user_name,
             history,
+            preferred_style=preferred_style,
+            preferred_tone=preferred_tone,
+            custom_instruction=custom_instruction,
         )
 
         for _ in range(self.loop_times):
@@ -217,11 +232,17 @@ class Agent:
         input: str,
         user_name: str,
         history: list[dict] | None = None,
+        preferred_style: str = "concise",
+        preferred_tone: str = "friendly",
+        custom_instruction: str = "",
     ) -> AsyncIterator[AgentStreamEvent]:
         messages, new_messages = self._prepare_run(
             input,
             user_name,
             history,
+            preferred_style=preferred_style,
+            preferred_tone=preferred_tone,
+            custom_instruction=custom_instruction,
         )
 
         for _ in range(self.loop_times):

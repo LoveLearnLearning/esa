@@ -511,3 +511,49 @@
 - 对话置顶 (pinned) 仅前端本地状态 后端暂无该字段 未持久化
 
 - 旧登录背景图 `frontend/assets/d0876df6641794f86066e1454db3b5b0.jpg` 新设计已不再使用
+
+## 2026-07-30 第十次提交
+
+> 修改人：zcx
+
+新增用户输出偏好(风格/语调/自定义指令)端到端链路 路由 `/me/preferences` 注入 system prompt 影响模型输出
+
+### 已实现
+
+- 数据层 users 表迁移
+  - 新增三列 `preferred_style` `preferred_tone` `custom_instruction` 默认值 `concise` / `friendly` / 空串
+  - `_initialize` 改用 `self._connect()` 在同一连接内完成 CREATE + PRAGMA + ALTER 老库迁移 幂等可重复执行
+  - 迁移模式照搬 `chat_store.py` 已有写法 保持一致
+
+- Store / Model 层
+  - `UserRecord` 加三字段 带默认值 保证 `AuthService.register` 旧构造不破
+  - `to_model` / 两处 SELECT / INSERT 补三列
+  - 新增 `update_preferences` 方法 动态拼 SET 子句 只更新非 None 字段 支持部分更新
+
+- API 层 新建偏好路由
+  - `GET /me/preferences` 返回当前用户偏好
+  - `PATCH /me/preferences` 部分更新 `exclude_unset=True` 只改传入字段
+  - 枚举集合校验 非法值返回 400 并给出合法值列表
+  - `custom_instruction` pydantic `max_length=500` 校验 + 路由层截断双保险
+  - 命名刻意用 `/me/preferences` 而非 `/me/settings` 把顶层 `settings` 路径留给未来的账号设置(改昵称/密码/专业/年级)
+
+- Prompt 层 接入 system prompt
+  - `build_system_prompt` 加三参 `preferred_style` `preferred_tone` `custom_instruction`
+  - 新增 `_STYLE_RULES` `/_TONE_RULES` 映射表 把枚举翻译成给 LLM 的具体指令
+  - 拼出独立 `# 输出风格` 段 含风格/语调规则 `custom_instruction` 非空时额外拼"用户补充要求"
+  - 枚举查表查不到退回默认描述 不会因脏数据崩
+
+- Agent 透传
+  - `_prepare_run` `run` `run_stream` 三方法加三参透传给 `build_system_prompt`
+  - `chat.send_message` 从 `user_store.get_by_id` 取偏好传入 `agent.run`
+  - `stream_message` 当前为占位假数据 本次不动 留待 SSE 实施时统一接
+
+### 当前注意事项
+
+- **风格/语调规则文本是初版占位** `build_prompt.py` 的 `_STYLE_RULES` `_TONE_RULES` (L25-38) 当前每条只是一句话粗描述 后续需要更详细的优化
+  - 待优化方向:每档风格展开成多条具体可执行规则(句长上限/是否给例子/是否分段等) 语调同样需要细化
+  - 当前文本够跑通链路 但对模型输出的约束力有限 真实效果需调优
+
+- 链路已通 用户改偏好 → 下次发消息 → system prompt 带上风格/语调 → 模型按规则回答
+
+- 次只做后端接口 前端按 `GET` / `PATCH /me/preferences` 对接即可

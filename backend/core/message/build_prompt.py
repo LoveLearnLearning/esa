@@ -22,21 +22,55 @@ SYSTEM_PROMPT: str = """
 不要编造不存在的 skill
 """
 
+# 风格
+_STYLE_RULES: dict[str, str] = {
+    "concise": "回答控制在 3 句内  先给结论  不铺陈背景",
+    "detailed": "完整展开  含背景  步骤  示例",
+    "socratic": "用反问引导用户思考  不直接给答案",
+}
+
+# 语调
+_TONE_RULES: dict[str, str] = {
+    "friendly": "口语化  可用鼓励性表达",
+    "formal": "书面语  术语准确  避免口语",
+    "encouraging": "多肯定用户的进展",
+    "strict": "直接指出错误  不客套",
+}
+
 
 def build_system_prompt(
     user_name: str | None = None,
     temp_memory: str | None = None,
     core_memory: str | None = None,
     skills_context: str | None = None,
+    preferred_style: str = "concise",
+    preferred_tone: str = "friendly",
+    custom_instruction: str = "",
 ) -> str:
     core_memory = core_memory or "暂无核心记忆"
     temp_memory = temp_memory or "暂无临时记忆"
     skills_context = skills_context or "暂无可用 skill"
 
+    # 风格
+    style_rule = _STYLE_RULES.get(preferred_style, _STYLE_RULES["concise"])
+    tone_rule = _TONE_RULES.get(preferred_tone, _TONE_RULES["friendly"])
+    style_section = f"""
+    风格({preferred_style})  {style_rule}\n
+    语调({preferred_tone})  {tone_rule}
+    """
+
+    # 自定义指令
+    if custom_instruction.strip():
+        style_section += f"\n用户补充要求  {custom_instruction.strip()}"
+
     return f"""
 {SYSTEM_PROMPT.strip()}
 
 > 用户昵称: {user_name}
+
+# 输出风格
+
+{style_section}
 
 # 核心记忆
 

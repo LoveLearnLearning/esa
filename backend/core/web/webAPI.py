@@ -20,7 +20,7 @@ from backend.core.utils.config import (
     MODEL_PATH,
     MODEL_QUANTIZATION,
 )
-from backend.core.web.routers import auth, chat
+from backend.core.web.routers import auth, chat, preferences
 
 DB_PATH = Path(__file__).resolve().parent.parent / "stores" / "data" / "user.db"
 
@@ -64,6 +64,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(chat.router)
+app.include_router(preferences.router)
 
 
 @app.get("/")

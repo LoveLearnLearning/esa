@@ -29,6 +29,19 @@ class RenameRequest(BaseModel):
     title: str = Field(min_length=1, max_length=64)
 
 
+class UserPreferencesOut(BaseModel):
+    preferred_style: str
+    preferred_tone: str
+    custom_instruction: str
+
+
+class UpdatePreferencesRequest(BaseModel):
+    # 全部可选 只传想改的字段
+    preferred_style: str | None = Field(None)
+    preferred_tone: str | None = Field(None)
+    custom_instruction: str | None = Field(None, max_length=500)
+
+
 # 响应
 class LoginResponse(BaseModel):
     session_id: str

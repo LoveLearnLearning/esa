@@ -34,6 +34,11 @@ class UserRecord:
     password_hash: str
     status: str
 
+    # 用户偏好设置
+    preferred_style: str = "concise"
+    preferred_tone: str = "friendly"
+    custom_instruction: str = ""
+
 
 @dataclass
 class SessionPrincipal:

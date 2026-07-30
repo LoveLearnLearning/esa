@@ -134,6 +134,9 @@ async def send_message(
         body.content,
         user.username,
         history=history,
+        preferred_style=user.preferred_style,
+        preferred_tone=user.preferred_tone,
+        custom_instruction=user.custom_instruction,
     )
 
     generated_messages: list[dict] = new_messages[1:]
