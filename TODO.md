@@ -9,6 +9,11 @@ TODO List 中为待办事项 以及还未实现的功能
 3. [ ] 将 vLLM 同步接口换成异步接口 ****
 4. [ ] 实现多模态 增加上传附件的支持 ****
 5. [ ] 给搜索引擎的结果做一个 Reranker **
+6. [ ] 核心记忆加上限 防止 system prompt 膨胀 **
+   - `CoreMemory.build_context` 加 `max_items: int = 20` 参数
+   - 超出时按 `updated_at DESC` 截断（`get_all` 已有此排序）
+   - 调用方 `agent.py` 使用默认值无需改动
+   - 约 10 分钟工作量
 
 ## 前端 (Frontend)
 
@@ -27,3 +32,9 @@ TODO List 中为待办事项 以及还未实现的功能
    - 用户补充题目、考试时间、课件关键词或作业内容后，再主动点击发送
    - 允许用户先输入内容再切换任务模式，切换时不得清空已经输入的内容
    - 增加“知识点 / 概念讲解”卡片，并为不同任务模式提供对应的附件提示
+4. [ ] 前端对接偏好/学情档案设置 ****
+   - `models.dart` 加 `UserPreferences` / `UserProfile` 数据类
+   - `api_client.dart` 加 `getPreferences` / `updatePreferences` / `getProfile` / `updateProfile` 四个方法
+   - `app_state.dart` 加偏好/档案状态字段 + `loadPreferencesAndProfile` / `updatePreferences` / `updateProfile` 方法，登录后自动加载
+   - `profile_sheet.dart` 加输出偏好区块（风格三档/语调四档/自定义指令）+ 学情档案区块（开关/专业/年级/教学周）
+   - 后端接口已就绪：`GET/PATCH /me/preferences` 和 `GET/PATCH /me/profile`
