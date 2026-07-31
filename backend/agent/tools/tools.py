@@ -33,31 +33,6 @@ def get_weather(city: str) -> str:
     {
         "type": "function",
         "function": {
-            "name": "add_two_nums",
-            "description": "求两数之和",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "num1": {
-                        "type": "float",
-                    },
-                    "num2": {
-                        "type": "float",
-                    },
-                },
-                "required": ["num1", "num2"],
-            },
-        },
-    }
-)
-def add_two_num(num1: float, num2: float) -> float:
-    return num1 + num2
-
-
-@tr.register(
-    {
-        "type": "function",
-        "function": {
             "name": "get_time",
             "description": "获取当前时间",
             "parameters": {
