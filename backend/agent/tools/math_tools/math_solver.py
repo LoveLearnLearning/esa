@@ -1,4 +1,4 @@
-# backend/agent/tools/math_solver.py
+# backend/agent/tools/math_tools/math_solver.py
 
 """符号计算工具
 
