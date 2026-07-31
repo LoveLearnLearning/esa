@@ -1,0 +1,658 @@
+# 选修课程与数学基础知识点及依赖关系
+# 数据来源：9 所顶尖高校方向选修课并集 + 数学基础
+# 每门课程内知识点 weight 之和 ≈ 1.0
+# 知识点 id 全局唯一；跨课程同名 id 加课程后缀（如 "边缘计算(物联网)"）
+# category 字段：数学基础用 foundation，其余用 elective
+# 依赖边允许引用核心课 id（跨课程前置）及本模块内其他选修课 id
+
+courses:
+- course: 数学基础
+  category: foundation
+  points:
+  - {id: 概率论基础, name: 概率论基础, weight: 0.4}
+  - {id: 线性代数基础, name: 线性代数基础, weight: 0.35}
+  - {id: 数论基础, name: 数论基础, weight: 0.25}
+  prerequisites: []
+- course: 机器学习
+  category: elective
+  points:
+  - {id: 监督学习, name: 监督学习, weight: 0.1}
+  - {id: 无监督学习, name: 无监督学习, weight: 0.08}
+  - {id: 线性回归, name: 线性回归, weight: 0.09}
+  - {id: 逻辑回归, name: 逻辑回归, weight: 0.09}
+  - {id: 决策树, name: 决策树, weight: 0.08}
+  - {id: 朴素贝叶斯, name: 朴素贝叶斯, weight: 0.07}
+  - {id: K近邻, name: K近邻, weight: 0.07}
+  - {id: 支持向量机, name: 支持向量机, weight: 0.09}
+  - {id: 集成学习, name: 集成学习, weight: 0.08}
+  - {id: 聚类算法, name: 聚类算法, weight: 0.08}
+  - {id: 模型评估, name: 模型评估, weight: 0.09}
+  - {id: 过拟合与正则化, name: 过拟合与正则化, weight: 0.08}
+  prerequisites:
+  - [线性回归, 概率论基础]
+  - [逻辑回归, 线性回归]
+  - [朴素贝叶斯, 概率论基础]
+  - [决策树, 监督学习]
+  - [K近邻, 监督学习]
+  - [支持向量机, 线性代数基础]
+  - [集成学习, 决策树]
+  - [聚类算法, 无监督学习]
+  - [模型评估, 监督学习]
+  - [过拟合与正则化, 模型评估]
+  - [监督学习, 机器学习基础]
+- course: 深度学习
+  category: elective
+  points:
+  - {id: 反向传播, name: 反向传播, weight: 0.12}
+  - {id: 激活函数, name: 激活函数, weight: 0.08}
+  - {id: 卷积神经网络, name: 卷积神经网络, weight: 0.12}
+  - {id: 循环神经网络, name: 循环神经网络, weight: 0.1}
+  - {id: Transformer, name: Transformer, weight: 0.11}
+  - {id: 注意力机制, name: 注意力机制, weight: 0.09}
+  - {id: 生成对抗网络, name: 生成对抗网络, weight: 0.09}
+  - {id: 自编码器, name: 自编码器, weight: 0.07}
+  - {id: 迁移学习, name: 迁移学习, weight: 0.07}
+  - {id: 模型训练技巧, name: 模型训练技巧, weight: 0.08}
+  - {id: 分布式训练, name: 分布式训练, weight: 0.07}
+  prerequisites:
+  - [反向传播, 神经网络基础]
+  - [激活函数, 神经网络基础]
+  - [卷积神经网络, 反向传播]
+  - [循环神经网络, 反向传播]
+  - [Transformer, 注意力机制]
+  - [注意力机制, 神经网络基础]
+  - [生成对抗网络, 卷积神经网络]
+  - [自编码器, 神经网络基础]
+  - [迁移学习, 模型训练技巧]
+  - [模型训练技巧, 反向传播]
+  - [分布式训练, 神经网络基础]
+  - [神经网络基础, 机器学习基础]
+- course: 强化学习
+  category: elective
+  points:
+  - {id: 马尔可夫决策过程, name: 马尔可夫决策过程, weight: 0.14}
+  - {id: 策略与价值函数, name: 策略与价值函数, weight: 0.13}
+  - {id: 动态规划求解, name: 动态规划求解, weight: 0.12}
+  - {id: 蒙特卡洛方法, name: 蒙特卡洛方法, weight: 0.12}
+  - {id: 时序差分学习, name: 时序差分学习, weight: 0.12}
+  - {id: Q学习, name: Q学习, weight: 0.13}
+  - {id: 深度强化学习, name: 深度强化学习, weight: 0.14}
+  - {id: 多臂老虎机, name: 多臂老虎机, weight: 0.1}
+  prerequisites:
+  - [策略与价值函数, 马尔可夫决策过程]
+  - [动态规划求解, 马尔可夫决策过程]
+  - [蒙特卡洛方法, 策略与价值函数]
+  - [时序差分学习, 蒙特卡洛方法]
+  - [Q学习, 时序差分学习]
+  - [深度强化学习, Q学习]
+  - [多臂老虎机, 策略与价值函数]
+  - [马尔可夫决策过程, 概率论基础]
+- course: 自然语言处理
+  category: elective
+  points:
+  - {id: 文本预处理, name: 文本预处理, weight: 0.08}
+  - {id: 词向量, name: 词向量, weight: 0.11}
+  - {id: 语言模型, name: 语言模型, weight: 0.12}
+  - {id: 词性标注, name: 词性标注, weight: 0.09}
+  - {id: 句法分析, name: 句法分析, weight: 0.1}
+  - {id: 信息抽取, name: 信息抽取, weight: 0.1}
+  - {id: 机器翻译, name: 机器翻译, weight: 0.1}
+  - {id: 文本分类, name: 文本分类, weight: 0.09}
+  - {id: 问答系统, name: 问答系统, weight: 0.1}
+  - {id: 大语言模型基础, name: 大语言模型基础, weight: 0.11}
+  prerequisites:
+  - [词向量, 文本预处理]
+  - [语言模型, 词向量]
+  - [词性标注, 文本预处理]
+  - [句法分析, 词性标注]
+  - [信息抽取, 句法分析]
+  - [机器翻译, 语言模型]
+  - [文本分类, 词向量]
+  - [问答系统, 语言模型]
+  - [大语言模型基础, Transformer]
+  - [文本预处理, 机器学习基础]
+- course: 计算机视觉
+  category: elective
+  points:
+  - {id: 图像表示, name: 图像表示, weight: 0.08}
+  - {id: 图像滤波, name: 图像滤波, weight: 0.09}
+  - {id: 边缘检测, name: 边缘检测, weight: 0.09}
+  - {id: 特征提取, name: 特征提取, weight: 0.11}
+  - {id: 图像分割, name: 图像分割, weight: 0.1}
+  - {id: 目标检测, name: 目标检测, weight: 0.12}
+  - {id: 图像分类, name: 图像分类, weight: 0.1}
+  - {id: 目标跟踪, name: 目标跟踪, weight: 0.1}
+  - {id: 三维重建, name: 三维重建, weight: 0.1}
+  - {id: 图像生成, name: 图像生成, weight: 0.11}
+  prerequisites:
+  - [图像滤波, 图像表示]
+  - [边缘检测, 图像滤波]
+  - [特征提取, 边缘检测]
+  - [图像分割, 特征提取]
+  - [目标检测, 卷积神经网络]
+  - [图像分类, 卷积神经网络]
+  - [目标跟踪, 目标检测]
+  - [三维重建, 特征提取]
+  - [图像生成, 生成对抗网络]
+  - [图像表示, 机器学习基础]
+- course: 数字图像处理
+  category: elective
+  points:
+  - {id: 图像增强, name: 图像增强, weight: 0.14}
+  - {id: 灰度变换, name: 灰度变换, weight: 0.12}
+  - {id: 空间域滤波, name: 空间域滤波, weight: 0.14}
+  - {id: 频率域滤波, name: 频率域滤波, weight: 0.14}
+  - {id: 图像复原, name: 图像复原, weight: 0.12}
+  - {id: 图像压缩, name: 图像压缩, weight: 0.12}
+  - {id: 形态学处理, name: 形态学处理, weight: 0.11}
+  - {id: 色彩空间, name: 色彩空间, weight: 0.11}
+  prerequisites:
+  - [灰度变换, 图像增强]
+  - [空间域滤波, 灰度变换]
+  - [频率域滤波, 空间域滤波]
+  - [图像复原, 频率域滤波]
+  - [图像压缩, 频率域滤波]
+  - [形态学处理, 空间域滤波]
+  - [色彩空间, 图像增强]
+  - [图像增强, 图像表示]
+- course: 模式识别
+  category: elective
+  points:
+  - {id: 特征选择, name: 特征选择, weight: 0.12}
+  - {id: 特征降维, name: 特征降维, weight: 0.13}
+  - {id: 贝叶斯决策理论, name: 贝叶斯决策理论, weight: 0.14}
+  - {id: 判别函数, name: 判别函数, weight: 0.13}
+  - {id: 统计模式识别, name: 统计模式识别, weight: 0.13}
+  - {id: 结构模式识别, name: 结构模式识别, weight: 0.12}
+  - {id: 模板匹配, name: 模板匹配, weight: 0.11}
+  - {id: 分类器设计, name: 分类器设计, weight: 0.12}
+  prerequisites:
+  - [特征降维, 特征选择]
+  - [贝叶斯决策理论, 概率论基础]
+  - [判别函数, 贝叶斯决策理论]
+  - [统计模式识别, 判别函数]
+  - [结构模式识别, 统计模式识别]
+  - [模板匹配, 结构模式识别]
+  - [分类器设计, 判别函数]
+  - [特征选择, 机器学习基础]
+- course: 信息检索与推荐系统
+  category: elective
+  points:
+  - {id: 倒排索引, name: 倒排索引, weight: 0.13}
+  - {id: 检索模型, name: 检索模型, weight: 0.13}
+  - {id: 布尔检索, name: 布尔检索, weight: 0.11}
+  - {id: 向量空间模型, name: 向量空间模型, weight: 0.13}
+  - {id: 相关性排序, name: 相关性排序, weight: 0.12}
+  - {id: 推荐算法, name: 推荐算法, weight: 0.13}
+  - {id: 协同过滤, name: 协同过滤, weight: 0.13}
+  - {id: 推荐系统评估, name: 推荐系统评估, weight: 0.12}
+  prerequisites:
+  - [检索模型, 倒排索引]
+  - [布尔检索, 检索模型]
+  - [向量空间模型, 检索模型]
+  - [相关性排序, 向量空间模型]
+  - [推荐算法, 相关性排序]
+  - [协同过滤, 推荐算法]
+  - [推荐系统评估, 协同过滤]
+  - [倒排索引, 排序算法]
+- course: 数据挖掘与大数据
+  category: elective
+  points:
+  - {id: 数据预处理, name: 数据预处理, weight: 0.11}
+  - {id: 关联规则, name: 关联规则, weight: 0.1}
+  - {id: 分类挖掘, name: 分类挖掘, weight: 0.1}
+  - {id: 聚类挖掘, name: 聚类挖掘, weight: 0.1}
+  - {id: 离群点检测, name: 离群点检测, weight: 0.09}
+  - {id: 数据仓库, name: 数据仓库, weight: 0.1}
+  - {id: OLAP, name: OLAP, weight: 0.09}
+  - {id: MapReduce, name: MapReduce, weight: 0.11}
+  - {id: 流数据处理, name: 流数据处理, weight: 0.1}
+  - {id: 大数据存储, name: 大数据存储, weight: 0.1}
+  prerequisites:
+  - [关联规则, 数据预处理]
+  - [分类挖掘, 数据预处理]
+  - [聚类挖掘, 数据预处理]
+  - [离群点检测, 聚类挖掘]
+  - [数据仓库, 数据预处理]
+  - [OLAP, 数据仓库]
+  - [MapReduce, 大数据存储]
+  - [流数据处理, MapReduce]
+  - [数据预处理, 机器学习基础]
+- course: 人工智能安全
+  category: elective
+  points:
+  - {id: 对抗样本, name: 对抗样本, weight: 0.14}
+  - {id: 模型窃取, name: 模型窃取, weight: 0.12}
+  - {id: 数据投毒, name: 数据投毒, weight: 0.12}
+  - {id: 模型公平性, name: 模型公平性, weight: 0.13}
+  - {id: 隐私保护, name: 隐私保护, weight: 0.13}
+  - {id: 内容安全, name: 内容安全, weight: 0.12}
+  - {id: 深度伪造检测, name: 深度伪造检测, weight: 0.12}
+  - {id: AI系统安全评估, name: AI系统安全评估, weight: 0.12}
+  prerequisites:
+  - [模型窃取, 对抗样本]
+  - [数据投毒, 对抗样本]
+  - [模型公平性, 模型评估]
+  - [隐私保护, 数据投毒]
+  - [内容安全, 大语言模型基础]
+  - [深度伪造检测, 对抗样本]
+  - [AI系统安全评估, 模型公平性]
+  - [对抗样本, 卷积神经网络]
+- course: 并行计算
+  category: elective
+  points:
+  - {id: 并行算法设计, name: 并行算法设计, weight: 0.14}
+  - {id: 任务划分, name: 任务划分, weight: 0.12}
+  - {id: 负载均衡, name: 负载均衡, weight: 0.12}
+  - {id: 消息传递接口, name: 消息传递接口, weight: 0.14}
+  - {id: 共享内存编程, name: 共享内存编程, weight: 0.13}
+  - {id: OpenMP, name: OpenMP, weight: 0.11}
+  - {id: SIMD, name: SIMD, weight: 0.11}
+  - {id: 并行性能分析, name: 并行性能分析, weight: 0.13}
+  prerequisites:
+  - [并行算法设计, 并行体系结构]
+  - [任务划分, 并行算法设计]
+  - [负载均衡, 任务划分]
+  - [进程通信, 并行算法设计]
+  - [消息传递接口, 进程通信]
+  - [共享内存编程, 并行体系结构]
+  - [OpenMP, 共享内存编程]
+  - [SIMD, 并行体系结构]
+  - [并行性能分析, 消息传递接口]
+  - [并行算法设计, 分治法]
+- course: 分布式系统
+  category: elective
+  points:
+  - {id: 分布式系统模型, name: 分布式系统模型, weight: 0.1}
+  - {id: 时钟与排序, name: 时钟与排序, weight: 0.1}
+  - {id: 一致性模型, name: 一致性模型, weight: 0.11}
+  - {id: 共识算法, name: 共识算法, weight: 0.11}
+  - {id: 分布式存储, name: 分布式存储, weight: 0.1}
+  - {id: 分布式事务, name: 分布式事务, weight: 0.1}
+  - {id: 分布式锁, name: 分布式锁, weight: 0.09}
+  - {id: CAP定理, name: CAP定理, weight: 0.1}
+  - {id: 副本管理, name: 副本管理, weight: 0.09}
+  - {id: 故障容错, name: 故障容错, weight: 0.1}
+  prerequisites:
+  - [时钟与排序, 分布式系统模型]
+  - [一致性模型, 时钟与排序]
+  - [共识算法, 一致性模型]
+  - [分布式存储, 一致性模型]
+  - [分布式事务, 共识算法]
+  - [分布式锁, 一致性模型]
+  - [CAP定理, 一致性模型]
+  - [副本管理, 分布式存储]
+  - [故障容错, 副本管理]
+  - [分布式系统模型, 网络体系结构]
+- course: 云计算
+  category: elective
+  points:
+  - {id: 虚拟化技术, name: 虚拟化技术, weight: 0.14}
+  - {id: 容器技术, name: 容器技术, weight: 0.13}
+  - {id: 容器编排, name: 容器编排, weight: 0.12}
+  - {id: IaaS, name: IaaS, weight: 0.11}
+  - {id: PaaS, name: PaaS, weight: 0.1}
+  - {id: SaaS, name: SaaS, weight: 0.1}
+  - {id: 云原生架构, name: 云原生架构, weight: 0.15}
+  - {id: 边缘计算, name: 边缘计算, weight: 0.15}
+  prerequisites:
+  - [容器技术, 虚拟化技术]
+  - [容器编排, 容器技术]
+  - [IaaS, 虚拟化技术]
+  - [PaaS, IaaS]
+  - [SaaS, PaaS]
+  - [云原生架构, 容器编排]
+  - [边缘计算, 云原生架构]
+  - [虚拟化技术, 操作系统概述]
+- course: 高性能计算与GPU编程
+  category: elective
+  points:
+  - {id: CUDA编程模型, name: CUDA编程模型, weight: 0.15}
+  - {id: 内存层次优化, name: 内存层次优化, weight: 0.13}
+  - {id: 线程组织, name: 线程组织, weight: 0.12}
+  - {id: GPU并行模式, name: GPU并行模式, weight: 0.12}
+  - {id: 性能调优, name: 性能调优, weight: 0.12}
+  - {id: 异构计算, name: 异构计算, weight: 0.12}
+  - {id: 集群计算, name: 集群计算, weight: 0.12}
+  - {id: GPU编程实践, name: GPU编程实践, weight: 0.12}
+  prerequisites:
+  - [内存层次优化, CUDA编程模型]
+  - [线程组织, CUDA编程模型]
+  - [GPU并行模式, 线程组织]
+  - [性能调优, 内存层次优化]
+  - [异构计算, CUDA编程模型]
+  - [集群计算, 消息传递接口]
+  - [GPU编程实践, CUDA编程模型]
+  - [CUDA编程模型, 并行体系结构]
+- course: 嵌入式系统
+  category: elective
+  points:
+  - {id: ARM体系结构, name: ARM体系结构, weight: 0.14}
+  - {id: 交叉编译, name: 交叉编译, weight: 0.12}
+  - {id: 引导加载程序, name: 引导加载程序, weight: 0.12}
+  - {id: 实时操作系统, name: 实时操作系统, weight: 0.13}
+  - {id: 设备驱动, name: 设备驱动, weight: 0.13}
+  - {id: 中断处理, name: 中断处理, weight: 0.12}
+  - {id: 内存映射, name: 内存映射, weight: 0.12}
+  - {id: 嵌入式调试, name: 嵌入式调试, weight: 0.12}
+  prerequisites:
+  - [交叉编译, ARM体系结构]
+  - [引导加载程序, ARM体系结构]
+  - [实时操作系统, 进程调度]
+  - [设备驱动, 中断处理]
+  - [中断处理, 异常控制流]
+  - [内存映射, 虚拟内存]
+  - [嵌入式调试, 交叉编译]
+  - [ARM体系结构, 指令集设计]
+- course: 物联网技术
+  category: elective
+  points:
+  - {id: 传感器技术, name: 传感器技术, weight: 0.13}
+  - {id: 无线通信协议, name: 无线通信协议, weight: 0.13}
+  - {id: 射频识别, name: 射频识别, weight: 0.11}
+  - {id: 物联网架构, name: 物联网架构, weight: 0.13}
+  - {id: 边缘计算(物联网), name: 边缘计算, weight: 0.13}
+  - {id: 嵌入式网关, name: 嵌入式网关, weight: 0.12}
+  - {id: 物联网安全, name: 物联网安全, weight: 0.12}
+  - {id: 大数据平台对接, name: 大数据平台对接, weight: 0.13}
+  prerequisites:
+  - [无线通信协议, 传感器技术]
+  - [射频识别, 无线通信协议]
+  - [物联网架构, 无线通信协议]
+  - [边缘计算(物联网), 物联网架构]
+  - [嵌入式网关, ARM体系结构]
+  - [物联网安全, 物联网架构]
+  - [大数据平台对接, 大数据存储]
+  - [传感器技术, 嵌入式调试]
+- course: 存储技术
+  category: elective
+  points:
+  - {id: 磁盘阵列, name: 磁盘阵列, weight: 0.12}
+  - {id: 固态存储, name: 固态存储, weight: 0.13}
+  - {id: 存储虚拟化, name: 存储虚拟化, weight: 0.13}
+  - {id: 文件系统设计, name: 文件系统设计, weight: 0.13}
+  - {id: 分布式文件系统, name: 分布式文件系统, weight: 0.13}
+  - {id: 对象存储, name: 对象存储, weight: 0.12}
+  - {id: 备份与容灾, name: 备份与容灾, weight: 0.12}
+  - {id: 存储性能优化, name: 存储性能优化, weight: 0.12}
+  prerequisites:
+  - [固态存储, 磁盘阵列]
+  - [存储虚拟化, 固态存储]
+  - [文件系统设计, 存储虚拟化]
+  - [分布式文件系统, 文件系统设计]
+  - [对象存储, 分布式文件系统]
+  - [备份与容灾, 对象存储]
+  - [存储性能优化, 固态存储]
+  - [磁盘阵列, 设备管理]
+- course: 汇编与接口技术
+  category: elective
+  points:
+  - {id: 汇编语言编程, name: 汇编语言编程, weight: 0.15}
+  - {id: 寻址模式应用, name: 寻址模式应用, weight: 0.12}
+  - {id: 子程序与调用约定, name: 子程序与调用约定, weight: 0.13}
+  - {id: 外设接口, name: 外设接口, weight: 0.13}
+  - {id: 中断编程, name: 中断编程, weight: 0.12}
+  - {id: 串行通信, name: 串行通信, weight: 0.11}
+  - {id: 并行接口, name: 并行接口, weight: 0.11}
+  - {id: 接口调试, name: 接口调试, weight: 0.13}
+  prerequisites:
+  - [子程序与调用约定, 汇编语言编程]
+  - [寻址模式应用, 汇编语言编程]
+  - [外设接口, 汇编语言编程]
+  - [中断编程, 外设接口]
+  - [串行通信, 外设接口]
+  - [并行接口, 外设接口]
+  - [接口调试, 中断编程]
+  - [汇编语言编程, 汇编语言]
+- course: 密码学
+  category: elective
+  points:
+  - {id: 对称加密, name: 对称加密, weight: 0.11}
+  - {id: 非对称加密, name: 非对称加密, weight: 0.11}
+  - {id: 哈希函数, name: 哈希函数, weight: 0.1}
+  - {id: 数字签名, name: 数字签名, weight: 0.11}
+  - {id: 公钥基础设施, name: 公钥基础设施, weight: 0.1}
+  - {id: 密钥管理, name: 密钥管理, weight: 0.09}
+  - {id: 认证协议, name: 认证协议, weight: 0.1}
+  - {id: 分组密码模式, name: 分组密码模式, weight: 0.1}
+  - {id: 流密码, name: 流密码, weight: 0.08}
+  - {id: 密码分析, name: 密码分析, weight: 0.1}
+  prerequisites:
+  - [非对称加密, 数论基础]
+  - [哈希函数, 数论基础]
+  - [数字签名, 非对称加密]
+  - [公钥基础设施, 数字签名]
+  - [密钥管理, 公钥基础设施]
+  - [认证协议, 数字签名]
+  - [分组密码模式, 对称加密]
+  - [流密码, 对称加密]
+  - [密码分析, 分组密码模式]
+  - [对称加密, 组合数学初步]
+- course: 网络与系统安全
+  category: elective
+  points:
+  - {id: 网络攻击, name: 网络攻击, weight: 0.11}
+  - {id: 拒绝服务攻击, name: 拒绝服务攻击, weight: 0.1}
+  - {id: 恶意代码, name: 恶意代码, weight: 0.1}
+  - {id: 防火墙, name: 防火墙, weight: 0.1}
+  - {id: 入侵检测, name: 入侵检测, weight: 0.1}
+  - {id: VPN, name: VPN, weight: 0.09}
+  - {id: Web安全, name: Web安全, weight: 0.11}
+  - {id: 无线安全, name: 无线安全, weight: 0.09}
+  - {id: 安全协议, name: 安全协议, weight: 0.1}
+  - {id: 安全审计, name: 安全审计, weight: 0.1}
+  prerequisites:
+  - [拒绝服务攻击, 网络攻击]
+  - [恶意代码, 网络攻击]
+  - [防火墙, 网络攻击]
+  - [入侵检测, 防火墙]
+  - [VPN, IP编址]
+  - [Web安全, 应用层协议]
+  - [无线安全, MAC协议]
+  - [安全协议, 认证协议]
+  - [安全审计, 入侵检测]
+  - [网络攻击, 网络体系结构]
+- course: 软件安全与逆向工程
+  category: elective
+  points:
+  - {id: 漏洞分析, name: 漏洞分析, weight: 0.13}
+  - {id: 缓冲区溢出, name: 缓冲区溢出, weight: 0.13}
+  - {id: 格式化字符串漏洞, name: 格式化字符串漏洞, weight: 0.11}
+  - {id: 软件逆向, name: 软件逆向, weight: 0.13}
+  - {id: 反调试技术, name: 反调试技术, weight: 0.12}
+  - {id: 沙箱与隔离, name: 沙箱与隔离, weight: 0.12}
+  - {id: 二进制分析, name: 二进制分析, weight: 0.13}
+  - {id: 漏洞挖掘, name: 漏洞挖掘, weight: 0.13}
+  prerequisites:
+  - [缓冲区溢出, 漏洞分析]
+  - [格式化字符串漏洞, 漏洞分析]
+  - [软件逆向, 汇编语言]
+  - [反调试技术, 软件逆向]
+  - [沙箱与隔离, 缓冲区溢出]
+  - [二进制分析, 软件逆向]
+  - [漏洞挖掘, 二进制分析]
+  - [漏洞分析, 内存管理]
+- course: 软件测试与质量保障
+  category: elective
+  points:
+  - {id: 测试用例设计, name: 测试用例设计, weight: 0.13}
+  - {id: 单元测试, name: 单元测试, weight: 0.13}
+  - {id: 集成测试, name: 集成测试, weight: 0.12}
+  - {id: 系统测试, name: 系统测试, weight: 0.12}
+  - {id: 性能测试, name: 性能测试, weight: 0.12}
+  - {id: 自动化测试, name: 自动化测试, weight: 0.13}
+  - {id: 代码覆盖率, name: 代码覆盖率, weight: 0.12}
+  - {id: 持续集成, name: 持续集成, weight: 0.13}
+  prerequisites:
+  - [单元测试, 测试用例设计]
+  - [集成测试, 单元测试]
+  - [系统测试, 集成测试]
+  - [性能测试, 系统测试]
+  - [自动化测试, 单元测试]
+  - [代码覆盖率, 自动化测试]
+  - [持续集成, 自动化测试]
+  - [测试用例设计, 软件测试]
+- course: 编程语言原理
+  category: elective
+  points:
+  - {id: 语言范式, name: 语言范式, weight: 0.13}
+  - {id: 类型系统, name: 类型系统, weight: 0.13}
+  - {id: 作用域与绑定, name: 作用域与绑定, weight: 0.12}
+  - {id: 内存管理模型, name: 内存管理模型, weight: 0.12}
+  - {id: 函数式编程, name: 函数式编程, weight: 0.12}
+  - {id: 面向对象语言实现, name: 面向对象语言实现, weight: 0.13}
+  - {id: 语言编译与解释, name: 语言编译与解释, weight: 0.13}
+  - {id: 领域特定语言, name: 领域特定语言, weight: 0.12}
+  prerequisites:
+  - [类型系统, 语言范式]
+  - [作用域与绑定, 类型系统]
+  - [内存管理模型, 类型系统]
+  - [函数式编程, 语言范式]
+  - [面向对象语言实现, 多态]
+  - [语言编译与解释, 类型系统]
+  - [领域特定语言, 语言编译与解释]
+  - [语言范式, 文法与形式语言]
+- course: 计算复杂性理论
+  category: elective
+  points:
+  - {id: 计算模型, name: 计算模型, weight: 0.13}
+  - {id: 复杂度类, name: 复杂度类, weight: 0.13}
+  - {id: 规约与完全性, name: 规约与完全性, weight: 0.13}
+  - {id: P与NP, name: P与NP, weight: 0.13}
+  - {id: NP完全问题, name: NP完全问题, weight: 0.12}
+  - {id: 近似算法, name: 近似算法, weight: 0.12}
+  - {id: 随机算法, name: 随机算法, weight: 0.12}
+  - {id: 密码学与复杂性, name: 密码学与复杂性, weight: 0.12}
+  prerequisites:
+  - [复杂度类, 计算模型]
+  - [规约与完全性, 复杂度类]
+  - [P与NP, 规约与完全性]
+  - [NP完全问题, P与NP]
+  - [近似算法, NP完全问题]
+  - [随机算法, 复杂度类]
+  - [密码学与复杂性, P与NP]
+  - [计算模型, 图灵机]
+- course: 人机交互
+  category: elective
+  points:
+  - {id: 交互设计, name: 交互设计, weight: 0.13}
+  - {id: 可用性评估, name: 可用性评估, weight: 0.13}
+  - {id: 用户模型, name: 用户模型, weight: 0.12}
+  - {id: 界面设计原则, name: 界面设计原则, weight: 0.12}
+  - {id: 图形用户界面, name: 图形用户界面, weight: 0.13}
+  - {id: 手势与自然交互, name: 手势与自然交互, weight: 0.12}
+  - {id: 可访问性, name: 可访问性, weight: 0.12}
+  - {id: 用户体验研究, name: 用户体验研究, weight: 0.13}
+  prerequisites:
+  - [可用性评估, 交互设计]
+  - [用户模型, 交互设计]
+  - [界面设计原则, 可用性评估]
+  - [图形用户界面, 界面设计原则]
+  - [手势与自然交互, 图形用户界面]
+  - [可访问性, 界面设计原则]
+  - [用户体验研究, 可用性评估]
+  - [交互设计, 人工智能概述]
+- course: 计算机图形学
+  category: elective
+  points:
+  - {id: 图形管线, name: 图形管线, weight: 0.12}
+  - {id: 坐标变换, name: 坐标变换, weight: 0.11}
+  - {id: 光栅化, name: 光栅化, weight: 0.11}
+  - {id: 隐藏面消除, name: 隐藏面消除, weight: 0.09}
+  - {id: 光照模型, name: 光照模型, weight: 0.1}
+  - {id: 纹理映射, name: 纹理映射, weight: 0.1}
+  - {id: 曲线曲面, name: 曲线曲面, weight: 0.09}
+  - {id: 三维建模, name: 三维建模, weight: 0.1}
+  - {id: 光线追踪, name: 光线追踪, weight: 0.09}
+  - {id: 动画, name: 动画, weight: 0.09}
+  prerequisites:
+  - [坐标变换, 图形管线]
+  - [光栅化, 坐标变换]
+  - [隐藏面消除, 光栅化]
+  - [光照模型, 光栅化]
+  - [纹理映射, 光栅化]
+  - [曲线曲面, 坐标变换]
+  - [三维建模, 曲线曲面]
+  - [光线追踪, 光照模型]
+  - [动画, 三维建模]
+  - [图形管线, 线性代数基础]
+- course: 数字信号处理
+  category: elective
+  points:
+  - {id: 信号采样, name: 信号采样, weight: 0.13}
+  - {id: 离散傅里叶变换, name: 离散傅里叶变换, weight: 0.14}
+  - {id: 快速傅里叶变换, name: 快速傅里叶变换, weight: 0.13}
+  - {id: Z变换, name: Z变换, weight: 0.12}
+  - {id: 数字滤波器设计, name: 数字滤波器设计, weight: 0.13}
+  - {id: FIR滤波器, name: FIR滤波器, weight: 0.12}
+  - {id: IIR滤波器, name: IIR滤波器, weight: 0.11}
+  - {id: 频谱分析, name: 频谱分析, weight: 0.12}
+  prerequisites:
+  - [离散傅里叶变换, 信号采样]
+  - [快速傅里叶变换, 离散傅里叶变换]
+  - [Z变换, 信号采样]
+  - [数字滤波器设计, Z变换]
+  - [FIR滤波器, 数字滤波器设计]
+  - [IIR滤波器, 数字滤波器设计]
+  - [频谱分析, 快速傅里叶变换]
+  - [信号采样, 数制与编码]
+- course: 数值分析与最优化
+  category: elective
+  points:
+  - {id: 误差分析, name: 误差分析, weight: 0.13}
+  - {id: 插值法, name: 插值法, weight: 0.12}
+  - {id: 数值积分, name: 数值积分, weight: 0.12}
+  - {id: 数值微分, name: 数值微分, weight: 0.12}
+  - {id: 线性方程组求解, name: 线性方程组求解, weight: 0.13}
+  - {id: 特征值计算, name: 特征值计算, weight: 0.12}
+  - {id: 最优化方法, name: 最优化方法, weight: 0.13}
+  - {id: 迭代法收敛性, name: 迭代法收敛性, weight: 0.13}
+  prerequisites:
+  - [插值法, 误差分析]
+  - [数值积分, 插值法]
+  - [数值微分, 误差分析]
+  - [线性方程组求解, 线性代数基础]
+  - [特征值计算, 线性方程组求解]
+  - [最优化方法, 线性方程组求解]
+  - [迭代法收敛性, 最优化方法]
+  - [误差分析, 浮点数表示]
+- course: 多媒体技术
+  category: elective
+  points:
+  - {id: 音频编码, name: 音频编码, weight: 0.12}
+  - {id: 图像编码, name: 图像编码, weight: 0.13}
+  - {id: 视频编码, name: 视频编码, weight: 0.13}
+  - {id: 多媒体同步, name: 多媒体同步, weight: 0.12}
+  - {id: 流媒体传输, name: 流媒体传输, weight: 0.13}
+  - {id: 多媒体数据库, name: 多媒体数据库, weight: 0.12}
+  - {id: 音视频处理, name: 音视频处理, weight: 0.12}
+  - {id: 多媒体网络应用, name: 多媒体网络应用, weight: 0.13}
+  prerequisites:
+  - [图像编码, 图像压缩]
+  - [视频编码, 图像编码]
+  - [音频编码, 信号采样]
+  - [多媒体同步, 视频编码]
+  - [流媒体传输, 应用层协议]
+  - [多媒体数据库, 图像编码]
+  - [音视频处理, 视频编码]
+  - [多媒体网络应用, 流媒体传输]
+- course: 虚拟现实技术
+  category: elective
+  points:
+  - {id: 虚拟现实系统架构, name: 虚拟现实系统架构, weight: 0.13}
+  - {id: 立体显示, name: 立体显示, weight: 0.12}
+  - {id: 头部追踪, name: 头部追踪, weight: 0.12}
+  - {id: 手势交互, name: 手势交互, weight: 0.12}
+  - {id: 虚拟场景建模, name: 虚拟场景建模, weight: 0.13}
+  - {id: 增强现实, name: 增强现实, weight: 0.13}
+  - {id: 混合现实, name: 混合现实, weight: 0.12}
+  - {id: 虚拟现实应用开发, name: 虚拟现实应用开发, weight: 0.13}
+  prerequisites:
+  - [立体显示, 虚拟现实系统架构]
+  - [头部追踪, 虚拟现实系统架构]
+  - [手势交互, 立体显示]
+  - [虚拟场景建模, 三维建模]
+  - [增强现实, 虚拟场景建模]
+  - [混合现实, 增强现实]
+  - [虚拟现实应用开发, 虚拟场景建模]
+  - [虚拟现实系统架构, 图形管线]
