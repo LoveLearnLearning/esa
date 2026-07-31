@@ -41,6 +41,24 @@ class UpdatePreferencesRequest(BaseModel):
     custom_instruction: str | None = Field(None, max_length=500)
 
 
+# 学习档案 专业/年级/教学周/学期总周数
+# 与输出偏好分端点：GET/PATCH /me/profile
+class UserProfileOut(BaseModel):
+    major: str
+    grade: str
+    current_week: int
+    total_weeks: int
+    profile_enabled: bool
+
+
+class UpdateUserProfileRequest(BaseModel):
+    major: str | None = Field(None)
+    grade: str | None = Field(None, max_length=32)
+    current_week: int | None = Field(None, ge=1, le=30)
+    total_weeks: int | None = Field(None, ge=1, le=30)
+    profile_enabled: bool | None = Field(None)
+
+
 # 响应
 class LoginResponse(BaseModel):
     session_id: str

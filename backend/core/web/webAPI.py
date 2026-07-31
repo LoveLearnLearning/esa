@@ -65,6 +65,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(preferences.router)
+app.include_router(preferences.profile_router)
 
 
 @app.get("/")

@@ -557,3 +557,64 @@
 - 链路已通 用户改偏好 → 下次发消息 → system prompt 带上风格/语调 → 模型按规则回答
 
 - 次只做后端接口 前端按 `GET` / `PATCH /me/preferences` 对接即可
+
+## 2026-07-31 第十一次提交
+
+> 修改人：zcx
+
+实现个性化记忆系统（掌握度模型 + 知识图谱 + 学习档案 + 个性化 Skill），让 Agent 能够追踪用户知识点掌握度、推荐练习、生成学情报告、自动批改作业，并支持用户设置学习档案与个性化画像开关。
+
+### 已实现
+
+- **Task 1: KnowledgeGraphStore 知识图谱存储**
+  - 使用 YAML 外置配置文件（`data/knowledge_graph/core_courses.yaml` / `elective_courses.yaml`），分离代码与数据
+  - 覆盖 9 所高校培养方案并集，473 个知识点，439 条前置依赖边
+  - 支持知识点查询、课程过滤、前置依赖追溯、BFS 依赖树
+  - 加载器 `kg_loader.py` 统一管理 YAML 加载与格式化
+
+- **Task 2: MasteryStore 掌握度模型**
+  - 独立 SQLite 数据库 `data/mastery.db`，`user_mastery` 表以 `(user_id, kp_id)` 为主键
+  - 掌握度算法：答对 `min(95, mastery + learning_rate * (1 - mastery/100) * confidence)`，learning_rate 随练习次数衰减；答错 `max(10, mastery - 0.15 * (mastery/100) * confidence)`；50 为初值，范围 [0, 100]
+  - 惰性衰减：实时计算 `get_mastery_level`，`apply_decay` 批量固化
+  - 优先级排序：综合掌握度、知识点权重、距期末时间、前置薄弱四个因子
+  - 报告接口：`get_report`（课程级/全局）、`get_top_weak`、`get_top_strong`
+
+- **Task 3: 掌握度工具注册**
+  - `recommend_practice(course, weeks_to_exam)` — 按优先级推荐 Top5 练习知识点
+  - `get_mastery_report(course)` — 获取掌握度报告（含薄弱/较好/未练习列表）
+  - `record_answer(kp_id, correct, confidence)` — 记录练习结果
+  - 使用 `current_user` ContextVar 获取当前用户，无需模型传入 `user_id`
+  - `total_weeks` 支持从 `UserRecord` 字段注入，默认值 `UserRecord.TOTAL_WEEKS_DEFAULT = 18`
+
+- **Task 4: 学习档案字段 + REST API**
+  - `UserRecord` 新增 `major` / `grade` / `current_week` / `total_weeks` / `profile_enabled` 五个字段
+  - 数据库迁移：老库自动 `ALTER TABLE ADD COLUMN`，旧用户得默认值
+  - `GET /me/profile` — 查询学习档案
+  - `PATCH /me/profile` — 部分更新，含 `major` 枚举校验（当前支持 `cs`）、`current_week <= total_weeks` 跨字段约束
+  - `profile_enabled` 开关控制个性化画像是否注入系统提示词
+
+- **Task 5: System Prompt 升级**
+  - `build_system_prompt` 新增 `user_profile_context` 参数，非空时在"输出风格"与"核心记忆"之间插入"用户学情档案"区块
+
+- **Task 6: Agent 集成**
+  - `build_user_profile_context(user)` — 构建学情档案文本：平均掌握度、Top3 薄弱/较好知识点、教学进度、Skill 规则
+  - `profile_enabled=False` 时返回 None，不注入任何内容
+  - `_prepare_run` 注入 `set_current_total_weeks`，`run()`/`run_stream()` 透传参数
+  - `chat.py` 路由层在 `send_message` / `stream_message` 中调用 `build_user_profile_context` 并传入 Agent
+
+- **Task 7: 个性化 Skill 文档**
+  - `profile_personalization.md` — 用户画像自动加载 Skill（讲解深度三档、计算机学科身份规范、来源标注、AI 标识）
+  - `practice_recommendation.md` — 练习推荐 Skill（获取报告 → 调用工具 → 按档位讲解 → 追溯前置薄弱）
+  - `mastery_report.md` — 掌握度报告 Skill（查询范围 → 调用工具 → 结合知识图谱分析）
+  - `homework_review.md` — 作业批改 Skill（批改 → 记录结果 → 归因知识点 → 追溯前置薄弱）
+  - 4 个文档均可被 `__parse` frontmatter 解析器正确解析
+
+- **Task 8: 冒烟测试验证**
+  - 37 个用例全部通过：KnowledgeGraphStore 建表/种子/查询、MasteryStore 记录/衰减/排序/报告、工具注册确认、Skill 文件解析
+
+### 当前注意事项
+
+- Agent 完整启动检查（含 import 链 + 工具 schema + skills 列表加载）需生产环境（vllm/numpy/faiss 已装）执行
+- `total_weeks` 通过 `set_current_total_weeks()` ContextVar 注入，Agent 未设置时 fallback 到默认值 18
+- 当前 `major` 仅支持 `cs`（计算机学科），扩展新专业时需在 `preferences.py` 路由层补充枚举值
+- 知识图谱种子数据路径为 `backend/agent/memories/data/knowledge_graph/`，`seed_knowledge_graph.py` 在首次导入时自动加载

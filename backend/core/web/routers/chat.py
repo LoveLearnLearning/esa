@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
-from backend.agent.agent import Agent
+from backend.agent.agent import Agent, build_user_profile_context
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
@@ -131,6 +131,8 @@ async def send_message(
         [user_message],
     )
 
+    user_profile_context = build_user_profile_context(user)
+
     new_messages: list[dict] = await agent.run(
         body.content,
         user.username,
@@ -138,6 +140,8 @@ async def send_message(
         preferred_style=user.preferred_style,
         preferred_tone=user.preferred_tone,
         custom_instruction=user.custom_instruction,
+        user_profile_context=user_profile_context,
+        total_weeks=user.total_weeks,
     )
 
     generated_messages: list[dict] = new_messages[1:]
@@ -188,6 +192,8 @@ async def stream_message(
         [user_message],
     )
 
+    user_profile_context = build_user_profile_context(user)
+
     async def event_stream() -> AsyncIterator[str]:
         yield encode_sse(
             "start",
@@ -204,6 +210,8 @@ async def stream_message(
                 preferred_style=user.preferred_style,
                 preferred_tone=user.preferred_tone,
                 custom_instruction=user.custom_instruction,
+                user_profile_context=user_profile_context,
+                total_weeks=user.total_weeks,
             ):
                 if agent_event.event == "complete":
                     new_messages = agent_event.data["messages"]

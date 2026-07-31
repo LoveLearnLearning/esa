@@ -46,6 +46,7 @@ def build_system_prompt(
     preferred_style: str = "concise",
     preferred_tone: str = "friendly",
     custom_instruction: str = "",
+    user_profile_context: str | None = None,
 ) -> str:
     core_memory = core_memory or "暂无核心记忆"
     temp_memory = temp_memory or "暂无临时记忆"
@@ -63,6 +64,13 @@ def build_system_prompt(
     if custom_instruction.strip():
         style_section += f"\n用户补充要求  {custom_instruction.strip()}"
 
+    # 用户学情档案区块
+    profile_section = (
+        f"# 用户学情档案\n\n{user_profile_context.strip()}\n"
+        if user_profile_context and user_profile_context.strip()
+        else ""
+    )
+
     return f"""
 {SYSTEM_PROMPT.strip()}
 
@@ -72,6 +80,7 @@ def build_system_prompt(
 
 {style_section}
 
+{profile_section}
 # 核心记忆
 
 {core_memory}

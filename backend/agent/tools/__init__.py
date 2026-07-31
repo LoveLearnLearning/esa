@@ -5,6 +5,7 @@ from backend.agent.tools import (
     bitwise_calculator,  # noqa: E402, F401
     calculator,  # noqa: E402, F401
     math_solver,  # noqa: E402, F401
+    mastery_tools,  # noqa: E402, F401
     memory_tools,  # noqa: E402, F401
     skills,  # noqa: E402, F401
     web_search,  # noqa: E402, F401

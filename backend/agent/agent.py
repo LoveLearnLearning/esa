@@ -11,14 +11,80 @@ from vllm.model_executor.layers.quantization import QuantizationMethods
 from backend.agent.memories.temp_memory import TempMemory
 from backend.agent.tools import tr
 from backend.agent.tools.memory_tools import core_memory, set_current_user
-from backend.agent.tools.skills import build_skills_context
+from backend.agent.tools.mastery_tools import (
+    kg_store,
+    mastery_store,
+    set_current_total_weeks,
+)
+from backend.agent.tools.skills import build_skills_context, load_skill
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.services.vllm_service import LLMProvider
 from backend.core.utils.config import DEBUG_MODE
-from backend.core.utils.models import AgentStreamEvent, ParsedOutput, ToolCall
+from backend.core.utils.models import AgentStreamEvent, ParsedOutput, ToolCall, UserRecord
 from backend.core.utils.parser import parse_output
 
 ROOT_PATH: Path = Path.cwd().parent
+
+
+def build_user_profile_context(
+    user: UserRecord,
+) -> str | None:
+    """构建用户学情档案文本
+
+    检查 user.profile_enabled：
+      - False 时返回 None，Agent 不注入学情档案
+      - True 时返回含掌握度概况 + 教学进度 + profile_personalization skill 内容的文本
+
+    Args:
+        user: UserRecord => 当前用户数据对象（含 profile_enabled/current_week/total_weeks）
+
+    Returns:
+        str | None => 学情档案文本（非空时由 _prepare_run 注入 build_system_prompt）
+    """
+    if not user.profile_enabled:
+        return None
+
+    # 获取全局掌握度报告
+    report = mastery_store.get_report(
+        user_id=user.username,
+        kg_store=kg_store,
+    )
+
+    parts: list[str] = []
+
+    # 掌握度概况
+    if report["total_points"] > 0:
+        parts.append(
+            f"掌握度概况: 平均掌握度 {report['avg_mastery']:.0f}"
+        )
+
+        if report["weak_points"]:
+            wp = "  ".join(
+                f"{p['name']}({p['mastery_level']:.0f})"
+                for p in report["weak_points"][:3]
+            )
+            parts.append(f"薄弱知识点: {wp}")
+
+        if report["strong_points"]:
+            sp = "  ".join(
+                f"{p['name']}({p['mastery_level']:.0f})"
+                for p in report["strong_points"][:3]
+            )
+            parts.append(f"掌握较好知识点: {sp}")
+    else:
+        parts.append("暂无掌握度数据  开始练习后可生成学情档案")
+
+    # 教学进度
+    parts.append(
+        f"教学进度: 第 {user.current_week} 周 / 共 {user.total_weeks} 周"
+    )
+
+    # 加载 profile_personalization skill 内容（学科身份/讲解深度/来源标注/AI 标识规则）
+    skill_body = load_skill("profile_personalization")
+    if skill_body and "skill not found" not in skill_body:
+        parts.append(skill_body)
+
+    return "\n\n".join(parts)
 
 
 class Agent:
@@ -55,8 +121,13 @@ class Agent:
         preferred_style: str = "concise",
         preferred_tone: str = "friendly",
         custom_instruction: str = "",
+        user_profile_context: str | None = None,
+        total_weeks: int | None = None,
     ) -> tuple[list[dict], list[dict]]:
         set_current_user(user_name)
+
+        if total_weeks is not None:
+            set_current_total_weeks(total_weeks)
 
         temp_context = (
             "历史消息已由 messages 提供"
@@ -74,6 +145,7 @@ class Agent:
             preferred_style=preferred_style,
             preferred_tone=preferred_tone,
             custom_instruction=custom_instruction,
+            user_profile_context=user_profile_context,
         )
 
         user_message = {
@@ -113,6 +185,8 @@ class Agent:
         preferred_style: str = "concise",
         preferred_tone: str = "friendly",
         custom_instruction: str = "",
+        user_profile_context: str | None = None,
+        total_weeks: int | None = None,
     ) -> list[dict]:
         """运行一轮对话
         Args:
@@ -124,6 +198,8 @@ class Agent:
             preferred_style: str = "concise"  => 输出风格
             preferred_tone: str = "friendly"  => 输出语调
             custom_instruction: str = ""      => 用户自定义指令
+            user_profile_context: str | None  => 用户学情档案文本（含掌握度+教学进度+skill 规则）
+            total_weeks: int | None           => 学期总周数 用于 set_current_total_weeks
 
         Returns:
             list[dict] => 本轮新产生的消息 (用户输入 + 助手回复 + 工具结果)
@@ -137,6 +213,8 @@ class Agent:
             preferred_style=preferred_style,
             preferred_tone=preferred_tone,
             custom_instruction=custom_instruction,
+            user_profile_context=user_profile_context,
+            total_weeks=total_weeks,
         )
 
         for _ in range(self.loop_times):
@@ -235,6 +313,8 @@ class Agent:
         preferred_style: str = "concise",
         preferred_tone: str = "friendly",
         custom_instruction: str = "",
+        user_profile_context: str | None = None,
+        total_weeks: int | None = None,
     ) -> AsyncIterator[AgentStreamEvent]:
         messages, new_messages = self._prepare_run(
             input,
@@ -243,6 +323,8 @@ class Agent:
             preferred_style=preferred_style,
             preferred_tone=preferred_tone,
             custom_instruction=custom_instruction,
+            user_profile_context=user_profile_context,
+            total_weeks=total_weeks,
         )
 
         for _ in range(self.loop_times):
