@@ -2,6 +2,7 @@
 
 
 import asyncio
+import sqlite3
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -159,6 +160,34 @@ async def stream_message(
 ) -> StreamingResponse:
     _load_owned(request, conversation_id, session)
 
+    chat_store: ChatStore = request.app.state.chat_store
+    user_store: UserStore = request.app.state.user_store
+    agent: Agent = request.app.state.agent
+
+    user: UserRecord | None = user_store.get_by_id(session.user_id)
+
+    if user is None:
+        session_store: SessionStore = request.app.state.session_store
+        session_store.revoke(session.session_id)
+
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "用户不存在",
+        )
+
+    history: list[dict] = chat_store.get_model_messages(conversation_id)
+
+    user_message: dict = {
+        "role": "user",
+        "content": body.content,
+        "is_visible": True,
+    }
+
+    chat_store.append_messages(
+        conversation_id,
+        [user_message],
+    )
+
     async def event_stream() -> AsyncIterator[str]:
         yield encode_sse(
             "start",
@@ -168,22 +197,46 @@ async def stream_message(
         )
 
         try:
-            yield encode_sse(
-                "content",
-                {
-                    "delta": "部分文本",
-                },
-            )
-            yield encode_sse("done", {})
+            async for agent_event in agent.run_stream(
+                body.content,
+                user.username,
+                history=history,
+                preferred_style=user.preferred_style,
+                preferred_tone=user.preferred_tone,
+                custom_instruction=user.custom_instruction,
+            ):
+                if agent_event.event == "complete":
+                    new_messages = agent_event.data["messages"]
 
+                    generated_messages = new_messages[1:]
+
+                    if generated_messages:
+                        chat_store.append_messages(
+                            conversation_id,
+                            generated_messages,
+                        )
+
+                    yield encode_sse(
+                        "done",
+                        {
+                            "conversation_id": conversation_id,
+                        },
+                    )
+                    break
+
+                yield encode_sse(
+                    agent_event.event,
+                    agent_event.data,
+                )
         except asyncio.CancelledError:
             raise
 
-        except Exception:
+        except (RuntimeError, ValueError, KeyError, sqlite3.Error) as error:
             yield encode_sse(
                 "error",
                 {
                     "detail": "生成回复失败",
+                    "type": type(error).__name__,
                 },
             )
 

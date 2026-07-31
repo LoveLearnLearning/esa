@@ -265,7 +265,7 @@ class Agent:
 
                 if reasoning:
                     yield AgentStreamEvent(
-                        event="reasoing",
+                        event="reasoning",
                         data={"delta": reasoning},
                     )
 
