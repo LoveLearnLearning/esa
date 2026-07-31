@@ -20,3 +20,6 @@ httpx
 numpy
 sentence-transformers
 rank-bm25
+
+# KHG
+pyyaml
