@@ -36,7 +36,6 @@ class UserPreferencesOut(BaseModel):
 
 
 class UpdatePreferencesRequest(BaseModel):
-    # 全部可选 只传想改的字段
     preferred_style: str | None = Field(None)
     preferred_tone: str | None = Field(None)
     custom_instruction: str | None = Field(None, max_length=500)
