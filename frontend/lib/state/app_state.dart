@@ -225,51 +225,6 @@ class AppState extends ChangeNotifier {
   }
 
   // ============ 发送消息 ============
-  Future<void> _appendAssistantProgressively(
-    List<ChatMessage> list,
-    ChatMessage source,
-  ) async {
-    final streamed = ChatMessage(
-      id: source.id,
-      role: source.role,
-      name: source.name,
-      createdAt: source.createdAt,
-      typing: true,
-    );
-
-    list.add(streamed);
-    notifyListeners();
-
-    const chunkSize = 3;
-
-    Future<void> appendProgressively(
-      String sourceText,
-      void Function(String chunk) append,
-    ) async {
-      final characters = sourceText.runes.map(String.fromCharCode).toList();
-
-      for (var i = 0; i < characters.length; i += chunkSize) {
-        final end = i + chunkSize < characters.length
-            ? i + chunkSize
-            : characters.length;
-
-        append(characters.sublist(i, end).join());
-        notifyListeners();
-
-        await Future<void>.delayed(const Duration(milliseconds: 25));
-      }
-    }
-
-    await appendProgressively(
-      source.reasoning,
-      (chunk) => streamed.reasoning += chunk,
-    );
-    await appendProgressively(source.text, (chunk) => streamed.text += chunk);
-
-    streamed.typing = false;
-    notifyListeners();
-  }
-
   Future<void> send(String text, {bool markdown = false}) async {
     final input = text.trim();
     if (input.isEmpty || busy) return;
@@ -291,27 +246,20 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final newMsgs = await api.sendMessage(id, input);
-      list.remove(placeholder);
-      notifyListeners();
-
-      // 后端返回里包含用户消息本身 已乐观添加过 这里跳过
-      final responseMessages = newMsgs.where(
-        (message) => message.role != MessageRole.user,
-      );
-
-      for (final message in responseMessages) {
-        if (streamOn &&
-            message.role == MessageRole.assistant &&
-            (message.text.isNotEmpty || message.reasoning.isNotEmpty)) {
-          await _appendAssistantProgressively(list, message);
-        } else {
-          list.add(message);
-          notifyListeners();
-        }
+      if (streamOn) {
+        await _receiveStream(id, input, list, placeholder);
+      } else {
+        final newMsgs = await api.sendMessage(id, input);
+        list.remove(placeholder);
+        list.addAll(newMsgs.where((message) => !message.isUser));
+        notifyListeners();
       }
     } catch (e) {
-      list.remove(placeholder);
+      if (placeholder.text.isEmpty && placeholder.reasoning.isEmpty) {
+        list.remove(placeholder);
+      } else {
+        placeholder.typing = false;
+      }
       if (_handled401(e)) return;
       final detail = e is ApiException ? e.detail : '无法连接服务器 请检查后端是否启动';
       list.add(
@@ -324,6 +272,54 @@ class AppState extends ChangeNotifier {
     } finally {
       busy = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _receiveStream(
+    String conversationId,
+    String input,
+    List<ChatMessage> list,
+    ChatMessage assistant,
+  ) async {
+    var completed = false;
+
+    await for (final event in api.streamMessage(conversationId, input)) {
+      switch (event.event) {
+        case 'start':
+          break;
+        case 'reasoning':
+          assistant.reasoning += event.data['delta'] as String? ?? '';
+          notifyListeners();
+        case 'content':
+          assistant.text += event.data['delta'] as String? ?? '';
+          notifyListeners();
+        case 'tool':
+          // 工具结果应位于最终助手回复之前。
+          list.remove(assistant);
+          list.add(
+            ChatMessage(
+              id: DateTime.now().microsecondsSinceEpoch.toString(),
+              role: MessageRole.tool,
+              name: event.data['name'] as String?,
+              text: event.data['content']?.toString() ?? '',
+            ),
+          );
+          list.add(assistant);
+          notifyListeners();
+        case 'done':
+          completed = true;
+          assistant.typing = false;
+          if (assistant.text.isEmpty && assistant.reasoning.isEmpty) {
+            list.remove(assistant);
+          }
+          notifyListeners();
+        case 'error':
+          throw ApiException(500, event.data['detail'] as String? ?? '生成回复失败');
+      }
+    }
+
+    if (!completed) {
+      throw ApiException(500, '流式连接意外中断');
     }
   }
 

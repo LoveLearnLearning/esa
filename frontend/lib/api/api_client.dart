@@ -23,6 +23,14 @@ class ApiException implements Exception {
   String toString() => detail;
 }
 
+/// `/messages/stream` 返回的一条 SSE 事件。
+class ChatStreamEvent {
+  const ChatStreamEvent(this.event, this.data);
+
+  final String event;
+  final Map<String, dynamic> data;
+}
+
 class ApiClient {
   ApiClient({String? baseUrl})
     : baseUrl =
@@ -204,6 +212,76 @@ class ApiClient {
     return list
         .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+    if (kOfflineMode) {
+      final messages = await _offlineSend(id, content);
+      yield const ChatStreamEvent('start', {});
+      for (final message in messages) {
+        if (message.isTool) {
+          yield ChatStreamEvent('tool', {
+            'name': message.name,
+            'content': message.text,
+          });
+        } else if (!message.isUser) {
+          if (message.reasoning.isNotEmpty) {
+            yield ChatStreamEvent('reasoning', {'delta': message.reasoning});
+          }
+          if (message.text.isNotEmpty) {
+            yield ChatStreamEvent('content', {'delta': message.text});
+          }
+        }
+      }
+      yield const ChatStreamEvent('done', {});
+      return;
+    }
+
+    final request =
+        http.Request('POST', _uri('/conversations/$id/messages/stream'))
+          ..headers.addAll(_headers(auth: true))
+          ..body = jsonEncode({'content': content});
+
+    final response = await request.send();
+    if (response.statusCode != 200) {
+      final bytes = await response.stream.toBytes();
+      _fail(http.Response.bytes(bytes, response.statusCode));
+    }
+
+    String eventName = 'message';
+    final dataLines = <String>[];
+
+    await for (final line
+        in response.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())) {
+      if (line.isEmpty) {
+        if (dataLines.isNotEmpty) {
+          final decoded = jsonDecode(dataLines.join('\n'));
+          if (decoded is Map<String, dynamic>) {
+            yield ChatStreamEvent(eventName, decoded);
+          }
+        }
+        eventName = 'message';
+        dataLines.clear();
+        continue;
+      }
+
+      if (line.startsWith(':')) continue;
+      if (line.startsWith('event:')) {
+        eventName = line.substring('event:'.length).trim();
+      } else if (line.startsWith('data:')) {
+        dataLines.add(line.substring('data:'.length).trimLeft());
+      }
+    }
+
+    // 兼容服务端关闭连接前没有再发送空行的情况。
+    if (dataLines.isNotEmpty) {
+      final decoded = jsonDecode(dataLines.join('\n'));
+      if (decoded is Map<String, dynamic>) {
+        yield ChatStreamEvent(eventName, decoded);
+      }
+    }
   }
 
   // ==================== 离线模式实现 ====================
