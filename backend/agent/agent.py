@@ -46,7 +46,7 @@ def build_user_profile_context(
 
     # 获取全局掌握度报告
     report = mastery_store.get_report(
-        user_id=user.username,
+        user_name=user.username,
         kg_store=kg_store,
     )
 

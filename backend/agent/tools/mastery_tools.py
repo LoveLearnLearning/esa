@@ -6,7 +6,7 @@
 #   - record_answer:      记录一次练习结果并更新掌握度
 #
 # 设计决策：
-#   1. 工具签名不含 user_id 参数，从 memory_tools.current_user ContextVar 获取
+#   1. 工具签名不含 user_name 参数，从 memory_tools.current_user ContextVar 获取
 #      与 save_core_memory 等现有工具一致，避免 Agent 被诱导跨用户写库
 #   2. 模块级实例化 MasteryStore + KnowledgeGraphStore，数据库路径与 core_memory.db
 #      对齐到 memories/data/，便于统一备份与迁移
@@ -148,19 +148,19 @@ def recommend_practice(
 
     Returns:
         dict => {
-            user_id, course, count, recommendations: [
+            user_name, course, count, recommendations: [
                 {kp_id, name, course, weight, mastery_level,
                  practice_count, priority, reasons, weak_prerequisites}
             ]
         }
     """
-    user_id = get_current_user()
+    user_name = get_current_user()
 
     # 学期总周数：优先用 Agent 注入的当前用户值，否则用系统默认值
     total_weeks = current_total_weeks.get() or UserRecord.TOTAL_WEEKS_DEFAULT
 
     ranking = mastery_store.get_priority_ranking(
-        user_id=user_id,
+        user_name=user_name,
         course=course,
         weeks_to_exam=weeks_to_exam,
         total_weeks=total_weeks,
@@ -169,7 +169,7 @@ def recommend_practice(
 
     if not ranking:
         return {
-            "user_id": user_id,
+            "user_name": user_name,
             "course": course,
             "count": 0,
             "recommendations": [],
@@ -180,7 +180,7 @@ def recommend_practice(
     recommendations: list[dict[str, Any]] = []
     for point in ranking[:5]:
         weak_prereqs = mastery_store.get_weak_prerequisites(
-            user_id=user_id,
+            user_name=user_name,
             kp_id=point["kp_id"],
             kg_store=kg_store,
         )
@@ -205,7 +205,7 @@ def recommend_practice(
         )
 
     return {
-        "user_id": user_id,
+        "user_name": user_name,
         "course": course,
         "count": len(recommendations),
         "recommendations": recommendations,
@@ -244,15 +244,15 @@ def get_mastery_report(course: str = "") -> dict[str, Any]:
         course: str = ""   => 课程名 留空返回全部
 
     Returns:
-        dict => {user_id, course, total_points, avg_mastery,
+        dict => {user_name, course, total_points, avg_mastery,
                  weak_points, strong_points, stale_points}
     """
-    user_id = get_current_user()
+    user_name = get_current_user()
 
     course_arg = course.strip() if course else None
 
     return mastery_store.get_report(
-        user_id=user_id,
+        user_name=user_name,
         course=course_arg,
         kg_store=kg_store,
     )
@@ -309,13 +309,13 @@ def record_answer(
         confidence: float = 1.0   => 答题置信度 0.0-1.0
 
     Returns:
-        dict => {user_id, kp_id, mastery_level, practice_count,
+        dict => {user_name, kp_id, mastery_level, practice_count,
                  correct_count, last_practiced_at}
     """
-    user_id = get_current_user()
+    user_name = get_current_user()
 
     return mastery_store.record_answer(
-        user_id=user_id,
+        user_name=user_name,
         kp_id=kp_id,
         correct=correct,
         confidence=confidence,

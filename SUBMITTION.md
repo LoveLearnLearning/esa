@@ -573,7 +573,7 @@
   - 加载器 `kg_loader.py` 统一管理 YAML 加载与格式化
 
 - **Task 2: MasteryStore 掌握度模型**
-  - 独立 SQLite 数据库 `data/mastery.db`，`user_mastery` 表以 `(user_id, kp_id)` 为主键
+  - 独立 SQLite 数据库 `data/mastery.db`，`user_mastery` 表以 `(user_name, kp_id)` 为主键
   - 掌握度算法：答对 `min(95, mastery + learning_rate * (1 - mastery/100) * confidence)`，learning_rate 随练习次数衰减；答错 `max(10, mastery - 0.15 * (mastery/100) * confidence)`；50 为初值，范围 [0, 100]
   - 惰性衰减：实时计算 `get_mastery_level`，`apply_decay` 批量固化
   - 优先级排序：综合掌握度、知识点权重、距期末时间、前置薄弱四个因子
@@ -583,7 +583,7 @@
   - `recommend_practice(course, weeks_to_exam)` — 按优先级推荐 Top5 练习知识点
   - `get_mastery_report(course)` — 获取掌握度报告（含薄弱/较好/未练习列表）
   - `record_answer(kp_id, correct, confidence)` — 记录练习结果
-  - 使用 `current_user` ContextVar 获取当前用户，无需模型传入 `user_id`
+  - 使用 `current_user` ContextVar 获取当前用户名，无需模型传入用户标识
   - `total_weeks` 支持从 `UserRecord` 字段注入，默认值 `UserRecord.TOTAL_WEEKS_DEFAULT = 18`
 
 - **Task 4: 学习档案字段 + REST API**

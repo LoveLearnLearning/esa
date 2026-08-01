@@ -74,7 +74,7 @@ class MasteryStore:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_mastery (
-                    user_id TEXT NOT NULL,
+                    user_name TEXT NOT NULL,
                     kp_id TEXT NOT NULL,
                     mastery_level REAL NOT NULL DEFAULT 50.0,
                     practice_count INTEGER NOT NULL DEFAULT 0,
@@ -83,10 +83,20 @@ class MasteryStore:
                     last_decay_at TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    PRIMARY KEY (user_id, kp_id)
+                    PRIMARY KEY (user_name, kp_id)
                 )
                 """
             )
+
+            # 旧库迁移: 早期版本列名为 user_id(实际存用户名) 统一改为 user_name
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(user_mastery)").fetchall()
+            }
+            if "user_id" in columns and "user_name" not in columns:
+                connection.execute(
+                    "ALTER TABLE user_mastery RENAME COLUMN user_id TO user_name"
+                )
 
     @staticmethod
     def __now_iso() -> str:
@@ -173,33 +183,33 @@ class MasteryStore:
 
     def get(
         self,
-        user_id: str,
+        user_name: str,
         kp_id: str,
     ) -> dict | None:
         """获取数据库中单条掌握度记录 不存在返回 None
 
         Args:
-            user_id: str  => 用户 id
+            user_name: str  => 用户名称
             kp_id: str    => 知识点 id
 
         Returns:
             dict | None   => 记录字典 含 mastery_level(已衰减) practice_count correct_count last_practiced_at
         """
-        user_id = user_id.strip()
+        user_name = user_name.strip()
         kp_id = kp_id.strip()
 
-        if not user_id or not kp_id:
+        if not user_name or not kp_id:
             return None
 
         with self.__connect() as connection:
             row = connection.execute(
                 """
-                SELECT user_id, kp_id, mastery_level, practice_count, correct_count,
+                SELECT user_name, kp_id, mastery_level, practice_count, correct_count,
                        last_practiced_at, last_decay_at, created_at, updated_at
                 FROM user_mastery
-                WHERE user_id = ? AND kp_id = ?
+                WHERE user_name = ? AND kp_id = ?
                 """,
-                (user_id, kp_id),
+                (user_name, kp_id),
             ).fetchone()
 
         if row is None:
@@ -214,7 +224,7 @@ class MasteryStore:
         )
 
         return {
-            "user_id": row["user_id"],
+            "user_name": row["user_name"],
             "kp_id": row["kp_id"],
             "mastery_level": round(decayed, 2),
             "practice_count": row["practice_count"],
@@ -226,19 +236,19 @@ class MasteryStore:
 
     def get_mastery_level(
         self,
-        user_id: str,
+        user_name: str,
         kp_id: str,
     ) -> float:
         """获取某知识点的掌握度 不存在返回默认值 50.0
 
         Args:
-            user_id: str  => 用户 id
+            user_name: str  => 用户名称
             kp_id: str    => 知识点 id
 
         Returns:
             float         => 掌握度 10-95 不存在返回 50.0
         """
-        record = self.get(user_id, kp_id)
+        record = self.get(user_name, kp_id)
 
         if record is None:
             return self.DEFAULT_MASTERY
@@ -247,7 +257,7 @@ class MasteryStore:
 
     def record_answer(
         self,
-        user_id: str,
+        user_name: str,
         kp_id: str,
         correct: bool,
         confidence: float = 1.0,
@@ -261,7 +271,7 @@ class MasteryStore:
             confidence 模拟 BKT 的 P(S) 低置信度答错减幅打折
 
         Args:
-            user_id: str        => 用户 id
+            user_name: str        => 用户名称
             kp_id: str          => 知识点 id
             correct: bool       => 是否答对
             confidence: float   => 答题置信度 0.0-1.0
@@ -271,13 +281,13 @@ class MasteryStore:
         Returns:
             dict                => 更新后的记录 含 mastery_level practice_count correct_count
         """
-        user_id = user_id.strip()
+        user_name = user_name.strip()
         kp_id = kp_id.strip()
         confidence = max(0.0, min(1.0, confidence))
 
-        if not user_id or not kp_id:
+        if not user_name or not kp_id:
             return {
-                "user_id": user_id,
+                "user_name": user_name,
                 "kp_id": kp_id,
                 "mastery_level": self.DEFAULT_MASTERY,
                 "practice_count": 0,
@@ -293,9 +303,9 @@ class MasteryStore:
                 SELECT mastery_level, practice_count, correct_count,
                        last_practiced_at, last_decay_at
                 FROM user_mastery
-                WHERE user_id = ? AND kp_id = ?
+                WHERE user_name = ? AND kp_id = ?
                 """,
-                (user_id, kp_id),
+                (user_name, kp_id),
             ).fetchone()
 
             if row is None:
@@ -353,7 +363,7 @@ class MasteryStore:
                         last_practiced_at = ?,
                         last_decay_at = ?,
                         updated_at = ?
-                    WHERE user_id = ? AND kp_id = ?
+                    WHERE user_name = ? AND kp_id = ?
                     """,
                     (
                         round(mastery, 4),
@@ -362,7 +372,7 @@ class MasteryStore:
                         last_practiced_at,
                         last_decay_at,
                         now_iso,
-                        user_id,
+                        user_name,
                         kp_id,
                     ),
                 )
@@ -371,12 +381,12 @@ class MasteryStore:
                 connection.execute(
                     """
                     INSERT INTO user_mastery
-                        (user_id, kp_id, mastery_level, practice_count, correct_count,
+                        (user_name, kp_id, mastery_level, practice_count, correct_count,
                          last_practiced_at, last_decay_at, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        user_id,
+                        user_name,
                         kp_id,
                         round(mastery, 4),
                         practice_count,
@@ -389,7 +399,7 @@ class MasteryStore:
                 )
 
         return {
-            "user_id": user_id,
+            "user_name": user_name,
             "kp_id": kp_id,
             "mastery_level": round(mastery, 2),
             "practice_count": practice_count,
@@ -399,7 +409,7 @@ class MasteryStore:
 
     def apply_decay(
         self,
-        user_id: str,
+        user_name: str,
     ) -> int:
         """对某用户的所有掌握度记录执行衰减固化
 
@@ -407,14 +417,14 @@ class MasteryStore:
         适用于定期任务 如每日凌晨批量衰减
 
         Args:
-            user_id: str  => 用户 id
+            user_name: str  => 用户名称
 
         Returns:
             int           => 实际衰减的记录数
         """
-        user_id = user_id.strip()
+        user_name = user_name.strip()
 
-        if not user_id:
+        if not user_name:
             return 0
 
         now_iso = self.__now_iso()
@@ -425,9 +435,9 @@ class MasteryStore:
                 """
                 SELECT kp_id, mastery_level, practice_count, last_practiced_at, last_decay_at
                 FROM user_mastery
-                WHERE user_id = ?
+                WHERE user_name = ?
                 """,
-                (user_id,),
+                (user_name,),
             ).fetchall()
 
             for row in rows:
@@ -448,13 +458,13 @@ class MasteryStore:
                     SET mastery_level = ?,
                         last_decay_at = ?,
                         updated_at = ?
-                    WHERE user_id = ? AND kp_id = ?
+                    WHERE user_name = ? AND kp_id = ?
                     """,
                     (
                         round(decayed, 4),
                         now_iso,
                         now_iso,
-                        user_id,
+                        user_name,
                         row["kp_id"],
                     ),
                 )
@@ -464,86 +474,79 @@ class MasteryStore:
 
     def get_top_weak(
         self,
-        user_id: str,
+        user_name: str,
         k: int = 3,
     ) -> list[dict]:
         """获取用户掌握度最低的 k 个知识点
 
         Args:
-            user_id: str   => 用户 id
+            user_name: str   => 用户名称
             k: int = 3     => 返回数量
 
         Returns:
             list[dict]     => 掌握度升序列表 含 kp_id mastery_level practice_count last_practiced_at
         """
-        user_id = user_id.strip()
-
-        if not user_id or k <= 0:
-            return []
-
-        with self.__connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT kp_id, mastery_level, practice_count, correct_count,
-                       last_practiced_at, last_decay_at
-                FROM user_mastery
-                WHERE user_id = ?
-                ORDER BY mastery_level ASC, kp_id ASC
-                LIMIT ?
-                """,
-                (user_id, k),
-            ).fetchall()
-
-        results = []
-        for row in rows:
-            decayed = self.__compute_decayed_mastery(
-                row["mastery_level"],
-                row["last_practiced_at"],
-                row["last_decay_at"],
-                row["practice_count"],
-            )
-            results.append(
-                {
-                    "kp_id": row["kp_id"],
-                    "mastery_level": round(decayed, 2),
-                    "practice_count": row["practice_count"],
-                    "correct_count": row["correct_count"],
-                    "last_practiced_at": row["last_practiced_at"],
-                }
-            )
-
-        return results
+        return self.__query_top_points(
+            user_name=user_name,
+            k=k,
+            ascending=True,
+        )
 
     def get_top_strong(
         self,
-        user_id: str,
+        user_name: str,
         k: int = 3,
     ) -> list[dict]:
         """获取用户掌握度最高的 k 个知识点
 
         Args:
-            user_id: str   => 用户 id
+            user_name: str   => 用户名称
             k: int = 3     => 返回数量
 
         Returns:
             list[dict]     => 掌握度降序列表
         """
-        user_id = user_id.strip()
+        return self.__query_top_points(
+            user_name=user_name,
+            k=k,
+            ascending=False,
+        )
 
-        if not user_id or k <= 0:
+    def __query_top_points(
+        self,
+        user_name: str,
+        k: int,
+        ascending: bool,
+    ) -> list[dict]:
+        """查询掌握度最低或最高的 k 个知识点
+
+        Args:
+            user_name: str      => 用户名称
+            k: int            => 返回数量
+            ascending: bool   => True 按掌握度升序(最弱) False 按降序(最强)
+
+        Returns:
+            list[dict]        => 知识点列表 含 kp_id mastery_level practice_count correct_count last_practiced_at
+        """
+        user_name = user_name.strip()
+
+        if not user_name or k <= 0:
             return []
+
+        # order 仅来自布尔参数的两个固定常量 无注入风险
+        order = "ASC" if ascending else "DESC"
 
         with self.__connect() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT kp_id, mastery_level, practice_count, correct_count,
                        last_practiced_at, last_decay_at
                 FROM user_mastery
-                WHERE user_id = ?
-                ORDER BY mastery_level DESC, kp_id ASC
+                WHERE user_name = ?
+                ORDER BY mastery_level {order}, kp_id ASC
                 LIMIT ?
                 """,
-                (user_id, k),
+                (user_name, k),
             ).fetchall()
 
         results = []
@@ -568,28 +571,28 @@ class MasteryStore:
 
     def get_report(
         self,
-        user_id: str,
+        user_name: str,
         course: str | None = None,
         kg_store=None,
     ) -> dict:
         """获取用户掌握度报告
 
         Args:
-            user_id: str          => 用户 id
+            user_name: str          => 用户名称
             course: str | None    => 课程名 None 表示全部
             kg_store: KnowledgeGraphStore | None => 知识图谱数据层 course 非空时必需
 
         Returns:
             dict                  => 报告:
-                user_id, course, total_points, avg_mastery
+                user_name, course, total_points, avg_mastery
                 weak_points (掌握度最低 5 个)
                 strong_points (掌握度最高 5 个)
                 stale_points (超过 7 天未练习)
         """
-        user_id = user_id.strip()
+        user_name = user_name.strip()
 
         empty = {
-            "user_id": user_id,
+            "user_name": user_name,
             "course": course,
             "total_points": 0,
             "avg_mastery": 0.0,
@@ -598,7 +601,7 @@ class MasteryStore:
             "stale_points": [],
         }
 
-        if not user_id:
+        if not user_name:
             return empty
 
         # 若指定课程 从 kg_store 获取该课程知识点 id 集合
@@ -617,9 +620,9 @@ class MasteryStore:
                 SELECT kp_id, mastery_level, practice_count, correct_count,
                        last_practiced_at, last_decay_at
                 FROM user_mastery
-                WHERE user_id = ?
+                WHERE user_name = ?
                 """,
-                (user_id,),
+                (user_name,),
             ).fetchall()
 
         # 在 Python 层过滤课程
@@ -661,7 +664,7 @@ class MasteryStore:
         )[:5]
 
         return {
-            "user_id": user_id,
+            "user_name": user_name,
             "course": course,
             "total_points": len(points),
             "avg_mastery": avg_mastery,
@@ -672,7 +675,7 @@ class MasteryStore:
 
     def get_priority_ranking(
         self,
-        user_id: str,
+        user_name: str,
         course: str,
         weeks_to_exam: int,
         total_weeks: int,
@@ -693,7 +696,7 @@ class MasteryStore:
           mastery > 85 且 practice_count > 10 时 -0.15
 
         Args:
-            user_id: str            => 用户 id
+            user_name: str            => 用户名称
             course: str             => 课程名
             weeks_to_exam: int      => 距期末周数
             total_weeks: int        => 学期总周数
@@ -703,10 +706,10 @@ class MasteryStore:
             list[dict]              => 优先级降序列表:
                 kp_id, name, course, weight, mastery_level, practice_count, priority
         """
-        user_id = user_id.strip()
+        user_name = user_name.strip()
         course = course.strip()
 
-        if not user_id or not course:
+        if not user_name or not course:
             return []
 
         course_points = kg_store.get_course_points(course)
@@ -718,13 +721,37 @@ class MasteryStore:
         if total_weeks > 0:
             time_factor = max(0.0, 1.0 - weeks_to_exam / total_weeks)
 
+        # 一次性批量读取该用户全部掌握度记录 避免循环内逐条开库查询
+        records: dict[str, dict] = {}
+        with self.__connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT kp_id, mastery_level, practice_count, last_practiced_at, last_decay_at
+                FROM user_mastery
+                WHERE user_name = ?
+                """,
+                (user_name,),
+            ).fetchall()
+
+        for row in rows:
+            decayed = self.__compute_decayed_mastery(
+                row["mastery_level"],
+                row["last_practiced_at"],
+                row["last_decay_at"],
+                row["practice_count"],
+            )
+            records[row["kp_id"]] = {
+                "mastery_level": round(decayed, 2),
+                "practice_count": row["practice_count"],
+            }
+
         results = []
         for pt in course_points:
             kp_id = pt["id"]
             weight = pt["weight"]
 
             # 读取掌握度和练习次数
-            record = self.get(user_id, kp_id)
+            record = records.get(kp_id)
             if record is None:
                 mastery = self.DEFAULT_MASTERY
                 practice_count = 0
@@ -768,7 +795,7 @@ class MasteryStore:
 
     def get_review_timing(
         self,
-        user_id: str,
+        user_name: str,
         kp_id: str,
         threshold: float | None = None,
     ) -> dict:
@@ -779,7 +806,7 @@ class MasteryStore:
         当 p 低于 threshold 时建议立即复习
 
         Args:
-            user_id: str              => 用户 id
+            user_name: str              => 用户名称
             kp_id: str                => 知识点 id
             threshold: float | None   => 复习触发阈值 默认 REVIEW_THRESHOLD (0.7)
 
@@ -796,7 +823,7 @@ class MasteryStore:
         if threshold is None:
             threshold = self.REVIEW_THRESHOLD
 
-        user_id = user_id.strip()
+        user_name = user_name.strip()
         kp_id = kp_id.strip()
 
         empty = {
@@ -808,7 +835,7 @@ class MasteryStore:
             "practice_count": 0,
         }
 
-        if not user_id or not kp_id:
+        if not user_name or not kp_id:
             return empty
 
         with self.__connect() as connection:
@@ -816,9 +843,9 @@ class MasteryStore:
                 """
                 SELECT mastery_level, practice_count, last_practiced_at, last_decay_at
                 FROM user_mastery
-                WHERE user_id = ? AND kp_id = ?
+                WHERE user_name = ? AND kp_id = ?
                 """,
-                (user_id, kp_id),
+                (user_name, kp_id),
             ).fetchone()
 
         if row is None:
@@ -861,7 +888,7 @@ class MasteryStore:
 
     def get_weak_prerequisites(
         self,
-        user_id: str,
+        user_name: str,
         kp_id: str,
         kg_store,
         mastery_threshold: float = 50.0,
@@ -875,7 +902,7 @@ class MasteryStore:
         用于推理引擎决策: 直接推题 vs 先补前置
 
         Args:
-            user_id: str              => 用户 id
+            user_name: str              => 用户名称
             kp_id: str                => 目标知识点 id
             kg_store: KnowledgeGraphStore => 知识图谱数据层
             mastery_threshold: float  => 薄弱判定阈值 默认 50.0
@@ -885,10 +912,10 @@ class MasteryStore:
             list[dict] => 薄弱前置知识点列表:
                 kp_id, name, course, depth, mastery_level
         """
-        user_id = user_id.strip()
+        user_name = user_name.strip()
         kp_id = kp_id.strip()
 
-        if not user_id or not kp_id:
+        if not user_name or not kp_id:
             return []
 
         # 从知识图谱获取前置链
@@ -897,9 +924,30 @@ class MasteryStore:
         if not prereqs:
             return []
 
+        # 一次性批量读取该用户全部掌握度记录 避免循环内逐条开库查询
+        mastery_by_kp: dict[str, float] = {}
+        with self.__connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT kp_id, mastery_level, practice_count, last_practiced_at, last_decay_at
+                FROM user_mastery
+                WHERE user_name = ?
+                """,
+                (user_name,),
+            ).fetchall()
+
+        for row in rows:
+            decayed = self.__compute_decayed_mastery(
+                row["mastery_level"],
+                row["last_practiced_at"],
+                row["last_decay_at"],
+                row["practice_count"],
+            )
+            mastery_by_kp[row["kp_id"]] = round(decayed, 2)
+
         weak = []
         for p in prereqs:
-            mastery = self.get_mastery_level(user_id, p["kp_id"])
+            mastery = mastery_by_kp.get(p["kp_id"], self.DEFAULT_MASTERY)
             if mastery < mastery_threshold:
                 weak.append(
                     {
