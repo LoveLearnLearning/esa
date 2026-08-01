@@ -618,3 +618,65 @@
 - `total_weeks` 通过 `set_current_total_weeks()` ContextVar 注入，Agent 未设置时 fallback 到默认值 18
 - 当前 `major` 仅支持 `cs`（计算机学科），扩展新专业时需在 `preferences.py` 路由层补充枚举值
 - 知识图谱种子数据路径为 `backend/agent/memories/data/knowledge_graph/`，`seed_knowledge_graph.py` 在首次导入时自动加载
+
+## 2026-08-01 第十二次提交
+
+> 修改人：团队
+
+完成前端 SSE 通信链路接入，使 Flutter 能够消费后端流式事件，并保留同步接口作为可切换的兼容方案。
+
+### 已实现
+
+- **新增 Flutter SSE 客户端**
+  - 在 `frontend/lib/api/api_client.dart` 中新增 `ChatStreamEvent` 数据结构
+  - 新增 `streamMessage()` 方法，通过 `POST /conversations/{conversation_id}/messages/stream` 发起流式请求
+  - 请求继续携带 `Authorization: Bearer <session_id>`，与现有登录认证方式保持一致
+  - 使用 UTF-8 解码和 `LineSplitter` 增量读取响应，不等待完整响应体下载完成
+  - 按 SSE 协议解析 `event:` 与 `data:` 字段
+  - 支持一条事件包含多行 `data:`，并兼容连接关闭前缺少最后一个空行的情况
+  - 非 200 响应继续转换为现有 `ApiException`，复用统一错误处理逻辑
+
+- **接入后端流式事件**
+  - 支持 `start`：确认服务端开始处理请求
+  - 支持 `reasoning`：把 `delta` 追加到助手消息的思考内容
+  - 支持 `content`：把 `delta` 追加到助手最终回答
+  - 支持 `tool`：显示工具名称及工具执行结果
+  - 支持 `done`：结束生成状态并停止输入光标
+  - 支持 `error`：展示服务端返回的生成失败信息
+
+- **重构前端消息发送流程**
+  - 开启“流式输出”时调用 SSE 接口并实时更新同一个 `ChatMessage`
+  - 关闭“流式输出”时继续调用原有同步接口 `POST /conversations/{id}/messages`
+  - 删除收到完整响应后按固定时间间隔追加字符的本地假流式实现
+  - 工具消息插入到最终助手回答之前，保持 Agent 工具调用的真实执行顺序
+  - SSE 中断时保留已经接收到的部分回答，不再直接丢弃现有内容
+  - 服务端发送 `done` 但没有产生可见回答时自动移除空助手气泡
+
+- **保留离线模式兼容性**
+  - 离线模式不发起网络请求
+  - 将原有离线回复转换成相同的 `start/reasoning/content/tool/done` 事件
+  - 在线与离线模式共用同一套前端流事件消费逻辑
+
+- **后端 SSE 链路保持兼容**
+  - `Agent.run_stream()` 支持 `reasoning`、`content`、`tool` 和 `complete` 事件
+  - Web 路由把 Agent 的 `complete` 转换为前端使用的 `done` 事件
+  - 生成结束后仍由后端统一持久化本轮产生的助手消息和工具消息
+  - 工具执行继续通过 `asyncio.to_thread()` 移出事件循环，避免同步工具直接阻塞异步生成流程
+
+- **并发配置调整**
+  - 提高 vLLM 的 `MODEL_MAX_NUM_SEQS` 配置，为多个生成请求排队及并发调度预留能力
+  - 实际可用并发量仍取决于模型大小、上下文长度和 GPU 显存
+
+### 验证结果
+
+- `flutter analyze` 通过，无静态分析问题
+- `git diff --check` 通过，无新增空白格式错误
+- 前端 SSE 事件类型与后端 `encode_sse()` 输出格式一致
+- 项目原有 `frontend/test/widget_test.dart` 仍是 Flutter 默认计数器测试，与当前 ESA 页面不匹配，需要后续替换为真实页面测试
+
+### 当前注意事项
+
+- 当前后端 `Agent.run_stream()` 仍会先收集本轮模型的全部 chunk，再一次性发送完整的 `reasoning` 和 `content`；前端已经具备真正的增量消费能力，但要实现端到端实时输出，还需要在 `parser.py` 中加入增量输出解析器，并让 `Agent.run_stream()` 在收到模型 chunk 时立即产生事件
+- 增量解析必须正确处理被拆分到多个 chunk 的 `<think>`、`</think>` 和 `<tool_call>` 标签，避免把内部标签或工具调用内容直接展示给用户
+- `reasoning` 当前没有写入 `ChatStore` 数据库，刷新或重新进入历史对话后不会恢复思考内容
+- 生产环境经 FRP 或反向代理部署时需要关闭响应缓冲，并保留 `Content-Type: text/event-stream`、`Cache-Control: no-cache` 和 `X-Accel-Buffering: no` 响应头
