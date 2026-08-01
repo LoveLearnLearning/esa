@@ -38,3 +38,33 @@ TODO List 中为待办事项 以及还未实现的功能
    - `app_state.dart` 加偏好/档案状态字段 + `loadPreferencesAndProfile` / `updatePreferences` / `updateProfile` 方法，登录后自动加载
    - `profile_sheet.dart` 加输出偏好区块（风格三档/语调四档/自定义指令）+ 学情档案区块（开关/专业/年级/教学周）
    - 后端接口已就绪：`GET/PATCH /me/preferences` 和 `GET/PATCH /me/profile`
+
+---
+
+## 对话分组 + 分组内自定义指令（新功能）
+
+> 完整需求文档（项目全景分析 / 市场调研 / 用户场景 / 交互细节 / 技术方案 / 开发计划）见 [GROUP_FEATURE.md](GROUP_FEATURE.md)
+
+### 后端 (Backend)
+
+1. [ ] 新增 `groups` 表与 `GroupStore`（建表 + 老库迁移） ****
+   - 分组字段：名称(≤20 字) / 描述(≤100 字) / 自定义指令(≤500 字) / 可选 style/tone（缺省继承用户级）
+   - 分组上限 20 个/用户
+2. [ ] `conversations` 表加 `group_id` 列（NULL=未分组）+ 索引（含老库迁移） ****
+3. [ ] 分组 CRUD 接口 `GET/POST /groups`、`PATCH/DELETE /groups/{group_id}` ****
+   - 归属校验 / 字段校验 / 删除分组时组内对话事务内移回未分组
+4. [ ] `POST /conversations` 支持 `group_id`；`PATCH /conversations/{id}` 支持移动分组；列表返回 `group_id` ****
+5. [ ] 分组指令注入链路：`build_system_prompt` / `agent.run` / `chat.py` 按对话分组注入 ***
+   - 合并顺序：系统基础规则 → 用户级 → 分组级 → 当前消息
+   - 无分组或分组无指令时与现状行为一致
+6. [ ] 更新 `API.md` 接口文档 *
+
+### 前端 (Frontend)
+
+1. [ ] `models.dart` 新增 `ChatGroup`；`ChatConversation` 加 `groupId` ****
+2. [ ] `api_client.dart` 新增 `listGroups` / `createGroup` / `updateGroup` / `deleteGroup` ****
+3. [ ] `app_state.dart` 新增 `groups` / `activeGroupId` + 增删改/移动逻辑，登录后加载 ****
+4. [ ] `history_drawer.dart` 重构为「分组区 + 时间区」双区列表，"未分组"常驻 ****
+5. [ ] 新建分组弹窗、分组行 3-dot 菜单（重命名/编辑指令/删除）、移动分组选择器、删除确认 ****
+6. [ ] 分组指令编辑器：0/500 字数统计 + 模板库 + 风格/语调覆盖 **
+7. [ ] 增强可选：拖拽归档 / 分组内搜索 / 智能分组建议 *
