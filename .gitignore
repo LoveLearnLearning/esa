@@ -74,3 +74,8 @@ frontend/windows/flutter/ephemeral/
 
 # Local design handoff material
 design_handoff_esa_chat/
+
+esa.err
+esa.out
+
+run.sh
