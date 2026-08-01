@@ -10,17 +10,22 @@ from vllm.model_executor.layers.quantization import QuantizationMethods
 
 from backend.agent.memories.temp_memory import TempMemory
 from backend.agent.tools import tr
-from backend.agent.tools.memory_tools import core_memory, set_current_user
 from backend.agent.tools.mastery_tools import (
     kg_store,
     mastery_store,
     set_current_total_weeks,
 )
+from backend.agent.tools.memory_tools import core_memory, set_current_user
 from backend.agent.tools.skills import build_skills_context, load_skill
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.services.vllm_service import LLMProvider
 from backend.core.utils.config import DEBUG_MODE
-from backend.core.utils.models import AgentStreamEvent, ParsedOutput, ToolCall, UserRecord
+from backend.core.utils.models import (
+    AgentStreamEvent,
+    ParsedOutput,
+    ToolCall,
+    UserRecord,
+)
 from backend.core.utils.parser import parse_output
 
 ROOT_PATH: Path = Path.cwd().parent
@@ -54,9 +59,7 @@ def build_user_profile_context(
 
     # 掌握度概况
     if report["total_points"] > 0:
-        parts.append(
-            f"掌握度概况: 平均掌握度 {report['avg_mastery']:.0f}"
-        )
+        parts.append(f"掌握度概况: 平均掌握度 {report['avg_mastery']:.0f}")
 
         if report["weak_points"]:
             wp = "  ".join(
@@ -75,9 +78,7 @@ def build_user_profile_context(
         parts.append("暂无掌握度数据  开始练习后可生成学情档案")
 
     # 教学进度
-    parts.append(
-        f"教学进度: 第 {user.current_week} 周 / 共 {user.total_weeks} 周"
-    )
+    parts.append(f"教学进度: 第 {user.current_week} 周 / 共 {user.total_weeks} 周")
 
     # 加载 profile_personalization skill 内容（学科身份/讲解深度/来源标注/AI 标识规则）
     skill_body = load_skill("profile_personalization")

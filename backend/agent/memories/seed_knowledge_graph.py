@@ -4,8 +4,8 @@
 #           data/knowledge_graph/elective_courses.yaml（30 门选修 + 数学基础）
 # 数据来源：9 所顶尖高校培养方案并集，知识点粒度对齐名校课程大纲
 
+from backend.agent.memories.kg_loader import load_into_store, load_yaml_files
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
-from backend.agent.memories.kg_loader import load_yaml_files, load_into_store
 
 # 向后兼容：从 YAML 加载后暴露为模块级常量
 POINTS, PREREQUISITES, COURSES = load_yaml_files()
