@@ -5,7 +5,7 @@
 - Base URL(开发环境): `http://127.0.0.1:8000`
 - 启动命令: `uvicorn backend.core.web.webAPI:app --reload`
 - 交互式调试: 启动后访问 `http://127.0.0.1:8000/docs`
-- 通信格式: 请求和响应均为 JSON `Content-Type: application/json`
+- 通信格式: 普通接口使用 JSON 流式消息接口响应 `text/event-stream`
 - 时间格式: 统一为 UTC ISO 8601 字符串 例如 `2026-07-24T05:22:08.123456+00:00`
 
 ## 认证约定
@@ -90,7 +90,7 @@ Authorization: Bearer <session_id>
 
 ---
 
-## 规划中接口(chat 路由 尚未实现)
+## 对话接口
 
 以下接口均需要认证 只能访问属于当前登录用户的对话
 
@@ -153,6 +153,38 @@ Authorization: Bearer <session_id>
 
 响应 `200`: 本轮新产生的消息列表(用户消息 + 助手回复 + 工具结果) 结构同历史消息
 
-注意: 该接口内部调用模型推理 耗时较长 前端需要 loading 状态 后续可能改为流式返回
+注意: 该同步兼容接口会等待本轮模型与工具调用全部完成后再返回
 
 对话不存在或不属于当前用户: `404`
+
+### POST /conversations/{conversation_id}/messages/stream — 流式发送消息
+
+请求头除认证信息外使用 `Content-Type: application/json`，请求体与同步接口相同:
+
+```json
+{ "content": "用户输入的内容" }
+```
+
+成功响应 `200`，响应类型为 `text/event-stream`。事件格式:
+
+```text
+event: reasoning
+data: {"delta":"正在分析"}
+
+event: content
+data: {"delta":"回答正文"}
+
+```
+
+事件类型:
+
+| event | data | 含义 |
+|---|---|---|
+| `start` | `conversation_id` | 服务端开始处理 |
+| `reasoning` | `delta` | 模型思考内容增量 |
+| `content` | `delta` | 最终回答增量 |
+| `tool` | `name`, `content` | 工具执行结果 |
+| `done` | `conversation_id` | 本轮完成且消息已持久化 |
+| `error` | `detail`, `type` | 流建立后发生生成错误 |
+
+客户端必须按 SSE 空行分隔事件，并将同类 `delta` 按收到顺序追加，不能把每个增量作为独立消息。工具调用 XML 不会作为可见内容发送。

@@ -19,6 +19,7 @@ from backend.core.utils.config import (
     MODEL_MAX_NUM_SEQS,
     MODEL_PATH,
     MODEL_QUANTIZATION,
+    MODEL_TENSOR_PARALLEL_SIZE,
 )
 from backend.core.web.routers import auth, chat, preferences
 
@@ -42,6 +43,7 @@ async def lifespan(app: FastAPI):
         max_model_len=MODEL_MAX_MODEL_LENGTH,
         max_num_seqs=MODEL_MAX_NUM_SEQS,
         quantization=MODEL_QUANTIZATION,
+        tensor_parallel_size=MODEL_TENSOR_PARALLEL_SIZE,
     )
     try:
         yield
