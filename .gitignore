@@ -79,3 +79,4 @@ esa.err
 esa.out
 
 run.sh
+gpu_proxy.sh

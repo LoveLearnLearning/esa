@@ -18,6 +18,7 @@ httpx
 
 # RAG
 numpy
+faiss-cpu
 sentence-transformers
 rank-bm25
 
