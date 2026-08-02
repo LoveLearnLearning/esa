@@ -26,7 +26,7 @@ from backend.core.utils.models import (
     ToolCall,
     UserRecord,
 )
-from backend.core.utils.parser import parse_output
+from backend.core.utils.parser import StreamOutputParser, parse_output
 
 ROOT_PATH: Path = Path.cwd().parent
 
@@ -99,6 +99,7 @@ class Agent:
         gpu_memory_utilization: float = 0.95,
         max_model_len: int = 32768,
         max_num_seqs: int = 1,
+        tensor_parallel_size: int = 1,
     ) -> None:
         self.loop_times = loop_times
         self.llm_provider = LLMProvider(
@@ -109,6 +110,7 @@ class Agent:
             gpu_memory_utilization=gpu_memory_utilization,
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
+            tensor_parallel_size=tensor_parallel_size,
         )
         self.temp_memory = TempMemory(
             max_messages_per_user=20,
@@ -329,15 +331,25 @@ class Agent:
         )
 
         for _ in range(self.loop_times):
-            chunks: list[str] = []
+            stream_parser = StreamOutputParser()
 
             async for chunk in self.llm_provider.generate_stream(
                 messages,
                 tr.schemas,
             ):
-                chunks.append(chunk)
+                for event, delta in stream_parser.feed(chunk):
+                    yield AgentStreamEvent(
+                        event=event,
+                        data={"delta": delta},
+                    )
 
-            response = "".join(chunks)
+            for event, delta in stream_parser.finish():
+                yield AgentStreamEvent(
+                    event=event,
+                    data={"delta": delta},
+                )
+
+            response = stream_parser.raw_text
             parsed = parse_output(response)
 
             tool_calls = parsed.tool_calls
@@ -345,18 +357,6 @@ class Agent:
             if not tool_calls:
                 assistant_content = parsed.content or response.strip()
                 reasoning = parsed.reasoning or ""
-
-                if reasoning:
-                    yield AgentStreamEvent(
-                        event="reasoning",
-                        data={"delta": reasoning},
-                    )
-
-                if assistant_content:
-                    yield AgentStreamEvent(
-                        event="content",
-                        data={"delta": assistant_content},
-                    )
 
                 assistant_message = {
                     "role": "assistant",

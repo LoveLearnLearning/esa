@@ -27,6 +27,7 @@ class LLMProvider:
         dtype: ModelDType = "auto",
         kv_cache_dtype: CacheDType = "auto",
         max_num_seqs: int = 1,
+        tensor_parallel_size: int = 1,
     ) -> None:
         self.model_path = Path(model_path)
 
@@ -35,7 +36,7 @@ class LLMProvider:
             gpu_memory_utilization=gpu_memory_utilization,
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
-            tensor_parallel_size=1,
+            tensor_parallel_size=tensor_parallel_size,
             enforce_eager=True,
             quantization=quantization,
             dtype=dtype,
