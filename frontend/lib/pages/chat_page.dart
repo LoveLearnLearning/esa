@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/models.dart';
+import '../models/task_mode.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
@@ -26,6 +27,7 @@ class _ChatPageState extends State<ChatPage> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _scrollController = ScrollController();
   bool _followOutput = true;
+  TaskMode? _taskMode;
 
   @override
   void dispose() {
@@ -85,12 +87,22 @@ class _ChatPageState extends State<ChatPage> {
               child: app.loadingMessages && app.messages.isEmpty
                   ? const Center(child: CircularProgressIndicator())
                   : app.messages.isEmpty
-                  ? _EmptyState(name: app.username, onPick: app.send)
+                  ? _EmptyState(
+                      name: app.username,
+                      selected: _taskMode,
+                      onPick: (mode) => setState(() => _taskMode = mode),
+                    )
                   : _messageList(context, app),
             ),
             Composer(
               busy: app.busy,
-              onSend: (text, markdown) => app.send(text, markdown: markdown),
+              taskMode: _taskMode,
+              onClearTaskMode: () => setState(() => _taskMode = null),
+              onSend: (text, markdown) => app.send(
+                _taskMode?.buildPrompt(text) ?? text,
+                markdown: markdown,
+                displayText: text,
+              ),
             ),
           ],
         ),
@@ -253,15 +265,21 @@ class _OutlineIconButton extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.name, required this.onPick});
+  const _EmptyState({
+    required this.name,
+    required this.selected,
+    required this.onPick,
+  });
   final String name;
-  final ValueChanged<String> onPick;
+  final TaskMode? selected;
+  final ValueChanged<TaskMode> onPick;
 
   static const _cards = [
-    ('01', '讲解一道题', '把题目发给我，一步步带你理清思路'),
-    ('02', '生成复习计划', '按考试时间为你排出每日任务'),
-    ('03', '检索我的课件', '从上传的资料里找到相关知识点'),
-    ('04', '批改作业', '指出错误并给出规范范例'),
+    ('01', TaskMode.explainProblem),
+    ('02', TaskMode.studyPlan),
+    ('03', TaskMode.searchMaterials),
+    ('04', TaskMode.reviewHomework),
+    ('05', TaskMode.concept),
   ];
 
   @override
@@ -286,7 +304,7 @@ class _EmptyState extends StatelessWidget {
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 520),
                 child: Text(
-                  '我是你的学习智能体。可以讲题、排复习计划、检索课件或批改作业。选一个开始，或直接在下面提问。',
+                  '我是你的学习智能体。选择一个任务模式，再在下方补充内容并发送。',
                   style: context.texts.bodyLarge,
                 ),
               ),
@@ -294,8 +312,9 @@ class _EmptyState extends StatelessWidget {
               for (final card in _cards) ...[
                 _SuggestionCard(
                   index: card.$1,
-                  title: card.$2,
-                  desc: card.$3,
+                  title: card.$2.title,
+                  desc: card.$2.description,
+                  selected: selected == card.$2,
                   onTap: () => onPick(card.$2),
                 ),
                 const SizedBox(height: EsaSpace.sm),
@@ -313,12 +332,14 @@ class _SuggestionCard extends StatelessWidget {
     required this.index,
     required this.title,
     required this.desc,
+    required this.selected,
     required this.onTap,
   });
 
   final String index;
   final String title;
   final String desc;
+  final bool selected;
   final VoidCallback onTap;
 
   @override
@@ -329,6 +350,7 @@ class _SuggestionCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
         decoration: BoxDecoration(
+          color: selected ? EsaColors.accent.withValues(alpha: 0.08) : null,
           border: Border.all(color: context.n.divider),
           borderRadius: BorderRadius.circular(EsaRadii.card),
         ),
@@ -362,13 +384,10 @@ class _SuggestionCard extends StatelessWidget {
                 ],
               ),
             ),
-            Opacity(
-              opacity: 0.5,
-              child: Icon(
-                LucideIcons.chevronRight,
-                size: 18,
-                color: context.n.n600,
-              ),
+            Icon(
+              selected ? LucideIcons.check : LucideIcons.chevronRight,
+              size: 18,
+              color: selected ? EsaColors.accent : context.n.n600,
             ),
           ],
         ),

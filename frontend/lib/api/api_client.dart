@@ -135,6 +135,83 @@ class ApiClient {
     if (r.statusCode != 204) _fail(r);
   }
 
+  // ---------- 输出偏好 / 学情档案 ----------
+  Future<UserPreferences> getPreferences() async {
+    if (kOfflineMode) return const UserPreferences();
+    final r = await http.get(
+      _uri('/me/preferences'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return UserPreferences.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<UserPreferences> updatePreferences({
+    required String preferredStyle,
+    required String preferredTone,
+    required String customInstruction,
+  }) async {
+    if (kOfflineMode) {
+      return UserPreferences(
+        preferredStyle: preferredStyle,
+        preferredTone: preferredTone,
+        customInstruction: customInstruction,
+      );
+    }
+    final r = await http.patch(
+      _uri('/me/preferences'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'preferred_style': preferredStyle,
+        'preferred_tone': preferredTone,
+        'custom_instruction': customInstruction,
+      }),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return UserPreferences.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<UserProfile> getProfile() async {
+    if (kOfflineMode) return const UserProfile();
+    final r = await http.get(
+      _uri('/me/profile'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return UserProfile.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<UserProfile> updateProfile({
+    required String major,
+    required String grade,
+    required int currentWeek,
+    required int totalWeeks,
+    required bool profileEnabled,
+  }) async {
+    if (kOfflineMode) {
+      return UserProfile(
+        major: major,
+        grade: grade,
+        currentWeek: currentWeek,
+        totalWeeks: totalWeeks,
+        profileEnabled: profileEnabled,
+      );
+    }
+    final r = await http.patch(
+      _uri('/me/profile'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'major': major,
+        'grade': grade,
+        'current_week': currentWeek,
+        'total_weeks': totalWeeks,
+        'profile_enabled': profileEnabled,
+      }),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return UserProfile.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
   // ---------- 对话 ----------
   Future<List<ChatConversation>> listConversations() async {
     if (kOfflineMode) return List.of(_offConvs);
