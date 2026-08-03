@@ -14,6 +14,7 @@ TODO List 中为待办事项 以及还未实现的功能
     - 超出时按 `updated_at DESC` 截断（`get_all` 已有此排序）
     - 调用方 `agent.py` 使用默认值无需改动
     - 约 10 分钟工作量
+7. [ ] 模型不能正确区分 skills 和 tools 的区别
 
 ## 前端 (Frontend)
 
@@ -40,6 +41,7 @@ TODO List 中为待办事项 以及还未实现的功能
     - 后端接口已就绪：`GET/PATCH /me/preferences` 和 `GET/PATCH /me/profile`
 
 5. [ ] 前端添加 markdown 代码块代码高亮 然后能够提供编辑和运行代码功能 **
+6. [ ] pdf 阅读器功能，能够提供pdf的阅读和标注功能 **
 
 ---
 
