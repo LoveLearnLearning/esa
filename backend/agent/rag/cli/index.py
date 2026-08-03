@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 from typing import Any, Literal
 
+from .. import config as rag_config
 from ..collection import LoadedChunkCollection, load_chunk_collection
 from ..fingerprints import backend_fingerprint
 from ..indexes import QdrantIndex
@@ -36,14 +37,9 @@ from ..inference import (
     VLLMEmbeddingProvider,
     VLLMReranker,
 )
-from ..paths import WORKSPACE_ROOT
+from ..retrieval.contracts import RetrievalConfig
 from ..retrieval.service import RetrievalService
 
-DEFAULT_MANIFEST = (
-    WORKSPACE_ROOT
-    / "artifacts/chunk/collections/collection_bc7a6054e159eb7346e94df0/manifest.json"
-)
-DEFAULT_OUTPUT = WORKSPACE_ROOT / "artifacts/rag/indexes"
 RerankerBackend = Literal["none", "transformers", "vllm"]
 
 
@@ -136,6 +132,7 @@ def query_deployment(arguments: argparse.Namespace) -> dict[str, Any]:
         index,
         embedding,
         reranker=reranker,
+        config=_retrieval_config(),
     ).search(arguments.query)
     payload = dataclasses.asdict(response)
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2))
@@ -155,7 +152,10 @@ def _embedding_provider(
     if backend == "transformers":
         return TransformersEmbeddingProvider(
             model_name=model_name,
-            dimension=dense_dimension or 2560,
+            device=rag_config.EMBEDDING_DEVICE,
+            dimension=dense_dimension or rag_config.EMBEDDING_DIMENSION,
+            max_length=rag_config.EMBEDDING_MAX_LENGTH,
+            batch_size=rag_config.EMBEDDING_BATCH_SIZE,
         )
     if not base_url:
         raise ValueError("--embedding-url is required for vllm backend")
@@ -163,6 +163,7 @@ def _embedding_provider(
         base_url=base_url,
         model_name=model_name,
         api_key=os.environ.get("VLLM_API_KEY"),
+        timeout=rag_config.EMBEDDING_TIMEOUT,
     )
 
 
@@ -173,6 +174,8 @@ def _qdrant_index(base_url: str, collection: str) -> QdrantIndex:
         base_url=base_url,
         collection=collection,
         api_key=os.environ.get("QDRANT_API_KEY"),
+        timeout=rag_config.QDRANT_TIMEOUT,
+        upsert_batch_size=rag_config.QDRANT_UPSERT_BATCH_SIZE,
     )
 
 
@@ -186,13 +189,34 @@ def _reranker(
     if backend == "none":
         return None
     if backend == "transformers":
-        return TransformersReranker(model_name=model_name)
+        return TransformersReranker(
+            model_name=model_name,
+            device=rag_config.RERANKER_DEVICE,
+            max_length=rag_config.RERANKER_MAX_LENGTH,
+        )
     if not base_url:
         raise ValueError("--reranker-url is required for vllm backend")
     return VLLMReranker(
         base_url=base_url,
         model_name=model_name,
         api_key=os.environ.get("VLLM_API_KEY"),
+        timeout=rag_config.RERANKER_TIMEOUT,
+    )
+
+
+def _retrieval_config() -> RetrievalConfig:
+    """把集中配置转换为核心检索链的稳定配置对象。"""
+
+    return RetrievalConfig(
+        dense_limit=rag_config.DENSE_LIMIT,
+        bm25_body_limit=rag_config.BM25_BODY_LIMIT,
+        bm25_heading_limit=rag_config.BM25_HEADING_LIMIT,
+        rrf_limit=rag_config.RRF_LIMIT,
+        rerank_limit=rag_config.RERANK_LIMIT,
+        final_limit=rag_config.FINAL_LIMIT,
+        rrf_k=rag_config.RRF_K,
+        section_window=rag_config.SECTION_WINDOW,
+        rerank_threshold=rag_config.RERANK_THRESHOLD,
     )
 
 
@@ -226,7 +250,11 @@ def _print_build_result(
 
 
 def _add_manifest_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=rag_config.COLLECTION_MANIFEST_PATH,
+    )
 
 
 def _add_deployment_argument(parser: argparse.ArgumentParser) -> None:
@@ -242,20 +270,28 @@ def _parser() -> argparse.ArgumentParser:
 
     build = commands.add_parser("build", help="构建或复用索引代次")
     _add_manifest_argument(build)
-    build.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    build.add_argument("--qdrant-url", required=True)
-    build.add_argument("--collection", required=True)
+    build.add_argument(
+        "--output",
+        type=Path,
+        default=rag_config.INDEX_DEPLOYMENT_ROOT,
+    )
+    build.add_argument("--qdrant-url", default=rag_config.QDRANT_BASE_URL)
+    build.add_argument("--collection", default=rag_config.QDRANT_COLLECTION)
     build.add_argument(
         "--embedding-backend",
         choices=("reference", "transformers", "vllm"),
-        default="reference",
+        default=rag_config.EMBEDDING_BACKEND,
     )
     build.add_argument(
         "--embedding-model",
-        default="reference-hashing-embedding-0.1",
+        default=rag_config.EMBEDDING_MODEL_PATH,
     )
-    build.add_argument("--embedding-url")
-    build.add_argument("--embedding-dimension", type=int, default=2560)
+    build.add_argument("--embedding-url", default=rag_config.EMBEDDING_BASE_URL)
+    build.add_argument(
+        "--embedding-dimension",
+        type=int,
+        default=rag_config.EMBEDDING_DIMENSION,
+    )
     build.set_defaults(handler=build_deployment)
 
     verify = commands.add_parser("verify", help="验证重启后的索引完整性")
@@ -268,13 +304,13 @@ def _parser() -> argparse.ArgumentParser:
     query.add_argument(
         "--reranker-backend",
         choices=("none", "transformers", "vllm"),
-        default="none",
+        default=rag_config.RERANKER_BACKEND,
     )
     query.add_argument(
         "--reranker-model",
-        default="Qwen/Qwen3-Reranker-4B",
+        default=rag_config.RERANKER_MODEL_PATH,
     )
-    query.add_argument("--reranker-url")
+    query.add_argument("--reranker-url", default=rag_config.RERANKER_BASE_URL)
     query.set_defaults(handler=query_deployment)
     return parser
 
