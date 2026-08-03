@@ -10,10 +10,11 @@ TODO List 中为待办事项 以及还未实现的功能
 4. [ ] 实现多模态 增加上传附件的支持 ****
 5. [ ] 给搜索引擎的结果做一个 Reranker **
 6. [ ] 核心记忆加上限 防止 system prompt 膨胀 **
-   - `CoreMemory.build_context` 加 `max_items: int = 20` 参数
-   - 超出时按 `updated_at DESC` 截断（`get_all` 已有此排序）
-   - 调用方 `agent.py` 使用默认值无需改动
-   - 约 10 分钟工作量
+    - `CoreMemory.build_context` 加 `max_items: int = 20` 参数
+    - 超出时按 `updated_at DESC` 截断（`get_all` 已有此排序）
+    - 调用方 `agent.py` 使用默认值无需改动
+    - 约 10 分钟工作量
+7. [ ] 模型不能正确区分 skills 和 tools 的区别
 
 ## 前端 (Frontend)
 
@@ -40,10 +41,21 @@ TODO List 中为待办事项 以及还未实现的功能
    - 后端接口已就绪：`GET/PATCH /me/preferences` 和 `GET/PATCH /me/profile`
 
 5. [ ] 前端添加 markdown 代码块代码高亮 然后能够提供编辑和运行代码功能 **
+<<<<<<< HEAD
    - [x] Markdown 代码块语法高亮
    - [x] 代码复制、编辑与预览切换
    - [x] 前端运行入口和未配置状态提示
    - [ ] 对接后端隔离代码执行沙箱（不在浏览器内直接执行任意代码）
+=======
+<<<<<<< HEAD
+6. [ ] pdf 阅读器功能，能够提供pdf的阅读和标注功能 **
+=======
+    - [x] Markdown 代码块语法高亮
+    - [x] 代码复制、编辑与预览切换
+    - [x] 前端运行入口和未配置状态提示
+    - [ ] 对接后端隔离代码执行沙箱（不在浏览器内直接执行任意代码）
+>>>>>>> refs/remotes/origin/main
+>>>>>>> 347a51b8c4365c6ab6d582fdf5ba81da00623622
 
 ---
 
