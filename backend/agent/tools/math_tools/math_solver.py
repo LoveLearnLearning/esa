@@ -71,11 +71,11 @@ _OPERATIONS = {
 }
 
 
-def _safe_parse(expression: str) -> sp.Expr:
+def _safe_parse(expression: str | int | float) -> sp.Expr:
     """安全解析 sympy 表达式
 
     Args:
-        expression: str => 数学表达式字符串
+        expression: str | int | float => 数学表达式（支持字符串、整数、浮点数）
 
     Returns:
         sp.Expr => sympy 表达式对象
@@ -83,7 +83,7 @@ def _safe_parse(expression: str) -> sp.Expr:
     Raises:
         ValueError: 表达式为空、过长或解析失败
     """
-    expr = expression.strip()
+    expr = str(expression).strip()
     if not expr:
         raise ValueError("表达式不能为空")
     if len(expr) > _MAX_EXPR_LEN:
