@@ -76,5 +76,5 @@ class ToolRegistry:
 
         try:
             return fn(**arguments)
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError) as e:
             return f"[Error]: {e}"

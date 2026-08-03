@@ -28,9 +28,11 @@ class UserBubble extends StatelessWidget {
           ),
           child: markdown
               ? EsaMarkdown(data: text, selectable: true)
-              : Text(
-                  text,
-                  style: context.texts.bodyMedium, // 15 / 1.65 保留换行
+              : SelectionArea(
+                  child: Text(
+                    text,
+                    style: context.texts.bodyMedium, // 15 / 1.65 保留换行
+                  ),
                 ),
         ),
       ),

@@ -27,13 +27,26 @@ class _ProfileSheet extends StatefulWidget {
 class _ProfileSheetState extends State<_ProfileSheet> {
   late final TextEditingController _name;
   late final TextEditingController _email;
+  late final TextEditingController _customInstruction;
+  late final TextEditingController _grade;
+  late final TextEditingController _currentWeek;
+  late final TextEditingController _totalWeeks;
   late String _role;
+  late String _preferredStyle;
+  late String _preferredTone;
+  late bool _profileEnabled;
+  bool _saving = false;
+  String? _saveError;
   bool _init = false;
 
   @override
   void dispose() {
     _name.dispose();
     _email.dispose();
+    _customInstruction.dispose();
+    _grade.dispose();
+    _currentWeek.dispose();
+    _totalWeeks.dispose();
     super.dispose();
   }
 
@@ -43,7 +56,20 @@ class _ProfileSheetState extends State<_ProfileSheet> {
     if (!_init) {
       _name = TextEditingController(text: app.username);
       _email = TextEditingController(text: app.email);
+      _customInstruction = TextEditingController(
+        text: app.preferences.customInstruction,
+      );
+      _grade = TextEditingController(text: app.userProfile.grade);
+      _currentWeek = TextEditingController(
+        text: app.userProfile.currentWeek.toString(),
+      );
+      _totalWeeks = TextEditingController(
+        text: app.userProfile.totalWeeks.toString(),
+      );
       _role = app.role;
+      _preferredStyle = app.preferences.preferredStyle;
+      _preferredTone = app.preferences.preferredTone;
+      _profileEnabled = app.userProfile.profileEnabled;
       _init = true;
     }
 
@@ -86,6 +112,17 @@ class _ProfileSheetState extends State<_ProfileSheet> {
                     ),
                     const SizedBox(height: EsaSpace.md),
                     _settings(context, app),
+                    const SizedBox(height: EsaSpace.xl),
+                    _preferencesSection(context),
+                    const SizedBox(height: EsaSpace.xl),
+                    _learningProfileSection(context),
+                    if (_saveError != null) ...[
+                      const SizedBox(height: EsaSpace.md),
+                      Text(
+                        _saveError!,
+                        style: const TextStyle(color: EsaColors.accent),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -328,6 +365,158 @@ class _ProfileSheetState extends State<_ProfileSheet> {
     );
   }
 
+  Widget _preferencesSection(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'OUTPUT · 输出偏好',
+          style: context.texts.labelSmall?.copyWith(color: EsaColors.accent),
+        ),
+        const SizedBox(height: EsaSpace.md),
+        _fieldLabel(context, '回答风格'),
+        EsaSegmented<String>(
+          value: _preferredStyle,
+          onChanged: (value) => setState(() => _preferredStyle = value),
+          segments: const [
+            EsaSegment('concise', '简洁'),
+            EsaSegment('detailed', '详细'),
+            EsaSegment('socratic', '苏格拉底'),
+          ],
+        ),
+        const SizedBox(height: EsaSpace.lg),
+        _fieldLabel(context, '回答语调'),
+        EsaSegmented<String>(
+          value: _preferredTone,
+          onChanged: (value) => setState(() => _preferredTone = value),
+          segments: const [
+            EsaSegment('friendly', '友好'),
+            EsaSegment('formal', '正式'),
+            EsaSegment('encouraging', '鼓励'),
+            EsaSegment('strict', '严格'),
+          ],
+        ),
+        const SizedBox(height: EsaSpace.lg),
+        _fieldLabel(context, '自定义指令（0/500）'),
+        TextField(
+          controller: _customInstruction,
+          minLines: 3,
+          maxLines: 5,
+          maxLength: 500,
+          decoration: const InputDecoration(hintText: '例：解释数学概念时先给直观例子…'),
+        ),
+      ],
+    );
+  }
+
+  Widget _learningProfileSection(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'LEARNING PROFILE · 学情档案',
+                    style: context.texts.labelSmall?.copyWith(
+                      color: EsaColors.accent,
+                    ),
+                  ),
+                  Text(
+                    '开启后 Agent 会结合掌握度和教学进度回答',
+                    style: TextStyle(fontSize: 11.5, color: context.n.n600),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              value: _profileEnabled,
+              onChanged: (value) => setState(() => _profileEnabled = value),
+            ),
+          ],
+        ),
+        const SizedBox(height: EsaSpace.md),
+        _fieldLabel(context, '专业'),
+        const TextField(
+          enabled: false,
+          decoration: InputDecoration(hintText: '计算机科学（当前仅支持）'),
+        ),
+        const SizedBox(height: EsaSpace.lg),
+        _labeledField(context, '年级', _grade),
+        const SizedBox(height: EsaSpace.lg),
+        Row(
+          children: [
+            Expanded(child: _numberField(context, '当前教学周', _currentWeek)),
+            const SizedBox(width: EsaSpace.md),
+            Expanded(child: _numberField(context, '学期总周数', _totalWeeks)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _numberField(
+    BuildContext context,
+    String label,
+    TextEditingController controller,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _fieldLabel(context, label),
+        TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(hintText: '1 - 30'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _save(AppState app) async {
+    if (_saving) return;
+    final currentWeek = int.tryParse(_currentWeek.text);
+    final totalWeeks = int.tryParse(_totalWeeks.text);
+    if (currentWeek == null || totalWeeks == null) {
+      setState(() => _saveError = '教学周必须是数字');
+      return;
+    }
+    if (currentWeek < 1 ||
+        currentWeek > 30 ||
+        totalWeeks < 1 ||
+        totalWeeks > 30) {
+      setState(() => _saveError = '教学周必须在 1 到 30 之间');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    final error = await app.savePreferencesAndProfile(
+      preferredStyle: _preferredStyle,
+      preferredTone: _preferredTone,
+      customInstruction: _customInstruction.text,
+      major: 'cs',
+      grade: _grade.text.trim(),
+      currentWeek: currentWeek,
+      totalWeeks: totalWeeks,
+      profileEnabled: _profileEnabled,
+    );
+    if (!mounted) return;
+    if (error != null) {
+      setState(() {
+        _saving = false;
+        _saveError = error;
+      });
+      return;
+    }
+    app.updateProfile(name: _name.text, mail: _email.text, roleValue: _role);
+    Navigator.of(context).pop();
+  }
+
   Widget _divider(BuildContext context) =>
       Divider(height: 1, color: context.n.divider);
 
@@ -386,15 +575,8 @@ class _ProfileSheetState extends State<_ProfileSheet> {
           ),
           const Spacer(),
           FilledButton(
-            onPressed: () {
-              app.updateProfile(
-                name: _name.text,
-                mail: _email.text,
-                roleValue: _role,
-              );
-              Navigator.of(context).pop();
-            },
-            child: const Text('保存'),
+            onPressed: _saving ? null : () => _save(app),
+            child: Text(_saving ? '保存中…' : '保存'),
           ),
         ],
       ),

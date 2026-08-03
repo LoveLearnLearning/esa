@@ -16,3 +16,6 @@ MODEL_MAX_MODEL_LENGTH: int = 65536
 MODEL_MAX_NUM_SEQS: int = 4
 MODEL_QUANTIZATION: QuantizationMethods | None = None
 MODEL_TENSOR_PARALLEL_SIZE: int = 2
+
+# agent
+AGENT_LOOP_TIME: int = 10

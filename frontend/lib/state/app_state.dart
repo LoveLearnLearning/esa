@@ -18,6 +18,9 @@ class AppState extends ChangeNotifier {
   bool toolsOn = true;
   String email = '';
   String role = '学生';
+  UserPreferences preferences = const UserPreferences();
+  UserProfile userProfile = const UserProfile();
+  bool loadingProfile = false;
 
   // ---- 对话数据 ----
   final List<ChatConversation> conversations = [];
@@ -74,7 +77,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _afterLogin() async {
-    await loadConversations();
+    await Future.wait([loadConversations(), loadPreferencesAndProfile()]);
     if (conversations.isNotEmpty) {
       await setActive(conversations.first.id);
     } else {
@@ -112,6 +115,8 @@ class AppState extends ChangeNotifier {
     _pinned.clear();
     activeId = null;
     busy = false;
+    preferences = const UserPreferences();
+    userProfile = const UserProfile();
     notifyListeners();
   }
 
@@ -225,7 +230,11 @@ class AppState extends ChangeNotifier {
   }
 
   // ============ 发送消息 ============
-  Future<void> send(String text, {bool markdown = false}) async {
+  Future<void> send(
+    String text, {
+    bool markdown = false,
+    String? displayText,
+  }) async {
     final input = text.trim();
     if (input.isEmpty || busy) return;
 
@@ -237,8 +246,9 @@ class AppState extends ChangeNotifier {
     final id = activeId!;
     final list = _messages.putIfAbsent(id, () => []);
 
-    list.add(ChatMessage.user(input, markdown: markdown));
-    _touchConversation(id, input);
+    final visibleInput = (displayText ?? input).trim();
+    list.add(ChatMessage.user(visibleInput, markdown: markdown));
+    _touchConversation(id, visibleInput);
 
     final placeholder = ChatMessage.typingPlaceholder();
     list.add(placeholder);
@@ -360,6 +370,62 @@ class AppState extends ChangeNotifier {
   }
 
   // ============ 设置 ============
+  Future<void> loadPreferencesAndProfile() async {
+    loadingProfile = true;
+    notifyListeners();
+    try {
+      final values = await Future.wait([
+        api.getPreferences(),
+        api.getProfile(),
+      ]);
+      preferences = values[0] as UserPreferences;
+      userProfile = values[1] as UserProfile;
+    } catch (e) {
+      if (!_handled401(e)) rethrow;
+    } finally {
+      loadingProfile = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> savePreferencesAndProfile({
+    required String preferredStyle,
+    required String preferredTone,
+    required String customInstruction,
+    required String major,
+    required String grade,
+    required int currentWeek,
+    required int totalWeeks,
+    required bool profileEnabled,
+  }) async {
+    if (currentWeek > totalWeeks) return '当前教学周不能大于学期总周数';
+    try {
+      final values = await Future.wait([
+        api.updatePreferences(
+          preferredStyle: preferredStyle,
+          preferredTone: preferredTone,
+          customInstruction: customInstruction,
+        ),
+        api.updateProfile(
+          major: major,
+          grade: grade,
+          currentWeek: currentWeek,
+          totalWeeks: totalWeeks,
+          profileEnabled: profileEnabled,
+        ),
+      ]);
+      preferences = values[0] as UserPreferences;
+      userProfile = values[1] as UserProfile;
+      notifyListeners();
+      return null;
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) _clearSession();
+      return e.detail;
+    } catch (_) {
+      return '无法连接服务器 请稍后重试';
+    }
+  }
+
   void setThemeMode(ThemeMode mode) {
     themeMode = mode;
     notifyListeners();

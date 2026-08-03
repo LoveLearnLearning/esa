@@ -7,13 +7,22 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import '../models/task_mode.dart';
 import 'esa_markdown.dart';
 
 class Composer extends StatefulWidget {
-  const Composer({super.key, required this.busy, required this.onSend});
+  const Composer({
+    super.key,
+    required this.busy,
+    required this.onSend,
+    this.taskMode,
+    this.onClearTaskMode,
+  });
 
   final bool busy;
   final void Function(String text, bool markdown) onSend;
+  final TaskMode? taskMode;
+  final VoidCallback? onClearTaskMode;
 
   @override
   State<Composer> createState() => _ComposerState();
@@ -66,6 +75,10 @@ class _ComposerState extends State<Composer> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (widget.taskMode != null) ...[
+                _taskModeCard(context, widget.taskMode!),
+                const SizedBox(height: EsaSpace.sm),
+              ],
               if (_attachment != null) ...[
                 _attachmentChip(context),
                 const SizedBox(height: EsaSpace.sm),
@@ -94,37 +107,24 @@ class _ComposerState extends State<Composer> {
                     ],
                     Focus(
                       onKeyEvent: _onKey,
-                      child: Stack(
-                        children: [
-                          if (_controller.text.isEmpty)
-                            Positioned(
-                              left: 2,
-                              top: 1,
-                              child: IgnorePointer(
-                                child: Text(
-                                  '问点什么…',
-                                  style: TextStyle(
-                                    color: context.n.n600,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          TextField(
-                            controller: _controller,
-                            focusNode: _focus,
-                            minLines: 2,
-                            maxLines: 6,
-                            onChanged: (_) => setState(() {}),
-                            decoration: const InputDecoration(
-                              isCollapsed: true,
-                              filled: false,
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                            ),
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focus,
+                        minLines: 2,
+                        maxLines: 6,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          isCollapsed: true,
+                          filled: false,
+                          hintText: widget.taskMode?.hint ?? '问点什么…',
+                          hintStyle: TextStyle(
+                            color: context.n.n600,
+                            fontSize: 15,
                           ),
-                        ],
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                        ),
                       ),
                     ),
                     const SizedBox(height: EsaSpace.sm),
@@ -181,6 +181,40 @@ class _ComposerState extends State<Composer> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _taskModeCard(BuildContext context, TaskMode mode) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: EsaColors.accent.withValues(alpha: 0.08),
+        border: Border.all(color: EsaColors.accent.withValues(alpha: 0.45)),
+        borderRadius: BorderRadius.circular(EsaRadii.toolCard),
+      ),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.sparkles, size: 15, color: EsaColors.accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(mode.title, style: context.texts.titleMedium),
+                Text(
+                  mode.description,
+                  style: TextStyle(fontSize: 11.5, color: context.n.n600),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: '退出任务模式',
+            onPressed: widget.onClearTaskMode,
+            icon: const Icon(LucideIcons.x, size: 16),
+          ),
+        ],
       ),
     );
   }

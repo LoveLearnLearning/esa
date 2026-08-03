@@ -3,6 +3,52 @@
 int _seq = 0;
 String _nextId() => 'm${_seq++}';
 
+class UserPreferences {
+  const UserPreferences({
+    this.preferredStyle = 'concise',
+    this.preferredTone = 'friendly',
+    this.customInstruction = '',
+  });
+
+  final String preferredStyle;
+  final String preferredTone;
+  final String customInstruction;
+
+  factory UserPreferences.fromJson(Map<String, dynamic> json) {
+    return UserPreferences(
+      preferredStyle: json['preferred_style'] as String? ?? 'concise',
+      preferredTone: json['preferred_tone'] as String? ?? 'friendly',
+      customInstruction: json['custom_instruction'] as String? ?? '',
+    );
+  }
+}
+
+class UserProfile {
+  const UserProfile({
+    this.major = 'cs',
+    this.grade = '',
+    this.currentWeek = 1,
+    this.totalWeeks = 16,
+    this.profileEnabled = false,
+  });
+
+  final String major;
+  final String grade;
+  final int currentWeek;
+  final int totalWeeks;
+  final bool profileEnabled;
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) {
+    return UserProfile(
+      major: json['major'] as String? ?? 'cs',
+      grade: json['grade'] as String? ?? '',
+      currentWeek: json['current_week'] as int? ?? 1,
+      totalWeeks: json['total_weeks'] as int? ?? 16,
+      profileEnabled: json['profile_enabled'] as bool? ?? false,
+    );
+  }
+}
+
 enum MessageRole { user, assistant, tool }
 
 MessageRole roleFromString(String r) {
