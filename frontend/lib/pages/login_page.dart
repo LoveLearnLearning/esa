@@ -23,6 +23,9 @@ class _LoginPageState extends State<LoginPage> {
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _password2 = TextEditingController();
+  final _usernameFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+  final _password2Focus = FocusNode();
   AuthMode _mode = AuthMode.login;
   bool _showPw = false;
   bool _loading = false;
@@ -33,12 +36,17 @@ class _LoginPageState extends State<LoginPage> {
     _username.dispose();
     _password.dispose();
     _password2.dispose();
+    _usernameFocus.dispose();
+    _passwordFocus.dispose();
+    _password2Focus.dispose();
     super.dispose();
   }
 
   bool get _isRegister => _mode == AuthMode.register;
 
   Future<void> _submit() async {
+    if (_loading) return;
+
     final username = _username.text.trim();
     final password = _password.text; // 不 trim 密码
     // 校验与后端一致
@@ -84,12 +92,7 @@ class _LoginPageState extends State<LoginPage> {
           final form = _buildForm(context);
           if (stacked) {
             return SingleChildScrollView(
-              child: Column(
-                children: [
-                  poster,
-                  form,
-                ],
-              ),
+              child: Column(children: [poster, form]),
             );
           }
           return Row(
@@ -113,12 +116,17 @@ class _LoginPageState extends State<LoginPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('ACCOUNT',
-                  style: context.texts.labelSmall
-                      ?.copyWith(color: EsaColors.accent)),
+              Text(
+                'ACCOUNT',
+                style: context.texts.labelSmall?.copyWith(
+                  color: EsaColors.accent,
+                ),
+              ),
               const SizedBox(height: EsaSpace.md),
-              Text(_isRegister ? '注册' : '登录',
-                  style: context.texts.headlineMedium),
+              Text(
+                _isRegister ? '注册' : '登录',
+                style: context.texts.headlineMedium,
+              ),
               const SizedBox(height: EsaSpace.sm),
               Text(
                 _isRegister ? '创建一个 ESA 账号，开始你的学习。' : '欢迎回来，登录继续你的学习。',
@@ -137,7 +145,14 @@ class _LoginPageState extends State<LoginPage> {
                 ],
               ),
               const SizedBox(height: EsaSpace.xl),
-              _field(context, label: '用户名', controller: _username),
+              _field(
+                context,
+                label: '用户名',
+                controller: _username,
+                focusNode: _usernameFocus,
+                textInputAction: TextInputAction.next,
+                onSubmitted: (_) => _passwordFocus.requestFocus(),
+              ),
               const SizedBox(height: EsaSpace.lg),
               _passwordField(context),
               if (_isRegister) ...[
@@ -146,7 +161,10 @@ class _LoginPageState extends State<LoginPage> {
                   context,
                   label: '确认密码',
                   controller: _password2,
+                  focusNode: _password2Focus,
                   obscure: !_showPw,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _submit(),
                 ),
               ],
               if (_error != null) ...[
@@ -155,9 +173,7 @@ class _LoginPageState extends State<LoginPage> {
               ],
               const SizedBox(height: EsaSpace.xl),
               EsaRedButton(
-                label: _loading
-                    ? '请稍候…'
-                    : (_isRegister ? '创建账号' : '登录 ESA'),
+                label: _loading ? '请稍候…' : (_isRegister ? '创建账号' : '登录 ESA'),
                 trailing: LucideIcons.arrowUp,
                 onPressed: _loading ? null : _submit,
               ),
@@ -194,14 +210,23 @@ class _LoginPageState extends State<LoginPage> {
     BuildContext context, {
     required String label,
     required TextEditingController controller,
+    FocusNode? focusNode,
     bool obscure = false,
+    TextInputAction? textInputAction,
+    ValueChanged<String>? onSubmitted,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _fieldLabel(context, label),
         const SizedBox(height: EsaSpace.sm),
-        TextField(controller: controller, obscureText: obscure),
+        TextField(
+          controller: controller,
+          focusNode: focusNode,
+          obscureText: obscure,
+          textInputAction: textInputAction,
+          onSubmitted: onSubmitted,
+        ),
       ],
     );
   }
@@ -227,7 +252,21 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
         const SizedBox(height: EsaSpace.sm),
-        TextField(controller: _password, obscureText: !_showPw),
+        TextField(
+          controller: _password,
+          focusNode: _passwordFocus,
+          obscureText: !_showPw,
+          textInputAction: _isRegister
+              ? TextInputAction.next
+              : TextInputAction.done,
+          onSubmitted: (_) {
+            if (_isRegister) {
+              _password2Focus.requestFocus();
+            } else {
+              _submit();
+            }
+          },
+        ),
       ],
     );
   }
@@ -332,11 +371,7 @@ class _Poster extends StatelessWidget {
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
-                children: [
-                  brand,
-                  const SizedBox(height: 24),
-                  titleBlock,
-                ],
+                children: [brand, const SizedBox(height: 24), titleBlock],
               )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -376,18 +411,23 @@ class _PosterRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(cn,
-              style: const TextStyle(
-                  color: EsaColors.onAccent,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800)),
-          Text(en,
-              style: TextStyle(
-                color: EsaColors.onAccent.withValues(alpha: 0.8),
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.4,
-              )),
+          Text(
+            cn,
+            style: const TextStyle(
+              color: EsaColors.onAccent,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            en,
+            style: TextStyle(
+              color: EsaColors.onAccent.withValues(alpha: 0.8),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.4,
+            ),
+          ),
         ],
       ),
     );
