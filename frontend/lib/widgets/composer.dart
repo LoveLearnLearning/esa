@@ -55,6 +55,13 @@ class _ComposerState extends State<Composer> {
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.enter &&
         !HardwareKeyboard.instance.isShiftPressed) {
+      final composing = _controller.value.composing;
+      if (composing.isValid && !composing.isCollapsed) {
+        // Enter is being used to confirm an IME candidate (for example,
+        // committing Latin text from a Chinese input method). Let the text
+        // input system handle it instead of treating it as message submit.
+        return KeyEventResult.ignored;
+      }
       _send();
       return KeyEventResult.handled;
     }

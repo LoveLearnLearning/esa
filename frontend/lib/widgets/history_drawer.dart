@@ -49,8 +49,10 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final width =
-        (MediaQuery.of(context).size.width * 0.88).clamp(0.0, EsaSpace.drawerWidth);
+    final width = (MediaQuery.of(context).size.width * 0.88).clamp(
+      0.0,
+      EsaSpace.drawerWidth,
+    );
 
     final filtered = app.conversations
         .where((c) => c.title.toLowerCase().contains(_query.toLowerCase()))
@@ -59,7 +61,13 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
     return Drawer(
       width: width,
       elevation: 16,
-      shape: Border(right: BorderSide(color: context.n.divider)),
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.horizontal(
+          right: Radius.circular(EsaRadii.sheet),
+        ),
+        side: BorderSide(color: context.n.divider),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: SafeArea(
         child: Column(
           children: [
@@ -111,11 +119,14 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
               color: EsaColors.accent,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Text('E',
-                style: TextStyle(
-                    color: EsaColors.onAccent,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15)),
+            child: const Text(
+              'E',
+              style: TextStyle(
+                color: EsaColors.onAccent,
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
+              ),
+            ),
           ),
           const SizedBox(width: 10),
           Text('星知智链', style: context.texts.titleMedium),
@@ -163,7 +174,10 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
   }
 
   Widget _groupedList(
-      BuildContext context, AppState app, List<ChatConversation> items) {
+    BuildContext context,
+    AppState app,
+    List<ChatConversation> items,
+  ) {
     final now = DateTime.now();
     final pinned = <ChatConversation>[];
     final today = <ChatConversation>[];
@@ -203,9 +217,14 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
     );
   }
 
-  Widget _group(BuildContext context, AppState app, String cn, String en,
-      List<ChatConversation> items,
-      {bool accent = false}) {
+  Widget _group(
+    BuildContext context,
+    AppState app,
+    String cn,
+    String en,
+    List<ChatConversation> items, {
+    bool accent = false,
+  }) {
     if (items.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -215,16 +234,17 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
           padding: const EdgeInsets.symmetric(horizontal: 10),
           child: Row(
             children: [
-              Text(cn,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
-                    color: accent ? EsaColors.accent : context.n.n700,
-                  )),
+              Text(
+                cn,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2,
+                  color: accent ? EsaColors.accent : context.n.n700,
+                ),
+              ),
               const SizedBox(width: 8),
-              Text(en,
-                  style: TextStyle(fontSize: 10, color: context.n.n500)),
+              Text(en, style: TextStyle(fontSize: 10, color: context.n.n500)),
               const SizedBox(width: 8),
               Expanded(child: Divider(color: context.n.divider, height: 1)),
             ],
@@ -356,25 +376,32 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                     color: EsaColors.accent,
                     borderRadius: BorderRadius.circular(EsaRadii.button),
                   ),
-                  child: Text(initial.toUpperCase(),
-                      style: const TextStyle(
-                          color: EsaColors.onAccent,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800)),
+                  child: Text(
+                    initial.toUpperCase(),
+                    style: const TextStyle(
+                      color: EsaColors.onAccent,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(app.username,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.texts.titleMedium
-                              ?.copyWith(fontSize: 13.5)),
-                      Text('${app.role} · 已登录',
-                          style:
-                              TextStyle(fontSize: 11, color: context.n.n600)),
+                      Text(
+                        app.username,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.texts.titleMedium?.copyWith(
+                          fontSize: 13.5,
+                        ),
+                      ),
+                      Text(
+                        '${app.role} · 已登录',
+                        style: TextStyle(fontSize: 11, color: context.n.n600),
+                      ),
                     ],
                   ),
                 ),
@@ -419,9 +446,7 @@ class _MiniIconButton extends StatelessWidget {
         child: Icon(
           icon,
           size: size * 0.56,
-          color: fill
-              ? EsaColors.accent
-              : (color ?? context.n.n600),
+          color: fill ? EsaColors.accent : (color ?? context.n.n600),
         ),
       ),
     );

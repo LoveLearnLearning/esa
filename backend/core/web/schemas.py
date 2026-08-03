@@ -29,6 +29,12 @@ class RenameRequest(BaseModel):
     title: str = Field(min_length=1, max_length=64)
 
 
+class CoreMemoryUpsertRequest(BaseModel):
+    memory_key: str = Field(min_length=1, max_length=64)
+    content: str = Field(min_length=1, max_length=1000)
+    category: str = Field(default="general", max_length=32)
+
+
 class UserPreferencesOut(BaseModel):
     preferred_style: str
     preferred_tone: str

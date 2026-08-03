@@ -13,6 +13,8 @@ import '../theme/esa_theme.dart';
 import '../widgets/assistant_message.dart';
 import '../widgets/composer.dart';
 import '../widgets/history_drawer.dart';
+import '../widgets/learning_dashboard.dart';
+import '../widgets/memory_sheet.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/tool_call_card.dart';
 
@@ -82,6 +84,8 @@ class _ChatPageState extends State<ChatPage> {
               title: app.activeConversation?.title ?? 'ESA',
               onMenu: () => _scaffoldKey.currentState?.openDrawer(),
               onNewChat: app.newConversation,
+              onLearning: () => showLearningDashboard(context),
+              onMemory: () => showMemorySheet(context),
             ),
             Expanded(
               child: app.loadingMessages && app.messages.isEmpty
@@ -159,12 +163,16 @@ class _TopBar extends StatelessWidget {
     required this.title,
     required this.onMenu,
     required this.onNewChat,
+    required this.onLearning,
+    required this.onMemory,
   });
 
   final bool narrow;
   final String title;
   final VoidCallback onMenu;
   final VoidCallback onNewChat;
+  final VoidCallback onLearning;
+  final VoidCallback onMemory;
 
   @override
   Widget build(BuildContext context) {
@@ -206,6 +214,9 @@ class _TopBar extends StatelessWidget {
               ],
             ),
           ),
+          _OutlineIconButton(icon: LucideIcons.barChart3, onTap: onLearning),
+          const SizedBox(width: 8),
+          _OutlineIconButton(icon: LucideIcons.brain, onTap: onMemory),
         ],
       ),
     );
@@ -280,6 +291,9 @@ class _EmptyState extends StatelessWidget {
     ('03', TaskMode.searchMaterials),
     ('04', TaskMode.reviewHomework),
     ('05', TaskMode.concept),
+    ('06', TaskMode.masteryReport),
+    ('07', TaskMode.practiceRecommendation),
+    ('08', TaskMode.academicSearch),
   ];
 
   @override

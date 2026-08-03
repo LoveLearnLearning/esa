@@ -45,6 +45,7 @@ class ApiClient {
   String? sessionId;
   String? userId;
   String? username;
+  DateTime? sessionExpiresAt;
 
   bool get isLoggedIn => sessionId != null;
 
@@ -101,6 +102,7 @@ class ApiClient {
     sessionId = data['session_id'] as String;
     userId = data['user_id'] as String;
     this.username = data['username'] as String;
+    sessionExpiresAt = DateTime.tryParse(data['expires_at'] as String? ?? '');
   }
 
   Future<void> logout() async {
@@ -108,6 +110,7 @@ class ApiClient {
       sessionId = null;
       userId = null;
       username = null;
+      sessionExpiresAt = null;
       return;
     }
     if (sessionId == null) return;
@@ -119,6 +122,7 @@ class ApiClient {
       sessionId = null;
       userId = null;
       username = null;
+      sessionExpiresAt = null;
     }
   }
 
@@ -210,6 +214,55 @@ class ApiClient {
     );
     if (r.statusCode != 200) _fail(r);
     return UserProfile.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<MasteryReport> getMasteryReport({String course = ''}) async {
+    final query = course.trim().isEmpty
+        ? ''
+        : '?course=${Uri.encodeQueryComponent(course.trim())}';
+    final r = await http.get(
+      _uri('/me/learning/mastery$query'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return MasteryReport.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<List<CoreMemoryItem>> listCoreMemories() async {
+    final r = await http.get(
+      _uri('/me/memories'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return (_decode(r) as List)
+        .whereType<Map>()
+        .map((item) => CoreMemoryItem.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  Future<void> saveCoreMemory({
+    required String key,
+    required String content,
+    required String category,
+  }) async {
+    final r = await http.put(
+      _uri('/me/memories'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'memory_key': key,
+        'content': content,
+        'category': category,
+      }),
+    );
+    if (r.statusCode != 201) _fail(r);
+  }
+
+  Future<void> deleteCoreMemory(String key) async {
+    final r = await http.delete(
+      _uri('/me/memories/${Uri.encodeComponent(key)}'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204) _fail(r);
   }
 
   // ---------- 对话 ----------
@@ -382,6 +435,7 @@ class ApiClient {
     sessionId = 'offline-session';
     userId = 'offline-user';
     username = name.isEmpty ? '离线用户' : name;
+    sessionExpiresAt = DateTime.now().toUtc().add(const Duration(days: 7));
     if (_offConvs.isEmpty) _seedOffline();
   }
 

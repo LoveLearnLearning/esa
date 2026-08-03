@@ -9,19 +9,30 @@ import 'pages/login_page.dart';
 import 'state/app_state.dart';
 import 'theme/esa_theme.dart';
 
-void main() {
-  runApp(const EsaApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final state = AppState();
+  await state.restoreSession();
+  runApp(EsaApp(state: state));
 }
 
 class EsaApp extends StatefulWidget {
-  const EsaApp({super.key});
+  const EsaApp({super.key, this.state});
+
+  final AppState? state;
 
   @override
-  State<EsaApp> createState() => _EsaAppState(); 
+  State<EsaApp> createState() => _EsaAppState();
 }
 
 class _EsaAppState extends State<EsaApp> {
-  final AppState _app = AppState();
+  late final AppState _app;
+
+  @override
+  void initState() {
+    super.initState();
+    _app = widget.state ?? AppState();
+  }
 
   @override
   void dispose() {

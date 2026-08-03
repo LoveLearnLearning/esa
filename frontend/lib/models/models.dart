@@ -49,6 +49,66 @@ class UserProfile {
   }
 }
 
+class MasteryPoint {
+  const MasteryPoint({required this.name, required this.masteryLevel});
+
+  final String name;
+  final double masteryLevel;
+
+  factory MasteryPoint.fromJson(Map<String, dynamic> json) => MasteryPoint(
+    name: (json['name'] ?? json['kp_id'] ?? '未知知识点').toString(),
+    masteryLevel: (json['mastery_level'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+class MasteryReport {
+  const MasteryReport({
+    required this.totalPoints,
+    required this.averageMastery,
+    required this.weakPoints,
+    required this.strongPoints,
+    required this.stalePoints,
+  });
+
+  final int totalPoints;
+  final double averageMastery;
+  final List<MasteryPoint> weakPoints;
+  final List<MasteryPoint> strongPoints;
+  final List<MasteryPoint> stalePoints;
+
+  factory MasteryReport.fromJson(Map<String, dynamic> json) {
+    List<MasteryPoint> points(String key) => (json[key] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => MasteryPoint.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+    return MasteryReport(
+      totalPoints: (json['total_points'] as num?)?.toInt() ?? 0,
+      averageMastery: (json['avg_mastery'] as num?)?.toDouble() ?? 0,
+      weakPoints: points('weak_points'),
+      strongPoints: points('strong_points'),
+      stalePoints: points('stale_points'),
+    );
+  }
+}
+
+class CoreMemoryItem {
+  const CoreMemoryItem({
+    required this.key,
+    required this.content,
+    required this.category,
+  });
+
+  final String key;
+  final String content;
+  final String category;
+
+  factory CoreMemoryItem.fromJson(Map<String, dynamic> json) => CoreMemoryItem(
+    key: json['memory_key'] as String? ?? '',
+    content: json['content'] as String? ?? '',
+    category: json['category'] as String? ?? 'general',
+  );
+}
+
 enum MessageRole { user, assistant, tool }
 
 MessageRole roleFromString(String r) {

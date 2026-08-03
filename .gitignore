@@ -80,3 +80,5 @@ esa.out
 
 run.sh
 gpu_proxy.sh
+
+frontend-web.tar.gz

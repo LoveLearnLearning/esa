@@ -2,7 +2,11 @@
 // 认证 / 对话列表 / 历史消息 / 发消息 均对接 API.md 定义的接口
 // 置顶(pinned) 主题 设置为纯前端本地状态 后端无对应字段
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
 import '../models/models.dart';
@@ -11,6 +15,11 @@ class AppState extends ChangeNotifier {
   AppState({ApiClient? api}) : api = api ?? ApiClient();
 
   final ApiClient api;
+
+  static const _rememberSessionKey = 'esa.remember.session_id';
+  static const _rememberUserIdKey = 'esa.remember.user_id';
+  static const _rememberUsernameKey = 'esa.remember.username';
+  static const _rememberExpiresAtKey = 'esa.remember.expires_at';
 
   // ---- 本地设置(不落后端) ----
   ThemeMode themeMode = ThemeMode.dark;
@@ -48,11 +57,20 @@ class AppState extends ChangeNotifier {
 
   // ============ 认证 ============
   /// 返回 null 表示成功 否则返回错误文案
-  Future<String?> login(String username, String password) async {
+  Future<String?> login(
+    String username,
+    String password, {
+    bool rememberLogin = false,
+  }) async {
     try {
       await api.login(username, password);
       email = '$username@esa.study';
       await _afterLogin();
+      if (rememberLogin) {
+        await _rememberCurrentSession();
+      } else {
+        await _forgetRememberedSession();
+      }
       return null;
     } on ApiException catch (e) {
       return e.detail;
@@ -91,6 +109,80 @@ class AppState extends ChangeNotifier {
     _clearSession();
   }
 
+  Future<void> restoreSession() async {
+    final localPreferences = await _getLocalPreferences();
+    if (localPreferences == null) return;
+    final sessionId = localPreferences.getString(_rememberSessionKey);
+    final userId = localPreferences.getString(_rememberUserIdKey);
+    final username = localPreferences.getString(_rememberUsernameKey);
+    final expiresAtValue = localPreferences.getString(_rememberExpiresAtKey);
+    final expiresAt = DateTime.tryParse(expiresAtValue ?? '');
+
+    if (sessionId == null ||
+        userId == null ||
+        username == null ||
+        expiresAt == null ||
+        !expiresAt.isAfter(DateTime.now().toUtc())) {
+      await _forgetRememberedSession();
+      return;
+    }
+
+    api.sessionId = sessionId;
+    api.userId = userId;
+    api.username = username;
+    api.sessionExpiresAt = expiresAt;
+    email = '$username@esa.study';
+
+    try {
+      await _afterLogin();
+    } catch (_) {
+      _clearSession();
+    }
+  }
+
+  Future<void> _rememberCurrentSession() async {
+    final sessionId = api.sessionId;
+    final userId = api.userId;
+    final username = api.username;
+    final expiresAt = api.sessionExpiresAt;
+    if (sessionId == null ||
+        userId == null ||
+        username == null ||
+        expiresAt == null) {
+      return;
+    }
+    final localPreferences = await _getLocalPreferences();
+    if (localPreferences == null) return;
+    await localPreferences.setString(_rememberSessionKey, sessionId);
+    await localPreferences.setString(_rememberUserIdKey, userId);
+    await localPreferences.setString(_rememberUsernameKey, username);
+    await localPreferences.setString(
+      _rememberExpiresAtKey,
+      expiresAt.toUtc().toIso8601String(),
+    );
+  }
+
+  Future<void> _forgetRememberedSession() async {
+    final localPreferences = await _getLocalPreferences();
+    if (localPreferences == null) return;
+    await Future.wait([
+      localPreferences.remove(_rememberSessionKey),
+      localPreferences.remove(_rememberUserIdKey),
+      localPreferences.remove(_rememberUsernameKey),
+      localPreferences.remove(_rememberExpiresAtKey),
+    ]);
+  }
+
+  Future<SharedPreferences?> _getLocalPreferences() async {
+    try {
+      return await SharedPreferences.getInstance();
+    } on MissingPluginException {
+      // 新增插件后仅 Hot Restart 时 Web 插件可能尚未重新注册。
+      // 此时跳过会话持久化，让应用仍可正常进入登录页。
+      return null;
+    }
+  }
+
   /// 修改成功后服务端会注销全部会话，前端同步回到登录页。
   /// 返回 null 表示成功，否则返回可直接展示的错误信息。
   Future<String?> changePassword(String oldPassword, String newPassword) async {
@@ -110,6 +202,8 @@ class AppState extends ChangeNotifier {
     api.sessionId = null;
     api.userId = null;
     api.username = null;
+    api.sessionExpiresAt = null;
+    unawaited(_forgetRememberedSession());
     conversations.clear();
     _messages.clear();
     _pinned.clear();
@@ -292,40 +386,66 @@ class AppState extends ChangeNotifier {
     ChatMessage assistant,
   ) async {
     var completed = false;
+    Timer? renderTimer;
+    var renderPending = false;
 
-    await for (final event in api.streamMessage(conversationId, input)) {
-      switch (event.event) {
-        case 'start':
-          break;
-        case 'reasoning':
-          assistant.reasoning += event.data['delta'] as String? ?? '';
-          notifyListeners();
-        case 'content':
-          assistant.text += event.data['delta'] as String? ?? '';
-          notifyListeners();
-        case 'tool':
-          // 工具结果应位于最终助手回复之前。
-          list.remove(assistant);
-          list.add(
-            ChatMessage(
-              id: DateTime.now().microsecondsSinceEpoch.toString(),
-              role: MessageRole.tool,
-              name: event.data['name'] as String?,
-              text: event.data['content']?.toString() ?? '',
-            ),
-          );
-          list.add(assistant);
-          notifyListeners();
-        case 'done':
-          completed = true;
-          assistant.typing = false;
-          if (assistant.text.isEmpty && assistant.reasoning.isEmpty) {
+    void scheduleRender() {
+      renderPending = true;
+      renderTimer ??= Timer(const Duration(milliseconds: 50), () {
+        renderTimer = null;
+        if (!renderPending) return;
+        renderPending = false;
+        notifyListeners();
+      });
+    }
+
+    void renderNow() {
+      renderTimer?.cancel();
+      renderTimer = null;
+      renderPending = false;
+      notifyListeners();
+    }
+
+    try {
+      await for (final event in api.streamMessage(conversationId, input)) {
+        switch (event.event) {
+          case 'start':
+            break;
+          case 'reasoning':
+            assistant.reasoning += event.data['delta'] as String? ?? '';
+            scheduleRender();
+          case 'content':
+            assistant.text += event.data['delta'] as String? ?? '';
+            scheduleRender();
+          case 'tool':
+            // 工具结果应位于最终助手回复之前。
             list.remove(assistant);
-          }
-          notifyListeners();
-        case 'error':
-          throw ApiException(500, event.data['detail'] as String? ?? '生成回复失败');
+            list.add(
+              ChatMessage(
+                id: DateTime.now().microsecondsSinceEpoch.toString(),
+                role: MessageRole.tool,
+                name: event.data['name'] as String?,
+                text: event.data['content']?.toString() ?? '',
+              ),
+            );
+            list.add(assistant);
+            renderNow();
+          case 'done':
+            completed = true;
+            assistant.typing = false;
+            if (assistant.text.isEmpty && assistant.reasoning.isEmpty) {
+              list.remove(assistant);
+            }
+            renderNow();
+          case 'error':
+            throw ApiException(
+              500,
+              event.data['detail'] as String? ?? '生成回复失败',
+            );
+        }
       }
+    } finally {
+      renderTimer?.cancel();
     }
 
     if (!completed) {

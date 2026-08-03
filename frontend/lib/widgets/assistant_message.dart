@@ -76,6 +76,17 @@ class _AssistantMessageState extends State<AssistantMessage> {
                 tooltip: '重新生成',
                 onTap: widget.onRegenerate,
               ),
+              const Spacer(),
+              Icon(LucideIcons.alertCircle, size: 14, color: context.n.n600),
+              const SizedBox(width: 6),
+              Text(
+                'AI 生成',
+                style: TextStyle(
+                  color: context.n.n600,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
         ],
@@ -157,12 +168,14 @@ class _AssistantMessageState extends State<AssistantMessage> {
                       EsaSpace.md,
                       EsaSpace.md,
                     ),
-                    child: Text(
-                      reasoning.replaceAll(RegExp(r'\s+'), ' '),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.texts.bodySmall?.copyWith(
-                        color: context.n.n600,
+                    child: SelectionArea(
+                      child: Text(
+                        reasoning.replaceAll(RegExp(r'\s+'), ' '),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.texts.bodySmall?.copyWith(
+                          color: context.n.n600,
+                        ),
                       ),
                     ),
                   ),

@@ -2,6 +2,7 @@
 // 左右两栏 海报(红) + 表单 窄屏(<880)竖向堆叠 海报在上
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../state/app_state.dart';
@@ -28,6 +29,7 @@ class _LoginPageState extends State<LoginPage> {
   final _password2Focus = FocusNode();
   AuthMode _mode = AuthMode.login;
   bool _showPw = false;
+  bool _rememberLogin = true;
   bool _loading = false;
   String? _error;
 
@@ -74,8 +76,9 @@ class _LoginPageState extends State<LoginPage> {
     final app = AppScope.of(context);
     final err = _isRegister
         ? await app.register(username, password)
-        : await app.login(username, password);
+        : await app.login(username, password, rememberLogin: _rememberLogin);
     if (!mounted) return;
+    if (err == null) TextInput.finishAutofillContext(shouldSave: true);
     setState(() {
       _loading = false;
       _error = err; // null 表示成功 root 会自动切到对话页
@@ -112,77 +115,96 @@ class _LoginPageState extends State<LoginPage> {
         constraints: const BoxConstraints(maxWidth: 400 + 48 * 2),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 56),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'ACCOUNT',
-                style: context.texts.labelSmall?.copyWith(
-                  color: EsaColors.accent,
+          child: AutofillGroup(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'ACCOUNT',
+                  style: context.texts.labelSmall?.copyWith(
+                    color: EsaColors.accent,
+                  ),
                 ),
-              ),
-              const SizedBox(height: EsaSpace.md),
-              Text(
-                _isRegister ? '注册' : '登录',
-                style: context.texts.headlineMedium,
-              ),
-              const SizedBox(height: EsaSpace.sm),
-              Text(
-                _isRegister ? '创建一个 ESA 账号，开始你的学习。' : '欢迎回来，登录继续你的学习。',
-                style: context.texts.bodySmall?.copyWith(fontSize: 13),
-              ),
-              const SizedBox(height: EsaSpace.xl),
-              EsaSegmented<AuthMode>(
-                value: _mode,
-                onChanged: (m) => setState(() {
-                  _mode = m;
-                  _error = null;
-                }),
-                segments: const [
-                  EsaSegment(AuthMode.login, '登录', sublabel: 'LOG IN'),
-                  EsaSegment(AuthMode.register, '注册', sublabel: 'SIGN UP'),
-                ],
-              ),
-              const SizedBox(height: EsaSpace.xl),
-              _field(
-                context,
-                label: '用户名',
-                controller: _username,
-                focusNode: _usernameFocus,
-                textInputAction: TextInputAction.next,
-                onSubmitted: (_) => _passwordFocus.requestFocus(),
-              ),
-              const SizedBox(height: EsaSpace.lg),
-              _passwordField(context),
-              if (_isRegister) ...[
-                const SizedBox(height: EsaSpace.lg),
+                const SizedBox(height: EsaSpace.md),
+                Text(
+                  _isRegister ? '注册' : '登录',
+                  style: context.texts.headlineMedium,
+                ),
+                const SizedBox(height: EsaSpace.sm),
+                Text(
+                  _isRegister ? '创建一个 ESA 账号，开始你的学习。' : '欢迎回来，登录继续你的学习。',
+                  style: context.texts.bodySmall?.copyWith(fontSize: 13),
+                ),
+                const SizedBox(height: EsaSpace.xl),
+                EsaSegmented<AuthMode>(
+                  value: _mode,
+                  onChanged: (m) => setState(() {
+                    _mode = m;
+                    _error = null;
+                  }),
+                  segments: const [
+                    EsaSegment(AuthMode.login, '登录', sublabel: 'LOG IN'),
+                    EsaSegment(AuthMode.register, '注册', sublabel: 'SIGN UP'),
+                  ],
+                ),
+                const SizedBox(height: EsaSpace.xl),
                 _field(
                   context,
-                  label: '确认密码',
-                  controller: _password2,
-                  focusNode: _password2Focus,
-                  obscure: !_showPw,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _submit(),
+                  label: '用户名',
+                  controller: _username,
+                  focusNode: _usernameFocus,
+                  autofillHints: const [AutofillHints.username],
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => _passwordFocus.requestFocus(),
+                ),
+                const SizedBox(height: EsaSpace.lg),
+                _passwordField(context),
+                if (_isRegister) ...[
+                  const SizedBox(height: EsaSpace.lg),
+                  _field(
+                    context,
+                    label: '确认密码',
+                    controller: _password2,
+                    focusNode: _password2Focus,
+                    obscure: !_showPw,
+                    autofillHints: const [AutofillHints.newPassword],
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _submit(),
+                  ),
+                ],
+                if (!_isRegister) ...[
+                  const SizedBox(height: EsaSpace.md),
+                  CheckboxListTile(
+                    value: _rememberLogin,
+                    onChanged: _loading
+                        ? null
+                        : (value) =>
+                              setState(() => _rememberLogin = value ?? false),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: const Text('记住登录'),
+                    subtitle: const Text('在这台设备上保持登录 7 天'),
+                  ),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: EsaSpace.lg),
+                  _errorBar(context, _error!),
+                ],
+                const SizedBox(height: EsaSpace.xl),
+                EsaRedButton(
+                  label: _loading ? '请稍候…' : (_isRegister ? '创建账号' : '登录 ESA'),
+                  trailing: LucideIcons.arrowUp,
+                  onPressed: _loading ? null : _submit,
+                ),
+                const SizedBox(height: EsaSpace.lg),
+                Text(
+                  '密码 8–128 位 · 会话有效期 7 天',
+                  style: TextStyle(fontSize: 11.5, color: context.n.n600),
                 ),
               ],
-              if (_error != null) ...[
-                const SizedBox(height: EsaSpace.lg),
-                _errorBar(context, _error!),
-              ],
-              const SizedBox(height: EsaSpace.xl),
-              EsaRedButton(
-                label: _loading ? '请稍候…' : (_isRegister ? '创建账号' : '登录 ESA'),
-                trailing: LucideIcons.arrowUp,
-                onPressed: _loading ? null : _submit,
-              ),
-              const SizedBox(height: EsaSpace.lg),
-              Text(
-                '密码 8–128 位 · 会话有效期 2 小时',
-                style: TextStyle(fontSize: 11.5, color: context.n.n600),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -212,6 +234,7 @@ class _LoginPageState extends State<LoginPage> {
     required TextEditingController controller,
     FocusNode? focusNode,
     bool obscure = false,
+    Iterable<String>? autofillHints,
     TextInputAction? textInputAction,
     ValueChanged<String>? onSubmitted,
   }) {
@@ -224,6 +247,7 @@ class _LoginPageState extends State<LoginPage> {
           controller: controller,
           focusNode: focusNode,
           obscureText: obscure,
+          autofillHints: autofillHints,
           textInputAction: textInputAction,
           onSubmitted: onSubmitted,
         ),
@@ -256,6 +280,9 @@ class _LoginPageState extends State<LoginPage> {
           controller: _password,
           focusNode: _passwordFocus,
           obscureText: !_showPw,
+          autofillHints: [
+            _isRegister ? AutofillHints.newPassword : AutofillHints.password,
+          ],
           textInputAction: _isRegister
               ? TextInputAction.next
               : TextInputAction.done,

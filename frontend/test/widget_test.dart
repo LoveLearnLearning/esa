@@ -8,8 +8,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('shows login form when signed out', (tester) async {
     await tester.pumpWidget(const EsaApp());
     await tester.pump();
@@ -17,6 +22,7 @@ void main() {
     expect(find.text('登录'), findsWidgets);
     expect(find.text('用户名'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
+    expect(find.text('记住登录'), findsOneWidget);
   });
 
   testWidgets('submits login form from password keyboard action', (

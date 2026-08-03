@@ -87,6 +87,7 @@ class EsaMarkdown extends StatelessWidget {
         blockquote: bodyStyle?.copyWith(color: context.n.n700),
         blockquoteDecoration: BoxDecoration(
           color: context.n.n100,
+          borderRadius: BorderRadius.circular(EsaRadii.toolCard),
           border: const Border(
             left: BorderSide(color: EsaColors.accent, width: 3),
           ),
@@ -155,6 +156,19 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
       text: widget.code.trimRight(),
       language: widget.language,
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant _EditableCodeBlock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _controller.language = widget.language;
+    if (!_editing && widget.code != oldWidget.code) {
+      final updatedCode = widget.code.trimRight();
+      _controller.value = TextEditingValue(
+        text: updatedCode,
+        selection: TextSelection.collapsed(offset: updatedCode.length),
+      );
+    }
   }
 
   @override
@@ -330,7 +344,7 @@ List<TextSpan> _convertHighlightNodes(List<Node> nodes) {
 class _HighlightEditingController extends TextEditingController {
   _HighlightEditingController({required super.text, required this.language});
 
-  final String language;
+  String language;
 
   @override
   TextSpan buildTextSpan({

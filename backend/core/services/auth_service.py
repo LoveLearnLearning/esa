@@ -51,7 +51,7 @@ class AuthService:
         session_id = str(uuid.uuid4())
 
         current_time = datetime.now(timezone.utc)
-        expire_time = current_time + timedelta(hours=2)
+        expire_time = current_time + timedelta(days=7)
         session: SessionPrincipal = SessionPrincipal(
             session_id=session_id,
             user_id=user.id,

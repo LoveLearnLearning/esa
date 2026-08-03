@@ -16,7 +16,7 @@
 Authorization: Bearer <session_id>
 ```
 
-认证失败统一返回 `401` 会话有效期 2 小时 前端收到 401 应清除本地 token 并跳转登录页
+认证失败统一返回 `401` 会话有效期 7 天 前端收到 401 应清除本地 token 并跳转登录页
 
 ## 错误格式
 
@@ -188,3 +188,43 @@ data: {"delta":"回答正文"}
 | `error` | `detail`, `type` | 流建立后发生生成错误 |
 
 客户端必须按 SSE 空行分隔事件，并将同类 `delta` 按收到顺序追加，不能把每个增量作为独立消息。工具调用 XML 不会作为可见内容发送。
+
+---
+
+## 学习情况接口
+
+以下接口均需要认证。
+
+### GET /me/learning/mastery
+
+可选查询参数 `course`。返回知识点总数、平均掌握度、薄弱点、优势点和需要复习的知识点。
+
+### GET /me/learning/recommendations
+
+查询参数：`course`（必填）、`weeks_to_exam`（可选，默认 4）。返回按优先级排序的练习推荐。
+
+---
+
+## 长期记忆接口
+
+以下接口均需要认证，并且只能管理当前用户的记忆。
+
+### GET /me/memories
+
+返回当前用户的全部长期核心记忆。
+
+### PUT /me/memories
+
+按 `memory_key` 新增或更新记忆：
+
+```json
+{
+  "memory_key": "learning_goal",
+  "content": "本学期重点学习操作系统",
+  "category": "learning"
+}
+```
+
+### DELETE /me/memories/{memory_key}
+
+删除指定记忆，成功响应 `204`。

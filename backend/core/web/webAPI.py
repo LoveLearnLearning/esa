@@ -22,7 +22,7 @@ from backend.core.utils.config import (
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
 )
-from backend.core.web.routers import auth, chat, preferences
+from backend.core.web.routers import auth, chat, learning, memories, preferences
 
 DB_PATH = Path(__file__).resolve().parent.parent / "stores" / "data" / "user.db"
 
@@ -70,6 +70,8 @@ app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(preferences.router)
 app.include_router(preferences.profile_router)
+app.include_router(learning.router)
+app.include_router(memories.router)
 
 
 @app.get("/")
