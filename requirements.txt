@@ -1,7 +1,7 @@
 # Web
 fastapi
 uvicorn[standard]
-pydantic
+pydantic>=2,<3
 
 # Authentication
 bcrypt
@@ -17,10 +17,8 @@ sympy
 httpx
 
 # RAG
-numpy
-faiss-cpu
 sentence-transformers
-rank-bm25
+pypdf
 
 # KHG
 pyyaml

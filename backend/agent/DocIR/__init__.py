@@ -1,0 +1,92 @@
+# backend/agent/DocIR/__init__.py
+
+"""
+
+这个文件干什么：DocIR 的正式公共入口；当前唯一线格式为 schema_version 0.2。
+
+直白点说就是：其他代码要使用 DocIR 数据模型时从这里统一导入，并明确当前只认 V0.2 格式。
+
+DocIR 的正式公共入口；当前唯一线格式为 schema_version 0.2。
+"""
+
+from .core import (
+    Asset,
+    AssetKind,
+    CodeElement,
+    CoordinateTransform,
+    Document,
+    Element,
+    ElementBase,
+    ElementRole,
+    FigureElement,
+    FormulaElement,
+    HeadingElement,
+    InlineSpan,
+    ListElement,
+    ModelReference,
+    NormalizedBox,
+    Page,
+    PageRange,
+    ParagraphElement,
+    ParseRevision,
+    Point,
+    PrintedPageNumber,
+    QualityIssue,
+    Region,
+    Section,
+    Severity,
+    SourceGeometry,
+    SourceVersion,
+    StrictModel,
+    TableElement,
+    TextContent,
+    TextLayer,
+    TextOrigin,
+    UnknownElement,
+    ValidationStatus,
+    ValidationSummary,
+    normalize_bbox,
+)
+from .io import export_json_schema, load_document, save_document
+
+__all__ = [
+    "Asset",
+    "AssetKind",
+    "CodeElement",
+    "CoordinateTransform",
+    "Document",
+    "Element",
+    "ElementBase",
+    "ElementRole",
+    "FigureElement",
+    "FormulaElement",
+    "HeadingElement",
+    "InlineSpan",
+    "ListElement",
+    "ModelReference",
+    "NormalizedBox",
+    "Page",
+    "PageRange",
+    "ParagraphElement",
+    "ParseRevision",
+    "Point",
+    "PrintedPageNumber",
+    "QualityIssue",
+    "Region",
+    "Section",
+    "Severity",
+    "SourceGeometry",
+    "SourceVersion",
+    "StrictModel",
+    "TableElement",
+    "TextContent",
+    "TextLayer",
+    "TextOrigin",
+    "UnknownElement",
+    "ValidationStatus",
+    "ValidationSummary",
+    "export_json_schema",
+    "load_document",
+    "normalize_bbox",
+    "save_document",
+]

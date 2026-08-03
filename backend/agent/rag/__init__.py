@@ -1,24 +1,77 @@
 # backend/agent/rag/__init__.py
-"""
-RAG（检索增强生成）模块
 
-该模块提供文档检索增强生成功能，支持：
-- 文档加载与处理
-- 文本分块与向量化
-- 相似度检索
-- 与 Agent 工具系统无缝集成
-
-架构设计：
-- base.py: 定义抽象接口（EmbeddingProvider, VectorStore）
-- config.py: 配置参数管理
-- document/: 文档加载与处理
-- embeddings/: 向量化实现
-- vectorstore/: 向量存储实现
-- retriever.py: 检索逻辑
-- rag_tool.py: Agent 工具注册
 """
 
-from backend.agent.rag.config import RAGConfig
-from backend.agent.rag.retriever import Retriever
+这个文件干什么：集中定义 ESA 第一阶段本地混合检索包的公共导入接口。
 
-__all__ = ["RAGConfig", "Retriever"]
+直白点说就是：其他代码要使用 RAG 时从这里统一拿功能，不必记住每个实现藏在哪个子目录。
+"""
+
+from .agent_api import (
+    configure_retrieval_service,
+    get_retrieval_service,
+    knowledge_base_stats,
+    retrieve_knowledge_payload,
+)
+from .collection import LoadedChunkCollection, load_chunk_collection
+from .evaluation import EvaluationCase, RetrievalMetrics, evaluate_layers
+from .indexes import QdrantIndex, ReferenceIndex
+from .indexing import (
+    IndexBuildResult,
+    IndexDeployment,
+    IndexGeneration,
+    IndexingService,
+    load_deployment,
+)
+from .inference import (
+    HashingEmbeddingProvider,
+    LexicalOverlapReranker,
+    SentenceTransformersEmbeddingProvider,
+    SentenceTransformersReranker,
+    TransformersEmbeddingProvider,
+    TransformersReranker,
+    VLLMEmbeddingProvider,
+    VLLMReranker,
+)
+from .retrieval.context import ContextBuilder, EvidenceAssembler
+from .retrieval.contracts import ContextLevel, RetrievalConfig, SearchResponse
+from .retrieval.reranking import CandidateReranker, CandidateSelection
+from .retrieval.routing import RouteResult, RouteRetriever
+from .retrieval.service import RetrievalService
+
+__all__ = [
+    "CandidateReranker",
+    "CandidateSelection",
+    "ContextBuilder",
+    "ContextLevel",
+    "EvaluationCase",
+    "EvidenceAssembler",
+    "HashingEmbeddingProvider",
+    "IndexBuildResult",
+    "IndexDeployment",
+    "IndexGeneration",
+    "IndexingService",
+    "LexicalOverlapReranker",
+    "LoadedChunkCollection",
+    "QdrantIndex",
+    "ReferenceIndex",
+    "RetrievalConfig",
+    "RetrievalMetrics",
+    "RetrievalService",
+    "RouteResult",
+    "RouteRetriever",
+    "SearchResponse",
+    "SentenceTransformersEmbeddingProvider",
+    "SentenceTransformersReranker",
+    "TransformersEmbeddingProvider",
+    "TransformersReranker",
+    "VLLMEmbeddingProvider",
+    "VLLMReranker",
+    "configure_retrieval_service",
+    "evaluate_layers",
+    "get_retrieval_service",
+    "knowledge_base_stats",
+    "load_chunk_collection",
+    "load_deployment",
+    "retrieve_knowledge_payload",
+]
