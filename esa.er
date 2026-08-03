@@ -1,15 +1,0 @@
-INFO:     Started server process [2725297]
-INFO:     Waiting for application startup.
-[transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
-(Worker pid=2725862) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
-(Worker pid=2725863) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
-(Worker_TP0 pid=2725862) Loading safetensors checkpoint shards:   0% Completed | 0/4 [00:00<?, ?it/s]
-(Worker_TP0 pid=2725862) Loading safetensors checkpoint shards:  25% Completed | 1/4 [00:00<00:01,  1.78it/s]
-(Worker_TP0 pid=2725862) Loading safetensors checkpoint shards:  50% Completed | 2/4 [00:01<00:01,  1.39it/s]
-(Worker_TP0 pid=2725862) Loading safetensors checkpoint shards:  75% Completed | 3/4 [00:02<00:00,  1.47it/s]
-(Worker_TP0 pid=2725862) Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:02<00:00,  1.68it/s]
-(Worker_TP0 pid=2725862) Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:02<00:00,  1.60it/s]
-(Worker_TP0 pid=2725862) 
-(EngineCore pid=2725593) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:51024 (Press CTRL+C to quit)
