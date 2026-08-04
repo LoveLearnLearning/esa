@@ -1,5 +1,7 @@
 # 在这里 submit 更改
 
+> 本文件是按时间记录的开发日志，早期“当前注意事项”保留当时语境，不代表 2026-08-04 的现状；最新状态请看 [README.md](README.md)、[API.md](API.md) 和 [TODO.md](TODO.md)。
+
 ## 2026-07-19 第一次大提交
 
 > 修改人：yyf
@@ -240,7 +242,7 @@
 - 迁移并适配认证服务
   - `AuthService` 提供登录和注册接口
   - `PasswordService` 使用 bcrypt 对密码加盐哈希 不存明文
-  - 登录成功签发 2 小时有效期的 `SessionPrincipal` 会话
+  - 当时登录成功签发 2 小时有效期的 `SessionPrincipal` 会话（后续已调整为 7 天）
   - 移除旧项目遗留的 `company_id` 参数
   - 补齐缺失的 `UserStore` `SessionStore` 导入
 
@@ -680,3 +682,33 @@
 - 增量解析必须正确处理被拆分到多个 chunk 的 `<think>`、`</think>` 和 `<tool_call>` 标签，避免把内部标签或工具调用内容直接展示给用户
 - `reasoning` 当前没有写入 `ChatStore` 数据库，刷新或重新进入历史对话后不会恢复思考内容
 - 生产环境经 FRP 或反向代理部署时需要关闭响应缓冲，并保留 `Content-Type: text/event-stream`、`Cache-Control: no-cache` 和 `X-Accel-Buffering: no` 响应头
+
+## 2026-08-04 第十三次开发记录
+
+> 本节记录工作区当前功能，不代表已由助手执行 Git commit 或 push。
+
+### 已实现
+
+- 后端会话有效期调整为 7 天，修改密码后撤销全部旧会话
+- Flutter 登录状态持久化、记住登录选项和密码回车提交
+- SSE 端到端增量消费、Markdown/LaTeX 实时渲染和流式代码块更新
+- 代码块使用本地 JetBrains Mono，支持高亮、复制、编辑和预览
+- 思考内容折叠/展开、工具调用展示和统一 AI 生成标识
+- 用户偏好、学情档案、学习情况和长期记忆管理前后端对接
+- 新增掌握度、练习推荐和 arXiv 搜索任务入口
+- Flutter Web 构建流程使用 `ESA_API_BASE=/api`，本地部署包已加入 Git 忽略
+- macOS 增加客户端网络权限，移除运行时下载 Google Fonts 的依赖
+
+### 验证结果
+
+- `flutter analyze` 通过
+- 当前 Flutter 测试共 6 项并全部通过
+- Web Release 可成功构建
+
+### 当前注意事项
+
+- Web 文字选择和输入框重影仍需在真实 Chrome/Safari 环境回归验证
+- 代码运行按钮尚未接入后端隔离执行服务
+- 附件按钮尚未接入真实文件上传和多模态后端
+- 核心记忆仍缺数量和 token 预算上限
+- 对话分组和分组级自定义指令尚未实现

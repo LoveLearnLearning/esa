@@ -1,5 +1,7 @@
 # 记忆功能与提示词系统 — 行业对标分析报告
 
+> 项目状态复核：2026-08-04。本文的行业对标数据属于研究记录；项目状态以本节修订和 [TODO.md](TODO.md) 为准。
+
 > 负责模块：记忆系统（TempMemory / CoreMemory / 知识图谱 / 掌握度模型）+ 提示词系统（build_prompt / 风格语调 / 学情档案注入）
 >
 > 对标范围：MemGPT/Letta、LangChain Memory、OpenAI ChatGPT Memory、Mem0、Zep/Graphiti、LlamaIndex Memory、Khanmigo、ChatGPT Edu、Google Gemini、Anthropic Claude
@@ -20,7 +22,7 @@
 | **记忆管理策略** | 无自动遗忘、无摘要、无重要性评分、无冲突检测、无过期 | Mem0 两阶段 Extraction+Update（去重/合并/冲突检测）；Zep bi-temporal 时序事实管理（自动使旧事实失效）；LlamaIndex 自动 flush+压缩 | 🔴 严重 |
 | **容量限制** | TempMemory 20条；CoreMemory **无上限**；无 token 预算 | Mem0 <7K token/查询；Zep ~1.6K token 达 71.2% 准确率；LlamaIndex 默认 token_limit=30000，ratio 0.7 | 🔴 严重 |
 | **个性化能力** | ✅ 教育特化：知识图谱（473知识点/439边）+ 掌握度模型（BKT+HLR+Ebbinghaus）+ 学习档案（major/grade/week） | Khanmigo 集成 Khan Academy 进度系统；Duolingo 间隔重复+遗忘曲线；ChatGPT Edu 工作区隔离 | 🟢 较好 |
-| **可视化管理** | 有 CRUD API（save/get/delete_core_memory）；**无前端 UI** | ChatGPT Memory Summary+Sources 页面；Mem0 Platform UI；Letta REST API+memory block 编辑器；Gemini Saved Info 页面 | 🟡 中等 |
+| **可视化管理** | 有认证后的长期记忆 CRUD API，并已提供 Flutter 管理界面 | ChatGPT Memory Summary+Sources 页面；Mem0 Platform UI；Letta REST API+memory block 编辑器；Gemini Saved Info 页面 | 🟢 较好 |
 | **隐私与安全** | ContextVar 用户隔离；参数化 SQL 防注入；**无加密、无临时对话、无保留期策略** | ChatGPT Edu FERPA 合规+不训练+180天保留+SSO；OpenAI Enterprise AES-256+TLS1.2+；Gemini Temporary Chat 72h 不留痕 | 🟡 中等 |
 
 ### 1.2 提示词系统对比
@@ -50,9 +52,9 @@
 | 记忆管理 | 15% | 20 | 3.0 | 无自动遗忘/摘要/冲突检测/过期 |
 | 容量控制 | 10% | 25 | 2.5 | TempMemory 20条，CoreMemory 无上限无预算 |
 | 个性化能力 | 15% | 75 | 11.25 | ✅ 教育特化（知识图谱+掌握度+学习档案） |
-| 可视化管理 | 10% | 40 | 4.0 | 有 CRUD API，无前端 UI |
+| 可视化管理 | 10% | 75 | 7.5 | CRUD API 和前端管理界面均已完成 |
 | 隐私安全 | 10% | 55 | 5.5 | 用户隔离+SQL防注入，缺加密/临时对话 |
-| **总计** | 100% | — | **37.5/100** | — |
+| **总计** | 100% | — | **41.0/100** | 前端管理能力完成后修订 |
 
 ### 2.2 提示词系统评分卡（满分 100）
 
@@ -188,7 +190,7 @@
 | **Socratic 引导** | ✅ 强约束：never give answer；反滥用；渐进提示 | ❌ 通用对话 | ✅ Roleplay 引导 | 🟡 一句话描述 |
 | **掌握度追踪** | ✅ Khan Academy 进度系统 | ❌ 无 | ✅ 间隔重复+遗忘曲线 | ✅ BKT+HLR+Ebbinghaus |
 | **知识图谱** | ✅ Khan Academy 课程树 | ❌ 无 | ✅ 技能树 | ✅ 473知识点/439边 |
-| **学习档案** | ✅ 教师仪表盘 | ✅ 工作区管理 | ✅ 错误分析 | 🟡 后端有，前端无 |
+| **学习档案** | ✅ 教师仪表盘 | ✅ 工作区管理 | ✅ 错误分析 | ✅ 后端与个人设置前端已对接 |
 | **隐私合规** | ✅ 学生隐私保护 | ✅ FERPA+不训练+180天 | 🟡 数据用于产品 | 🟡 用户隔离，无合规认证 |
 | **个性化深度** | 🟡 按学生兴趣定制 | ❌ 无 | ✅ Gamification+streak | ✅ 掌握度+教学进度 |
 | **来源标注** | ❌ 未强调 | ❌ 无 | ❌ 无 | ✅ 有规则 |
@@ -350,7 +352,7 @@
 
 ---
 
-### 方案 6：前端偏好/学情档案对接（P1）
+### 方案 6：前端偏好/学情档案对接（P1，已完成）
 
 **目标**：让用户能在前端管理偏好和学情档案
 
@@ -385,7 +387,7 @@
 ### 阶段二（近期执行，3-5 天）
 - [ ] 方案 3：Socratic 反滥用流程（1.5h）
 - [ ] 方案 4：核心记忆冲突检测+过期（2h）
-- [ ] 方案 6：前端偏好/档案对接（3h）
+- [x] 方案 6：前端偏好/档案对接（已完成）
 
 ### 阶段三（后续优化，1-2 周）
 - [ ] 风格控制参数化升级

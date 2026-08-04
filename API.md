@@ -1,10 +1,12 @@
 # ESA 前后端接口文档
 
 > 在这里记录前后端网络 endpoint 前端照此对接 后端改动接口时同步更新本文档
+>
+> 最后核对：2026-08-04。
 
-- Base URL(开发环境): `http://127.0.0.1:8000`
-- 启动命令: `uvicorn backend.core.web.webAPI:app --reload`
-- 交互式调试: 启动后访问 `http://127.0.0.1:8000/docs`
+- Base URL（`python -m backend.main`）: `http://127.0.0.1:51024`
+- 开发启动命令: `uvicorn backend.core.web.webAPI:app --host 0.0.0.0 --port 51024 --reload`
+- 交互式调试: 启动后访问 `http://127.0.0.1:51024/docs`
 - 通信格式: 普通接口使用 JSON 流式消息接口响应 `text/event-stream`
 - 时间格式: 统一为 UTC ISO 8601 字符串 例如 `2026-07-24T05:22:08.123456+00:00`
 
@@ -87,6 +89,19 @@ Authorization: Bearer <session_id>
 需要认证
 
 无请求体 成功响应 `204` 无响应体
+
+### POST /auth/change-password — 修改密码
+
+需要认证。请求体：
+
+```json
+{
+  "old_password": "old-password",
+  "new_password": "new-password"
+}
+```
+
+成功响应 `204`，并撤销该用户的全部已有会话，前端需要返回登录页。旧密码错误或新旧密码相同返回 `400`。
 
 ---
 
@@ -228,3 +243,39 @@ data: {"delta":"回答正文"}
 ### DELETE /me/memories/{memory_key}
 
 删除指定记忆，成功响应 `204`。
+
+---
+
+## 输出偏好接口
+
+### GET /me/preferences
+
+返回当前用户的回答风格、语调和自定义指令。
+
+### PATCH /me/preferences
+
+可更新 `preferred_style`、`preferred_tone` 和 `custom_instruction`。前端当前已完成对接。
+
+## 学情档案接口
+
+### GET /me/profile
+
+返回专业、年级、当前教学周、总教学周和档案开关。
+
+### PATCH /me/profile
+
+更新当前用户学情档案。档案开启时，Agent 会将相关学情信息注入本轮上下文。
+
+## Web 部署约定
+
+推荐把 Flutter Web 编译时的 `ESA_API_BASE` 设置为 `/api`，再由 Nginx 反向代理到 `127.0.0.1:51024`。SSE 代理必须关闭缓冲：
+
+```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:51024/;
+    proxy_http_version 1.1;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+}
+```

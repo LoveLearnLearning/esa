@@ -1,5 +1,7 @@
 # ESA Agent 数据集生成方案
 
+> 最后核对：2026-08-04。目标基座为 `Qwen/Qwen3.5-122B-A10B`，训练框架为 LLaMA-Factory。工具名称和参数必须以运行时导出的 Schema 为准。
+
 你的数据集应该分成两部分生成：
 
 1. 教学能力数据：讲概念、解题、苏格拉底式引导、Markdown/LaTeX。
@@ -117,6 +119,43 @@ LLaMA-Factory 会根据 `template: qwen3_5` 把结构化数据转换成 Qwen3.5 
 - `record_answer`
 - `load_skill`
 - 以及 RAG 工具，但你之前说 RAG 不由你负责，可以先不放进数据集。
+
+### 导出当前全部 Tool Schema
+
+所有工具通过 `ToolRegistry` 注册，完整列表位于 `backend.agent.tools.tr.schemas`。建议新增 `backend/scripts/export_tool_schemas.py`：
+
+```python
+import argparse
+import json
+from pathlib import Path
+
+from backend.agent.tools import tr
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path, default=Path("tool_schemas.json"))
+    args = parser.parse_args()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(
+        json.dumps(tr.schemas, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(f"exported {len(tr.schemas)} tools to {args.output}")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+从仓库根目录运行：
+
+```bash
+python -m backend.scripts.export_tool_schemas \
+  --output training/tool_schemas.json
+```
+
+不要直接在 `tool_register.py` 中导入全局 `tr`，否则容易形成 `tools.py ↔ tool_register.py` 循环导入。每次新增、删除或修改工具后都应重新导出并对训练数据执行 JSON Schema 校验。
 
 ### 工具调用样本
 

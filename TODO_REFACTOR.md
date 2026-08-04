@@ -1,6 +1,6 @@
 # 后端代码重构待办清单
 
-> 基于代码质量评估报告，按优先级排序。已修复项标记为 ✅。
+> 基于代码质量评估报告，按优先级排序。最后核对：2026-08-04。已修复项标记为 ✅。
 
 ---
 
@@ -35,15 +35,13 @@
 
 ## 第2梯队（中风险，建议本周内执行）
 
-### 5. ToolRegistry 错误处理改进
+### ✅ ~~5. ToolRegistry 错误处理改进~~（已修复）
 - **文件**: [tool_register.py](backend/agent/tools/tool_register.py) L73-L80
-- **问题**: 捕获所有 `Exception` 返回字符串，严重错误被吞掉，调用方无法区分正常字符串和错误
-- **建议**: 只捕获预期异常类型，或使用自定义异常类
+- **结果**: 当前仅捕获 `ValueError`、`TypeError` 和 `RuntimeError`，不再盲目捕获 `Exception`
 
-### 6. 修复 auth_service ValueError 未捕获
+### ✅ ~~6. 修复 auth_service ValueError 未捕获~~（已修复）
 - **文件**: [auth_service.py](backend/core/services/auth_service.py) L125-L129
-- **问题**: `change_password` 中新旧密码相同时抛出 `ValueError`，路由层未捕获，导致 500 错误
-- **建议**: 使用自定义 HTTP 异常替代 `ValueError`，或在路由层捕获
+- **结果**: `auth.py` 已捕获该 `ValueError` 并转换为 `400 Bad Request`；修改成功后撤销用户全部会话
 
 ### 7. 修复 SessionPrincipal 默认值问题
 - **文件**: [models.py](backend/core/utils/models.py) L67-L68
@@ -120,6 +118,6 @@
 | 优先级 | 数量 | 预计工作量 |
 |--------|------|-----------|
 | 第1梯队 | 3 项 | ~3.5h |
-| 第2梯队 | 4 项 | ~3.5h |
+| 第2梯队 | 2 项 | ~2h |
 | 第3梯队 | 10 项 | ~5h |
-| **总计** | **17 项** | **~12h** |
+| **剩余总计** | **15 项** | **~10.5h** |
