@@ -38,7 +38,9 @@ class _AssistantMessageState extends State<AssistantMessage> {
   }
 
   void _copy() {
-    Clipboard.setData(ClipboardData(text: widget.message.text));
+    Clipboard.setData(
+      ClipboardData(text: _withoutTrailingAiLabel(widget.message.text)),
+    );
     setState(() => _copied = true);
     _copyTimer?.cancel();
     _copyTimer = Timer(const Duration(milliseconds: 1400), () {
@@ -186,14 +188,15 @@ class _AssistantMessageState extends State<AssistantMessage> {
   }
 
   Widget _body(BuildContext context, ChatMessage m) {
-    final markdown = EsaMarkdown(data: m.text, selectable: !m.typing);
+    final visibleText = _withoutTrailingAiLabel(m.text);
+    final markdown = EsaMarkdown(data: visibleText, selectable: !m.typing);
 
     if (!m.typing) return markdown;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (m.text.isNotEmpty) markdown,
+        if (visibleText.isNotEmpty) markdown,
         const Padding(
           padding: EdgeInsets.only(top: 2),
           child: _BlinkingCursor(),
@@ -201,6 +204,13 @@ class _AssistantMessageState extends State<AssistantMessage> {
       ],
     );
   }
+}
+
+String _withoutTrailingAiLabel(String text) {
+  return text.replaceFirst(
+    RegExp(r'(?:\r?\n)+\s*AI\s*生成\s*$', caseSensitive: false),
+    '',
+  );
 }
 
 class _BlinkingCursor extends StatefulWidget {
