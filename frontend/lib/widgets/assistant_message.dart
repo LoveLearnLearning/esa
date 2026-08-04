@@ -51,48 +51,50 @@ class _AssistantMessageState extends State<AssistantMessage> {
   @override
   Widget build(BuildContext context) {
     final m = widget.message;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('ESA', style: context.texts.labelSmall),
-        const SizedBox(height: EsaSpace.sm),
-        if (m.reasoning.isNotEmpty) ...[
-          _reasoning(context, m),
-          const SizedBox(height: EsaSpace.md),
-        ],
-        _body(context, m),
-        if (!m.typing && m.text.isNotEmpty) ...[
+    return SelectionArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('ESA', style: context.texts.labelSmall),
           const SizedBox(height: EsaSpace.sm),
-          Row(
-            children: [
-              _IconAction(
-                icon: LucideIcons.copy,
-                color: _copied ? EsaColors.accent : context.n.n600,
-                tooltip: '复制',
-                onTap: _copy,
-              ),
-              const SizedBox(width: 4),
-              _IconAction(
-                icon: LucideIcons.refreshCw,
-                color: context.n.n600,
-                tooltip: '重新生成',
-                onTap: widget.onRegenerate,
-              ),
-              const Spacer(),
-              Icon(LucideIcons.alertCircle, size: 14, color: context.n.n600),
-              const SizedBox(width: 6),
-              Text(
-                'AI 生成',
-                style: TextStyle(
-                  color: context.n.n600,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w500,
+          if (m.reasoning.isNotEmpty) ...[
+            _reasoning(context, m),
+            const SizedBox(height: EsaSpace.md),
+          ],
+          _body(context, m),
+          if (!m.typing && m.text.isNotEmpty) ...[
+            const SizedBox(height: EsaSpace.sm),
+            Row(
+              children: [
+                _IconAction(
+                  icon: LucideIcons.copy,
+                  color: _copied ? EsaColors.accent : context.n.n600,
+                  tooltip: '复制',
+                  onTap: _copy,
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 4),
+                _IconAction(
+                  icon: LucideIcons.refreshCw,
+                  color: context.n.n600,
+                  tooltip: '重新生成',
+                  onTap: widget.onRegenerate,
+                ),
+                const Spacer(),
+                Icon(LucideIcons.alertCircle, size: 14, color: context.n.n600),
+                const SizedBox(width: 6),
+                Text(
+                  'AI 生成',
+                  style: TextStyle(
+                    color: context.n.n600,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -160,7 +162,7 @@ class _AssistantMessageState extends State<AssistantMessage> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.only(top: EsaSpace.md),
-                      child: EsaMarkdown(data: reasoning, selectable: true),
+                      child: EsaMarkdown(data: reasoning),
                     ),
                   )
                 : Padding(
@@ -170,14 +172,12 @@ class _AssistantMessageState extends State<AssistantMessage> {
                       EsaSpace.md,
                       EsaSpace.md,
                     ),
-                    child: SelectionArea(
-                      child: Text(
-                        reasoning.replaceAll(RegExp(r'\s+'), ' '),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.texts.bodySmall?.copyWith(
-                          color: context.n.n600,
-                        ),
+                    child: Text(
+                      reasoning.replaceAll(RegExp(r'\s+'), ' '),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.texts.bodySmall?.copyWith(
+                        color: context.n.n600,
                       ),
                     ),
                   ),
@@ -189,7 +189,7 @@ class _AssistantMessageState extends State<AssistantMessage> {
 
   Widget _body(BuildContext context, ChatMessage m) {
     final visibleText = _withoutTrailingAiLabel(m.text);
-    final markdown = EsaMarkdown(data: visibleText, selectable: !m.typing);
+    final markdown = EsaMarkdown(data: visibleText);
 
     if (!m.typing) return markdown;
 

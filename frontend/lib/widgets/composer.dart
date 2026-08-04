@@ -112,27 +112,36 @@ class _ComposerState extends State<Composer> {
                         child: Divider(height: 1, color: context.n.divider),
                       ),
                     ],
-                    Focus(
-                      onKeyEvent: _onKey,
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focus,
-                        minLines: 2,
-                        maxLines: 6,
-                        onChanged: (_) => setState(() {}),
-                        decoration: InputDecoration(
-                          isCollapsed: true,
-                          filled: false,
-                          hintText: widget.taskMode?.hint ?? '问点什么…',
-                          hintStyle: TextStyle(
-                            color: context.n.n600,
-                            fontSize: 15,
+                    Stack(
+                      children: [
+                        Focus(
+                          onKeyEvent: _onKey,
+                          child: TextField(
+                            controller: _controller,
+                            focusNode: _focus,
+                            minLines: 2,
+                            maxLines: 6,
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              isCollapsed: true,
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                            ),
                           ),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
                         ),
-                      ),
+                        if (_controller.text.isEmpty)
+                          IgnorePointer(
+                            child: Text(
+                              widget.taskMode?.hint ?? '问点什么…',
+                              style: TextStyle(
+                                color: context.n.n600,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: EsaSpace.sm),
                     Row(

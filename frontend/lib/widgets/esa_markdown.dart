@@ -266,8 +266,12 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                         horizontal: 16,
                         vertical: 14,
                       ),
-                      child: SelectableText.rich(
-                        TextSpan(
+                      // Selection is provided by EsaMarkdown's outer
+                      // SelectionArea. Nesting SelectableText here creates
+                      // two selection registrars on Flutter Web, which causes
+                      // duplicated glyphs and overlapping selection ranges.
+                      child: RichText(
+                        text: TextSpan(
                           style: const TextStyle(
                             color: Color(0xFFABB2BF),
                             fontFamily: 'JetBrainsMono',
