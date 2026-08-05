@@ -1,0 +1,390 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "获取城市天气",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "city": {
+                        "type": "string"
+                    }
+                },
+                "required": ["city"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_time",
+            "description": "获取当前时间",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "arxiv_search",
+            "description": "搜索 arXiv 学术论文，返回标题、作者、摘要、PDF链接等结构化信息。适用于学术研究、文献调研、论文写作等场景。search_field 可选: all(全文), title(标题), author(作者), abstract(摘要), category(分类)。sort_by 可选: relevance(相关度), lastUpdated(最后更新), submitted(提交时间)。示例: 搜索大语言模型论文 query='large language model' search_field='all' sort_by='relevance'",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "搜索关键词，如 'transformer attention' 或 'Yann LeCun'"
+                    },
+                    "search_field": {
+                        "type": "string",
+                        "enum": [
+                            "all",
+                            "title",
+                            "author",
+                            "abstract",
+                            "category"
+                        ],
+                        "description": "搜索字段: all=全文, title=标题, author=作者, abstract=摘要, category=分类。默认 all",
+                        "default": "all"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "最大返回结果数量，默认 5，最多 20",
+                        "default": 5
+                    },
+                    "sort_by": {
+                        "type": "string",
+                        "enum": ["relevance", "lastUpdated", "submitted"],
+                        "description": "排序方式: relevance=相关度, lastUpdated=最后更新时间, submitted=提交时间。默认 relevance",
+                        "default": "relevance"
+                    },
+                    "sort_order": {
+                        "type": "string",
+                        "enum": ["ascending", "descending"],
+                        "description": "排序方向: ascending=升序, descending=降序。默认 descending",
+                        "default": "descending"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_core_memory",
+            "description": "保存用户长期稳定的信息例如用户偏好  学习目标  项目信息只有当用户明确要求记住或信息长期有效时才调用",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "memory_key": {
+                        "type": "string",
+                        "description": "记忆的唯一名称  例如 response_style 或 learning_goal"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "需要长期保存的记忆内容"
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": [
+                            "profile",
+                            "preference",
+                            "learning",
+                            "project",
+                            "constraint",
+                            "general"
+                        ],
+                        "description": "记忆的分类",
+                        "default": "general"
+                    }
+                },
+                "required": ["memory_key", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_core_memories",
+            "description": "查看该用户所有已保存的核心记忆",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_core_memory",
+            "description": "删除当前用户的一条核心记忆只有当用户明确要忘掉某一个记忆的时候才能调用不允许自行调用",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "memory_key": {
+                        "type": "string",
+                        "description": "需要删除的记忆的名称"
+                    }
+                },
+                "required": ["memory_key"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recommend_practice",
+            "description": "推荐当前用户在某课程中需要重点练习的知识点 返回按优先级降序的知识点列表 每条包含掌握度 权重 优先级得分 推荐理由 优先级综合考虑掌握度 考试权重 距期末时间 前置依赖薄弱程度 当用户要求推荐练习 制定刷题计划 或询问今天练什么时调用",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "course": {
+                        "type": "string",
+                        "description": "课程名 例如 数据结构 / 操作系统 / 算法设计与分析"
+                    },
+                    "weeks_to_exam": {
+                        "type": "integer",
+                        "description": "距期末考试的周数 0 表示本周考试 16+ 表示距期末很远"
+                    }
+                },
+                "required": ["course", "weeks_to_exam"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_mastery_report",
+            "description": "获取当前用户的掌握度报告 包含平均掌握度 掌握度最低/最高的知识点 以及超过 7 天未练习的知识点 当用户询问掌握度 学习情况 学情 进度时调用",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "course": {
+                        "type": "string",
+                        "description": "课程名 留空则返回全部课程数据"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "record_answer",
+            "description": "记录当前用户一次练习结果并更新该知识点的掌握度 答对 mastery 上升(随练习次数递减 不超过 95) 答错 mastery 下降(不低于 10) 由练习批改 Skill 引导调用 用户主动提交答案后才记录",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "kp_id": {
+                        "type": "string",
+                        "description": "知识点 id 例如 binary_tree_traversal / process_scheduling"
+                    },
+                    "correct": {
+                        "type": "boolean",
+                        "description": "是否答对 True=答对 False=答错"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": "答题置信度 0.0-1.0 模拟 BKT 的 P(G)/P(S) 概率 1.0=高置信度(填空/编程/证明) 0.5=低置信度(选择题可能蒙对) 默认 1.0"
+                    }
+                },
+                "required": ["kp_id", "correct"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "retrieve_knowledge",
+            "description": "从已配置的知识库检索证据、上下文和可回查来源。该工具只读，不会隐式建立或修改索引。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "需要检索的自然语言问题"
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "最多返回多少条结果，默认 5",
+                        "default": 5
+                    },
+                    "similarity_threshold": {
+                        "type": "number",
+                        "description": "可选的 Reranker 概率阈值；未启用 Reranker 时不能使用"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_knowledge_base_stats",
+            "description": "读取当前知识库、模型、索引后端和检索配置。",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "load_skill",
+            "description": "加载某个技能的详细操作说明",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "技能名称"
+                    }
+                },
+                "required": ["name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "通过互联网搜索信息",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "搜索内容"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "最大搜索结果，默认为 5 ",
+                        "default": 5
+                    },
+                    "language": {
+                        "type": "string",
+                        "description": "搜索结果便好语言，默认为中文",
+                        "default": "zh-CN"
+                    },
+                    "time_range": {
+                        "type": "string",
+                        "enum": ["day", "month", "year"],
+                        "description": "搜索时间范围，可选天月年"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "bitwise_calculator",
+            "description": "位运算与布尔运算计算器，适用于计算机组成、数字逻辑、密码学等课程。位运算符: & | ^ ~ << >>。布尔运算符: and or not。算术运算符: + - * / // % **。函数: bin, oct, hex, int, abs, bit_length, popcount。常量: True, False。支持 0b/0o/0x 进制前缀，如 0xFF, 0b1010。示例: '0xFF & 0xAA', '0b1010 | 0b0101', '~0', '5 ^ 3', 'True and False', 'bin(255)'",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expression": {
+                        "type": "string",
+                        "description": "位运算表达式，例如 '0xFF & 0xAA', '0b1010 | 0b0101', '~0', '5 ^ 3', 'True and False'"
+                    }
+                },
+                "required": ["expression"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculator",
+            "description": "数学计算器，支持四则运算、幂运算、科学函数和数学常量。运算符: + - * / // % **（或 ^）。函数: sqrt, cbrt, exp, ln(自然对数), log(常用对数底10), log2, log10, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, degrees, radians, abs, round, floor, ceil, trunc, factorial, gcd, hypot, min, max。常量: pi, e, tau, inf。示例: '2+3*4', 'sqrt(16)', 'sin(pi/2)', 'log(e)', '2^10'",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expression": {
+                        "type": "string",
+                        "description": "数学表达式，例如 '2 + 3 * 4', 'sqrt(16)', 'sin(pi/2)', 'log(e)'"
+                    }
+                },
+                "required": ["expression"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "math_solver",
+            "description": "符号计算工具，适用于高等数学、线性代数、离散数学等课程。支持求导、积分、极限、级数展开、解方程、化简、展开、因式分解、组合数、排列数、求和。operation 可选: diff, integrate, limit, series, solve, simplify, expand, factor, binomial, permutation, summation。示例: 求导 operation='diff' expression='x**3' variable='x'；定积分 operation='integrate' expression='x**2' variable='x' lower=0 upper=1",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "enum": [
+                            "diff",
+                            "integrate",
+                            "limit",
+                            "series",
+                            "solve",
+                            "simplify",
+                            "expand",
+                            "factor",
+                            "binomial",
+                            "permutation",
+                            "summation"
+                        ],
+                        "description": "运算类型: diff=求导, integrate=积分, limit=极限, series=级数, solve=解方程, simplify=化简, expand=展开, factor=因式分解, binomial=组合数, permutation=排列数, summation=求和"
+                    },
+                    "expression": {
+                        "type": "string",
+                        "description": "数学表达式，例如 'x**3 + 2*x', 'sin(x)'"
+                    },
+                    "variable": {
+                        "type": "string",
+                        "description": "运算变量，例如 'x'。diff/integrate/limit/series/solve/summation 需要"
+                    },
+                    "order": {
+                        "type": "integer",
+                        "description": "求导阶数（diff 使用），默认 1",
+                        "default": 1
+                    },
+                    "lower": {
+                        "type": "string",
+                        "description": "定积分下界或求和起点，例如 '0'。可选"
+                    },
+                    "upper": {
+                        "type": "string",
+                        "description": "定积分上界或求和终点，例如 '1'。可选"
+                    },
+                    "point": {
+                        "type": "string",
+                        "description": "极限点或级数展开点，例如 '0'。默认 '0'",
+                        "default": "0"
+                    },
+                    "direction": {
+                        "type": "string",
+                        "enum": ["+", "-"],
+                        "description": "极限方向: '+' 从右侧逼近, '-' 从左侧逼近。默认 '+'",
+                        "default": "+"
+                    },
+                    "n": {
+                        "type": "integer",
+                        "description": "级数展开项数（series 使用），默认 6",
+                        "default": 6
+                    }
+                },
+                "required": ["operation", "expression"]
+            }
+        }
+    }
+]

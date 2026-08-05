@@ -1,11 +1,11 @@
 # 对话分组 + 分组内自定义指令：需求文档
 
-> 本文档从 TODO.md 迁出（2026-08-01），TODO.md 中仅保留待办清单与本文档引用。
+> 本文档从 TODO.md 迁出，最后核对于 2026-08-04。TODO.md 中仅保留待办清单与本文档引用。
 > 内容：项目全景分析、市场调研、功能需求、交互细节、技术要求、分阶段开发计划。
 
 ---
 
-## 全景分析：项目架构与功能模块（2026-08-01 更新）
+## 全景分析：项目架构与功能模块（2026-08-04 更新）
 
 ### 一、技术栈与总体结构
 
@@ -20,7 +20,7 @@
 
 | 模块 | 关键文件 | 现状 |
 |---|---|---|
-| Agent 主循环 | `agent/agent.py` | `run()` / `run_stream()` 可用，loop_times=3，注入用户级偏好/学情档案 |
+| Agent 主循环 | `agent/agent.py` | `run()` / `run_stream()` 可用，循环上限由 `AGENT_LOOP_TIME` 配置，注入用户级偏好/学情档案 |
 | 核心记忆 | `agent/memories/core_memory.py` | SQLite 键值对，`get_all` 按 `updated_at DESC`（上限限制未做，见 TODO.md 后端 6） |
 | 临时记忆 | `agent/memories/temp_memory.py` | 内存，20 条/用户上限 |
 | 知识图谱与掌握度 | `agent/memories/{kg_loader,knowledge_graph,mastery_store}.py` | cs 学科种子数据、掌握度报告可用 |
@@ -29,7 +29,7 @@
 | 工具注册 | `agent/tools/` | 计算器/搜索/记忆/RAG/掌握度等 12+ 工具 |
 | Prompt 构建 | `core/message/build_prompt.py` | 注入风格/语调/用户自定义指令/学情档案/记忆/Skill |
 | 聊天存储 | `core/stores/chat_store.py` | `conversations` + `messages` 两表，含 is_visible 过滤 |
-| Web 层 | `core/web/routers/{auth,chat,preferences}.py` | 认证 / 对话 CRUD+SSE / 偏好与学情档案接口均已就绪 |
+| Web 层 | `core/web/routers/{auth,chat,preferences,learning,memories}.py` | 认证 / 对话 CRUD+SSE / 偏好 / 学情 / 掌握度 / 记忆接口已就绪 |
 
 ### 三、前端模块清单
 
@@ -40,7 +40,8 @@
 | 数据模型 | `lib/models/models.dart` | ChatMessage / ChatConversation（pinned 仅前端本地） |
 | 聊天主界面 | `lib/pages/chat_page.dart` | 顶栏+消息区+输入区+空状态任务卡片 |
 | 历史侧边栏 | `lib/widgets/history_drawer.dart` | 时间自动分组（置顶/今天/本周/更早）+ 搜索 |
-| 偏好设置 | `lib/widgets/profile_sheet.dart` | 已有界面，后端偏好/档案接口已就绪（对接待完成，见 TODO.md 前端 4） |
+| 偏好设置 | `lib/widgets/profile_sheet.dart` | 偏好、学情档案和修改密码均已对接后端 |
+| 学习与记忆 | `lib/widgets/{learning_dashboard,memory_sheet}.dart` | 掌握度报告、练习入口和长期记忆管理已完成 |
 
 ### 四、对话数据流（现状）
 
