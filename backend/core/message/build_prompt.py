@@ -16,7 +16,7 @@ SYSTEM_PROMPT: str = """
 # Skill 使用规则
 
 你可以根据用户任务选择可用的 skill
-当某个 skill 的描述与用户任务匹配时  先调用 load_skill 加载完整说明
+当某个 skill 的描述与用户任务匹配时  先调用 load_skill 工具 加载完整说明
 加载 skill 后按照其中的步骤完成任务
 不要调用与当前任务无关的 skill
 不要编造不存在的 skill

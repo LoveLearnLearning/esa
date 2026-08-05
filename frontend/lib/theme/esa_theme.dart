@@ -103,7 +103,7 @@ class EsaMotion {
   static const fade = Duration(milliseconds: 160);
   static const messageIn = Duration(milliseconds: 200);
   static const replyDelay = Duration(milliseconds: 420);
-  static const streamTick = Duration(milliseconds: 26); // + 3~4 chars per tick
+  static const streamTick = Duration(milliseconds: 18); // 流式回复逐字显示
   static const curve = Curves.easeOut;
 }
 

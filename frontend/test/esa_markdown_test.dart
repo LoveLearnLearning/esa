@@ -29,8 +29,8 @@ unknown syntax
     expect(find.text('python'), findsOneWidget);
     expect(find.text('plaintext'), findsOneWidget);
     expect(find.text('some-unknown-language'), findsOneWidget);
-    expect(find.byType(SelectionArea), findsOneWidget);
-    expect(find.byType(SelectableText), findsNothing);
+    expect(find.byType(SelectionArea), findsNothing);
+    expect(find.byType(SelectableText), findsNWidgets(3));
     expect(tester.takeException(), isNull);
   });
 
@@ -58,11 +58,7 @@ final answer = 42;
 print("hel")
 ```'''),
     );
-    Finder richTextContaining(String text) => find.byWidgetPredicate(
-      (widget) => widget is RichText && widget.text.toPlainText() == text,
-    );
-
-    expect(richTextContaining('print("hel")'), findsOneWidget);
+    expect(find.text('print("hel")', findRichText: true), findsOneWidget);
 
     await tester.pumpWidget(
       app('''```python
@@ -71,8 +67,11 @@ print("hello world")
     );
     await tester.pump();
 
-    expect(richTextContaining('print("hello world")'), findsOneWidget);
-    expect(richTextContaining('print("hel")'), findsNothing);
+    expect(
+      find.text('print("hello world")', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.text('print("hel")', findRichText: true), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

@@ -3,6 +3,7 @@
 // 置顶(pinned) 主题 设置为纯前端本地状态 后端无对应字段
 
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
 import '../models/models.dart';
+import '../theme/esa_theme.dart';
 
 class AppState extends ChangeNotifier {
   AppState({ApiClient? api}) : api = api ?? ApiClient();
@@ -386,24 +388,53 @@ class AppState extends ChangeNotifier {
     ChatMessage assistant,
   ) async {
     var completed = false;
-    Timer? renderTimer;
-    var renderPending = false;
+    final reasoningQueue = Queue<String>();
+    final contentQueue = Queue<String>();
+    Timer? typewriterTimer;
+    Completer<void>? queueDrained;
+    var streamEnded = false;
 
-    void scheduleRender() {
-      renderPending = true;
-      renderTimer ??= Timer(const Duration(milliseconds: 50), () {
-        renderTimer = null;
-        if (!renderPending) return;
-        renderPending = false;
-        notifyListeners();
+    void completeDrainIfReady() {
+      if (!streamEnded ||
+          reasoningQueue.isNotEmpty ||
+          contentQueue.isNotEmpty) {
+        return;
+      }
+      typewriterTimer?.cancel();
+      typewriterTimer = null;
+      final completer = queueDrained;
+      if (completer != null && !completer.isCompleted) completer.complete();
+    }
+
+    void ensureTypewriter() {
+      queueDrained ??= Completer<void>();
+      typewriterTimer ??= Timer.periodic(EsaMotion.streamTick, (_) {
+        if (reasoningQueue.isNotEmpty) {
+          assistant.reasoning += reasoningQueue.removeFirst();
+          assistant.notifyListeners();
+        } else if (contentQueue.isNotEmpty) {
+          assistant.text += contentQueue.removeFirst();
+          assistant.notifyListeners();
+        }
+        completeDrainIfReady();
       });
     }
 
-    void renderNow() {
-      renderTimer?.cancel();
-      renderTimer = null;
-      renderPending = false;
-      notifyListeners();
+    void enqueue(Queue<String> queue, String delta) {
+      if (delta.isEmpty) return;
+      queue.addAll(delta.characters);
+      ensureTypewriter();
+    }
+
+    Future<void> finishTypewriter() async {
+      streamEnded = true;
+      if (reasoningQueue.isEmpty && contentQueue.isEmpty) {
+        queueDrained ??= Completer<void>()..complete();
+      } else {
+        ensureTypewriter();
+      }
+      completeDrainIfReady();
+      await queueDrained!.future;
     }
 
     try {
@@ -412,11 +443,9 @@ class AppState extends ChangeNotifier {
           case 'start':
             break;
           case 'reasoning':
-            assistant.reasoning += event.data['delta'] as String? ?? '';
-            scheduleRender();
+            enqueue(reasoningQueue, event.data['delta'] as String? ?? '');
           case 'content':
-            assistant.text += event.data['delta'] as String? ?? '';
-            scheduleRender();
+            enqueue(contentQueue, event.data['delta'] as String? ?? '');
           case 'tool':
             // 工具结果应位于最终助手回复之前。
             list.remove(assistant);
@@ -429,14 +458,17 @@ class AppState extends ChangeNotifier {
               ),
             );
             list.add(assistant);
-            renderNow();
+            notifyListeners();
           case 'done':
+            await finishTypewriter();
             completed = true;
             assistant.typing = false;
             if (assistant.text.isEmpty && assistant.reasoning.isEmpty) {
               list.remove(assistant);
+              notifyListeners();
+            } else {
+              assistant.notifyListeners();
             }
-            renderNow();
           case 'error':
             throw ApiException(
               500,
@@ -445,7 +477,14 @@ class AppState extends ChangeNotifier {
         }
       }
     } finally {
-      renderTimer?.cancel();
+      typewriterTimer?.cancel();
+      if (!completed) {
+        assistant.reasoning += reasoningQueue.join();
+        assistant.text += contentQueue.join();
+        reasoningQueue.clear();
+        contentQueue.clear();
+        assistant.notifyListeners();
+      }
     }
 
     if (!completed) {

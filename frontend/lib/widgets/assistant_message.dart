@@ -51,56 +51,53 @@ class _AssistantMessageState extends State<AssistantMessage> {
   @override
   Widget build(BuildContext context) {
     final m = widget.message;
-    return SelectionArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('ESA', style: context.texts.labelSmall),
-          const SizedBox(height: EsaSpace.sm),
-          if (m.reasoning.isNotEmpty) ...[
-            _reasoning(context, m),
-            const SizedBox(height: EsaSpace.md),
-          ],
-          _body(context, m),
-          if (!m.typing && m.text.isNotEmpty) ...[
-            const SizedBox(height: EsaSpace.sm),
-            Row(
-              children: [
-                _IconAction(
-                  icon: LucideIcons.copy,
-                  color: _copied ? EsaColors.accent : context.n.n600,
-                  tooltip: '复制',
-                  onTap: _copy,
-                ),
-                const SizedBox(width: 4),
-                _IconAction(
-                  icon: LucideIcons.refreshCw,
-                  color: context.n.n600,
-                  tooltip: '重新生成',
-                  onTap: widget.onRegenerate,
-                ),
-                const Spacer(),
-                Icon(LucideIcons.alertCircle, size: 14, color: context.n.n600),
-                const SizedBox(width: 6),
-                Text(
-                  'AI 生成',
-                  style: TextStyle(
-                    color: context.n.n600,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('ESA', style: context.texts.labelSmall),
+        const SizedBox(height: EsaSpace.sm),
+        if (m.reasoning.isNotEmpty) ...[
+          _reasoning(context, m),
+          const SizedBox(height: EsaSpace.md),
         ],
-      ),
+        _body(context, m),
+        if (!m.typing && m.text.isNotEmpty) ...[
+          const SizedBox(height: EsaSpace.sm),
+          Row(
+            children: [
+              _IconAction(
+                icon: LucideIcons.copy,
+                color: _copied ? EsaColors.accent : context.n.n600,
+                tooltip: '复制',
+                onTap: _copy,
+              ),
+              const SizedBox(width: 4),
+              _IconAction(
+                icon: LucideIcons.refreshCw,
+                color: context.n.n600,
+                tooltip: '重新生成',
+                onTap: widget.onRegenerate,
+              ),
+              const Spacer(),
+              Icon(LucideIcons.alertCircle, size: 14, color: context.n.n600),
+              const SizedBox(width: 6),
+              Text(
+                'AI 生成',
+                style: TextStyle(
+                  color: context.n.n600,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 
   Widget _reasoning(BuildContext context, ChatMessage message) {
     final reasoning = message.reasoning.trim();
-
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -162,7 +159,10 @@ class _AssistantMessageState extends State<AssistantMessage> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.only(top: EsaSpace.md),
-                      child: EsaMarkdown(data: reasoning),
+                      child: EsaMarkdown(
+                        data: reasoning,
+                        selectable: true,
+                      ),
                     ),
                   )
                 : Padding(
@@ -189,7 +189,10 @@ class _AssistantMessageState extends State<AssistantMessage> {
 
   Widget _body(BuildContext context, ChatMessage m) {
     final visibleText = _withoutTrailingAiLabel(m.text);
-    final markdown = EsaMarkdown(data: visibleText);
+    final markdown = EsaMarkdown(
+      data: visibleText,
+      selectable: true,
+    );
 
     if (!m.typing) return markdown;
 

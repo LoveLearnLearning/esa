@@ -56,13 +56,9 @@ class EsaMarkdown extends StatelessWidget {
       fontWeight: FontWeight.w700,
     );
 
-    final markdown = MarkdownBody(
+    return MarkdownBody(
       data: normalizeMarkdownLatex(data),
-      // A SelectionArea provides one continuous selection region for the
-      // complete Markdown document. MarkdownBody's selectable mode creates
-      // separate SelectableText widgets for individual blocks, which makes
-      // drag selection across paragraphs unreliable on Flutter Web.
-      selectable: false,
+      selectable: selectable,
       builders: {
         'latex': LatexElementBuilder(textStyle: bodyStyle),
         'pre': _CodeBlockBuilder(),
@@ -93,7 +89,7 @@ class EsaMarkdown extends StatelessWidget {
           ),
         ),
         code: bodyStyle?.copyWith(
-          fontFamily: 'monospace',
+          fontFamily: 'JetBrainsMono',
           fontSize: 13,
           color: context.scheme.onSurface,
           backgroundColor: context.n.n200,
@@ -109,8 +105,6 @@ class EsaMarkdown extends StatelessWidget {
         ),
       ),
     );
-
-    return selectable ? SelectionArea(child: markdown) : markdown;
   }
 }
 
@@ -230,27 +224,42 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                 ),
                 _action(Icons.play_arrow_rounded, '运行', () {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('尚未配置隔离代码执行服务，已阻止在浏览器中直接执行。')),
+                    const SnackBar(
+                      content: Text('尚未配置隔离代码执行服务，已阻止在浏览器中直接执行。'),
+                    ),
                   );
                 }),
               ],
             ),
           ),
           if (_editing)
-            TextField(
-              controller: _controller,
-              minLines: 4,
-              maxLines: null,
-              onChanged: (_) => setState(() {}),
-              style: const TextStyle(
-                color: Colors.white,
-                fontFamily: 'JetBrainsMono',
-                fontSize: 14,
-                height: 1.65,
-              ),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.all(14),
+            SelectionContainer.disabled(
+              child: TextField(
+                controller: _controller,
+                minLines: 4,
+                maxLines: null,
+                onChanged: (_) => setState(() {}),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontFamily: 'JetBrainsMono',
+                  fontSize: 14,
+                  height: 1.65,
+                ),
+                strutStyle: const StrutStyle(
+                  fontFamily: 'JetBrainsMono',
+                  fontSize: 14,
+                  height: 1.65,
+                  forceStrutHeight: true,
+                ),
+                cursorHeight: 23.1,
+                cursorWidth: 2,
+                decoration: const InputDecoration(
+                  isCollapsed: true,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: EdgeInsets.all(14),
+                ),
               ),
             )
           else
@@ -266,12 +275,8 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                         horizontal: 16,
                         vertical: 14,
                       ),
-                      // Selection is provided by EsaMarkdown's outer
-                      // SelectionArea. Nesting SelectableText here creates
-                      // two selection registrars on Flutter Web, which causes
-                      // duplicated glyphs and overlapping selection ranges.
-                      child: RichText(
-                        text: TextSpan(
+                      child: SelectableText.rich(
+                        TextSpan(
                           style: const TextStyle(
                             color: Color(0xFFABB2BF),
                             fontFamily: 'JetBrainsMono',
@@ -282,6 +287,12 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                             _controller.text,
                             widget.language,
                           ),
+                        ),
+                        strutStyle: const StrutStyle(
+                          fontFamily: 'JetBrainsMono',
+                          fontSize: 14,
+                          height: 1.65,
+                          forceStrutHeight: true,
                         ),
                       ),
                     ),

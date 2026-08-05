@@ -32,6 +32,20 @@
 
   <title>frontend</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    /*
+      Flutter paints visible text on its canvas. Browser translators and some
+      accessibility extensions can override Flutter's transparent semantics
+      layer and display the same labels a second time. Keep that DOM layer
+      visually transparent while preserving it for assistive technologies.
+    */
+    flt-semantics,
+    flt-semantics-placeholder {
+      color: transparent !important;
+      text-shadow: none !important;
+      -webkit-text-fill-color: transparent !important;
+    }
+  </style>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

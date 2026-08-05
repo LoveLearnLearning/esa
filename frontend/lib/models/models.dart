@@ -1,5 +1,7 @@
 // ESA 数据模型 —— 对话与消息 字段对齐 API.md 的 JSON 契约
 
+import 'package:flutter/foundation.dart';
+
 int _seq = 0;
 String _nextId() => 'm${_seq++}';
 
@@ -123,7 +125,7 @@ MessageRole roleFromString(String r) {
 }
 
 /// 单条消息 对应 GET /conversations/{id}/messages 返回的元素
-class ChatMessage {
+class ChatMessage extends ChangeNotifier {
   ChatMessage({
     required this.id,
     required this.role,

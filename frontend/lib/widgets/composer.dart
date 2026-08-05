@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../models/task_mode.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
-import '../models/task_mode.dart';
 import 'esa_markdown.dart';
 
 class Composer extends StatefulWidget {
@@ -70,6 +70,12 @@ class _ComposerState extends State<Composer> {
 
   @override
   Widget build(BuildContext context) {
+    final inputStyle = (context.texts.bodyLarge ?? const TextStyle()).copyWith(
+      color: context.scheme.onSurface,
+      fontSize: 15,
+      height: 1.45,
+    );
+
     return Container(
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: context.n.divider)),
@@ -112,36 +118,27 @@ class _ComposerState extends State<Composer> {
                         child: Divider(height: 1, color: context.n.divider),
                       ),
                     ],
-                    Stack(
-                      children: [
-                        Focus(
-                          onKeyEvent: _onKey,
-                          child: TextField(
-                            controller: _controller,
-                            focusNode: _focus,
-                            minLines: 2,
-                            maxLines: 6,
-                            onChanged: (_) => setState(() {}),
-                            decoration: const InputDecoration(
-                              isCollapsed: true,
-                              filled: false,
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                            ),
-                          ),
+                    Focus(
+                      onKeyEvent: _onKey,
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focus,
+                        minLines: 2,
+                        maxLines: 6,
+                        onChanged: (_) => setState(() {}),
+                        style: inputStyle,
+                        strutStyle: StrutStyle.fromTextStyle(
+                          inputStyle,
+                          forceStrutHeight: true,
                         ),
-                        if (_controller.text.isEmpty)
-                          IgnorePointer(
-                            child: Text(
-                              widget.taskMode?.hint ?? '问点什么…',
-                              style: TextStyle(
-                                color: context.n.n600,
-                                fontSize: 15,
-                              ),
-                            ),
-                          ),
-                      ],
+                        textAlignVertical: TextAlignVertical.top,
+                        cursorHeight: 21.75,
+                        cursorWidth: 2,
+                        decoration: InputDecoration.collapsed(
+                          hintText: widget.taskMode?.hint ?? '问点什么…',
+                          hintStyle: inputStyle.copyWith(color: context.n.n600),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: EsaSpace.sm),
                     Row(
@@ -254,7 +251,6 @@ class _ComposerState extends State<Composer> {
 
   Widget _markdownButton(BuildContext context) {
     final active = _markdownMode;
-
     return Tooltip(
       message: active ? '退出 Markdown 输入' : 'Markdown 输入',
       child: InkWell(
@@ -296,9 +292,9 @@ class _ComposerState extends State<Composer> {
             height: 32,
             padding: const EdgeInsets.symmetric(horizontal: 14),
             alignment: Alignment.center,
-            child: Row(
+            child: const Row(
               mainAxisSize: MainAxisSize.min,
-              children: const [
+              children: [
                 Text(
                   '发送',
                   style: TextStyle(
