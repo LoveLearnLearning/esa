@@ -9,7 +9,7 @@ from __future__ import annotations
 import ast
 import math
 import operator
-from typing import Any
+from typing import Any, ClassVar
 
 from backend.agent.tools.math_tools._base_evaluator import BaseSafeEvaluator
 from backend.agent.tools.tools import tr
@@ -26,9 +26,9 @@ except AttributeError:  # pragma: no cover
 class _MathEvaluator(BaseSafeEvaluator):
     """数学计算器 AST 求值器"""
 
-    _REPLACE_CARET = True
+    _REPLACE_CARET: ClassVar[bool] = True
 
-    _BIN_OPS: dict[type, Any] = {
+    _BIN_OPS: ClassVar[dict[type, Any]] = {
         ast.Add: operator.add,
         ast.Sub: operator.sub,
         ast.Mult: operator.mul,
@@ -38,12 +38,12 @@ class _MathEvaluator(BaseSafeEvaluator):
         ast.Pow: operator.pow,
     }
 
-    _UNARY_OPS: dict[type, Any] = {
+    _UNARY_OPS: ClassVar[dict[type, Any]] = {
         ast.UAdd: operator.pos,
         ast.USub: operator.neg,
     }
 
-    _FUNCTIONS: dict[str, Any] = {
+    _FUNCTIONS: ClassVar[dict[str, Any]] = {
         # 基础函数
         "abs": abs,
         "round": round,
@@ -85,7 +85,7 @@ class _MathEvaluator(BaseSafeEvaluator):
         "copysign": math.copysign,
     }
 
-    _CONSTANTS: dict[str, float] = {
+    _CONSTANTS: ClassVar[dict[str, float]] = {
         "pi": math.pi,
         "e": math.e,
         "tau": math.tau,

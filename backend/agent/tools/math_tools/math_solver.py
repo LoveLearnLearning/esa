@@ -71,7 +71,7 @@ _OPERATIONS = {
 }
 
 
-def _safe_parse(expression: str | int | float) -> sp.Expr:
+def _safe_parse(expression: str | float) -> sp.Expr:
     """安全解析 sympy 表达式
 
     Args:

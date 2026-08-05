@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import ast
 import operator
-from typing import Any
+from typing import Any, ClassVar
 
 from backend.agent.tools.math_tools._base_evaluator import BaseSafeEvaluator
 from backend.agent.tools.tools import tr
@@ -24,7 +24,7 @@ def _popcount(n: int) -> int:
 class _BitwiseEvaluator(BaseSafeEvaluator):
     """位运算与布尔运算 AST 求值器"""
 
-    _BIN_OPS: dict[type, Any] = {
+    _BIN_OPS: ClassVar[dict[type, Any]] = {
         # 位运算
         ast.BitAnd: operator.and_,
         ast.BitOr: operator.or_,
@@ -41,14 +41,14 @@ class _BitwiseEvaluator(BaseSafeEvaluator):
         ast.Pow: operator.pow,
     }
 
-    _UNARY_OPS: dict[type, Any] = {
+    _UNARY_OPS: ClassVar[dict[type, Any]] = {
         ast.UAdd: operator.pos,
         ast.USub: operator.neg,
         ast.Invert: operator.invert,  # ~ 按位取反
         ast.Not: operator.not_,  # not 布尔取反
     }
 
-    _FUNCTIONS: dict[str, Any] = {
+    _FUNCTIONS: ClassVar[dict[str, Any]] = {
         "abs": abs,
         "int": int,
         "bin": bin,
@@ -58,7 +58,7 @@ class _BitwiseEvaluator(BaseSafeEvaluator):
         "popcount": _popcount,
     }
 
-    _CONSTANTS: dict[str, Any] = {
+    _CONSTANTS: ClassVar[dict[str, Any]] = {
         "True": True,
         "False": False,
     }
