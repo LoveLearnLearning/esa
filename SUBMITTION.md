@@ -711,4 +711,54 @@
 - 代码运行按钮尚未接入后端隔离执行服务
 - 附件按钮尚未接入真实文件上传和多模态后端
 - 核心记忆仍缺数量和 token 预算上限
-- 对话分组和分组级自定义指令尚未实现
+- 对话分组和分组级自定义指令后端已实现（详见 2026-08-06 第十四次开发记录），前端待对接
+
+## 2026-08-06 第十四次开发记录
+
+> 修改人：zcx
+> 本节覆盖对话分组 + 分组内自定义指令的后端完整实现、代码质量重构与测试，前端尚未对接。
+
+### 已实现
+
+- **数据层：分组存储与老库迁移**
+  - 新增 `backend/core/stores/group_store.py`，提供 `groups` 表（group_id / user_id / name / description / custom_instruction / style / tone / created_at / updated_at）+ `idx_groups_user` 索引
+  - `GroupStore` 实现 `create_group` / `get_group` / `list_groups` / `update_group` / `delete_group`，含 `conversation_count` 聚合（LEFT JOIN 避免 N+1）、字段白名单防注入、`BEGIN IMMEDIATE` 并发上限串行化、删除分组事务原子性（组内对话置回未分组 + 删组）
+  - `chat_store.py` 增加 `conversations.group_id` 列迁移（PRAGMA + ALTER 模式，幂等）+ `idx_conversations_group` 索引；新增 `set_conversation_group` / `update_conversation`（替代 `rename_conversation`）；`list_conversations` 支持 `group_id` 过滤与未分组桶；`create_conversation` 接受可选 `group_id`
+
+- **接口层：分组 CRUD 与对话归组**
+  - 新增 `backend/core/web/routers/groups.py`，提供 `GET /groups`（含对话数）、`POST /groups`（校验 + 上限 20）、`PATCH /groups/{id}`（白名单更新）、`DELETE /groups/{id}`（事务删除）
+  - `chat.py` 扩展：`POST /conversations` 接受可选 `group_id`；`PATCH /conversations/{id}` 从"仅重命名"升级为"重命名 + 移动分组"；`GET /conversations` 返回 `group_id`；新增 `_validate_group_owned` / `_load_group_params` 辅助函数
+  - `schemas.py` 新增 `GroupCreateRequest` / `GroupUpdateRequest` / `GroupOut` / `ConversationCreateRequest` / `ConversationPatchRequest`，抽出共享枚举常量 `VALID_STYLES` / `VALID_TONES`
+  - `webAPI.py` 注册 `GroupStore` 初始化与 `groups.router`
+
+- **Prompt 层：分组级指令合并**
+  - `build_prompt.py` 的 `build_system_prompt` 支持分组级 `group_style` / `group_tone` / `group_custom_instruction`，合并顺序为「系统 → 用户级 → 分组级 → 当前消息」，分组级 style/tone 非 None 时覆盖用户级，无分组或分组无指令时行为与现状逐字节一致
+  - `agent.py` 的 `run` / `run_stream` / `_prepare_run` 透传分组参数；`chat.py` 的 `send_message` / `stream_message` 按 `conversation.group_id` 查分组并注入（含分组已删除的防御性回退；SSE 流式在创建 `event_stream` 前绑定局部变量）
+
+- **代码质量重构（可维护性优化）**
+  - 新增 `PromptContext` dataclass 收敛 7 个 prompt 参数，`agent.run` / `run_stream` / `_prepare_run` / `build_system_prompt` 从 11 参降至 5 参，未来加层级只改 dataclass 字段
+  - 新增 `MessageContext` dataclass + `chat._prepare_message` 公共前置函数，消除 `send_message` / `stream_message` 前 35 行重复代码
+  - 新增 `backend/core/web/routers/_validators.py` 提供 `validate_style_tone` 公共校验，`groups.py` 引用消除重复
+  - `group_store.create_group` 事务模式统一为 `with closing(...) as conn, conn:`（与 `delete_group` 一致）
+  - `build_prompt.py` 指令合并由 `+=` 字符串拼接改为 `list.append` + `join`，为未来扩展更多层级留接口
+  - `chat.py` 的 SSE `event_stream` 异常分支补 `logger.exception` 记录完整 traceback
+  - `groups.py` 的 `update_group` 补注释明确 style/tone 的 None 保留语义（继承用户级）与 name/description/custom_instruction 的 None 删除语义（NOT NULL 列）
+
+- **文档更新**
+  - `API.md` 新增分组接口契约（GET/POST/PATCH/DELETE /groups + 扩展的 /conversations 接口）
+  - `GROUP_FEATURE.md` 从需求文档升级为完整设计文档（含项目全景分析、市场调研、技术方案、数据结构、API 定义、开发计划、验收标准、技术难点）
+  - `TODO.md` 后端分组任务全部打勾
+
+### 验证结果
+
+- 后端测试新增 `backend/tests/test_group_prompt.py`（4 用例：分组级 style/tone 覆盖用户级、回退、无指令覆盖、空分组保持原行为）与 `backend/tests/test_grouping_store.py`（6 用例：老库迁移、移动/删除/归属守卫、上限、列表过滤、更新原子性、移回未分组），共 10 个 pytest 用例
+- 重构期间另写 23 个临时 unittest 用例验证行为不变性（build_prompt 7 + group_store 11 + validators 5），全部通过后已删除临时测试文件，`backend/tests/` 仅留持久化测试
+- `py_compile` 语法检查全部通过
+- 行为不变性确认：缺省调用 Prompt 输出与重构前一致；分组级覆盖用户级语义正确；指令合并顺序正确；SSE 事件序列不变；并发上限语义不变
+
+### 当前注意事项
+
+- 前端分组管理（M2 阶段）尚未开始，包括 `ChatGroup` 模型、分组 API 客户端、`AppState` 分组状态、历史侧边栏双区重构、分组设置弹窗与指令模板库
+- `preferences.py` 的枚举校验因错误消息前缀不同（`preferred_style` vs `style`）保留内联，未与 `groups.py` 共用 `validate_style_tone`，后续可统一
+- `UserStore` 未反向重构为 `_UPDATEABLE_FIELDS` 白名单模式（超出本次范围），与 `GroupStore` 风格略有差异
+- 测试风格不统一：`test_group_prompt.py` / `test_grouping_store.py` 用 pytest 风格（`tmp_path` + `assert`），`test_parser.py` / `test_model_adapter.py` 用 unittest 风格，后续可统一为 pytest
