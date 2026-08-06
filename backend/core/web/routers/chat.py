@@ -2,6 +2,7 @@
 
 
 import asyncio
+import logging
 import sqlite3
 from collections.abc import AsyncIterator
 from typing import Annotated
@@ -14,7 +15,12 @@ from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
-from backend.core.utils.models import SessionPrincipal, UserRecord
+from backend.core.utils.models import (
+    MessageContext,
+    PromptContext,
+    SessionPrincipal,
+    UserRecord,
+)
 from backend.core.web.deps import get_current_session
 from backend.core.web.schemas import (
     ConversationCreateRequest,
@@ -22,6 +28,8 @@ from backend.core.web.schemas import (
     SendMessageRequest,
 )
 from backend.core.web.sse import encode_sse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["chat"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
@@ -103,6 +111,59 @@ def _load_group_params(
         group.get("style"),
         group.get("tone"),
         group.get("custom_instruction", ""),
+    )
+
+
+def _prepare_message(
+    request: Request,
+    conversation_id: str,
+    body: SendMessageRequest,
+    session: SessionPrincipal,
+) -> MessageContext:
+    """公共前置: 取对话 + 校验归属 + 取用户 + 401 + 加载历史 + 落库用户消息 + 学情档案 + 分组参数
+
+    send_message 与 stream_message 共用 消除前 35 行重复代码
+
+    Args:
+        request: Request            => 请求对象
+        conversation_id: str        => 对话 id
+        body: SendMessageRequest    => 用户消息体
+        session: SessionPrincipal   => 用户登陆信息
+
+    Returns:
+        MessageContext              => agent 调用所需的全部上下文
+    """
+    conversation = _load_owned(request, conversation_id, session)
+
+    chat_store: ChatStore = request.app.state.chat_store
+    user_store: UserStore = request.app.state.user_store
+
+    user: UserRecord | None = user_store.get_by_id(session.user_id)
+    if user is None:
+        session_store: SessionStore = request.app.state.session_store
+        session_store.revoke(session.session_id)
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在！")
+
+    history: list[dict] = chat_store.get_model_messages(conversation_id)
+
+    chat_store.append_messages(
+        conversation_id,
+        [{"role": "user", "content": body.content, "is_visible": True}],
+    )
+
+    user_profile_context = build_user_profile_context(user)
+    group_style, group_tone, group_custom_instruction = _load_group_params(
+        request,
+        conversation,
+    )
+
+    return MessageContext(
+        user=user,
+        history=history,
+        user_profile_context=user_profile_context,
+        group_style=group_style,
+        group_tone=group_tone,
+        group_custom_instruction=group_custom_instruction,
     )
 
 
@@ -193,42 +254,26 @@ async def send_message(
     request: Request,
     session: CurrentSession,
 ) -> list[dict]:
-    _load_owned(request, conversation_id, session)
+    ctx: MessageContext = _prepare_message(request, conversation_id, body, session)
     chat_store: ChatStore = request.app.state.chat_store
-    user_store: UserStore = request.app.state.user_store
     agent: Agent = request.app.state.agent
 
-    user: UserRecord | None = user_store.get_by_id(session.user_id)
-
-    if user is None:
-        session_store: SessionStore = request.app.state.session_store
-        session_store.revoke(session.session_id)
-
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在！")
-
-    history: list[dict] = chat_store.get_model_messages(conversation_id)
-
-    user_message: dict = {
-        "role": "user",
-        "content": body.content,
-        "is_visible": True,
-    }
-    chat_store.append_messages(
-        conversation_id,
-        [user_message],
+    prompt_ctx = PromptContext(
+        preferred_style=ctx.user.preferred_style,
+        preferred_tone=ctx.user.preferred_tone,
+        custom_instruction=ctx.user.custom_instruction,
+        user_profile_context=ctx.user_profile_context,
+        group_style=ctx.group_style,
+        group_tone=ctx.group_tone,
+        group_custom_instruction=ctx.group_custom_instruction,
     )
-
-    user_profile_context = build_user_profile_context(user)
 
     new_messages: list[dict] = await agent.run(
         body.content,
-        user.username,
-        history=history,
-        preferred_style=user.preferred_style,
-        preferred_tone=user.preferred_tone,
-        custom_instruction=user.custom_instruction,
-        user_profile_context=user_profile_context,
-        total_weeks=user.total_weeks,
+        ctx.user.username,
+        history=ctx.history,
+        prompt_ctx=prompt_ctx,
+        total_weeks=ctx.user.total_weeks,
     )
 
     generated_messages: list[dict] = new_messages[1:]
@@ -249,37 +294,27 @@ async def stream_message(
     request: Request,
     session: CurrentSession,
 ) -> StreamingResponse:
-    _load_owned(request, conversation_id, session)
-
+    ctx: MessageContext = _prepare_message(request, conversation_id, body, session)
     chat_store: ChatStore = request.app.state.chat_store
-    user_store: UserStore = request.app.state.user_store
     agent: Agent = request.app.state.agent
 
-    user: UserRecord | None = user_store.get_by_id(session.user_id)
-
-    if user is None:
-        session_store: SessionStore = request.app.state.session_store
-        session_store.revoke(session.session_id)
-
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            "用户不存在",
-        )
-
-    history: list[dict] = chat_store.get_model_messages(conversation_id)
-
-    user_message: dict = {
-        "role": "user",
-        "content": body.content,
-        "is_visible": True,
-    }
-
-    chat_store.append_messages(
-        conversation_id,
-        [user_message],
+    prompt_ctx = PromptContext(
+        preferred_style=ctx.user.preferred_style,
+        preferred_tone=ctx.user.preferred_tone,
+        custom_instruction=ctx.user.custom_instruction,
+        user_profile_context=ctx.user_profile_context,
+        group_style=ctx.group_style,
+        group_tone=ctx.group_tone,
+        group_custom_instruction=ctx.group_custom_instruction,
     )
 
-    user_profile_context = build_user_profile_context(user)
+    # 在创建 event_stream 前把分组参数绑定为局部变量
+    # 闭包直接读取这些值 保证生成器生命周期内取值稳定
+    group_style, group_tone, group_custom_instruction = (
+        ctx.group_style,
+        ctx.group_tone,
+        ctx.group_custom_instruction,
+    )
 
     async def event_stream() -> AsyncIterator[str]:
         yield encode_sse(
@@ -292,13 +327,10 @@ async def stream_message(
         try:
             async for agent_event in agent.run_stream(
                 body.content,
-                user.username,
-                history=history,
-                preferred_style=user.preferred_style,
-                preferred_tone=user.preferred_tone,
-                custom_instruction=user.custom_instruction,
-                user_profile_context=user_profile_context,
-                total_weeks=user.total_weeks,
+                ctx.user.username,
+                history=ctx.history,
+                prompt_ctx=prompt_ctx,
+                total_weeks=ctx.user.total_weeks,
             ):
                 if agent_event.event == "complete":
                     new_messages = agent_event.data["messages"]
@@ -327,6 +359,7 @@ async def stream_message(
             raise
 
         except (RuntimeError, ValueError, KeyError, sqlite3.Error) as error:
+            logger.exception("agent 推理失败")
             yield encode_sse(
                 "error",
                 {

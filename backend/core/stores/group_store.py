@@ -93,7 +93,7 @@ class GroupStore(BaseSQLiteStore):
             "updated_at": self._now(),
         }
 
-        with closing(self._connect()) as connection:
+        with closing(self._connect()) as connection, connection:
             if group_limit is not None:
                 # BEGIN IMMEDIATE 获取写锁 把"计数+插入"串行化
                 # 保证并发建组时不会两个请求同时通过上限校验
@@ -107,7 +107,8 @@ class GroupStore(BaseSQLiteStore):
                     (user_id,),
                 ).fetchone()
                 if int(row["count"]) >= group_limit:
-                    connection.execute("ROLLBACK")
+                    # 已达上限 回滚事务 返回 None 由路由层转 409
+                    connection.rollback()
                     return None
 
             connection.execute(
@@ -137,7 +138,7 @@ class GroupStore(BaseSQLiteStore):
                     group["updated_at"],
                 ),
             )
-            connection.commit()
+            # with connection 上下文正常退出时自动 commit
 
         return group
 

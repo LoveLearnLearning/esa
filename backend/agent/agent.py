@@ -23,6 +23,7 @@ from backend.core.utils.config import DEBUG_MODE
 from backend.core.utils.models import (
     AgentStreamEvent,
     ParsedOutput,
+    PromptContext,
     ToolCall,
     UserRecord,
 )
@@ -122,15 +123,10 @@ class Agent:
         input: str,
         user_name: str,
         history: list[dict] | None,
-        preferred_style: str = "concise",
-        preferred_tone: str = "friendly",
-        custom_instruction: str = "",
-        user_profile_context: str | None = None,
+        prompt_ctx: PromptContext | None = None,
         total_weeks: int | None = None,
-        group_style: str | None = None,
-        group_tone: str | None = None,
-        group_custom_instruction: str = "",
     ) -> tuple[list[dict], list[dict]]:
+        prompt_ctx = prompt_ctx or PromptContext()
         set_current_user(user_name)
 
         if total_weeks is not None:
@@ -149,13 +145,7 @@ class Agent:
             temp_memory=temp_context,
             core_memory=core_context,
             skills_context=skills_context,
-            preferred_style=preferred_style,
-            preferred_tone=preferred_tone,
-            custom_instruction=custom_instruction,
-            user_profile_context=user_profile_context,
-            group_style=group_style,
-            group_tone=group_tone,
-            group_custom_instruction=group_custom_instruction,
+            prompt_ctx=prompt_ctx,
         )
 
         user_message = {
@@ -192,14 +182,8 @@ class Agent:
         input: str,
         user_name: str,
         history: list[dict] | None = None,
-        preferred_style: str = "concise",
-        preferred_tone: str = "friendly",
-        custom_instruction: str = "",
-        user_profile_context: str | None = None,
+        prompt_ctx: PromptContext | None = None,
         total_weeks: int | None = None,
-        group_style: str | None = None,
-        group_tone: str | None = None,
-        group_custom_instruction: str = "",
     ) -> list[dict]:
         """运行一轮对话
         Args:
@@ -208,14 +192,8 @@ class Agent:
             history: list[dict] | None = None => 历史消息 每条包含 role content
                                                  tool 消息可以额外带 name 字段
                                                  由 ChatStore.get_model_messages() 提供
-            preferred_style: str = "concise"  => 输出风格
-            preferred_tone: str = "friendly"  => 输出语调
-            custom_instruction: str = ""      => 用户自定义指令
-            user_profile_context: str | None  => 用户学情档案文本（含掌握度+教学进度+skill 规则）
+            prompt_ctx: PromptContext | None = None => prompt 构建上下文 含风格/语调/指令/学情档案/分组级参数
             total_weeks: int | None           => 学期总周数 用于 set_current_total_weeks
-            group_style: str | None = None    => 分组级风格 非 None 时覆盖用户级
-            group_tone: str | None = None     => 分组级语调 非 None 时覆盖用户级
-            group_custom_instruction: str = "" => 分组级自定义指令 追加在用户级之后
 
         Returns:
             list[dict] => 本轮新产生的消息 (用户输入 + 助手回复 + 工具结果)
@@ -226,14 +204,8 @@ class Agent:
             input,
             user_name,
             history,
-            preferred_style=preferred_style,
-            preferred_tone=preferred_tone,
-            custom_instruction=custom_instruction,
-            user_profile_context=user_profile_context,
+            prompt_ctx=prompt_ctx,
             total_weeks=total_weeks,
-            group_style=group_style,
-            group_tone=group_tone,
-            group_custom_instruction=group_custom_instruction,
         )
 
         for _ in range(self.loop_times):
@@ -329,27 +301,15 @@ class Agent:
         input: str,
         user_name: str,
         history: list[dict] | None = None,
-        preferred_style: str = "concise",
-        preferred_tone: str = "friendly",
-        custom_instruction: str = "",
-        user_profile_context: str | None = None,
+        prompt_ctx: PromptContext | None = None,
         total_weeks: int | None = None,
-        group_style: str | None = None,
-        group_tone: str | None = None,
-        group_custom_instruction: str = "",
     ) -> AsyncIterator[AgentStreamEvent]:
         messages, new_messages = self._prepare_run(
             input,
             user_name,
             history,
-            preferred_style=preferred_style,
-            preferred_tone=preferred_tone,
-            custom_instruction=custom_instruction,
-            user_profile_context=user_profile_context,
+            prompt_ctx=prompt_ctx,
             total_weeks=total_weeks,
-            group_style=group_style,
-            group_tone=group_tone,
-            group_custom_instruction=group_custom_instruction,
         )
 
         for _ in range(self.loop_times):

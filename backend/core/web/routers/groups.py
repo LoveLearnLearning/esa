@@ -7,9 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from backend.core.stores.group_store import GroupStore
 from backend.core.utils.models import SessionPrincipal
 from backend.core.web.deps import get_current_session
+from backend.core.web.routers._validators import validate_style_tone
 from backend.core.web.schemas import (
-    VALID_STYLES,
-    VALID_TONES,
     GroupCreateRequest,
     GroupOut,
     GroupUpdateRequest,
@@ -46,25 +45,6 @@ def _load_owned_group(
     return group
 
 
-def _validate_enum_fields(updates: dict) -> None:
-    """校验 style / tone 枚举 非法值返回 400
-    Args:
-        updates: dict => 待更新的字段字典
-    """
-    if "style" in updates and updates["style"] is not None:
-        if updates["style"] not in VALID_STYLES:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                f"style 非法 合法值: {sorted(VALID_STYLES)}",
-            )
-    if "tone" in updates and updates["tone"] is not None:
-        if updates["tone"] not in VALID_TONES:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                f"tone 非法 合法值: {sorted(VALID_TONES)}",
-            )
-
-
 @router.get("")
 def list_groups(
     request: Request,
@@ -82,7 +62,7 @@ def create_group(
 ) -> GroupOut:
     group_store: GroupStore = request.app.state.group_store
 
-    _validate_enum_fields(body.model_dump())
+    validate_style_tone(body.style, body.tone)
 
     # 上限校验放在 GroupStore 事务内 与插入同锁 防止并发突破上限
     group = group_store.create_group(
@@ -116,11 +96,12 @@ def update_group(
     group_store: GroupStore = request.app.state.group_store
 
     updates = body.model_dump(exclude_unset=True)
-    # name/description/custom_instruction 为非空列 显式 null 视为未提供
+    # name/description/custom_instruction 是 NOT NULL 列 显式传 null 视为未提供 删除避免写入 NULL 触发 500
+    # style/tone 的 None 不删除 保留传入 store 表示"改回继承用户级"(SET style = NULL)
     for field in ("name", "description", "custom_instruction"):
         if field in updates and updates[field] is None:
             del updates[field]
-    _validate_enum_fields(updates)
+    validate_style_tone(updates.get("style"), updates.get("tone"))
 
     if updates:
         group_store.update_group(group_id, **updates)
