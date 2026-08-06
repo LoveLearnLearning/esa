@@ -8,6 +8,9 @@ from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal
 from backend.core.web.deps import get_current_session
 from backend.core.web.schemas import (
+    VALID_MAJORS,
+    VALID_STYLES,
+    VALID_TONES,
     UpdatePreferencesRequest,
     UpdateUserProfileRequest,
     UserPreferencesOut,
@@ -18,11 +21,7 @@ router = APIRouter(prefix="/me/preferences", tags=["preferences"])
 profile_router = APIRouter(prefix="/me/profile", tags=["profile"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 
-# 合法枚举值 非法值返回 400
-VALID_STYLES = {"concise", "detailed", "socratic"}
-VALID_TONES = {"friendly", "formal", "encouraging", "strict"}
-# 当前仅支持计算机学科 
-VALID_MAJORS = {"cs"}
+# 合法枚举值在 schemas.py 统一维护 与分组接口共用
 
 
 @router.get("")

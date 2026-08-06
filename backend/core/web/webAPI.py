@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.agent.agent import Agent
 from backend.core.services.auth_service import AuthService
 from backend.core.stores.chat_store import ChatStore
+from backend.core.stores.group_store import GroupStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.config import (
@@ -23,7 +24,7 @@ from backend.core.utils.config import (
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
 )
-from backend.core.web.routers import auth, chat, learning, memories, preferences
+from backend.core.web.routers import auth, chat, groups, learning, memories, preferences
 
 DB_PATH = Path(__file__).resolve().parent.parent / "stores" / "data" / "user.db"
 
@@ -33,6 +34,7 @@ async def lifespan(app: FastAPI):
     app.state.user_store = UserStore(DB_PATH)
     app.state.session_store = SessionStore(DB_PATH)
     app.state.chat_store = ChatStore(DB_PATH)
+    app.state.group_store = GroupStore(DB_PATH)
     app.state.auth = AuthService(
         app.state.user_store,
         app.state.session_store,
@@ -70,6 +72,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(chat.router)
+app.include_router(groups.router)
 app.include_router(preferences.router)
 app.include_router(preferences.profile_router)
 app.include_router(learning.router)

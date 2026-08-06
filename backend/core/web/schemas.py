@@ -4,6 +4,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+# 风格/语调合法枚举 供偏好与分组接口共用
+VALID_STYLES = {"concise", "detailed", "socratic"}
+VALID_TONES = {"friendly", "formal", "encouraging", "strict"}
+# 当前仅支持计算机学科
+VALID_MAJORS = {"cs"}
+
 
 # 请求
 class RegisterRequest(BaseModel):
@@ -25,8 +31,30 @@ class SendMessageRequest(BaseModel):
     content: str = Field(min_length=1)
 
 
-class RenameRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=64)
+class ConversationCreateRequest(BaseModel):
+    title: str = Field(default="新对话", min_length=1, max_length=64)
+    group_id: str | None = Field(default=None)
+
+
+class ConversationPatchRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=64)
+    group_id: str | None = Field(default=None)
+
+
+class GroupCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=20)
+    description: str = Field(default="", max_length=100)
+    custom_instruction: str = Field(default="", max_length=500)
+    style: str | None = Field(default=None)
+    tone: str | None = Field(default=None)
+
+
+class GroupUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=20)
+    description: str | None = Field(default=None, max_length=100)
+    custom_instruction: str | None = Field(default=None, max_length=500)
+    style: str | None = Field(default=None)
+    tone: str | None = Field(default=None)
 
 
 class CoreMemoryUpsertRequest(BaseModel):
@@ -78,3 +106,16 @@ class MessageOut(BaseModel):
     content: str
     name: str | None = None
     created_at: str | None = None
+
+
+class GroupOut(BaseModel):
+    group_id: str
+    user_id: str
+    name: str
+    description: str
+    custom_instruction: str
+    style: str | None = None
+    tone: str | None = None
+    conversation_count: int = 0
+    created_at: str
+    updated_at: str

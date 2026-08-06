@@ -60,6 +60,22 @@ class ChatStore(BaseSQLiteStore):
                     """
                 )
 
+            # 老库迁移 对话分组: conversations 加可空 group_id 列(NULL=未分组)
+            conversation_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(conversations)"
+                ).fetchall()
+            }
+
+            if "group_id" not in conversation_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE conversations
+                    ADD COLUMN group_id TEXT
+                    """
+                )
+
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_messages_conversation
@@ -72,6 +88,12 @@ class ChatStore(BaseSQLiteStore):
                 ON conversations (user_id, updated_at)
                 """
             )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_conversations_group
+                ON conversations (group_id)
+                """
+            )
 
     @staticmethod
     def _now() -> str:
@@ -82,11 +104,13 @@ class ChatStore(BaseSQLiteStore):
         self,
         user_id: str,
         title: str = "新对话",
+        group_id: str | None = None,
     ) -> dict:
         """创建一个新对话
         Args:
             user_id: str          => 用户 id
             title: str = "新对话" => 对话标题 默认为 "新对话"
+            group_id: str | None  => 所属分组 id  None 表示未分组
 
         Returns:
             dict                  => 新建对话的完整信息
@@ -95,6 +119,7 @@ class ChatStore(BaseSQLiteStore):
             "conversation_id": str(uuid.uuid4()),
             "user_id": user_id,
             "title": title,
+            "group_id": group_id,
             "created_at": self._now(),
             "updated_at": self._now(),
         }
@@ -105,15 +130,17 @@ class ChatStore(BaseSQLiteStore):
                 conversation_id,
                 user_id,
                 title,
+                group_id,
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 conversation["conversation_id"],
                 conversation["user_id"],
                 conversation["title"],
+                conversation["group_id"],
                 conversation["created_at"],
                 conversation["updated_at"],
             ),
@@ -133,7 +160,7 @@ class ChatStore(BaseSQLiteStore):
         """
         row = self.query_one(
             """
-            SELECT conversation_id, user_id, title, created_at, updated_at
+            SELECT conversation_id, user_id, title, group_id, created_at, updated_at
             FROM conversations
             WHERE conversation_id = ?
             """,
@@ -155,7 +182,7 @@ class ChatStore(BaseSQLiteStore):
         """
         rows = self.query_all(
             """
-            SELECT conversation_id, user_id, title, created_at, updated_at
+            SELECT conversation_id, user_id, title, group_id, created_at, updated_at
             FROM conversations
             WHERE user_id = ?
             ORDER BY updated_at DESC
@@ -181,6 +208,30 @@ class ChatStore(BaseSQLiteStore):
             WHERE conversation_id = ?
             """,
             (title, self._now(), conversation_id),
+        )
+
+        return count > 0
+
+    def set_conversation_group(
+        self,
+        conversation_id: str,
+        group_id: str | None,
+    ) -> bool:
+        """移动对话到指定分组 不改动 updated_at 避免在时间区跳位
+        Args:
+            conversation_id: str   => 对话 id
+            group_id: str | None   => 目标分组 id  None 表示移回未分组
+
+        Returns:
+            bool                   => 是否移动成功 对话不存在时返回 False
+        """
+        count: int = self.execute(
+            """
+            UPDATE conversations
+            SET group_id = ?
+            WHERE conversation_id = ?
+            """,
+            (group_id, conversation_id),
         )
 
         return count > 0

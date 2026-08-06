@@ -54,22 +54,29 @@ def build_system_prompt(
     preferred_tone: str = "friendly",
     custom_instruction: str = "",
     user_profile_context: str | None = None,
+    group_style: str | None = None,
+    group_tone: str | None = None,
+    group_custom_instruction: str = "",
 ) -> str:
     core_memory = core_memory or "暂无核心记忆"
     temp_memory = temp_memory or "暂无临时记忆"
     skills_context = skills_context or "暂无可用 skill"
 
-    # 风格
-    style_rule = _STYLE_RULES.get(preferred_style, _STYLE_RULES["concise"])
-    tone_rule = _TONE_RULES.get(preferred_tone, _TONE_RULES["friendly"])
+    # 风格/语调: 分组级非 None 时覆盖用户级  None 表示继承用户级
+    effective_style = group_style or preferred_style
+    effective_tone = group_tone or preferred_tone
+    style_rule = _STYLE_RULES.get(effective_style, _STYLE_RULES["concise"])
+    tone_rule = _TONE_RULES.get(effective_tone, _TONE_RULES["friendly"])
     style_section = f"""
-    风格({preferred_style})  {style_rule}\n
-    语调({preferred_tone})  {tone_rule}
+    风格({effective_style})  {style_rule}\n
+    语调({effective_tone})  {tone_rule}
     """
 
-    # 自定义指令
+    # 指令合并顺序: 系统 -> 用户级 -> 分组级 -> 当前消息
     if custom_instruction.strip():
         style_section += f"\n用户补充要求  {custom_instruction.strip()}"
+    if group_custom_instruction.strip():
+        style_section += f"\n分组要求  {group_custom_instruction.strip()}"
 
     # 用户学情档案区块
     profile_section = (

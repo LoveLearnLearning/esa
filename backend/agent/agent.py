@@ -127,6 +127,9 @@ class Agent:
         custom_instruction: str = "",
         user_profile_context: str | None = None,
         total_weeks: int | None = None,
+        group_style: str | None = None,
+        group_tone: str | None = None,
+        group_custom_instruction: str = "",
     ) -> tuple[list[dict], list[dict]]:
         set_current_user(user_name)
 
@@ -150,6 +153,9 @@ class Agent:
             preferred_tone=preferred_tone,
             custom_instruction=custom_instruction,
             user_profile_context=user_profile_context,
+            group_style=group_style,
+            group_tone=group_tone,
+            group_custom_instruction=group_custom_instruction,
         )
 
         user_message = {
@@ -191,6 +197,9 @@ class Agent:
         custom_instruction: str = "",
         user_profile_context: str | None = None,
         total_weeks: int | None = None,
+        group_style: str | None = None,
+        group_tone: str | None = None,
+        group_custom_instruction: str = "",
     ) -> list[dict]:
         """运行一轮对话
         Args:
@@ -204,6 +213,9 @@ class Agent:
             custom_instruction: str = ""      => 用户自定义指令
             user_profile_context: str | None  => 用户学情档案文本（含掌握度+教学进度+skill 规则）
             total_weeks: int | None           => 学期总周数 用于 set_current_total_weeks
+            group_style: str | None = None    => 分组级风格 非 None 时覆盖用户级
+            group_tone: str | None = None     => 分组级语调 非 None 时覆盖用户级
+            group_custom_instruction: str = "" => 分组级自定义指令 追加在用户级之后
 
         Returns:
             list[dict] => 本轮新产生的消息 (用户输入 + 助手回复 + 工具结果)
@@ -219,6 +231,9 @@ class Agent:
             custom_instruction=custom_instruction,
             user_profile_context=user_profile_context,
             total_weeks=total_weeks,
+            group_style=group_style,
+            group_tone=group_tone,
+            group_custom_instruction=group_custom_instruction,
         )
 
         for _ in range(self.loop_times):
@@ -319,6 +334,9 @@ class Agent:
         custom_instruction: str = "",
         user_profile_context: str | None = None,
         total_weeks: int | None = None,
+        group_style: str | None = None,
+        group_tone: str | None = None,
+        group_custom_instruction: str = "",
     ) -> AsyncIterator[AgentStreamEvent]:
         messages, new_messages = self._prepare_run(
             input,
@@ -329,6 +347,9 @@ class Agent:
             custom_instruction=custom_instruction,
             user_profile_context=user_profile_context,
             total_weeks=total_weeks,
+            group_style=group_style,
+            group_tone=group_tone,
+            group_custom_instruction=group_custom_instruction,
         )
 
         for _ in range(self.loop_times):

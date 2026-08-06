@@ -11,11 +11,16 @@ from fastapi.responses import StreamingResponse
 
 from backend.agent.agent import Agent, build_user_profile_context
 from backend.core.stores.chat_store import ChatStore
+from backend.core.stores.group_store import GroupStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
 from backend.core.web.deps import get_current_session
-from backend.core.web.schemas import RenameRequest, SendMessageRequest
+from backend.core.web.schemas import (
+    ConversationCreateRequest,
+    ConversationPatchRequest,
+    SendMessageRequest,
+)
 from backend.core.web.sse import encode_sse
 
 router = APIRouter(prefix="/conversations", tags=["chat"])
@@ -47,6 +52,60 @@ def _load_owned(
     return conversation
 
 
+def _validate_group_owned(
+    request: Request,
+    group_id: str | None,
+    session: SessionPrincipal,
+) -> None:
+    """辅助函数：创建/移动对话时校验分组存在且属于当前用户
+    非法 group_id 返回 404 保证不会产生孤儿引用
+
+    Args:
+        request: Request            => 请求对象
+        group_id: str | None        => 分组 id  None 表示未分组 直接通过
+        session: SessionPrincipal   => 用户登陆信息
+    """
+    if group_id is None:
+        return
+
+    group_store: GroupStore = request.app.state.group_store
+    group = group_store.get_group(group_id)
+    if group is None or group["user_id"] != session.user_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "分组不存在")
+
+
+def _load_group_params(
+    request: Request,
+    conversation: dict,
+) -> tuple[str | None, str | None, str]:
+    """辅助函数：按对话归属分组取出分组级指令参数
+    未分组时返回 (None, None, "") 表示风格/语调/指令全部继承用户级
+
+    Args:
+        request: Request      => 请求对象
+        conversation: dict    => 对话信息(含 group_id)
+
+    Returns:
+        tuple[str | None, str | None, str]:
+            (group_style, group_tone, group_custom_instruction)
+    """
+    group_id = conversation.get("group_id")
+    if group_id is None:
+        return None, None, ""
+
+    group_store: GroupStore = request.app.state.group_store
+    group = group_store.get_group(group_id)
+    if group is None:
+        # 分组已被删除的防御性兜底 按未分组处理
+        return None, None, ""
+
+    return (
+        group.get("style"),
+        group.get("tone"),
+        group.get("custom_instruction", ""),
+    )
+
+
 @router.get("")
 def list_conversations(
     request: Request,
@@ -60,21 +119,49 @@ def list_conversations(
 def create_conversation(
     request: Request,
     session: CurrentSession,
+    body: ConversationCreateRequest | None = None,
 ) -> dict:
+    body = body or ConversationCreateRequest()
+    _validate_group_owned(request, body.group_id, session)
     chat_store: ChatStore = request.app.state.chat_store
-    return chat_store.create_conversation(session.user_id)
+    return chat_store.create_conversation(
+        session.user_id,
+        title=body.title,
+        group_id=body.group_id,
+    )
 
 
 @router.patch("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
-def rename_conversation(
+def update_conversation(
     conversation_id: str,
-    body: RenameRequest,
+    body: ConversationPatchRequest,
     request: Request,
     session: CurrentSession,
 ) -> None:
     _load_owned(request, conversation_id, session)
+    updates = body.model_dump(exclude_unset=True)
+
+    # title 为非空列 显式 null 视为未提供 避免写入 NULL 触发 500
+    if "title" in updates and updates["title"] is None:
+        del updates["title"]
+
+    if not updates:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "至少需要提供 title 或 group_id 中的一个",
+        )
+
+    # 移动分组时校验目标分组归属
+    if "group_id" in updates:
+        _validate_group_owned(request, updates["group_id"], session)
+
     chat_store: ChatStore = request.app.state.chat_store
-    chat_store.rename_conversation(conversation_id, body.title)
+
+    if "title" in updates:
+        chat_store.rename_conversation(conversation_id, updates["title"])
+
+    if "group_id" in updates:
+        chat_store.set_conversation_group(conversation_id, updates["group_id"])
 
 
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
