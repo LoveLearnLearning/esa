@@ -288,3 +288,88 @@ def test_patch_memory_settings_validates_conversation_mode(tmp_path):
         json={"default_conversation_mode": "invalid_mode"},
     )
     assert resp.status_code == 400
+
+
+# ===== P2-16: 数据导出与被遗忘权 =====
+
+
+def test_export_profile_returns_all_dimensions(tmp_path):
+    """GET /me/profile/export 返回用户全部画像维度"""
+    app = _create_app(tmp_path)
+    client = TestClient(app)
+
+    # 先写入一条维度
+    profile_store: ProfileStore = app.state.profile_store
+    profile_store.upsert_dimension(
+        user_id="u1",
+        field_key="preferred_code_language",
+        value="Python",
+        origin="inferred_pattern",
+        confidence=0.7,
+    )
+
+    resp = client.get("/me/profile/export")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_id"] == "u1"
+    assert "exported_at" in body
+    assert isinstance(body["dimensions"], list)
+    assert len(body["dimensions"]) >= 1
+    field_keys = [d["field_key"] for d in body["dimensions"]]
+    assert "preferred_code_language" in field_keys
+
+
+def test_delete_all_profile_requires_confirmation(tmp_path):
+    """DELETE /me/profile 无 confirm 参数时返回 400"""
+    app = _create_app(tmp_path)
+    client = TestClient(app)
+
+    resp = client.delete("/me/profile")
+    assert resp.status_code == 400
+
+
+def test_delete_all_profile_with_confirmation(tmp_path):
+    """DELETE /me/profile?confirm=DELETE 删除全部画像维度"""
+    app = _create_app(tmp_path)
+    client = TestClient(app)
+
+    # 重置限流器 (DELETE /me/profile 限流 1/minute 上一个测试可能已占用)
+    from backend.core.web.rate_limit import profile_limiter
+    profile_limiter._windows.clear()
+
+    # 先写入两条维度
+    profile_store: ProfileStore = app.state.profile_store
+    profile_store.upsert_dimension("u1", "field_a", "val_a", "inferred_pattern", 0.7)
+    profile_store.upsert_dimension("u1", "field_b", "val_b", "inferred_pattern", 0.8)
+
+    resp = client.delete("/me/profile?confirm=DELETE")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deleted"] is True
+    assert body["deleted_count"] == 2
+
+    # 导出验证已清空
+    resp2 = client.get("/me/profile/export")
+    assert resp2.json()["dimensions"] == []
+
+
+# ===== P2-13: 限流 =====
+
+
+def test_rate_limit_blocks_excessive_requests(tmp_path):
+    """PATCH /me/profile/explicit 超过 10/minute 限流后返回 429"""
+    app = _create_app(tmp_path)
+    client = TestClient(app)
+
+    # 重置限流器 (上一个测试可能已累积计数)
+    from backend.core.web.rate_limit import profile_limiter
+    profile_limiter._windows.clear()
+
+    # 发送 11 次请求 (限流 10/minute)
+    last_status = None
+    for i in range(11):
+        resp = client.patch("/me/profile/explicit", json={"grade": f"年级{i}"})
+        last_status = resp.status_code
+
+    # 第 11 次应被限流
+    assert last_status == 429

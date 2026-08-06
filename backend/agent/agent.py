@@ -1,12 +1,16 @@
 # backend/agent/agent.py
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from vllm.config.cache import CacheDType
-from vllm.config.model import ModelDType
-from vllm.model_executor.layers.quantization import QuantizationMethods
+if TYPE_CHECKING:
+    from vllm.config.cache import CacheDType
+    from vllm.config.model import ModelDType
+    from vllm.model_executor.layers.quantization import QuantizationMethods
 
 from backend.agent.memories.memory_models import ProfileQuery, ProfileSnapshot
 from backend.agent.memories.temp_memory import TempMemory
@@ -19,7 +23,6 @@ from backend.agent.tools.mastery_tools import (
 from backend.agent.tools.memory_tools import core_memory, set_current_user
 from backend.agent.tools.skills import build_skills_context, load_skill
 from backend.core.message.build_prompt import build_system_prompt
-from backend.core.services.vllm_service import LLMProvider
 from backend.core.utils.config import DEBUG_MODE
 from backend.core.utils.models import (
     AgentStreamEvent,
@@ -64,6 +67,8 @@ class Agent:
         tensor_parallel_size: int = 1,
         model_adapter: str = "auto",
     ) -> None:
+        from backend.core.services.vllm_service import LLMProvider
+
         self.loop_times = loop_times
         self.llm_provider = LLMProvider(
             model_path=model_path,

@@ -4,6 +4,8 @@ from backend.agent.memories.memory_models import (
     ProfileField,
     ProfileOrigin,
     ProfileSnapshot,
+    _TIKTOKEN_ENCODING,
+    _estimate_tokens,
 )
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.utils.models import PromptContext
@@ -134,7 +136,7 @@ def test_profile_prompt_truncates_within_token_budget():
         assert "inferred_patterns" not in limited_parsed
 
     # 限制后的 token 估算落在预算内
-    assert len(limited) // 3 <= 700
+    assert _estimate_tokens(limited) <= 700
 
 
 def test_explicit_context_truncated_by_confidence_when_alone_exceeds_budget():
@@ -177,4 +179,41 @@ def test_explicit_context_truncated_by_confidence_when_alone_exceeds_budget():
     assert "inferred_patterns" not in parsed
 
     # token 估算落在预算内
-    assert len(limited) // 3 <= 700
+    assert _estimate_tokens(limited) <= 700
+
+
+def test_estimate_tokens_english_reasonable():
+    """英文内容 token 估算应与 len//4 (4 字符/token) 在 20% 范围内一致。"""
+    text = "The quick brown fox jumps over the lazy dog"
+    estimate = _estimate_tokens(text)
+    expected = len(text) // 4
+    if _TIKTOKEN_ENCODING is None:
+        # 启发式模式: 纯 ASCII 按 4 字符/token 估算
+        assert abs(estimate - expected) <= 0.2 * expected
+    else:
+        # tiktoken 模式: 英文 token 数与 len//4 同一数量级
+        assert 0 < estimate <= 2 * max(expected, 1)
+
+
+def test_estimate_tokens_chinese_reasonable():
+    """中文内容 token 估算应与 len*1.5 (1.5 token/字符) 在 20% 范围内一致。"""
+    text = "你好世界这是一个用于测试的中文句子"
+    estimate = _estimate_tokens(text)
+    expected = len(text) * 1.5
+    if _TIKTOKEN_ENCODING is None:
+        # 启发式模式: 中文字符按 1.5 token/字符 估算
+        assert abs(estimate - expected) <= 0.2 * expected
+    else:
+        # tiktoken 模式: 中文 token 数与 len*1.5 同一数量级
+        assert 0 < estimate <= 2 * expected
+
+
+def test_estimate_tokens_mixed_reasonable():
+    """中英混合内容 token 估算应介于纯英文与纯中文估算之间。"""
+    text = "用户 major is 计算机科学 grade 大三"
+    estimate = _estimate_tokens(text)
+    assert estimate > 0
+    # 混合内容估算高于纯 ASCII 估算 (中文字符权重更高)
+    assert estimate > len(text) // 4
+    # 且低于全部按中文估算 (ASCII 字符权重更低)
+    assert estimate < len(text) * 1.5

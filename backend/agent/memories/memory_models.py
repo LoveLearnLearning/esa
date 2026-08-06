@@ -14,6 +14,42 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
+# tiktoken 为可选依赖: 安装后使用 cl100k_base 编码精确计数 未安装则回退到启发式估算。
+try:  # pragma: no cover - 依赖是否存在取决于运行环境
+    from tiktoken import get_encoding as _get_encoding
+
+    _TIKTOKEN_ENCODING = _get_encoding("cl100k_base")
+except Exception:  # noqa: BLE001 - 任何导入/初始化失败都回退到启发式
+    _TIKTOKEN_ENCODING = None
+
+
+def _estimate_tokens(text: str) -> int:
+    """
+    估算文本的 token 数。
+
+    优先使用 tiktoken 的 cl100k_base 编码精确计数 未安装 tiktoken 时回退到字符启发式:
+    - 中日韩统一表意文字 (U+4E00~U+9FFF) 按 ~1.5 token/字符 估算
+    - ASCII 字符 (U+0000~U+007F) 按 ~0.25 token/字符 (4 字符/token) 估算
+    - 其它字符按 ~1 token/字符 估算
+    """
+    if _TIKTOKEN_ENCODING is not None:
+        return len(_TIKTOKEN_ENCODING.encode(text))
+
+    cjk = 0
+    ascii_count = 0
+    other = 0
+    for ch in text:
+        code = ord(ch)
+        if code <= 0x007F:
+            ascii_count += 1
+        elif 0x4E00 <= code <= 0x9FFF:
+            cjk += 1
+        else:
+            other += 1
+    # 4 个 ASCII 字符约为 1 token 中文字符约为 1.5 token 其它字符约为 1 token
+    # 向上取整以保留与原 // 3 类似的保守倾向 避免低估导致超预算。
+    return int(ascii_count / 4 + cjk * 1.5 + other)
+
 
 class ProfileOrigin(str, Enum):
     """画像字段值的来源标识 用于追溯可信度与覆盖优先级。"""
@@ -128,7 +164,8 @@ class ProfileSnapshot:
         当序列化结果超过 max_tokens 时按优先级截断:
         explicit_context -> response_preferences -> relevant_learning_state -> inferred_patterns
         低优先级分节优先被整段丢弃 同一分节内截断时保留置信度更高的字段。
-        token 数采用 len(json_str) // 3 的近似估算 适配中英混合内容。
+        token 数通过模块级 _estimate_tokens 估算 优先使用 tiktoken 未安装时回退到
+        区分中英文的字符启发式 详见 _estimate_tokens 文档。
         """
         # 按优先级从高到低排列 优先级低的分节在预算不足时优先被丢弃
         sections: list[tuple[str, list[ProfileField]]] = [
@@ -147,7 +184,7 @@ class ProfileSnapshot:
             }
 
         def estimate_tokens(payload: dict) -> int:
-            return len(json.dumps(payload, ensure_ascii=False, indent=2)) // 3
+            return _estimate_tokens(json.dumps(payload, ensure_ascii=False, indent=2))
 
         payload: dict[str, list[dict]] = {}
 

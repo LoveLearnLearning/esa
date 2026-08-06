@@ -19,7 +19,10 @@ ProfileBuilder 取代旧的 build_user_profile_context() (扁平字符串)
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
+import logging
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
 from backend.agent.memories.memory_models import (
     ProfileField,
@@ -27,6 +30,93 @@ from backend.agent.memories.memory_models import (
     ProfileQuery,
     ProfileSnapshot,
 )
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ProfileMetrics:
+    """画像系统可观测性指标 (P1-5)
+
+    进程内计数器 可通过 get_metrics() 快照导出。
+    生产环境可由 Prometheus 定期 scrape 或写入 SQLite metrics 表。
+    """
+
+    build_total: int = 0
+    build_latency_ms_sum: float = 0.0
+    build_latency_ms_max: float = 0.0
+    cache_hits: int = 0
+    cache_misses: int = 0
+    suppress_count: int = 0
+    restore_count: int = 0
+    store_error_count: int = 0
+    token_used_sum: int = 0
+    token_used_max: int = 0
+
+    @property
+    def cache_hit_ratio(self) -> float:
+        total = self.cache_hits + self.cache_misses
+        return self.cache_hits / total if total > 0 else 0.0
+
+    @property
+    def avg_build_latency_ms(self) -> float:
+        return self.build_latency_ms_sum / self.build_total if self.build_total > 0 else 0.0
+
+    def snapshot(self) -> dict:
+        """返回当前指标的快照 dict"""
+        return {
+            "build_total": self.build_total,
+            "avg_build_latency_ms": round(self.avg_build_latency_ms, 2),
+            "max_build_latency_ms": round(self.build_latency_ms_max, 2),
+            "cache_hit_ratio": round(self.cache_hit_ratio, 4),
+            "suppress_count": self.suppress_count,
+            "restore_count": self.restore_count,
+            "store_error_count": self.store_error_count,
+            "token_used_sum": self.token_used_sum,
+            "token_used_max": self.token_used_max,
+        }
+
+    def to_prometheus(self) -> str:
+        """返回 Prometheus 文本展示格式 供 /internal/metrics/prometheus 端点
+
+        多 Worker 部署时 各进程独立计数 Prometheus 通过 scrape 各 Worker 端口聚合。
+        """
+        lines: list[str] = [
+            "# HELP profile_build_total Total number of profile builds",
+            "# TYPE profile_build_total counter",
+            f"profile_build_total {self.build_total}",
+            "# HELP profile_build_latency_ms_avg Average build latency in ms",
+            "# TYPE profile_build_latency_ms_avg gauge",
+            f"profile_build_latency_ms_avg {self.avg_build_latency_ms:.2f}",
+            "# HELP profile_build_latency_ms_max Max build latency in ms",
+            "# TYPE profile_build_latency_ms_max gauge",
+            f"profile_build_latency_ms_max {self.build_latency_ms_max:.2f}",
+            "# HELP profile_cache_hit_ratio Cache hit ratio (0.0-1.0)",
+            "# TYPE profile_cache_hit_ratio gauge",
+            f"profile_cache_hit_ratio {self.cache_hit_ratio:.4f}",
+            "# HELP profile_cache_hits Cache hit count",
+            "# TYPE profile_cache_hits counter",
+            f"profile_cache_hits {self.cache_hits}",
+            "# HELP profile_cache_misses Cache miss count",
+            "# TYPE profile_cache_misses counter",
+            f"profile_cache_misses {self.cache_misses}",
+            "# HELP profile_suppress_total Total suppress operations",
+            "# TYPE profile_suppress_total counter",
+            f"profile_suppress_total {self.suppress_count}",
+            "# HELP profile_restore_total Total restore operations",
+            "# TYPE profile_restore_total counter",
+            f"profile_restore_total {self.restore_count}",
+            "# HELP profile_store_errors Total store errors",
+            "# TYPE profile_store_errors counter",
+            f"profile_store_errors {self.store_error_count}",
+            "# HELP profile_token_used_sum Total tokens used in prompts",
+            "# TYPE profile_token_used_sum counter",
+            f"profile_token_used_sum {self.token_used_sum}",
+            "# HELP profile_token_used_max Max tokens used in single build",
+            "# TYPE profile_token_used_max gauge",
+            f"profile_token_used_max {self.token_used_max}",
+        ]
+        return "\n".join(lines) + "\n"
 
 
 # CoreMemory.category 到画像 field_key 的映射
@@ -51,6 +141,10 @@ class ProfileBuilder:
 
     # 学习画像单轮最多注入条目数(命中知识点 + 前置) 控制单轮 token 预算
     LEARNING_STATE_MAX_ITEMS: int = 8
+    # 缓存 TTL (秒) 多 Worker 场景下保证缓存最终一致性 (P1-6)
+    CACHE_TTL_SECONDS: int = 60
+    # 知识点名称最小匹配长度 避免"图"等单字误匹配 (P2-14)
+    KP_MIN_MATCH_LENGTH: int = 2
 
     def __init__(self, user_store, mastery_store, kg_store, core_memory, profile_store):
         """
@@ -68,8 +162,34 @@ class ProfileBuilder:
         self._profile_store = profile_store
         # 简单的内存 profile_version 计数器 每次重建自增
         self._version_counter: int = 0
-        # user_id -> (input_hash, snapshot) 简单缓存 避免同一轮重复构建
-        self._cache: dict[str, tuple[str, ProfileSnapshot]] = {}
+        # user_id -> (input_hash, snapshot, expires_at) 缓存 避免同一轮重复构建
+        # TTL 保证多 Worker 场景下缓存最终一致 (P1-6)
+        self._cache: dict[str, tuple[str, ProfileSnapshot, datetime]] = {}
+        # 可观测性指标 (P1-5)
+        self._metrics = ProfileMetrics()
+
+    @property
+    def metrics(self) -> ProfileMetrics:
+        """暴露指标对象 供外部读取或 Prometheus scrape"""
+        return self._metrics
+
+    def get_metrics_snapshot(self) -> dict:
+        """返回当前指标的快照 dict"""
+        return self._metrics.snapshot()
+
+    def get_metrics_prometheus(self) -> str:
+        """返回 Prometheus 文本展示格式 供 /internal/metrics/prometheus 端点"""
+        return self._metrics.to_prometheus()
+
+    def invalidate(self, user_id: str) -> None:
+        """失效指定用户的缓存快照
+
+        在 suppress_dimension / restore_dimension / update_memory_settings 后调用
+        确保下一轮 build() 重新构建 而非返回含已删除字段的旧快照。
+        多 Worker 场景下各进程缓存独立 此方法仅失效当前进程
+        _compute_hash 中的 suppressed_hash + CACHE_TTL 提供跨 Worker 的最终一致性兜底。
+        """
+        self._cache.pop(user_id, None)
 
     # ------------------------------------------------------------------ 主入口
 
@@ -79,9 +199,9 @@ class ProfileBuilder:
         流程:
             1. 取 UserRecord 不存在返回空快照
             2. 取 MemorySettings 不存在默认两个开关都 True
-            3. 计算输入哈希 命中缓存直接返回
+            3. 计算输入哈希 命中缓存(且未过期)直接返回
             4. 分别组装四个分节(explicit/preferences/learning/inferred)
-            5. 汇总 source_memory_ids 写缓存返回
+            5. 汇总 source_memory_ids 写缓存(带 TTL)返回
 
         Args:
             query: ProfileQuery => 本轮画像查询参数
@@ -89,6 +209,8 @@ class ProfileBuilder:
         Returns:
             ProfileSnapshot => 本轮结构化画像快照
         """
+        start_ts = time.monotonic()
+
         user = self._user_store.get_by_id(query.user_id)
         if user is None:
             return self._empty_snapshot(query.user_id)
@@ -99,13 +221,25 @@ class ProfileBuilder:
             settings = _DefaultSettings()
 
         input_hash = self._compute_hash(user, query, settings)
+        now = datetime.now()
+
+        # TTL 缓存检查: 命中且未过期才返回 (P1-6)
         cached = self._cache.get(query.user_id)
-        if cached is not None and cached[0] == input_hash:
+        if cached is not None and cached[0] == input_hash and cached[2] > now:
+            self._metrics.cache_hits += 1
             return cached[1]
 
-        # 重建 版本号自增
-        self._version_counter += 1
-        profile_version = self._version_counter
+        self._metrics.cache_misses += 1
+
+        # 重建 版本号从 ProfileStore 持久化获取 重启不归零
+        try:
+            profile_version = self._profile_store.get_next_profile_version(user.id)
+        except Exception:
+            # ProfileStore 不可用时回退到内存计数器 不阻塞画像构建
+            logger.warning("ProfileStore 版本持久化失败 回退内存计数器 user=%s", user.id)
+            self._metrics.store_error_count += 1
+            self._version_counter += 1
+            profile_version = self._version_counter
 
         explicit_context = self._build_explicit_context(user)
         response_preferences = self._build_response_preferences(user, query)
@@ -138,10 +272,22 @@ class ProfileBuilder:
             relevant_constraints=[],
             inferred_patterns=inferred_patterns,
             source_memory_ids=source_memory_ids,
-            generated_at=datetime.now(),
+            generated_at=now,
         )
 
-        self._cache[query.user_id] = (input_hash, snapshot)
+        # 写缓存 带 TTL 过期时间 (P1-6)
+        expires_at = now + timedelta(seconds=self.CACHE_TTL_SECONDS)
+        self._cache[query.user_id] = (input_hash, snapshot, expires_at)
+
+        # 记录指标 (P1-5)
+        elapsed_ms = (time.monotonic() - start_ts) * 1000
+        self._metrics.build_total += 1
+        self._metrics.build_latency_ms_sum += elapsed_ms
+        self._metrics.build_latency_ms_max = max(self._metrics.build_latency_ms_max, elapsed_ms)
+        token_used = len(snapshot.to_prompt_json())
+        self._metrics.token_used_sum += token_used
+        self._metrics.token_used_max = max(self._metrics.token_used_max, token_used)
+
         return snapshot
 
     # ------------------------------------------------------------------ 显式上下文
@@ -318,10 +464,12 @@ class ProfileBuilder:
             return []
 
         # 大小写不敏感的子串匹配
+        # P2-14: 要求知识点名称长度 >= KP_MIN_MATCH_LENGTH 避免"图"等单字误匹配
+        # "图" 会命中所有含"图"的消息文本 导致图论/图遍历/图像处理等无关知识点被注入
         lowered_texts = [t.lower() for t in candidate_texts]
         for kp in knowledge_points:
             kp_name = kp.get("name") or ""
-            if not kp_name:
+            if not kp_name or len(kp_name) < self.KP_MIN_MATCH_LENGTH:
                 continue
             kp_name_lower = kp_name.lower()
             if any(kp_name_lower in text for text in lowered_texts):
@@ -395,6 +543,10 @@ class ProfileBuilder:
             5. 构造 ProfileField (origin=INFERRED_PATTERN confidence=0.7)
             6. 同步 upsert_dimension 写回 ProfileStore
 
+        安全策略 (fail-closed):
+            当 ProfileStore 不可用时 不返回任何推断字段 避免被抑制的敏感字段泄漏。
+            当 CoreMemory 不可用时 返回空 而非冒用旧数据。
+
         Args:
             user: UserRecord         => 用户数据对象
             settings: MemorySettings => 记忆开关
@@ -406,6 +558,7 @@ class ProfileBuilder:
             return []
 
         # 1. 取被抑制的 field_key 集合
+        # fail-closed: ProfileStore 不可用时返回空 避免被抑制字段泄漏
         suppressed: set[str] = set()
         try:
             suppressed_rows = self._profile_store.list_dimensions(
@@ -413,7 +566,11 @@ class ProfileBuilder:
                 status_filter="suppressed",
             )
         except Exception:
-            suppressed_rows = []
+            logger.exception(
+                "ProfileStore 不可用 fail-closed: 跳过全部推断字段 user=%s",
+                user.id,
+            )
+            return []
 
         for row in suppressed_rows or []:
             field_key = row.get("field_key") if isinstance(row, dict) else None
@@ -421,10 +578,15 @@ class ProfileBuilder:
                 suppressed.add(field_key)
 
         # 2. 取全部 CoreMemory
+        # CoreMemory 不可用时返回空 而非冒用旧数据
         try:
             memories = self._core_memory.get_all(user.username)
         except Exception:
-            memories = []
+            logger.exception(
+                "CoreMemory 不可用 跳过推断字段 user=%s",
+                user.username,
+            )
+            return []
 
         fields: list[ProfileField] = []
         for memory in memories or []:
@@ -464,7 +626,12 @@ class ProfileBuilder:
                     status="active",
                 )
             except Exception:
-                pass
+                logger.warning(
+                    "ProfileStore upsert 失败 field_key=%s user=%s",
+                    field_key,
+                    user.id,
+                    exc_info=True,
+                )
 
         return fields
 
@@ -477,6 +644,10 @@ class ProfileBuilder:
             user.id + preferred_style + custom_instruction + current_week
             + learning_profile_enabled + inferred_profile_enabled
             + group_id + current_message[:100]
+            + suppressed_fields_hash (从 ProfileStore 实时查询)
+
+        suppressed_fields_hash 保证用户删除推断字段后
+        即使进程内 invalidate 未跨 Worker 传播 哈希也会变化 从而失效缓存。
 
         Args:
             user: UserRecord         => 用户数据对象
@@ -486,6 +657,22 @@ class ProfileBuilder:
         Returns:
             str => md5 十六进制字符串
         """
+        # 实时查询被抑制字段 拼入哈希 保证 suppress 后缓存失效
+        try:
+            suppressed_rows = self._profile_store.list_dimensions(
+                user.id,
+                status_filter="suppressed",
+            )
+            suppressed_keys = sorted(
+                row.get("field_key", "")
+                for row in (suppressed_rows or [])
+                if isinstance(row, dict)
+            )
+            suppressed_hash = ",".join(suppressed_keys)
+        except Exception:
+            # ProfileStore 不可用时用空串 哈希仍可计算 build 内部 fail-closed 兜底
+            suppressed_hash = "unavailable"
+
         parts = [
             str(user.id),
             str(getattr(user, "preferred_style", "") or ""),
@@ -495,6 +682,7 @@ class ProfileBuilder:
             str(getattr(settings, "inferred_profile_enabled", True)),
             str(query.group_id or ""),
             str(query.current_message or "")[:100],
+            suppressed_hash,
         ]
         payload = "|".join(parts)
         return hashlib.md5(payload.encode("utf-8")).hexdigest()

@@ -1,5 +1,7 @@
 # backend/core/web/routers/_validators.py
 
+from __future__ import annotations
+
 from fastapi import HTTPException, status
 
 from backend.core.web.schemas import VALID_STYLES, VALID_TONES

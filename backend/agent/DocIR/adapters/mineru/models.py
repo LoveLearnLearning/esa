@@ -9,6 +9,8 @@
 MinerU 3.4.x raw 模型；允许未知字段以承受小版本漂移。
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field

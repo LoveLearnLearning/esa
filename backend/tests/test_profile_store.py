@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timedelta
 
 from backend.core.stores.profile_store import ProfileStore
 
@@ -137,3 +138,57 @@ def test_suppress_nonexistent(tmp_path):
     store = ProfileStore(db_path)
 
     assert store.suppress_dimension("u1", "ghost") is False
+
+
+def test_cleanup_expired_dimensions(tmp_path):
+    db_path = _setup_db(tmp_path)
+    store = ProfileStore(db_path)
+    now = datetime.now()
+
+    # 1) expires_at 在过去 → 应被清理
+    past_expires = (now - timedelta(days=1)).isoformat()
+    store.upsert_dimension(
+        "u1", "expired_field", "v", "inferred_pattern", 0.7,
+        expires_at=past_expires,
+    )
+
+    # 2) expires_at 在未来 → 不应被清理
+    future_expires = (now + timedelta(days=30)).isoformat()
+    store.upsert_dimension(
+        "u1", "future_field", "v", "inferred_pattern", 0.7,
+        expires_at=future_expires,
+    )
+
+    # 3) suppressed 且 updated_at 很旧 → 应被清理
+    store.upsert_dimension(
+        "u1", "old_suppressed", "v", "inferred_pattern", 0.7,
+        status="suppressed",
+    )
+    old_updated = (now - timedelta(days=100)).isoformat()
+    store.execute(
+        "UPDATE user_profile_dimensions SET updated_at = ? "
+        "WHERE user_id = ? AND field_key = ?",
+        (old_updated, "u1", "old_suppressed"),
+    )
+
+    # 4) suppressed 但 updated_at 很近 → 不应被清理
+    store.upsert_dimension(
+        "u1", "recent_suppressed", "v", "inferred_pattern", 0.7,
+        status="suppressed",
+    )
+
+    # 执行清理 retention_days=90
+    deleted = store.cleanup_expired_dimensions(retention_days=90)
+
+    # 返回删除数 = expired_field + old_suppressed
+    assert deleted == 2
+
+    # 已过期记录被删除
+    assert store.get_dimension("u1", "expired_field") is None
+    # 旧 suppressed 记录被删除
+    assert store.get_dimension("u1", "old_suppressed") is None
+    # 未来过期记录保留
+    assert store.get_dimension("u1", "future_field") is not None
+    # 近期 suppressed 记录保留
+    assert store.get_dimension("u1", "recent_suppressed") is not None
+

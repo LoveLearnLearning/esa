@@ -1,5 +1,7 @@
 # backend/agent/memories/mastery_store.py
 
+from __future__ import annotations
+
 import sqlite3
 from datetime import datetime, timedelta
 from math import exp, log

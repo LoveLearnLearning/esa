@@ -1,9 +1,14 @@
 # backend/core/utils/config.py
 
-# debug
-from vllm.config.cache import CacheDType
-from vllm.config.model import ModelDType
-from vllm.model_executor.layers.quantization import QuantizationMethods
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # debug
+    from vllm.config.cache import CacheDType
+    from vllm.config.model import ModelDType
+    from vllm.model_executor.layers.quantization import QuantizationMethods
 
 DEBUG_MODE: bool = True
 

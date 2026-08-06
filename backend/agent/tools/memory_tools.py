@@ -1,5 +1,7 @@
 # backend/agent/tools/memory_tools.py
 
+from __future__ import annotations
+
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any

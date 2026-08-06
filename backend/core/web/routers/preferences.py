@@ -1,6 +1,7 @@
 # backend/core/web/routers/preferences.py
 
 import json
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -9,6 +10,7 @@ from backend.agent.memories.memory_models import ProfileQuery
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal
 from backend.core.web.deps import get_current_session
+from backend.core.web.rate_limit import profile_limiter
 from backend.core.web.schemas import (
     VALID_MAJORS,
     VALID_STYLES,
@@ -228,6 +230,7 @@ def update_profile(
 
 
 @profile_router.patch("/explicit")
+@profile_limiter.limit("10/minute")
 def update_profile_explicit(
     body: UpdateProfileExplicitRequest,
     request: Request,
@@ -303,6 +306,10 @@ def update_profile_explicit(
         if not updated:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "用户不存在")
 
+    # 显式字段变更后失效画像缓存
+    if updates:
+        request.app.state.profile_builder.invalidate(session.user_id)
+
     # 返回最新完整画像视图
     return _build_profile_view(request, session)
 
@@ -351,6 +358,7 @@ def get_profile_sources(
 
 
 @profile_router.delete("/inferred/{field_key}")
+@profile_limiter.limit("10/minute")
 def delete_inferred_field(
     field_key: str,
     request: Request,
@@ -360,6 +368,7 @@ def delete_inferred_field(
 
     将维度置为 suppressed 状态 不物理删除 便于审计与恢复。
     记录不存在时返回 404。
+    抑制后立即失效 ProfileBuilder 缓存 确保下一轮不注入已删除字段。
     """
     profile_store = request.app.state.profile_store
     suppressed = profile_store.suppress_dimension(session.user_id, field_key)
@@ -368,7 +377,63 @@ def delete_inferred_field(
             status.HTTP_404_NOT_FOUND,
             f"画像字段 {field_key} 不存在或已被抑制",
         )
+    # 失效 ProfileBuilder 缓存 保证下一轮 build 不返回已抑制字段
+    request.app.state.profile_builder.invalidate(session.user_id)
     return {"deleted": True, "field_key": field_key}
+
+
+# ===== 数据导出与被遗忘权 (P2-16) =====
+
+
+@profile_router.get("/export")
+def export_profile(
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    """导出当前用户的全部画像数据 (GDPR 数据导出)
+
+    返回 user_profile_dimensions 表中该用户的全部记录 包括 active 和 suppressed。
+    """
+    profile_store = request.app.state.profile_store
+    dimensions = profile_store.export_all_dimensions(session.user_id)
+    return {
+        "user_id": session.user_id,
+        "exported_at": datetime.now().isoformat(),
+        "dimensions": dimensions,
+    }
+
+
+@profile_router.delete("")
+@profile_limiter.limit("1/minute")
+def delete_all_profile(
+    request: Request,
+    session: CurrentSession,
+    confirm: str = "",
+) -> dict:
+    """删除当前用户的全部画像数据 (被遗忘权)
+
+    物理删除 user_profile_dimensions 中该用户的所有记录。
+    需要传入 confirm=DELETE 查询参数作为二次确认 防止误操作。
+
+    注意: 不删除 memory_settings 表记录 (由 UserStore 独立管理)。
+    """
+    if confirm != "DELETE":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "需要传入 confirm=DELETE 查询参数作为二次确认",
+        )
+
+    profile_store = request.app.state.profile_store
+    deleted_count = profile_store.delete_all_dimensions(session.user_id)
+
+    # 失效画像缓存
+    request.app.state.profile_builder.invalidate(session.user_id)
+
+    return {
+        "deleted": True,
+        "deleted_count": deleted_count,
+        "message": f"已删除 {deleted_count} 条画像维度记录",
+    }
 
 
 # ===== 记忆与画像开关 =====
@@ -398,6 +463,7 @@ def get_memory_settings(
 
 
 @memory_settings_router.patch("")
+@profile_limiter.limit("10/minute")
 def update_memory_settings(
     body: UpdateMemorySettingsRequest,
     request: Request,
@@ -428,6 +494,8 @@ def update_memory_settings(
         )
         if not updated:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "用户不存在")
+        # 开关变更后失效画像缓存
+        request.app.state.profile_builder.invalidate(session.user_id)
 
     # 返回最新值 未配置时落默认
     settings = user_store.get_memory_settings(session.user_id)

@@ -1,5 +1,7 @@
 # backend/agnet/tools/web_search.py
 
+from __future__ import annotations
+
 from typing import Any
 
 import requests

@@ -1,5 +1,7 @@
 # backend/agent/memories/knowledge_graph.py
 
+from __future__ import annotations
+
 import sqlite3
 from collections import deque
 from pathlib import Path

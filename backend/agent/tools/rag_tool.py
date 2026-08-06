@@ -3,8 +3,10 @@
 """
 这个文件干什么：把正式 RAG 检索接口注册为 ESA Agent 可调用的工具。
 
-直白点说就是：把“查知识库”和“看知识库状态”包装成 Agent 能直接调用的两个工具。
+直白点说就是：把"查知识库"和"看知识库状态"包装成 Agent 能直接调用的两个工具。
 """
+
+from __future__ import annotations
 
 from typing import Any
 

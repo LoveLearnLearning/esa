@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 
 from backend.agent.agent import Agent
 from backend.agent.memories.profile_builder import ProfileBuilder
@@ -13,6 +14,7 @@ from backend.agent.tools.memory_tools import core_memory
 from backend.core.services.auth_service import AuthService
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
+from backend.core.stores.migrations import run_migrations
 from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
@@ -41,6 +43,9 @@ DB_PATH = Path(__file__).resolve().parent.parent / "stores" / "data" / "user.db"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 执行数据库迁移 (幂等 未应用的版本按序执行)
+    run_migrations(DB_PATH)
+
     app.state.user_store = UserStore(DB_PATH)
     app.state.session_store = SessionStore(DB_PATH)
 
@@ -99,3 +104,29 @@ app.include_router(memories.router)
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
+
+
+@app.get("/internal/metrics")
+def get_internal_metrics():
+    """暴露画像系统可观测性指标 供运维排查
+
+    返回 ProfileBuilder 的 ProfileMetrics 快照 进程内计数器。
+    多 Worker 部署时各进程独立 需通过服务发现聚合或改用 Redis 共享。
+    """
+    profile_builder = getattr(app.state, "profile_builder", None)
+    if profile_builder is None:
+        return {"error": "profile_builder not initialized"}
+    return profile_builder.get_metrics_snapshot()
+
+
+@app.get("/internal/metrics/prometheus", response_class=PlainTextResponse)
+def get_metrics_prometheus():
+    """Prometheus 文本展示格式端点
+
+    在 prometheus.yml 中配置 scrape 此端点即可采集画像指标。
+    多 Worker 部署时 每个 Worker 独立计数 Prometheus 自动聚合。
+    """
+    profile_builder = getattr(app.state, "profile_builder", None)
+    if profile_builder is None:
+        return "profile_builder not initialized\n"
+    return profile_builder.get_metrics_prometheus()
