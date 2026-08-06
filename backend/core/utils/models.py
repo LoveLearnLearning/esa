@@ -1,8 +1,13 @@
 # backend/core/utils/models.py
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
+
+if TYPE_CHECKING:
+    from backend.agent.memories.memory_models import ProfileSnapshot
 
 
 @dataclass
@@ -53,7 +58,24 @@ class UserRecord:
     grade: str = ""
     current_week: int = 1
     total_weeks: int = TOTAL_WEEKS_DEFAULT
-    profile_enabled: bool = True
+    profile_enabled: bool = True  # deprecated: 已迁移到 memory_settings 表 由 learning_profile_enabled + inferred_profile_enabled 替代
+
+    # 画像细粒度开关 (迁移自 profile_enabled 实际存储在 memory_settings 表)
+    learning_profile_enabled: bool = True
+    inferred_profile_enabled: bool = True
+
+
+@dataclass
+class MemorySettings:
+    """记忆与画像开关设置 实际持久化在 memory_settings 表"""
+
+    user_id: str
+    learning_profile_enabled: bool = True
+    inferred_profile_enabled: bool = True
+    default_conversation_mode: str = "normal"  # normal / no_write / isolated
+    episodic_retention_days: int = 180
+    created_at: datetime = ""
+    updated_at: datetime = ""
 
 
 @dataclass
@@ -80,7 +102,7 @@ class PromptContext:
     preferred_style: str = "concise"
     preferred_tone: str = "friendly"
     custom_instruction: str = ""
-    user_profile_context: str | None = None
+    user_profile_context: "ProfileSnapshot | None" = None  # 结构化画像快照 由 ProfileBuilder 生成
     group_style: str | None = None
     group_tone: str | None = None
     group_custom_instruction: str = ""
@@ -97,7 +119,7 @@ class MessageContext:
 
     user: UserRecord
     history: list[dict]
-    user_profile_context: str | None
+    user_profile_context: "ProfileSnapshot | None"
     group_style: str | None
     group_tone: str | None
     group_custom_instruction: str

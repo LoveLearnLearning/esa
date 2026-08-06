@@ -1,5 +1,7 @@
 # backend/core/web/schemas.py
 
+from __future__ import annotations
+
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -91,6 +93,63 @@ class UpdateUserProfileRequest(BaseModel):
     current_week: int | None = Field(None, ge=1, le=30)
     total_weeks: int | None = Field(None, ge=1, le=30)
     profile_enabled: bool | None = Field(None)
+
+
+# ===== Profile V2 Schema =====
+
+class ProfileFieldOut(BaseModel):
+    """单个画像维度 含来源与置信度"""
+    field: str
+    value: object
+    origin: str
+    confidence: float
+
+
+class ProfileViewOut(BaseModel):
+    """完整画像视图 显式字段 + 派生字段"""
+    explicit: list[ProfileFieldOut] = Field(default_factory=list)
+    preferences: list[ProfileFieldOut] = Field(default_factory=list)
+    goals: list[ProfileFieldOut] = Field(default_factory=list)
+    projects: list[ProfileFieldOut] = Field(default_factory=list)
+    learning_state: list[ProfileFieldOut] = Field(default_factory=list)
+    inferred_patterns: list[ProfileFieldOut] = Field(default_factory=list)
+    profile_version: int = 0
+    generated_at: str = ""
+
+
+class ProfileSourcesOut(BaseModel):
+    """画像字段来源解释"""
+    field_key: str
+    origin: str
+    confidence: float
+    source_memory_ids: list[str] = Field(default_factory=list)
+    last_confirmed_at: str | None = None
+    found: bool = True
+
+
+class UpdateProfileExplicitRequest(BaseModel):
+    """更新显式画像字段 只允许更新显式设置项"""
+    major: str | None = Field(None)
+    grade: str | None = Field(None, max_length=32)
+    current_week: int | None = Field(None, ge=1, le=30)
+    total_weeks: int | None = Field(None, ge=1, le=30)
+    preferred_style: str | None = Field(None)
+    preferred_tone: str | None = Field(None)
+    custom_instruction: str | None = Field(None, max_length=500)
+
+
+class MemorySettingsOut(BaseModel):
+    """记忆与画像开关"""
+    learning_profile_enabled: bool
+    inferred_profile_enabled: bool
+    default_conversation_mode: str = "normal"
+
+
+class UpdateMemorySettingsRequest(BaseModel):
+    """更新记忆与画像开关"""
+    learning_profile_enabled: bool | None = Field(None)
+    inferred_profile_enabled: bool | None = Field(None)
+    default_conversation_mode: str | None = Field(None)
 
 
 # 响应

@@ -9,7 +9,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
-from backend.agent.agent import Agent, build_user_profile_context
+from backend.agent.agent import Agent
+from backend.agent.memories.memory_models import ProfileQuery
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.session_store import SessionStore
@@ -115,7 +116,19 @@ def _prepare_message(
     return MessageContext(
         user=user,
         history=history,
-        user_profile_context=build_user_profile_context(user),
+        user_profile_context=request.app.state.profile_builder.build(
+            ProfileQuery(
+                user_id=user.id,
+                username=user.username,
+                conversation_id=conversation_id,
+                group_id=conversation.get("group_id"),
+                current_message=body.content,
+                recent_messages=history,
+                group_style=group_style,
+                group_tone=group_tone,
+                group_custom_instruction=group_custom_instruction,
+            )
+        ),
         group_style=group_style,
         group_tone=group_tone,
         group_custom_instruction=group_custom_instruction,

@@ -1,5 +1,7 @@
 # backend/core/stores/chat_store.py
 
+from __future__ import annotations
+
 import uuid
 from contextlib import closing
 from datetime import datetime, timezone

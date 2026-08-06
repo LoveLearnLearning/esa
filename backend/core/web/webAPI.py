@@ -7,9 +7,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.agent.agent import Agent
+from backend.agent.memories.profile_builder import ProfileBuilder
+from backend.agent.tools.mastery_tools import kg_store, mastery_store
+from backend.agent.tools.memory_tools import core_memory
 from backend.core.services.auth_service import AuthService
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
+from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.config import (
@@ -59,6 +63,14 @@ async def lifespan(app: FastAPI):
         quantization=MODEL_QUANTIZATION,
         tensor_parallel_size=MODEL_TENSOR_PARALLEL_SIZE,
     )
+    app.state.profile_store = ProfileStore(DB_PATH)
+    app.state.profile_builder = ProfileBuilder(
+        user_store=app.state.user_store,
+        mastery_store=mastery_store,
+        kg_store=kg_store,
+        core_memory=core_memory,
+        profile_store=app.state.profile_store,
+    )
     try:
         yield
     finally:
@@ -79,6 +91,7 @@ app.include_router(chat.router)
 app.include_router(groups.router)
 app.include_router(preferences.router)
 app.include_router(preferences.profile_router)
+app.include_router(preferences.memory_settings_router)
 app.include_router(learning.router)
 app.include_router(memories.router)
 
