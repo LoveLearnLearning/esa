@@ -70,10 +70,22 @@ def update_group(
 ) -> GroupOut:
     _load_owned_group(request, group_id, session)
     updates = body.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "至少需要提供一个需要修改的字段",
+        )
 
     for field in ("name", "description", "custom_instruction"):
         if updates.get(field) is None:
             updates.pop(field, None)
+
+    # style/tone 显式传 null 表示恢复继承用户级设置，因此不能清除。
+    if not updates:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "没有可更新的有效字段",
+        )
 
     validate_style_tone(updates.get("style"), updates.get("tone"))
     group_store: GroupStore = request.app.state.group_store

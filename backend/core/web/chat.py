@@ -182,18 +182,17 @@ def update_conversation(
     if "group_id" in updates:
         _validate_group_owned(request, updates["group_id"], session)
 
-    chat_store: ChatStore = request.app.state.chat_store
-    if "title" in updates and not chat_store.rename_conversation(
-        conversation_id,
-        updates["title"],
-        user_id=session.user_id,
-    ):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "对话不存在")
+    update_args: dict[str, object] = {}
+    if "title" in updates:
+        update_args["title"] = updates["title"]
+    if "group_id" in updates:
+        update_args["group_id"] = updates["group_id"]
 
-    if "group_id" in updates and not chat_store.set_conversation_group(
+    chat_store: ChatStore = request.app.state.chat_store
+    if not chat_store.update_conversation(
         conversation_id,
-        updates["group_id"],
-        user_id=session.user_id,
+        session.user_id,
+        **update_args,
     ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "对话不存在")
 

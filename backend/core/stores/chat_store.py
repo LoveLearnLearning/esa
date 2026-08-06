@@ -8,6 +8,9 @@ from pathlib import Path
 from backend.core.stores.base_sqlite_store import BaseSQLiteStore
 
 
+_UNSET = object()
+
+
 class ChatStore(BaseSQLiteStore):
     """聊天记录读写类。"""
 
@@ -210,6 +213,53 @@ class ChatStore(BaseSQLiteStore):
             sql += " AND user_id = ?"
             params += (user_id,)
         return self.execute(sql, params) > 0
+
+    def update_conversation(
+        self,
+        conversation_id: str,
+        user_id: str,
+        *,
+        title: str | object = _UNSET,
+        group_id: str | None | object = _UNSET,
+    ) -> bool:
+        """在同一事务中修改对话标题和分组。
+
+        只有修改标题时才刷新 ``updated_at``；单纯移动分组不会改变
+        对话最近活动时间。
+        """
+        assignments: list[str] = []
+        params: list[object] = []
+
+        if title is not _UNSET:
+            if not isinstance(title, str):
+                raise ValueError("title 必须是字符串")
+            assignments.extend(["title = ?", "updated_at = ?"])
+            params.extend([title, self._now()])
+
+        if group_id is not _UNSET:
+            if group_id is not None and not isinstance(group_id, str):
+                raise ValueError("group_id 必须是字符串或 None")
+            assignments.append("group_id = ?")
+            params.append(group_id)
+
+        if not assignments:
+            return self.get_conversation(
+                conversation_id,
+                user_id=user_id,
+            ) is not None
+
+        params.extend([conversation_id, user_id])
+        with closing(self._connect()) as connection, connection:
+            cursor = connection.execute(
+                f"""
+                UPDATE conversations
+                SET {", ".join(assignments)}
+                WHERE conversation_id = ?
+                  AND user_id = ?
+                """,
+                tuple(params),
+            )
+            return cursor.rowcount > 0
 
     def delete_conversation(
         self,
