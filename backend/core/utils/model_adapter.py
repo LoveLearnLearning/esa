@@ -297,14 +297,16 @@ You MUST strictly follow the defined tool names and parameter schemas.'''
                     f'string="{str(is_string).lower()}">{rendered_value}'
                     f'</{DEEPSEEK_V4_DSML}parameter>'
                 )
+            rendered_parameters = "\n".join(parameters)
             invocations.append(
                 f'<{DEEPSEEK_V4_DSML}invoke name="{name}">\n'
-                f"{'\n'.join(parameters)}\n"
+                f"{rendered_parameters}\n"
                 f'</{DEEPSEEK_V4_DSML}invoke>'
             )
+        rendered_invocations = "\n".join(invocations)
         return (
             f"<{DEEPSEEK_V4_DSML}tool_calls>\n"
-            f"{'\n'.join(invocations)}\n"
+            f"{rendered_invocations}\n"
             f"</{DEEPSEEK_V4_DSML}tool_calls>"
         )
 
