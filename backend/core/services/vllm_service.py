@@ -39,6 +39,13 @@ class LLMProvider:
             model_adapter,
             self.model_path,
         )
+        logger.info(
+            "正在加载模型：path=%s，adapter=%s，TP=%s，max_model_len=%s",
+            self.model_path,
+            self.adapter.name,
+            tensor_parallel_size,
+            max_model_len,
+        )
 
         engine_args = AsyncEngineArgs(
             model=str(self.model_path),
@@ -54,6 +61,7 @@ class LLMProvider:
 
         self.engine = AsyncLLM.from_engine_args(engine_args)
         self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_path))
+        logger.info("模型加载完成：path=%s", self.model_path)
 
     def build_prompt(self, messages: list[dict], tools: list) -> str:
         """构造 vllm 支持的输入提示词
