@@ -7,27 +7,31 @@ SYSTEM_PROMPT: str = """
 
 你会有很多可用的 tools 供你调用
 
+# 指令优先级
+
+按以下优先级执行要求：系统安全与能力边界 > 用户当前消息 > 分组要求 > 用户长期偏好。
+低优先级要求与高优先级要求冲突时，以高优先级要求为准。
+
 # 记忆使用规则
 
 你可以参考下面提供的用户记忆来回答问题
 只使用与当前问题相关的记忆
-记忆与用户最新要求冲突时  以用户最新要求为准
+记忆与用户最新要求冲突时，以用户最新要求为准
 不要主动向用户暴露内部记忆结构
 不要编造记忆中不存在的信息
 
 # Skill 使用规则
 
 你可以根据用户任务选择可用的 skill
-当某个 skill 的描述与用户任务匹配时  先调用 load_skill 工具 加载完整说明
+当某个 skill 的描述与用户任务匹配时，先调用 load_skill 工具加载完整说明
 加载 skill 后按照其中的步骤完成任务
 不要调用与当前任务无关的 skill
 不要编造不存在的 skill
 """
 
-# 风格
 _STYLE_RULES: dict[str, str] = {
-    "concise": "回答控制在 3 句内  先给结论  不铺陈背景  作业类问题优先给思路而非完整答案",
-    "detailed": "完整展开  含背景  步骤  示例  作业类问题可给完整解答但需说明每步原理",
+    "concise": "回答控制在 3 句内，先给结论，不铺陈背景；作业类问题优先给思路而非完整答案",
+    "detailed": "完整展开，包含背景、步骤和示例；作业类问题可给完整解答，但需说明每步原理",
     "socratic": (
         "用反问引导思考  不直接给答案  按以下流程执行：\n"
         "1. 先定位学生卡在哪一步  问'你做到哪一步卡住了'\n"
@@ -38,13 +42,16 @@ _STYLE_RULES: dict[str, str] = {
     ),
 }
 
-# 语调
 _TONE_RULES: dict[str, str] = {
-    "friendly": "口语化  可用鼓励性表达",
-    "formal": "书面语  术语准确  避免口语",
-    "encouraging": "多肯定用户的进展",
-    "strict": "直接指出错误  不客套",
+    "friendly": "口语化，可使用适度鼓励性表达",
+    "formal": "使用书面语，术语准确，避免口语",
+    "encouraging": "肯定有效进展，同时准确指出问题",
+    "strict": "直接指出错误，不使用无意义客套",
 }
+
+
+def _clean(value: str | None) -> str:
+    return value.strip() if value else ""
 
 
 def build_system_prompt(
@@ -55,57 +62,41 @@ def build_system_prompt(
     prompt_ctx: PromptContext | None = None,
 ) -> str:
     prompt_ctx = prompt_ctx or PromptContext()
-    core_memory = core_memory or "暂无核心记忆"
-    temp_memory = temp_memory or "暂无临时记忆"
-    skills_context = skills_context or "暂无可用 skill"
 
-    # 风格/语调: 分组级非 None 时覆盖用户级  None 表示继承用户级
-    effective_style = prompt_ctx.group_style or prompt_ctx.preferred_style
-    effective_tone = prompt_ctx.group_tone or prompt_ctx.preferred_tone
+    preferred_style = _clean(prompt_ctx.preferred_style) or "concise"
+    preferred_tone = _clean(prompt_ctx.preferred_tone) or "friendly"
+    group_style = _clean(prompt_ctx.group_style)
+    group_tone = _clean(prompt_ctx.group_tone)
+
+    effective_style = group_style or preferred_style
+    effective_tone = group_tone or preferred_tone
     style_rule = _STYLE_RULES.get(effective_style, _STYLE_RULES["concise"])
     tone_rule = _TONE_RULES.get(effective_tone, _TONE_RULES["friendly"])
-    style_section = f"""
-    风格({effective_style})  {style_rule}\n
-    语调({effective_tone})  {tone_rule}
-    """
 
-    # 指令合并顺序: 系统 -> 用户级 -> 分组级 -> 当前消息
-    # 用 list 收集后 join 便于未来扩展更多层级
-    instruction_lines: list[str] = []
-    if prompt_ctx.custom_instruction.strip():
-        instruction_lines.append(f"用户补充要求  {prompt_ctx.custom_instruction.strip()}")
-    if prompt_ctx.group_custom_instruction.strip():
-        instruction_lines.append(f"分组要求  {prompt_ctx.group_custom_instruction.strip()}")
+    sections = [
+        SYSTEM_PROMPT.strip(),
+        f"> 用户昵称: {user_name or '未提供'}",
+        "# 输出风格\n\n"
+        f"风格({effective_style}): {style_rule}\n"
+        f"语调({effective_tone}): {tone_rule}",
+    ]
 
-    if instruction_lines:
-        style_section += "\n" + "\n".join(instruction_lines)
+    user_instruction = _clean(prompt_ctx.custom_instruction)
+    group_instruction = _clean(prompt_ctx.group_custom_instruction)
+    if user_instruction:
+        sections.append(f"# 用户长期偏好\n\n{user_instruction}")
+    if group_instruction:
+        sections.append(f"# 当前分组要求\n\n{group_instruction}")
 
-    # 用户学情档案区块
-    profile_section = (
-        f"# 用户学情档案\n\n{prompt_ctx.user_profile_context.strip()}\n"
-        if prompt_ctx.user_profile_context and prompt_ctx.user_profile_context.strip()
-        else ""
+    profile = _clean(prompt_ctx.user_profile_context)
+    if profile:
+        sections.append(f"# 用户学情档案\n\n{profile}")
+
+    sections.extend(
+        [
+            f"# 核心记忆\n\n{_clean(core_memory) or '暂无核心记忆'}",
+            f"# 临时记忆\n\n{_clean(temp_memory) or '暂无临时记忆'}",
+            f"# 可用 Skills\n\n{_clean(skills_context) or '暂无可用 skill'}",
+        ]
     )
-
-    return f"""
-{SYSTEM_PROMPT.strip()}
-
-> 用户昵称: {user_name}
-
-# 输出风格
-
-{style_section}
-
-{profile_section}
-# 核心记忆
-
-{core_memory}
-
-# 临时记忆
-
-{temp_memory}
-
-# 可用 Skills
-
-{skills_context}
-""".strip()
+    return "\n\n".join(sections)
