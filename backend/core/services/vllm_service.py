@@ -14,6 +14,10 @@ from vllm.model_executor.layers.quantization import QuantizationMethods
 from vllm.sampling_params import RequestOutputKind
 from vllm.v1.engine.async_llm import AsyncLLM
 
+from backend.core.utils.model_adapter import ModelAdapter, get_model_adapter
+from backend.core.utils.models import ParsedOutput
+from backend.core.utils.parser import StreamOutputParser
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,8 +32,13 @@ class LLMProvider:
         kv_cache_dtype: CacheDType = "auto",
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
+        model_adapter: str = "auto",
     ) -> None:
         self.model_path = Path(model_path)
+        self.adapter: ModelAdapter = get_model_adapter(
+            model_adapter,
+            self.model_path,
+        )
 
         engine_args = AsyncEngineArgs(
             model=str(self.model_path),
@@ -61,13 +70,19 @@ class LLMProvider:
         Returns:
             str                     => 构造好的 prompt
         """
-        assert self.tokenizer is not None
-        return self.tokenizer.apply_chat_template(
+        return self.adapter.build_prompt(
+            self.tokenizer,
             messages,
-            tools=tools,
-            tokenize=False,
-            add_generation_prompt=True,
+            tools,
         )
+
+    def parse_output(self, raw_text: str) -> ParsedOutput:
+        """按当前模型协议解析完整输出。"""
+        return self.adapter.parse_output(raw_text)
+
+    def create_stream_parser(self) -> StreamOutputParser:
+        """创建与当前模型协议匹配的流式解析器。"""
+        return self.adapter.create_stream_parser()
 
     async def generate(self, prompts: list[dict], tools: list[dict]) -> str:
         """生成 LLM 的返回信息

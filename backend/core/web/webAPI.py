@@ -13,6 +13,7 @@ from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.config import (
     AGENT_LOOP_TIME,
+    MODEL_ADAPTER,
     MODEL_DTYPE,
     MODEL_GPU_MEMORY_UTILIZATION,
     MODEL_KV_CACHE_DTYPE,
@@ -46,6 +47,7 @@ async def lifespan(app: FastAPI):
         max_num_seqs=MODEL_MAX_NUM_SEQS,
         quantization=MODEL_QUANTIZATION,
         tensor_parallel_size=MODEL_TENSOR_PARALLEL_SIZE,
+        model_adapter=MODEL_ADAPTER,
     )
     try:
         yield

@@ -26,7 +26,6 @@ from backend.core.utils.models import (
     ToolCall,
     UserRecord,
 )
-from backend.core.utils.parser import StreamOutputParser, parse_output
 
 ROOT_PATH: Path = Path.cwd().parent
 
@@ -100,6 +99,7 @@ class Agent:
         max_model_len: int = 32768,
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
+        model_adapter: str = "auto",
     ) -> None:
         self.loop_times = loop_times
         self.llm_provider = LLMProvider(
@@ -111,6 +111,7 @@ class Agent:
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
             tensor_parallel_size=tensor_parallel_size,
+            model_adapter=model_adapter,
         )
         self.temp_memory = TempMemory(
             max_messages_per_user=20,
@@ -226,7 +227,7 @@ class Agent:
                 tr.schemas,
             )
 
-            po: ParsedOutput = parse_output(response)
+            po: ParsedOutput = self.llm_provider.parse_output(response)
             tcs: list[ToolCall] = po.tool_calls
 
             if DEBUG_MODE:
@@ -331,7 +332,7 @@ class Agent:
         )
 
         for _ in range(self.loop_times):
-            stream_parser = StreamOutputParser()
+            stream_parser = self.llm_provider.create_stream_parser()
 
             async for chunk in self.llm_provider.generate_stream(
                 messages,
@@ -350,7 +351,7 @@ class Agent:
                 )
 
             response = stream_parser.raw_text
-            parsed = parse_output(response)
+            parsed = self.llm_provider.parse_output(response)
 
             tool_calls = parsed.tool_calls
 

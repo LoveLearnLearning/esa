@@ -6,6 +6,12 @@ import re
 from backend.core.utils.models import ParsedOutput, ToolCall
 
 
+DEEPSEEK_V4_EOS = "<｜end▁of▁sentence｜>"
+DEEPSEEK_V4_DSML = "｜DSML｜"
+DEEPSEEK_V4_TOOL_CALLS_OPEN = f"<{DEEPSEEK_V4_DSML}tool_calls>"
+DEEPSEEK_V4_TOOL_CALLS_CLOSE = f"</{DEEPSEEK_V4_DSML}tool_calls>"
+
+
 def _try_cast(value: str):
     """将工具参数按 JSON 类型解析，无法解析时保留原字符串。"""
     value = value.strip()
@@ -66,6 +72,7 @@ class StreamOutputParser:
     THINK_OPEN = "<think>"
     THINK_CLOSE = "</think>"
     TOOL_OPEN = "<tool_call>"
+    CONTENT_STOP_TOKENS: tuple[str, ...] = ()
 
     def __init__(self) -> None:
         self.phase = "reasoning"
@@ -92,9 +99,8 @@ class StreamOutputParser:
         if self.phase == "undecided":
             self._determine_output_type()
 
-        if self.phase == "content" and self.pending:
-            events.append(("content", self.pending))
-            self.pending = ""
+        if self.phase == "content":
+            self._flush_content(events)
 
         return events
 
@@ -110,9 +116,8 @@ class StreamOutputParser:
             if self.phase == "content" and self.pending:
                 events.append(("content", self.pending))
                 self.pending = ""
-        elif self.phase == "content" and self.pending:
-            events.append(("content", self.pending))
-            self.pending = ""
+        elif self.phase == "content":
+            self._flush_content(events, final=True)
 
         return events
 
@@ -170,6 +175,48 @@ class StreamOutputParser:
 
         self.phase = "content"
 
+    def _flush_content(
+        self,
+        events: list[tuple[str, str]],
+        final: bool = False,
+    ) -> None:
+        """发送正文，同时避免把跨 chunk 的结束 token 暴露给前端。"""
+        if not self.pending or self.phase != "content":
+            return
+
+        stop_positions = [
+            self.pending.find(token)
+            for token in self.CONTENT_STOP_TOKENS
+            if token in self.pending
+        ]
+        if stop_positions:
+            stop_position = min(stop_positions)
+            content = self.pending[:stop_position]
+            self.pending = ""
+            self.phase = "finished"
+            if content:
+                events.append(("content", content))
+            return
+
+        if final or not self.CONTENT_STOP_TOKENS:
+            content = self.pending
+            self.pending = ""
+            if content:
+                events.append(("content", content))
+            return
+
+        keep_length = max(
+            self._partial_suffix_length(self.pending, token)
+            for token in self.CONTENT_STOP_TOKENS
+        )
+        emit_length = len(self.pending) - keep_length
+        if emit_length <= 0:
+            return
+
+        content = self.pending[:emit_length]
+        self.pending = self.pending[emit_length:]
+        events.append(("content", content))
+
     @staticmethod
     def _partial_suffix_length(value: str, marker: str) -> int:
         max_length = min(len(value), len(marker) - 1)
@@ -177,6 +224,71 @@ class StreamOutputParser:
             if value.endswith(marker[:length]):
                 return length
         return 0
+
+
+def parse_deepseek_v4_output(raw_text: str) -> ParsedOutput:
+    """解析 DeepSeek-V4-Flash-0731 的思考、正文与 DSML 工具调用。
+
+    该函数是对旧 ``parse_output`` 的补充；旧模型的 XML 协议仍由
+    ``parse_output`` 处理。DeepSeek 的字符串参数保持原样，其他参数按
+    JSON 解码，和官方 encoding 的语义一致。
+    """
+    result = ParsedOutput()
+    normalized_text = raw_text.replace(DEEPSEEK_V4_EOS, "")
+
+    think_match = re.search(r"(?:<think>)?(.*?)</think>", normalized_text, re.DOTALL)
+    if think_match:
+        result.reasoning = think_match.group(1).strip()
+
+    tool_blocks = re.findall(
+        rf"{re.escape(DEEPSEEK_V4_TOOL_CALLS_OPEN)}\s*(.*?)\s*"
+        rf"{re.escape(DEEPSEEK_V4_TOOL_CALLS_CLOSE)}",
+        normalized_text,
+        re.DOTALL,
+    )
+
+    for block in tool_blocks:
+        for name, arguments_block in re.findall(
+            rf"<{re.escape(DEEPSEEK_V4_DSML)}invoke\s+name=\"([^\"]+)\">"
+            rf"(.*?)</{re.escape(DEEPSEEK_V4_DSML)}invoke>",
+            block,
+            re.DOTALL,
+        ):
+            arguments: dict[str, object] = {}
+            for parameter_name, is_string, value in re.findall(
+                rf"<{re.escape(DEEPSEEK_V4_DSML)}parameter\s+"
+                r'name="([^"]+)"\s+string="(true|false)">(.*?)'
+                rf"</{re.escape(DEEPSEEK_V4_DSML)}parameter>",
+                arguments_block,
+                re.DOTALL,
+            ):
+                arguments[parameter_name] = (
+                    value if is_string == "true" else _try_cast(value)
+                )
+            result.tool_calls.append(ToolCall(name=name, arguments=arguments))
+
+    without_thinking = re.sub(
+        r"(?:<think>)?.*?</think>",
+        "",
+        normalized_text,
+        flags=re.DOTALL,
+    )
+    without_tools = re.sub(
+        rf"\s*{re.escape(DEEPSEEK_V4_TOOL_CALLS_OPEN)}.*?"
+        rf"{re.escape(DEEPSEEK_V4_TOOL_CALLS_CLOSE)}",
+        "",
+        without_thinking,
+        flags=re.DOTALL,
+    )
+    result.content = without_tools.strip()
+    return result
+
+
+class DeepSeekV4StreamOutputParser(StreamOutputParser):
+    """DeepSeek-V4-Flash 的流式解析器，保留 DSML 与 EOS 于内部原文。"""
+
+    TOOL_OPEN = DEEPSEEK_V4_TOOL_CALLS_OPEN
+    CONTENT_STOP_TOKENS = (DEEPSEEK_V4_EOS,)
 
 
 def main() -> None:
