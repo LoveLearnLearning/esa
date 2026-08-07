@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 
 DEBUG_MODE: bool = True
 
+SEARXNG_BASE_URL = "http://115.29.197.244:8888"
+
 # model
 MODEL_PATH: str = "/remote_dir/home/chenxuzhao/models/DeepSeek-V4-Flash-0731"
 MODEL_ADAPTER: str = "deepseek_v4"
