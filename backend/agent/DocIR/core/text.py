@@ -9,6 +9,8 @@
 文字层模型，明确文字来源与逐字引用资格。
 """
 
+from __future__ import annotations
+
 from typing import Literal
 
 from pydantic import Field, model_validator

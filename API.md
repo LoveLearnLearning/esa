@@ -119,6 +119,7 @@ Authorization: Bearer <session_id>
     "conversation_id": "uuid",
     "user_id": "用户uuid",
     "title": "对话标题",
+    "group_id": "分组uuid 或 null(未分组)",
     "created_at": "...",
     "updated_at": "..."
   }
@@ -127,17 +128,27 @@ Authorization: Bearer <session_id>
 
 ### POST /conversations — 新建对话
 
-请求体(`title` 可省略 默认 "新对话"):
+请求体(`title` / `group_id` 均可省略 默认 "新对话" + 未分组):
 
 ```json
-{ "title": "线性代数问题" }
+{ "title": "线性代数问题", "group_id": "分组uuid" }
 ```
 
 响应 `201`: 单个对话对象 结构同上
 
-### PATCH /conversations/{conversation_id} — 重命名对话
+`group_id` 不存在或不属于当前用户: `404`
 
-请求体: `{ "title": "新标题" }` 成功响应 `204`
+### PATCH /conversations/{conversation_id} — 重命名或移动分组
+
+请求体两字段均可选 至少提供一个 (`group_id` 传 `null` 表示移回未分组):
+
+```json
+{ "title": "新标题", "group_id": "分组uuid 或 null" }
+```
+
+成功响应 `204`; 空请求体: `422`; 对话不存在: `404`; `group_id` 非法: `404`
+
+注意: 移动分组不刷新 `updated_at` 避免对话在时间区跳位
 
 ### DELETE /conversations/{conversation_id} — 删除对话
 
@@ -203,6 +214,72 @@ data: {"delta":"回答正文"}
 | `error` | `detail`, `type` | 流建立后发生生成错误 |
 
 客户端必须按 SSE 空行分隔事件，并将同类 `delta` 按收到顺序追加，不能把每个增量作为独立消息。工具调用 XML 不会作为可见内容发送。
+
+---
+
+## 对话分组接口
+
+以下接口均需要认证 只能操作属于当前登录用户的分组
+
+### GET /groups — 分组列表
+
+响应 `200` 按最近更新排序 每组含对话数:
+
+```json
+[
+  {
+    "group_id": "uuid",
+    "user_id": "用户uuid",
+    "name": "分组名称",
+    "description": "分组描述",
+    "custom_instruction": "分组内自定义指令",
+    "style": "concise | detailed | socratic 或 null(继承用户级)",
+    "tone": "friendly | formal | encouraging | strict 或 null(继承用户级)",
+    "conversation_count": 3,
+    "created_at": "...",
+    "updated_at": "..."
+  }
+]
+```
+
+### POST /groups — 新建分组
+
+请求体(`name` 必填 1-20 字; `description` ≤100 字; `custom_instruction` ≤500 字; `style` / `tone` 可省略或为 null 表示继承用户级):
+
+```json
+{
+  "name": "高数",
+  "description": "高等数学复习",
+  "custom_instruction": "用苏格拉底式提问引导我",
+  "style": null,
+  "tone": null
+}
+```
+
+响应 `201`: 单个分组对象(含 `conversation_count: 0`)
+
+`style` / `tone` 枚举非法: `400`; 字段超长/`name` 为空: `422`; 分组数量已达上限(20 个): `409`
+
+### PATCH /groups/{group_id} — 更新分组
+
+请求体为部分更新 以下字段均可选 (`style` / `tone` 传 `null` 表示改回继承用户级):
+
+```json
+{ "name": "高等数学", "custom_instruction": "先给思路", "style": "socratic", "tone": null }
+```
+
+响应 `200`: 最新分组对象; 不存在或不属于当前用户: `404`; 枚举非法: `400`
+
+### DELETE /groups/{group_id} — 删除分组
+
+删除分组 组内全部对话自动移回未分组(事务内完成) 成功响应 `204`; 不存在或不属于当前用户: `404`
+
+### 分组指令生效说明（后端已实现，前端无需额外对接）
+
+- 分组的 `custom_instruction` / `style` / `tone` 由后端在**发消息时自动生效**：`POST /conversations/{id}/messages` 与 `POST /conversations/{id}/messages/stream` 会根据该对话的 `group_id` 查出分组并注入 Prompt，前端**不需要**在发消息请求里传任何分组参数。
+- 合并顺序：**系统 → 用户级（`/me/preferences`）→ 分组级（本接口）→ 当前消息**。分组级 `style` / `tone` 非 `null` 时覆盖用户级；指令按「用户补充要求」→「分组要求」顺序追加进 Prompt。
+- 未分组对话、或分组已被删除时，行为与现状完全一致（全部继承用户级）。
+- 前端只需提供分组编辑入口（指令编辑器 + 风格/语调选择），保存后立即对组内对话生效。
 
 ---
 

@@ -17,6 +17,8 @@
 #      （Task 6 _prepare_run 调用 set_current_total_weeks）
 #      未注入时 fallback 到 UserRecord.TOTAL_WEEKS_DEFAULT，避免硬编码
 
+from __future__ import annotations
+
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any

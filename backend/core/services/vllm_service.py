@@ -1,5 +1,7 @@
 # backend/core/services/vllm_service.py
 
+from __future__ import annotations
+
 import logging
 import uuid
 from collections.abc import AsyncIterator

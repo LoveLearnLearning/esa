@@ -5,15 +5,21 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 
 from backend.agent.agent import Agent
+from backend.agent.memories.profile_builder import ProfileBuilder
+from backend.agent.tools.mastery_tools import kg_store, mastery_store
+from backend.agent.tools.memory_tools import core_memory
 from backend.core.services.auth_service import AuthService
 from backend.core.stores.chat_store import ChatStore
+from backend.core.stores.group_store import GroupStore
+from backend.core.stores.migrations import run_migrations
+from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.config import (
     AGENT_LOOP_TIME,
-    MODEL_ADAPTER,
     MODEL_DTYPE,
     MODEL_GPU_MEMORY_UTILIZATION,
     MODEL_KV_CACHE_DTYPE,
@@ -23,16 +29,30 @@ from backend.core.utils.config import (
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
 )
-from backend.core.web.routers import auth, chat, learning, memories, preferences
+from backend.core.web.routers import (
+    auth,
+    chat,
+    groups,
+    learning,
+    memories,
+    preferences,
+)
 
 DB_PATH = Path(__file__).resolve().parent.parent / "stores" / "data" / "user.db"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 执行数据库迁移 (幂等 未应用的版本按序执行)
+    run_migrations(DB_PATH)
+
     app.state.user_store = UserStore(DB_PATH)
     app.state.session_store = SessionStore(DB_PATH)
+
+    # ChatStore 必须先执行：它负责为旧 conversations 表迁移 group_id 列。
     app.state.chat_store = ChatStore(DB_PATH)
+    app.state.group_store = GroupStore(DB_PATH)
+
     app.state.auth = AuthService(
         app.state.user_store,
         app.state.session_store,
@@ -47,7 +67,14 @@ async def lifespan(app: FastAPI):
         max_num_seqs=MODEL_MAX_NUM_SEQS,
         quantization=MODEL_QUANTIZATION,
         tensor_parallel_size=MODEL_TENSOR_PARALLEL_SIZE,
-        model_adapter=MODEL_ADAPTER,
+    )
+    app.state.profile_store = ProfileStore(DB_PATH)
+    app.state.profile_builder = ProfileBuilder(
+        user_store=app.state.user_store,
+        mastery_store=mastery_store,
+        kg_store=kg_store,
+        core_memory=core_memory,
+        profile_store=app.state.profile_store,
     )
     try:
         yield
@@ -56,22 +83,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-
-# 允许 Flutter web / 前端跨域调用 开发阶段放开所有来源
-# 部署时应把 allow_origins 收窄到前端实际域名
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,  # 用 Bearer 头认证 不依赖 cookie
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
 app.include_router(auth.router)
 app.include_router(chat.router)
+app.include_router(groups.router)
 app.include_router(preferences.router)
 app.include_router(preferences.profile_router)
+app.include_router(preferences.memory_settings_router)
 app.include_router(learning.router)
 app.include_router(memories.router)
 
@@ -79,3 +104,29 @@ app.include_router(memories.router)
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
+
+
+@app.get("/internal/metrics")
+def get_internal_metrics():
+    """暴露画像系统可观测性指标 供运维排查
+
+    返回 ProfileBuilder 的 ProfileMetrics 快照 进程内计数器。
+    多 Worker 部署时各进程独立 需通过服务发现聚合或改用 Redis 共享。
+    """
+    profile_builder = getattr(app.state, "profile_builder", None)
+    if profile_builder is None:
+        return {"error": "profile_builder not initialized"}
+    return profile_builder.get_metrics_snapshot()
+
+
+@app.get("/internal/metrics/prometheus", response_class=PlainTextResponse)
+def get_metrics_prometheus():
+    """Prometheus 文本展示格式端点
+
+    在 prometheus.yml 中配置 scrape 此端点即可采集画像指标。
+    多 Worker 部署时 每个 Worker 独立计数 Prometheus 自动聚合。
+    """
+    profile_builder = getattr(app.state, "profile_builder", None)
+    if profile_builder is None:
+        return "profile_builder not initialized\n"
+    return profile_builder.get_metrics_prometheus()

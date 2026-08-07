@@ -9,7 +9,9 @@
 DocIR V0.2 判别联合内容元素。
 """
 
-from typing import Annotated, Literal
+from __future__ import annotations
+
+from typing import Annotated, Literal, Union
 
 from pydantic import Field, model_validator
 
@@ -82,13 +84,15 @@ class UnknownElement(ElementBase):
 
 
 Element = Annotated[
-    HeadingElement
-    | ParagraphElement
-    | ListElement
-    | TableElement
-    | FormulaElement
-    | FigureElement
-    | CodeElement
-    | UnknownElement,
+    Union[
+        HeadingElement,
+        ParagraphElement,
+        ListElement,
+        TableElement,
+        FormulaElement,
+        FigureElement,
+        CodeElement,
+        UnknownElement,
+    ],
     Field(discriminator="kind"),
 ]

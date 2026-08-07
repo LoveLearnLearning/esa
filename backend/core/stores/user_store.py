@@ -1,10 +1,13 @@
 # backend/core/stores/user_store.py
 
+from __future__ import annotations
+
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 from backend.core.stores.base_sqlite_store import BaseSQLiteStore
-from backend.core.utils.models import UserRecord
+from backend.core.utils.models import MemorySettings, UserRecord
 
 
 class UserStore(BaseSQLiteStore):
@@ -78,6 +81,27 @@ class UserStore(BaseSQLiteStore):
                     "ALTER TABLE users ADD COLUMN profile_enabled INTEGER NOT NULL DEFAULT 1"
                 )
 
+            # 记忆与画像开关表 (spec Task 4) 实际存储细粒度开关
+            # profile_enabled 已迁移到此表 拆分为 learning_profile_enabled + inferred_profile_enabled
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS memory_settings (
+                    user_id TEXT PRIMARY KEY,
+                    saved_memory_enabled INTEGER NOT NULL DEFAULT 1,
+                    chat_history_enabled INTEGER NOT NULL DEFAULT 1,
+                    auto_extract_enabled INTEGER NOT NULL DEFAULT 0,
+                    learning_profile_enabled INTEGER NOT NULL DEFAULT 1,
+                    inferred_profile_enabled INTEGER NOT NULL DEFAULT 1,
+                    default_conversation_mode TEXT NOT NULL DEFAULT 'normal',
+                    episodic_retention_days INTEGER NOT NULL DEFAULT 180,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    CHECK(default_conversation_mode IN ('normal', 'no_write', 'isolated'))
+                )
+                """
+            )
+
     def to_model(self, row: sqlite3.Row) -> UserRecord:
         """将数据库记录转化为实例对象
         Args:
@@ -86,6 +110,8 @@ class UserStore(BaseSQLiteStore):
         Returns:
             UserRecord       => 用户数据对象
         """
+        # learning_profile_enabled / inferred_profile_enabled 实际来自 memory_settings 表
+        # 此处仅用 profile_enabled 作为回退值 真正的细粒度值需调用 get_memory_settings() 获取
         return UserRecord(
             id=row["id"],
             username=row["username"],
@@ -99,6 +125,8 @@ class UserStore(BaseSQLiteStore):
             current_week=row["current_week"],
             total_weeks=row["total_weeks"],
             profile_enabled=bool(row["profile_enabled"]),
+            learning_profile_enabled=bool(row["profile_enabled"]),
+            inferred_profile_enabled=bool(row["profile_enabled"]),
         )
 
     def get_by_id(self, user_id: str) -> UserRecord | None:
@@ -310,6 +338,142 @@ class UserStore(BaseSQLiteStore):
             UPDATE users
             SET {set_clause}
             WHERE id = ?
+            """,
+            params,
+        )
+
+        return count > 0
+
+    def get_memory_settings(self, user_id: str) -> MemorySettings | None:
+        """获取用户的记忆与画像开关设置 不存在则按老 profile_enabled 懒迁移建行
+
+        迁移逻辑: 首次读取时若 memory_settings 无对应行 读 users.profile_enabled 派生
+        profile_enabled=False => 两个细粒度开关都 False; True => 都 True
+
+        Args:
+            user_id: str => 用户 id
+
+        Returns:
+            MemorySettings | None:
+                MemorySettings => 设置对象
+                None           => 用户不存在
+        """
+        row = self.query_one(
+            """
+            SELECT user_id, saved_memory_enabled, chat_history_enabled, auto_extract_enabled,
+                   learning_profile_enabled, inferred_profile_enabled,
+                   default_conversation_mode, episodic_retention_days,
+                   created_at, updated_at
+            FROM memory_settings
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        )
+
+        if row is not None:
+            return MemorySettings(
+                user_id=row["user_id"],
+                learning_profile_enabled=bool(row["learning_profile_enabled"]),
+                inferred_profile_enabled=bool(row["inferred_profile_enabled"]),
+                default_conversation_mode=row["default_conversation_mode"],
+                episodic_retention_days=row["episodic_retention_days"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+            )
+
+        # 不存在 走迁移逻辑 读老 profile_enabled 派生细粒度开关
+        user_row = self.query_one(
+            "SELECT profile_enabled FROM users WHERE id = ?",
+            (user_id,),
+        )
+        if user_row is None:
+            # 用户不存在
+            return None
+
+        profile_enabled = bool(user_row["profile_enabled"])
+        learning_profile_enabled = profile_enabled
+        inferred_profile_enabled = profile_enabled
+
+        now_iso = datetime.now().isoformat()
+        self.execute(
+            """
+            INSERT INTO memory_settings (
+                user_id, saved_memory_enabled, chat_history_enabled, auto_extract_enabled,
+                learning_profile_enabled, inferred_profile_enabled,
+                default_conversation_mode, episodic_retention_days,
+                created_at, updated_at
+            )
+            VALUES (?, 1, 1, 0, ?, ?, 'normal', 180, ?, ?)
+            """,
+            (
+                user_id,
+                int(learning_profile_enabled),
+                int(inferred_profile_enabled),
+                now_iso,
+                now_iso,
+            ),
+        )
+
+        return MemorySettings(
+            user_id=user_id,
+            learning_profile_enabled=learning_profile_enabled,
+            inferred_profile_enabled=inferred_profile_enabled,
+            default_conversation_mode="normal",
+            episodic_retention_days=180,
+            created_at=now_iso,
+            updated_at=now_iso,
+        )
+
+    def update_memory_settings(
+        self,
+        user_id: str,
+        learning_profile_enabled: bool | None = None,
+        inferred_profile_enabled: bool | None = None,
+        default_conversation_mode: str | None = None,
+    ) -> bool:
+        """部分更新用户记忆与画像开关 只更新非 None 的字段
+
+        若 memory_settings 行不存在 先调 get_memory_settings 懒迁移建行再更新
+
+        Args:
+            user_id: str                                  => 用户 id
+            learning_profile_enabled: bool | None = None  => 学习画像开关  None 表示不改
+            inferred_profile_enabled: bool | None = None  => 推断画像开关  None 表示不改
+            default_conversation_mode: str | None = None  => 默认会话模式  None 表示不改
+
+        Returns:
+            bool => 是否更新成功(用户存在且有字段被更新)
+        """
+        # 确保行存在 不存在则按老 profile_enabled 派生建行
+        existing = self.get_memory_settings(user_id)
+        if existing is None:
+            # 用户不存在
+            return False
+
+        # 字段名到传入值的映射 跳过 None
+        fields: dict[str, int | str] = {}
+        if learning_profile_enabled is not None:
+            fields["learning_profile_enabled"] = int(learning_profile_enabled)
+        if inferred_profile_enabled is not None:
+            fields["inferred_profile_enabled"] = int(inferred_profile_enabled)
+        if default_conversation_mode is not None:
+            fields["default_conversation_mode"] = default_conversation_mode
+
+        if not fields:
+            # 没有字段要更新 直接算成功
+            return True
+
+        # 总是更新 updated_at
+        fields["updated_at"] = datetime.now().isoformat()
+
+        set_clause = ", ".join(f"{name} = ?" for name in fields)
+        params = (*fields.values(), user_id)
+
+        count = self.execute(
+            f"""
+            UPDATE memory_settings
+            SET {set_clause}
+            WHERE user_id = ?
             """,
             params,
         )

@@ -1,5 +1,7 @@
 # backend/core/services/auth_service.py
 
+from __future__ import annotations
+
 import uuid
 from datetime import datetime, timedelta, timezone
 

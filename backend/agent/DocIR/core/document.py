@@ -9,6 +9,8 @@
 DocIR V0.2 顶层快照与跨对象不变量。
 """
 
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 from datetime import datetime

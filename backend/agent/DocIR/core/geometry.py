@@ -9,6 +9,8 @@
 规范坐标、解析器原始坐标与页面区域。
 """
 
+from __future__ import annotations
+
 import math
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
