@@ -106,6 +106,8 @@ class PromptContext:
     group_style: str | None = None
     group_tone: str | None = None
     group_custom_instruction: str = ""
+    # 会话记忆模式: normal(读取并写入) / no_write(只读不写) / isolated(不读不写)
+    conversation_mode: str = "normal"
 
 
 @dataclass
@@ -123,3 +125,5 @@ class MessageContext:
     group_style: str | None
     group_tone: str | None
     group_custom_instruction: str
+    # 会话记忆模式 由 _prepare_message 从 memory_settings 读取
+    conversation_mode: str = "normal"

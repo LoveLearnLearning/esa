@@ -13,14 +13,17 @@ if TYPE_CHECKING:
     from vllm.model_executor.layers.quantization import QuantizationMethods
 
 from backend.agent.memories.memory_models import ProfileQuery, ProfileSnapshot
-from backend.agent.memories.temp_memory import TempMemory
 from backend.agent.tools import tr
 from backend.agent.tools.mastery_tools import (
     kg_store,
     mastery_store,
     set_current_total_weeks,
 )
-from backend.agent.tools.memory_tools import core_memory, set_current_user
+from backend.agent.tools.memory_tools import (
+    core_memory,
+    set_current_conversation_mode,
+    set_current_user,
+)
 from backend.agent.tools.skills import build_skills_context, load_skill
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.utils.config import DEBUG_MODE
@@ -81,9 +84,6 @@ class Agent:
             tensor_parallel_size=tensor_parallel_size,
             model_adapter=model_adapter,
         )
-        self.temp_memory = TempMemory(
-            max_messages_per_user=20,
-        )
 
     def _prepare_run(
         self,
@@ -95,21 +95,21 @@ class Agent:
     ) -> tuple[list[dict], list[dict]]:
         prompt_ctx = prompt_ctx or PromptContext()
         set_current_user(user_name)
+        set_current_conversation_mode(prompt_ctx.conversation_mode)
 
         if total_weeks is not None:
             set_current_total_weeks(total_weeks)
 
-        temp_context = (
-            "历史消息已由 messages 提供"
-            if history
-            else self.temp_memory.build_context(user_name)
+        # isolated 会话不读取长期记忆 核心记忆分节直接置空
+        core_context = (
+            None
+            if prompt_ctx.conversation_mode == "isolated"
+            else core_memory.build_context(user_name)
         )
-        core_context = core_memory.build_context(user_name)
         skills_context = build_skills_context()
 
         system_prompt = build_system_prompt(
             user_name=user_name,
-            temp_memory=temp_context,
             core_memory=core_context,
             skills_context=skills_context,
             prompt_ctx=prompt_ctx,
@@ -135,12 +135,6 @@ class Agent:
                 "is_visible": True,
             }
         ]
-
-        self.temp_memory.add(
-            role="user",
-            content=input,
-            user_name=user_name,
-        )
 
         return messages, new_messages
 
@@ -206,12 +200,6 @@ class Agent:
                     }
                 )
 
-                self.temp_memory.add(
-                    role="assistant",
-                    content=assistant_content,
-                    user_name=user_name,
-                )
-
                 break
 
             messages.append(
@@ -253,12 +241,6 @@ class Agent:
                         "content": result_text,
                         "is_visible": True,
                     }
-                )
-
-                self.temp_memory.add(
-                    role="tool",
-                    content=f"name: {tc.name}, content: {result_text}",
-                    user_name=user_name,
                 )
 
         return new_messages
@@ -323,12 +305,6 @@ class Agent:
 
                 new_messages.append(assistant_message)
 
-                self.temp_memory.add(
-                    role="assistant",
-                    content=assistant_content,
-                    user_name=user_name,
-                )
-
                 break
 
             messages.append(
@@ -378,11 +354,6 @@ class Agent:
                     },
                 )
 
-                self.temp_memory.add(
-                    role="tool",
-                    content=f"name: {tool_call.name}, content: {result_text}",
-                    user_name=user_name,
-                )
         yield AgentStreamEvent(
             event="complete",
             data={"messages": new_messages},

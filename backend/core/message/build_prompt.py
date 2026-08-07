@@ -59,7 +59,6 @@ def _clean(value: str | None) -> str:
 
 def build_system_prompt(
     user_name: str | None = None,
-    temp_memory: str | None = None,
     core_memory: str | None = None,
     skills_context: str | None = None,
     prompt_ctx: PromptContext | None = None,
@@ -105,7 +104,6 @@ def build_system_prompt(
     sections.extend(
         [
             f"# 核心记忆\n\n{_clean(core_memory) or '暂无核心记忆'}",
-            f"# 临时记忆\n\n{_clean(temp_memory) or '暂无临时记忆'}",
             f"# 可用 Skills\n\n{_clean(skills_context) or '暂无可用 skill'}",
         ]
     )

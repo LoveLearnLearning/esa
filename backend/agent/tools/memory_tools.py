@@ -14,6 +14,13 @@ current_user: ContextVar[str | None] = ContextVar(
     default=None,
 )
 
+# 当前会话记忆模式: normal(读取并写入) / no_write(只读不写) / isolated(不读不写)
+# 由 Agent._prepare_run 注入 写入类记忆工具据此拒绝落库
+current_conversation_mode: ContextVar[str] = ContextVar(
+    "current_conversation_mode",
+    default="normal",
+)
+
 MEMORIES_DIR = Path(__file__).resolve().parent.parent / "memories"
 
 core_memory = CoreMemory(
@@ -35,6 +42,37 @@ def set_current_user(user_name: str) -> None:
         raise ValueError("用户名不能为空！")
 
     current_user.set(user_name)
+
+
+def set_current_conversation_mode(mode: str) -> None:
+    """辅助函数：设置当前会话记忆模式
+    Args:
+        mode: str => normal / no_write / isolated
+
+    Returns:
+        None => 函数无返回值 通过修改 ContextVar 实现异步和协程
+    """
+    current_conversation_mode.set(mode)
+
+
+def get_current_conversation_mode() -> str:
+    """辅助函数：获取当前会话记忆模式
+
+    Returns:
+        str => normal / no_write / isolated
+    """
+    return current_conversation_mode.get()
+
+
+def memory_write_allowed() -> bool:
+    """当前会话是否允许写入长期记忆
+
+    normal 模式允许写入; no_write / isolated 模式禁止写入 (spec: 本对话不产生新记忆)。
+
+    Returns:
+        bool => True 表示允许写入
+    """
+    return current_conversation_mode.get() == "normal"
 
 
 def get_current_user() -> str:
@@ -103,6 +141,16 @@ def save_core_memory(
     category: str = "general",
 ) -> dict[str, Any]:
     user_name = get_current_user()
+
+    # no_write / isolated 会话不产生新记忆 直接拒绝落库
+    if not memory_write_allowed():
+        return {
+            "saved": False,
+            "memory_key": memory_key,
+            "content": content,
+            "category": category,
+            "reason": "当前会话为 no_write/isolated 模式 禁止写入记忆",
+        }
 
     saved = core_memory.set(
         user_name=user_name,

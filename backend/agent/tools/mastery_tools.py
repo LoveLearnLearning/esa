@@ -25,7 +25,7 @@ from typing import Any
 
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 from backend.agent.memories.mastery_store import MasteryStore
-from backend.agent.tools.memory_tools import get_current_user
+from backend.agent.tools.memory_tools import get_current_user, memory_write_allowed
 from backend.agent.tools.tools import tr
 from backend.core.utils.models import UserRecord
 
@@ -315,6 +315,15 @@ def record_answer(
                  correct_count, last_practiced_at}
     """
     user_name = get_current_user()
+
+    # no_write / isolated 会话不产生新记忆 拒绝记录练习结果
+    if not memory_write_allowed():
+        return {
+            "user_name": user_name,
+            "kp_id": kp_id,
+            "saved": False,
+            "reason": "当前会话为 no_write/isolated 模式 禁止记录练习结果",
+        }
 
     return mastery_store.record_answer(
         user_name=user_name,
