@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.agent.memories.memory_models import ProfileSnapshot
+from backend.core.message.math_prompt import MATH_PRMOPT
 from backend.core.utils.models import PromptContext
 
 SYSTEM_PROMPT: str = """
@@ -79,9 +80,10 @@ def build_system_prompt(
     sections = [
         SYSTEM_PROMPT.strip(),
         f"> 用户昵称: {user_name or '未提供'}",
-        "# 输出风格\n\n"
-        f"风格({effective_style}): {style_rule}\n"
-        f"语调({effective_tone}): {tone_rule}",
+        "# 输出风格\n\n",
+        f"- 风格({(effective_style,)}): {(style_rule,)}\n",
+        f"- 语调({(effective_tone,)}): {(tone_rule,)}",
+        MATH_PRMOPT,
     ]
 
     user_instruction = _clean(prompt_ctx.custom_instruction)
