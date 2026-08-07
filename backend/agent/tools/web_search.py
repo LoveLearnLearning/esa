@@ -7,8 +7,7 @@ from typing import Any
 import requests
 
 from backend.agent.tools.tools import tr
-
-SEARXNG_BASE_URL = "http://127.0.0.1:8888"
+from backend.core.utils.config import SEARXNG_BASE_URL
 
 
 @tr.register(

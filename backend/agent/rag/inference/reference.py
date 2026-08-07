@@ -79,7 +79,11 @@ class LexicalOverlapReranker:
         for document in documents:
             document_counts = Counter(reference_tokens(document))
             tokens = set(query_counts) | set(document_counts)
-            numerator = sum(min(query_counts[token], document_counts[token]) for token in tokens)
-            denominator = sum(max(query_counts[token], document_counts[token]) for token in tokens)
+            numerator = sum(
+                min(query_counts[token], document_counts[token]) for token in tokens
+            )
+            denominator = sum(
+                max(query_counts[token], document_counts[token]) for token in tokens
+            )
             output.append(numerator / denominator if denominator else 0.0)
         return output

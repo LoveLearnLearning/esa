@@ -79,7 +79,9 @@ def load_chunk_collection(manifest_path: Path) -> LoadedChunkCollection:
         if identity != expected:
             raise ValueError(f"ChunkDocument 身份与 manifest 不一致: {reference.path}")
         if document.chunk_config_sha256 != manifest.chunk_config_sha256:
-            raise ValueError(f"ChunkDocument 配置与 Collection 不一致: {reference.path}")
+            raise ValueError(
+                f"ChunkDocument 配置与 Collection 不一致: {reference.path}"
+            )
         documents.append(document)
         chunks.extend(document.chunks)
         document_names[document.document_id] = document.filename

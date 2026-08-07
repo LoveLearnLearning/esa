@@ -90,8 +90,7 @@ class VLLMEmbeddingProvider:
         try:
             ordered = sorted(data, key=lambda item: item["index"])
             vectors = [
-                [float(value) for value in item["embedding"]]
-                for item in ordered
+                [float(value) for value in item["embedding"]] for item in ordered
             ]
         except (KeyError, TypeError, ValueError) as exc:
             raise InferenceUnavailable("embedding response is incomplete") from exc

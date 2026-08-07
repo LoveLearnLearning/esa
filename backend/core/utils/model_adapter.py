@@ -173,9 +173,7 @@ class DeepSeekV4Adapter:
         for message in prepared:
             if message.get("role") == "tool":
                 tool_results.append(
-                    "<tool_result>"
-                    f"{message.get('content', '')}"
-                    "</tool_result>"
+                    f"<tool_result>{message.get('content', '')}</tool_result>"
                 )
                 continue
 
@@ -193,9 +191,7 @@ class DeepSeekV4Adapter:
             merged.append(message)
 
         if tool_results:
-            merged.append(
-                {"role": "user", "content": "\n\n".join(tool_results)}
-            )
+            merged.append({"role": "user", "content": "\n\n".join(tool_results)})
         return merged
 
     def _restore_assistant_tool_call(
@@ -255,7 +251,7 @@ class DeepSeekV4Adapter:
         schemas = "\n".join(
             json.dumps(definition, ensure_ascii=False) for definition in definitions
         )
-        return f'''## Tools
+        return f"""## Tools
 
 You have access to a set of tools to help answer the user's question. You can invoke tools by writing a "<{DEEPSEEK_V4_DSML}tool_calls>" block like the following:
 <{DEEPSEEK_V4_DSML}tool_calls>
@@ -272,7 +268,7 @@ When thinking is enabled, complete reasoning must be inside <think>...</think> b
 
 {schemas}
 
-You MUST strictly follow the defined tool names and parameter schemas.'''
+You MUST strictly follow the defined tool names and parameter schemas."""
 
     def _render_tool_calls(self, tool_calls: list[dict[str, Any]]) -> str:
         invocations: list[str] = []
@@ -295,13 +291,13 @@ You MUST strictly follow the defined tool names and parameter schemas.'''
                 parameters.append(
                     f'<{DEEPSEEK_V4_DSML}parameter name="{key}" '
                     f'string="{str(is_string).lower()}">{rendered_value}'
-                    f'</{DEEPSEEK_V4_DSML}parameter>'
+                    f"</{DEEPSEEK_V4_DSML}parameter>"
                 )
             rendered_parameters = "\n".join(parameters)
             invocations.append(
                 f'<{DEEPSEEK_V4_DSML}invoke name="{name}">\n'
                 f"{rendered_parameters}\n"
-                f'</{DEEPSEEK_V4_DSML}invoke>'
+                f"</{DEEPSEEK_V4_DSML}invoke>"
             )
         rendered_invocations = "\n".join(invocations)
         return (
@@ -319,9 +315,7 @@ def get_model_adapter(
     normalized_name = name.strip().lower().replace("-", "_")
     if normalized_name == "auto":
         path_name = str(model_path).lower().replace("-", "_")
-        normalized_name = (
-            "deepseek_v4" if "deepseek_v4" in path_name else "qwen_xml"
-        )
+        normalized_name = "deepseek_v4" if "deepseek_v4" in path_name else "qwen_xml"
 
     adapters: dict[str, Callable[[], ModelAdapter]] = {
         "qwen_xml": QwenXmlAdapter,

@@ -94,10 +94,14 @@ def test_load_real_collection_counts(collection: LoadedChunkCollection) -> None:
     assert sum(len(chunk.evidence) for chunk in collection.chunks) == 2165
 
 
-def test_real_evidence_keeps_ocr_risk_and_multi_region(collection: LoadedChunkCollection) -> None:
+def test_real_evidence_keeps_ocr_risk_and_multi_region(
+    collection: LoadedChunkCollection,
+) -> None:
     evidence = [item for chunk in collection.chunks for item in chunk.evidence]
     assert all(not item.quote_eligible for item in evidence)
-    assert all(item.text_origin.value == "native_or_ocr_unverified" for item in evidence)
+    assert all(
+        item.text_origin.value == "native_or_ocr_unverified" for item in evidence
+    )
     assert sum(len(item.region_ids) > 1 for item in evidence) == 138
     assert sum(bool(item.asset_ids) for item in evidence) == 195
 
@@ -105,10 +109,12 @@ def test_real_evidence_keeps_ocr_risk_and_multi_region(collection: LoadedChunkCo
 def test_all_real_evidence_references_resolve_to_docir(
     collection: LoadedChunkCollection,
 ) -> None:
-    docir_paths = (
-        WORKSPACE_ROOT / "artifacts/docir/runs/full-corpus-20260802"
-    ).glob("*/document.json")
-    documents = {document.document_id: document for document in map(load_document, docir_paths)}
+    docir_paths = (WORKSPACE_ROOT / "artifacts/docir/runs/full-corpus-20260802").glob(
+        "*/document.json"
+    )
+    documents = {
+        document.document_id: document for document in map(load_document, docir_paths)
+    }
     assert set(documents) == set(collection.document_names)
     for chunk in collection.chunks:
         document = documents[chunk.document_id]
@@ -119,27 +125,33 @@ def test_all_real_evidence_references_resolve_to_docir(
         for evidence in chunk.evidence:
             assert evidence.element_id in elements
             element = elements[evidence.element_id]
-            assert set(evidence.region_ids) <= {region.region_id for region in element.regions}
+            assert set(evidence.region_ids) <= {
+                region.region_id for region in element.regions
+            }
             assert set(evidence.page_ids) <= pages
             assert set(evidence.asset_ids) <= assets
             assert set(evidence.quality_issue_ids) <= issues | {
                 "chunk_ocr_risk_unverified_origin"
             }
             if evidence.text_layer_id is not None:
-                layers = {
-                    layer.text_layer_id: layer
-                    for layer in element.text.layers
-                }
+                layers = {layer.text_layer_id: layer for layer in element.text.layers}
                 assert evidence.text_layer_id in layers
                 if evidence.text_start is not None:
                     layer = layers[evidence.text_layer_id]
-                    assert layer.text[evidence.text_start:evidence.text_end] == evidence.text
+                    assert (
+                        layer.text[evidence.text_start : evidence.text_end]
+                        == evidence.text
+                    )
 
 
 def test_three_routes_are_visible(service: RetrievalService) -> None:
     response = service.search("什么是黑盒测试？")
     assert set(response.trace.rankings) == {
-        "dense", "bm25_body", "bm25_heading", "rrf", "reranker"
+        "dense",
+        "bm25_body",
+        "bm25_heading",
+        "rrf",
+        "reranker",
     }
     assert response.hits
 
@@ -218,25 +230,51 @@ def test_collection_loader_rejects_unsafe_path(tmp_path: Path) -> None:
 
 def test_evaluation_case_enforces_positive_and_negative_gold() -> None:
     with pytest.raises(ValueError, match="need document"):
-        EvaluationCase("p", "q", True, frozenset(), frozenset(), frozenset(), ("body",), "note")
+        EvaluationCase(
+            "p", "q", True, frozenset(), frozenset(), frozenset(), ("body",), "note"
+        )
     negative = EvaluationCase(
-        "n", "q", False, frozenset(), frozenset(), frozenset(), ("unanswerable",), "note"
+        "n",
+        "q",
+        False,
+        frozenset(),
+        frozenset(),
+        frozenset(),
+        ("unanswerable",),
+        "note",
     )
     assert not negative.answerable
 
 
 def test_layer_evaluation_ignores_negative_cases() -> None:
     positive = EvaluationCase(
-        "p", "q", True, frozenset({"a"}), frozenset({"e"}),
-        frozenset({"d"}), ("body",), "note"
+        "p",
+        "q",
+        True,
+        frozenset({"a"}),
+        frozenset({"e"}),
+        frozenset({"d"}),
+        ("body",),
+        "note",
     )
     negative = EvaluationCase(
-        "n", "x", False, frozenset(), frozenset(), frozenset(),
-        ("unanswerable",), "note"
+        "n",
+        "x",
+        False,
+        frozenset(),
+        frozenset(),
+        frozenset(),
+        ("unanswerable",),
+        "note",
     )
-    layers = {name: ["a"] for name in ("dense", "bm25_body", "bm25_heading", "rrf", "reranker")}
+    layers = {
+        name: ["a"]
+        for name in ("dense", "bm25_body", "bm25_heading", "rrf", "reranker")
+    }
     metrics = evaluate_layers([positive, negative], lambda _query: layers)
-    assert all(value.query_count == 1 and value.hit_at_5 == 1.0 for value in metrics.values())
+    assert all(
+        value.query_count == 1 and value.hit_at_5 == 1.0 for value in metrics.values()
+    )
 
 
 class CapturingQdrant(QdrantIndex):
@@ -268,7 +306,8 @@ def test_qdrant_ingest_uses_formal_chunk_and_fixed_bm25(
     assert point["payload"]["chunk_revision_id"]
     assert point["payload"]["index_generation_id"] == "index_test"
     assert point["vector"]["bm25_body"]["options"] == {
-        "tokenizer": "multilingual", "language": "none"
+        "tokenizer": "multilingual",
+        "language": "none",
     }
 
 
@@ -291,14 +330,18 @@ def test_online_failures_degrade_to_bm25_and_rrf(
     assert response.trace.rankings["dense"] == ()
     assert response.trace.rankings["reranker"] == response.trace.rankings["rrf"][:10]
     assert {item.split(":", 1)[0] for item in response.trace.degraded} == {
-        "dense_unavailable", "reranker_unavailable"
+        "dense_unavailable",
+        "reranker_unavailable",
     }
 
 
 def test_benchmark_remains_backend_neutral() -> None:
     result = benchmark_backend(
-        "fake", lambda: object(), lambda _backend, values: list(values),
-        ["a", "b"], iterations=2
+        "fake",
+        lambda: object(),
+        lambda _backend, values: list(values),
+        ["a", "b"],
+        iterations=2,
     )
     assert result.items_per_second > 0
 
@@ -333,7 +376,10 @@ def test_index_generation_inputs_are_stable(
 ) -> None:
     embedding = HashingEmbeddingProvider()
     assert len(collection.manifest_sha256) == 64
-    assert embedding.configuration_fingerprint == HashingEmbeddingProvider().configuration_fingerprint
+    assert (
+        embedding.configuration_fingerprint
+        == HashingEmbeddingProvider().configuration_fingerprint
+    )
 
 
 def test_indexing_service_does_not_rebuild_same_instance(
@@ -525,7 +571,9 @@ def test_index_deployment_round_trip_and_identity_guard(
 def test_transformers_embedding_uses_bounded_batches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    provider = TransformersEmbeddingProvider(model_name="/models/embedding", batch_size=2)
+    provider = TransformersEmbeddingProvider(
+        model_name="/models/embedding", batch_size=2
+    )
     batches: list[list[str]] = []
     monkeypatch.setattr(provider, "_load", lambda: None)
 
@@ -585,7 +633,9 @@ def test_build_deployment_creates_its_output_directory(
 ) -> None:
     embedding = HashingEmbeddingProvider()
     index = ReferenceIndex()
-    monkeypatch.setattr(qdrant_lifecycle, "load_chunk_collection", lambda _path: collection)
+    monkeypatch.setattr(
+        qdrant_lifecycle, "load_chunk_collection", lambda _path: collection
+    )
     monkeypatch.setattr(
         qdrant_lifecycle,
         "_embedding_provider",
@@ -609,7 +659,9 @@ def test_build_deployment_creates_its_output_directory(
     assert load_deployment(manifest_path).qdrant_collection == "formal_generation"
 
 
-def test_real_evaluation_set_resolves_all_gold(collection: LoadedChunkCollection) -> None:
+def test_real_evaluation_set_resolves_all_gold(
+    collection: LoadedChunkCollection,
+) -> None:
     cases = load_evaluation_cases(CASES, collection)
     assert len(cases) == 42
     assert sum(case.answerable for case in cases) == 35
@@ -619,9 +671,13 @@ def test_reference_evaluation_is_byte_deterministic(tmp_path: Path) -> None:
     if not MANIFEST.exists() or not CASES.exists():
         pytest.skip("ESA checkout does not include the external evaluation artifacts")
     first_root, first_summary = run_reference_evaluation(MANIFEST, CASES, tmp_path)
-    before = {path.name: path.read_bytes() for path in first_root.iterdir() if path.is_file()}
+    before = {
+        path.name: path.read_bytes() for path in first_root.iterdir() if path.is_file()
+    }
     second_root, second_summary = run_reference_evaluation(MANIFEST, CASES, tmp_path)
-    after = {path.name: path.read_bytes() for path in second_root.iterdir() if path.is_file()}
+    after = {
+        path.name: path.read_bytes() for path in second_root.iterdir() if path.is_file()
+    }
     assert first_root == second_root
     assert first_summary == second_summary
     assert before == after

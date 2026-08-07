@@ -47,9 +47,7 @@ class RouteRetriever:
         try:
             embed_query = getattr(self.embedding, "embed_query", None)
             query_vector = (
-                embed_query(query)
-                if embed_query
-                else self.embedding.embed([query])[0]
+                embed_query(query) if embed_query else self.embedding.embed([query])[0]
             )
             routes["dense"] = self.index.dense(
                 query_vector,

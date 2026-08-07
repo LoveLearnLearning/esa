@@ -44,10 +44,7 @@ class RetrievalService:
     def __post_init__(self) -> None:
         """建立 Chunk 映射，并初始化召回、重排和上下文组件。"""
 
-        self._chunks = {
-            chunk.chunk_id: chunk
-            for chunk in self.collection.chunks
-        }
+        self._chunks = {chunk.chunk_id: chunk for chunk in self.collection.chunks}
         self._route_retriever = RouteRetriever(
             self.index,
             self.embedding,
@@ -102,10 +99,7 @@ class RetrievalService:
             rrf_k=self.config.rrf_k,
             limit=self.config.rrf_limit,
         )
-        fused_scores = {
-            item.chunk_id: item.score
-            for item in fused
-        }
+        fused_scores = {item.chunk_id: item.score for item in fused}
         selection = self._candidate_reranker.select(query, fused)
 
         hits = tuple(
@@ -122,10 +116,7 @@ class RetrievalService:
             for name, items in route_result.routes.items()
         }
         rankings["rrf"] = tuple(item.chunk_id for item in fused)
-        rankings["reranker"] = tuple(
-            item.chunk_id
-            for item in selection.ranking
-        )
+        rankings["reranker"] = tuple(item.chunk_id for item in selection.ranking)
         degraded = route_result.degraded + selection.degraded
         trace = SearchTrace(rankings, degraded)
         return SearchResponse(query, context_level, hits, trace)

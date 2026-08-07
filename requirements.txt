@@ -7,10 +7,9 @@ pydantic>=2,<3
 bcrypt
 
 # Model inference
-torch
-transformers
-vllm==0.24.0
-bitsandbytes
+# torch
+# transformers
+# vllm==0.24.0
 
 # Agent tools
 sympy
