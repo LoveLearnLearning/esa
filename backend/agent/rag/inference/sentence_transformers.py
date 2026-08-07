@@ -120,7 +120,5 @@ class SentenceTransformersReranker:
 
         if not documents:
             return []
-        values = self._load().predict(
-            [(query, document) for document in documents]
-        )
+        values = self._load().predict([(query, document) for document in documents])
         return [float(value) for value in values]

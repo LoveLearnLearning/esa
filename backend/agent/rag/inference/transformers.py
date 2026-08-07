@@ -224,9 +224,7 @@ class TransformersReranker:
             padding=False,
             truncation=True,
             max_length=(
-                self.max_length
-                - len(self._prefix_tokens)
-                - len(self._suffix_tokens)
+                self.max_length - len(self._prefix_tokens) - len(self._suffix_tokens)
             ),
         )
         pairs["input_ids"] = [

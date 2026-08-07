@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
+from backend.core.utils.config import RAG_WORKSPACE_ROOT
+
 from ..chunk import Chunk
 from ..chunk.models import canonical_sha256
 from ..chunk.serializer import file_sha256, save_json
@@ -26,17 +28,16 @@ from ..collection import LoadedChunkCollection, load_chunk_collection
 from ..indexes import ReferenceIndex
 from ..indexing import IndexGeneration, IndexingService
 from ..inference import HashingEmbeddingProvider, LexicalOverlapReranker
-from ..paths import WORKSPACE_ROOT
 from ..retrieval.contracts import RetrievalConfig, SearchResponse
 from ..retrieval.service import RetrievalService
 from .metrics import EvaluationCase, RetrievalMetrics, evaluate_layers
 
 DEFAULT_MANIFEST = (
-    WORKSPACE_ROOT
+    RAG_WORKSPACE_ROOT
     / "artifacts/chunk/collections/collection_bc7a6054e159eb7346e94df0/manifest.json"
 )
-DEFAULT_CASES = WORKSPACE_ROOT / "data/evaluation/reference_evaluation_v1.json"
-DEFAULT_OUTPUT = WORKSPACE_ROOT / "artifacts/rag/evaluations"
+DEFAULT_CASES = RAG_WORKSPACE_ROOT / "data/evaluation/reference_evaluation_v1.json"
+DEFAULT_OUTPUT = RAG_WORKSPACE_ROOT / "artifacts/rag/evaluations"
 
 
 MetricPayload = dict[str, int | float]
@@ -210,7 +211,9 @@ def _category_metrics(
     cases: Sequence[EvaluationCase],
     rankings: Mapping[str, Mapping[str, Sequence[str]]],
 ) -> CategoryMetrics:
-    tags = sorted({tag for case in cases if case.answerable for tag in case.category_tags})
+    tags = sorted(
+        {tag for case in cases if case.answerable for tag in case.category_tags}
+    )
     return {
         tag: _layer_metrics(
             [case for case in cases if case.answerable and tag in case.category_tags],
@@ -298,7 +301,9 @@ def _run_cases(
     rankings_by_query: RankingMap = {}
     for case in cases:
         response = service.search(case.query)
-        rankings = {name: list(values) for name, values in response.trace.rankings.items()}
+        rankings = {
+            name: list(values) for name, values in response.trace.rankings.items()
+        }
         rankings_by_query[case.query] = rankings
         case_results.append(_case_result(case, rankings, response))
     return case_results, rankings_by_query
@@ -352,7 +357,9 @@ def _build_summary(
     for case, result in zip(cases, case_results):
         if not case.answerable:
             continue
-        returned = {evidence_id for hit in result["hits"] for evidence_id in hit["evidence_ids"]}
+        returned = {
+            evidence_id for hit in result["hits"] for evidence_id in hit["evidence_ids"]
+        }
         retrieved_gold_evidence += len(returned & case.relevant_evidence_ids)
     total_gold_evidence = sum(len(case.relevant_evidence_ids) for case in positive)
     negative_scores = [
@@ -372,10 +379,13 @@ def _build_summary(
         "negative_case_count": len(negative_results),
         "gold_evidence_resolution_rate": 1.0,
         "retrieved_gold_evidence_rate_at_final_5": (
-            retrieved_gold_evidence / total_gold_evidence if total_gold_evidence else 0.0
+            retrieved_gold_evidence / total_gold_evidence
+            if total_gold_evidence
+            else 0.0
         ),
         "negative_top5_candidate_rate": (
-            sum(bool(item["hits"][:5]) for item in negative_results) / len(negative_results)
+            sum(bool(item["hits"][:5]) for item in negative_results)
+            / len(negative_results)
         ),
         "negative_max_reference_rerank_score": max(negative_scores, default=0.0),
         "negative_mean_reference_rerank_score": (
@@ -424,12 +434,16 @@ def _write_evaluation_artifacts(
 
 
 def main(argv: Iterable[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="执行真实 ChunkCollection 确定性参考评测")
+    parser = argparse.ArgumentParser(
+        description="执行真实 ChunkCollection 确定性参考评测"
+    )
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     arguments = parser.parse_args(argv)
-    root, summary = run_reference_evaluation(arguments.manifest, arguments.cases, arguments.output)
+    root, summary = run_reference_evaluation(
+        arguments.manifest, arguments.cases, arguments.output
+    )
     print(f"evaluation_root={root}")
     print(
         f"documents={summary['document_count']} chunks={summary['chunk_count']} "

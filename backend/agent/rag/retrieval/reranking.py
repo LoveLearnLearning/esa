@@ -50,17 +50,13 @@ class CandidateReranker:
         if self.reranker is not None and candidates:
             try:
                 documents = [
-                    self.chunks[item.chunk_id].dense_text
-                    for item in candidates
+                    self.chunks[item.chunk_id].dense_text for item in candidates
                 ]
                 scores = self.reranker.score(query, documents)
                 if len(scores) != len(candidates):
-                    raise ValueError(
-                        "reranker output count does not match candidates"
-                    )
+                    raise ValueError("reranker output count does not match candidates")
                 rerank_scores = {
-                    item.chunk_id: score
-                    for item, score in zip(candidates, scores)
+                    item.chunk_id: score for item, score in zip(candidates, scores)
                 }
                 candidates = [
                     RankedItem(item.chunk_id, rerank_scores[item.chunk_id])
@@ -68,9 +64,7 @@ class CandidateReranker:
                 ]
                 candidates.sort(key=lambda item: (-item.score, item.chunk_id))
             except InferenceUnavailable as exc:
-                degraded.append(
-                    f"reranker_unavailable:{type(exc).__name__}"
-                )
+                degraded.append(f"reranker_unavailable:{type(exc).__name__}")
         else:
             degraded.append("reranker_disabled")
 
@@ -83,9 +77,7 @@ class CandidateReranker:
 
         ranking = tuple(candidates)
         final_candidates = tuple(
-            consolidate_overlaps(candidates, self.chunks)[
-                : self.config.final_limit
-            ]
+            consolidate_overlaps(candidates, self.chunks)[: self.config.final_limit]
         )
         return CandidateSelection(
             ranking=ranking,
