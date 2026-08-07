@@ -9,9 +9,10 @@ from pathlib import Path
 
 class CoreMemory:
     """
-    核心记忆类
+    核心记忆数据层。
 
-    将用户的喜好 习惯 兴趣等等存储到 sqlite 的 database 中供长期调用
+    只负责持久化、精确读取和按需检索，不负责构造 Prompt。
+    Prompt 是否读取长期记忆由 Agent 的 Tool 调用策略决定。
     """
 
     def __init__(
@@ -19,25 +20,15 @@ class CoreMemory:
         database_path: str | Path = "data/core_memory.db",
     ) -> None:
         self.database_path = Path(database_path)
-        self.database_path.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.__initialize()
 
     def __connect(self) -> sqlite3.Connection:
-        """辅助函数 链接 SQLite 数据库"""
-        connection: sqlite3.Connection = sqlite3.connect(
-            self.database_path,
-        )
-
+        connection = sqlite3.connect(self.database_path, timeout=5.0)
         connection.row_factory = sqlite3.Row
-
         return connection
 
     def __initialize(self) -> None:
-        """辅助函数 初始化 SQLite 数据库"""
         with self.__connect() as connection:
             connection.execute(
                 """
@@ -53,6 +44,18 @@ class CoreMemory:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_core_memories_user_updated
+                ON core_memories(user_name, updated_at DESC)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_core_memories_user_category
+                ON core_memories(user_name, category)
+                """
+            )
 
     def set(
         self,
@@ -61,42 +64,20 @@ class CoreMemory:
         content: str,
         category: str = "general",
     ) -> bool:
-        """在数据库中添加某条 core_memory
-        Args:
-            user_name: str             => 用户名
-            memory_key: str            => 唯一的记忆 key 属性
-            content: str               => 记忆内容
-            category: str = "general"  => 记忆类别 默认为 "general"
-
-        Returns:
-            bool                       => 写入数据是否成功
-        """
         user_name = user_name.strip()
         memory_key = memory_key.strip()
         content = content.strip()
         category = category.strip() or "general"
 
-        if not user_name:
-            return False
-
-        if not memory_key:
-            return False
-
-        if not content:
+        if not user_name or not memory_key or not content:
             return False
 
         now = datetime.now(timezone.utc).isoformat()
-
         with self.__connect() as connection:
             connection.execute(
                 """
                 INSERT INTO core_memories (
-                    user_name,
-                    memory_key,
-                    content,
-                    category,
-                    created_at,
-                    updated_at
+                    user_name, memory_key, content, category, created_at, updated_at
                 )
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_name, memory_key)
@@ -105,16 +86,8 @@ class CoreMemory:
                     category = excluded.category,
                     updated_at = excluded.updated_at
                 """,
-                (
-                    user_name,
-                    memory_key,
-                    content,
-                    category,
-                    now,
-                    now,
-                ),
+                (user_name, memory_key, content, category, now, now),
             )
-
         return True
 
     def get(
@@ -122,141 +95,129 @@ class CoreMemory:
         user_name: str,
         memory_key: str,
     ) -> dict[str, str | int] | None:
-        """获取数据库中单条特定记忆
-        Args:
-            user_name: str              => 用户名
-            memory_key: str             => 唯一的记忆 key 属性
-
-        Returns:
-            dict[str, str | int] | None:
-                dict[str, str | int]    => 返回数据库中对应记忆:
-                    K: str              => 字段
-                    V: str | int        => 字段对应内容
-                None                    => 没有该 memory_key 对应的记忆
-        """
+        user_name = user_name.strip()
+        memory_key = memory_key.strip()
+        if not user_name or not memory_key:
+            return None
 
         with self.__connect() as connection:
             row = connection.execute(
                 """
-                SELECT
-                    id,
-                    user_name,
-                    memory_key,
-                    content,
-                    category,
-                    created_at,
-                    updated_at
+                SELECT id, user_name, memory_key, content, category, created_at, updated_at
                 FROM core_memories
-                WHERE user_name = ?
-                  AND memory_key = ?
+                WHERE user_name = ? AND memory_key = ?
                 """,
-                (
-                    user_name,
-                    memory_key,
-                ),
+                (user_name, memory_key),
             ).fetchone()
-
-        if row is None:
-            return None
-
-        return dict(row)
+        return None if row is None else dict(row)
 
     def get_all(
         self,
         user_name: str,
     ) -> list[dict[str, str | int]]:
-        """获取数据库中单个用户的所有 core_memories
-        Args:
-            user_name: str                => 用户名
+        user_name = user_name.strip()
+        if not user_name:
+            return []
 
-        Returns:
-            list[dict[str, str | int]]:
-                dict[str, str | int]      => 返回数据库中对应记忆:
-                        K: str            => 字段
-                        V: str | int      => 字段对应内容
-        """
         with self.__connect() as connection:
             rows = connection.execute(
                 """
-                SELECT
-                    id,
-                    user_name,
-                    memory_key,
-                    content,
-                    category,
-                    created_at,
-                    updated_at
+                SELECT id, user_name, memory_key, content, category, created_at, updated_at
                 FROM core_memories
                 WHERE user_name = ?
-                ORDER BY category ASC, updated_at DESC
+                ORDER BY updated_at DESC, id DESC
                 """,
                 (user_name,),
             ).fetchall()
-
         return [dict(row) for row in rows]
+
+    def search(
+        self,
+        user_name: str,
+        query: str,
+        *,
+        category: str | None = None,
+        limit: int = 5,
+    ) -> list[dict[str, str | int]]:
+        """
+        按需检索少量相关核心记忆。
+
+        memory_key 精确/子串命中优先，其次 content/category 命中；
+        同分时优先最近更新的记忆。没有任何文本命中时返回空列表，
+        不回退成“把全部记忆塞给模型”。
+        """
+        user_name = user_name.strip()
+        query = query.strip().lower()
+        category = (category or "").strip().lower() or None
+        limit = max(1, min(20, int(limit)))
+
+        if not user_name or not query:
+            return []
+
+        memories = self.get_all(user_name)
+        ranked: list[tuple[int, str, dict[str, str | int]]] = []
+        terms = [part for part in query.split() if part]
+
+        for memory in memories:
+            memory_category = str(memory.get("category", "")).lower()
+            if category is not None and memory_category != category:
+                continue
+
+            key = str(memory.get("memory_key", "")).lower()
+            content = str(memory.get("content", "")).lower()
+            score = 0
+
+            if key == query:
+                score += 12
+            elif query in key:
+                score += 8
+            if query in content:
+                score += 5
+            if query == memory_category:
+                score += 3
+
+            for term in terms:
+                if term == query:
+                    continue
+                if term in key:
+                    score += 3
+                if term in content:
+                    score += 1
+
+            if score > 0:
+                ranked.append((score, str(memory.get("updated_at", "")), memory))
+
+        ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return [item[2] for item in ranked[:limit]]
 
     def delete(
         self,
         user_name: str,
         memory_key: str,
     ) -> bool:
-        """删除用户对应 memory_key 的核心记忆
-        Args:
-            user_name: str  => 用户名
-            memory_key: str => 唯一的记忆 key 属性
+        user_name = user_name.strip()
+        memory_key = memory_key.strip()
+        if not user_name or not memory_key:
+            return False
 
-        Returns:
-            bool            => 是否成功删除
-        """
         with self.__connect() as connection:
             cursor = connection.execute(
                 """
                 DELETE FROM core_memories
-                WHERE user_name = ?
-                  AND memory_key = ?
+                WHERE user_name = ? AND memory_key = ?
                 """,
-                (
-                    user_name,
-                    memory_key,
-                ),
+                (user_name, memory_key),
             )
-
         return cursor.rowcount > 0
 
     def clear(self, user_name: str) -> int:
-        """删除特定用户所有核心记忆
-        Args:
-            user_name: str  => 用户名
+        user_name = user_name.strip()
+        if not user_name:
+            return 0
 
-        Returns:
-            int             => 剩余记忆数量
-        """
         with self.__connect() as connection:
             cursor = connection.execute(
-                """
-                DELETE FROM core_memories
-                WHERE user_name = ?
-                """,
+                "DELETE FROM core_memories WHERE user_name = ?",
                 (user_name,),
             )
-
         return cursor.rowcount
-
-    def build_context(self, user_name: str) -> str:
-        """使用用户核心记忆构造提示词
-        Args:
-            user_name: str  => 用户名:
-
-        Returns:
-            str             => 构造好的提示词
-        """
-
-        memories = self.get_all(user_name)
-
-        if not memories:
-            return "暂无核心记忆"
-
-        return "\n".join(
-            (f"- [{memory['category']}] {memory['memory_key']}  {memory['content']}")
-            for memory in memories
-        )

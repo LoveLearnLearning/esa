@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,19 +13,18 @@ if TYPE_CHECKING:
     from vllm.config.model import ModelDType
     from vllm.model_executor.layers.quantization import QuantizationMethods
 
-from backend.agent.memories.memory_models import ProfileQuery, ProfileSnapshot
+from backend.agent.learning.pedagogy_router import PedagogyRouter
 from backend.agent.tools import tr
-from backend.agent.tools.mastery_tools import (
-    kg_store,
-    mastery_store,
-    set_current_total_weeks,
-)
+from backend.agent.tools.mastery_tools import set_current_total_weeks
 from backend.agent.tools.memory_tools import (
-    core_memory,
     set_current_conversation_mode,
     set_current_user,
 )
-from backend.agent.tools.skills import build_skills_context, load_skill
+from backend.agent.tools.skills import (
+    build_autoload_skills_context,
+    build_skills_context,
+    validate_skill_contracts,
+)
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.utils.config import DEBUG_MODE
 from backend.core.utils.models import (
@@ -35,24 +35,11 @@ from backend.core.utils.models import (
     UserRecord,
 )
 
-ROOT_PATH: Path = Path.cwd().parent
-
 
 def build_user_profile_context(
     user: UserRecord,
 ) -> str | None:
-    """[已废弃] 旧的扁平字符串学情档案构建函数
-
-    已被 ProfileBuilder.build() 取代 后者返回结构化的 ProfileSnapshot。
-    保留函数签名仅为向后兼容 调用方应改用 request.app.state.profile_builder.build(ProfileQuery(...))。
-
-    Args:
-        user: UserRecord => 当前用户数据对象
-
-    Returns:
-        str | None => 始终返回 None
-    """
-    # 已废弃: 请改用 ProfileBuilder.build(ProfileQuery(...)) 获取结构化 ProfileSnapshot
+    """[已废弃] 旧扁平学情档案构建函数，保留签名用于向后兼容。"""
     return None
 
 
@@ -70,6 +57,13 @@ class Agent:
         tensor_parallel_size: int = 1,
         model_adapter: str = "auto",
     ) -> None:
+        # 在加载昂贵的 vLLM 模型之前 fail-fast，避免 Skill/Tool 漂移带病启动。
+        skill_errors = validate_skill_contracts()
+        if skill_errors:
+            details = "\n".join(f"- {item}" for item in skill_errors)
+            raise RuntimeError(f"Skill contract 校验失败:\n{details}")
+
+        # vLLM 保持延迟导入，确保测试/工具脚本可以在未安装 vLLM 时导入 Agent。
         from backend.core.services.vllm_service import LLMProvider
 
         self.loop_times = loop_times
@@ -94,23 +88,29 @@ class Agent:
         total_weeks: int | None = None,
     ) -> tuple[list[dict], list[dict]]:
         prompt_ctx = prompt_ctx or PromptContext()
+
         set_current_user(user_name)
         set_current_conversation_mode(prompt_ctx.conversation_mode)
 
         if total_weeks is not None:
             set_current_total_weeks(total_weeks)
 
-        # isolated 会话不读取长期记忆 核心记忆分节直接置空
-        core_context = (
-            None
-            if prompt_ctx.conversation_mode == "isolated"
-            else core_memory.build_context(user_name)
+        # 轻量确定性路由只给主 Agent 一个“候选策略”，不直接执行 Skill。
+        decision = PedagogyRouter.route(
+            input,
+            history=history or [],
+            profile=prompt_ctx.user_profile_context,
+        )
+
+        prompt_ctx = replace(
+            prompt_ctx,
+            pedagogy_context=decision.to_prompt_context(),
+            autoload_skills_context=build_autoload_skills_context(),
         )
         skills_context = build_skills_context()
 
         system_prompt = build_system_prompt(
             user_name=user_name,
-            core_memory=core_context,
             skills_context=skills_context,
             prompt_ctx=prompt_ctx,
         )
@@ -146,21 +146,11 @@ class Agent:
         prompt_ctx: PromptContext | None = None,
         total_weeks: int | None = None,
     ) -> list[dict]:
-        """运行一轮对话
-        Args:
-            input: str                        => 用户输入
-            user_name: str                    => 用户名
-            history: list[dict] | None = None => 历史消息 每条包含 role content
-                                                 tool 消息可以额外带 name 字段
-                                                 由 ChatStore.get_model_messages() 提供
-            prompt_ctx: PromptContext | None = None => prompt 构建上下文 含风格/语调/指令/学情档案/分组级参数
-            total_weeks: int | None           => 学期总周数 用于 set_current_total_weeks
-
-        Returns:
-            list[dict] => 本轮新产生的消息 (用户输入 + 助手回复 + 工具结果)
-                          调用方可直接交给 ChatStore.append_messages() 持久化
         """
+        运行一轮非流式对话。
 
+        返回本轮新消息（用户输入 + 助手回复 + Tool 结果），调用方可直接持久化。
+        """
         messages, new_messages = self._prepare_run(
             input,
             user_name,
@@ -175,15 +165,15 @@ class Agent:
                 tr.schemas,
             )
 
-            po: ParsedOutput = self.llm_provider.parse_output(response)
-            tcs: list[ToolCall] = po.tool_calls
+            parsed: ParsedOutput = self.llm_provider.parse_output(response)
+            tool_calls: list[ToolCall] = parsed.tool_calls
 
             if DEBUG_MODE:
-                print(f"Thinking: {po.reasoning}")
-                print(f"Agent: {po.content}")
+                print(f"Thinking: {parsed.reasoning}")
+                print(f"Agent: {parsed.content}")
 
-            if not tcs:
-                assistant_content = po.content or response.strip()
+            if not tool_calls:
+                assistant_content = parsed.content or response.strip()
 
                 messages.append(
                     {
@@ -191,7 +181,6 @@ class Agent:
                         "content": assistant_content,
                     }
                 )
-
                 new_messages.append(
                     {
                         "role": "assistant",
@@ -199,7 +188,6 @@ class Agent:
                         "is_visible": True,
                     }
                 )
-
                 break
 
             messages.append(
@@ -208,7 +196,6 @@ class Agent:
                     "content": response,
                 }
             )
-
             new_messages.append(
                 {
                     "role": "assistant",
@@ -217,27 +204,25 @@ class Agent:
                 }
             )
 
-            for tc in tcs:
+            for tool_call in tool_calls:
                 result = await asyncio.to_thread(
                     tr.call,
-                    tc.name,
-                    tc.arguments,
+                    tool_call.name,
+                    tool_call.arguments,
                 )
-
                 result_text = str(result)
 
                 messages.append(
                     {
                         "role": "tool",
-                        "name": tc.name,
+                        "name": tool_call.name,
                         "content": result_text,
                     }
                 )
-
                 new_messages.append(
                     {
                         "role": "tool",
-                        "name": tc.name,
+                        "name": tool_call.name,
                         "content": result_text,
                         "is_visible": True,
                     }
@@ -282,7 +267,6 @@ class Agent:
 
             response = stream_parser.raw_text
             parsed = self.llm_provider.parse_output(response)
-
             tool_calls = parsed.tool_calls
 
             if not tool_calls:
@@ -302,9 +286,7 @@ class Agent:
                         "content": assistant_content,
                     }
                 )
-
                 new_messages.append(assistant_message)
-
                 break
 
             messages.append(
@@ -327,7 +309,6 @@ class Agent:
                     tool_call.name,
                     tool_call.arguments,
                 )
-
                 result_text = str(result)
 
                 tool_message = {

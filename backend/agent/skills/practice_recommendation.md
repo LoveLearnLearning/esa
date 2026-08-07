@@ -1,51 +1,28 @@
 ---
 name: practice_recommendation
-description: 用户要求推荐练习/问今天练什么/制定刷题计划
+description: 用户问今天练什么、请求推荐练习或制定刷题顺序时使用
+version: 2
+category: planning
+priority: 84
+autoload: false
+triggers:
+  - practice_recommendation
+requires_tools:
+  - get_mastery_report
+  - recommend_practice
+  - get_learning_evidence_summary
+related_skills:
+  - progressive_hint
 ---
 
 # 练习推荐 Skill
 
-当用户要求推荐练习、询问今天练什么、或请求制定刷题计划时，按照以下步骤执行。
+1. 确定课程与距考试周数；上下文已有时不要重复询问。
+2. 调用 `get_mastery_report(course)` 获取总体状态。
+3. 调用 `recommend_practice(course, weeks_to_exam)` 获取 Top 推荐。
+4. 每次最多推荐 5 个知识点，优先解释“为什么现在练它”。
+5. 如果某知识点长期表现为高提示依赖，可调用
+   `get_learning_evidence_summary(kp_id)`，把“独立完成”作为下一轮目标。
+6. `weak_prerequisites` 非空时，先安排最深层前置，再回到目标知识点。
 
-## 步骤
-
-### 1. 确认课程与时间
-
-- 询问用户想要练习的课程（如"数据结构"、"操作系统"），如用户未明确指定则逐课程推荐
-- 询问/估算距期末周数，默认按当前教学周推算
-
-### 2. 获取掌握度概况
-
-调用 `get_mastery_report(course)` 获取该课程掌握度概况，了解用户的薄弱知识点。
-
-### 3. 调用推荐工具
-
-调用 `recommend_practice(course, weeks_to_exam)` 获取按优先级降序的推荐列表。
-
-### 4. 按档位讲解
-
-对返回的推荐知识点，依据掌握度档位选择讲解深度：
-
-- 掌握度 < 40：概念 + 例子  从直觉入手建立认知
-- 40 <= 掌握度 < 75：重点 + 易错  聚焦关键与陷阱
-- 掌握度 >= 75：进阶 + 辨析  拓展深度与横向对比（但仍需练习保持熟练度）
-
-### 5. 追溯前置薄弱
-
-对推荐列表中包含 `weak_prerequisites` 的知识点，建议用户先复习前置薄弱知识点再攻克当前知识点。
-
-### 6. 输出格式
-
-推荐结果的呈现格式：
-
-```
-【推荐练习】课程名
-1. 知识点名 - 优先级得分
-   掌握度: XX | 权重: XX | 练习次数: X
-   推荐理由: XXX
-   前置薄弱: XXX（如有）
-2. ...
-```
-
-- 优先级越高的知识点越应该优先练习
-- 每次推荐不超过 5 个知识点
+不要只按“掌握度最低”排序，也不要让高掌握度知识点无限过度练习。

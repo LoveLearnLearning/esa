@@ -1,0 +1,30 @@
+from backend.agent.tools import learning_tools, mastery_tools, memory_tools  # noqa: F401
+from backend.agent.tools.skills import (
+    build_autoload_skills_context,
+    load_skill,
+    refresh_skill_cache,
+    validate_skill_contracts,
+)
+from backend.agent.tools.tools import tr
+
+
+def test_skill_contracts_match_registered_tools():
+    refresh_skill_cache()
+    errors = validate_skill_contracts(set(tr.registered_tools))
+    assert errors == []
+
+
+def test_new_pedagogy_skills_are_loadable():
+    body = load_skill("progressive_hint")
+    assert "Level 1" in body
+    assert "Level 5" in body
+
+    body = load_skill("error_diagnosis")
+    assert "conceptual" in body
+    assert "prerequisite" in body
+
+
+def test_profile_policy_is_actually_autoloaded():
+    context = build_autoload_skills_context()
+    assert "profile_personalization" in context
+    assert "工程任务" in context

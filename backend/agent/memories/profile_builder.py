@@ -12,7 +12,7 @@ ProfileBuilder 取代旧的 build_user_profile_context() (扁平字符串)
     - MemorySettings      => 控制学习画像/推断画像开关
     - KnowledgeGraphStore => 命中当前问题的知识点
     - MasteryStore        => 命中知识点掌握度 + 薄弱前置 (按 username 索引)
-    - CoreMemory          => 推断模式 (语言/偏好/目标/项目/环境/事实)
+    - ProfileStore        => 已持久化且 active 的结构化推断画像
     - ProfileStore        => 被用户抑制的 field_key 不再回填到推断画像
 """
 
@@ -119,18 +119,6 @@ class ProfileMetrics:
         return "\n".join(lines) + "\n"
 
 
-# CoreMemory.category 到画像 field_key 的映射
-# 未在表中的类别回退到 "user_fact"
-CATEGORY_MAP: dict[str, str] = {
-    "language": "preferred_code_language",
-    "preference": "answer_structure_preference",
-    "goal": "active_goal",
-    "project": "active_project",
-    "environment": "environment_constraint",
-    "general": "user_fact",
-}
-
-
 class ProfileBuilder:
     """
     结构化用户画像构建器。
@@ -146,19 +134,17 @@ class ProfileBuilder:
     # 知识点名称最小匹配长度 避免"图"等单字误匹配 (P2-14)
     KP_MIN_MATCH_LENGTH: int = 2
 
-    def __init__(self, user_store, mastery_store, kg_store, core_memory, profile_store):
+    def __init__(self, user_store, mastery_store, kg_store, profile_store):
         """
         Args:
             user_store: UserStore              => 用户表读写
             mastery_store: MasteryStore         => 掌握度数据层 (按 username 索引)
             kg_store: KnowledgeGraphStore       => 知识图谱数据层
-            core_memory: CoreMemory             => 核心记忆 (按 username 索引)
             profile_store: ProfileStore         => 结构化画像持久化层
         """
         self._user_store = user_store
         self._mastery_store = mastery_store
         self._kg_store = kg_store
-        self._core_memory = core_memory
         self._profile_store = profile_store
         # 简单的内存 profile_version 计数器 每次重建自增
         self._version_counter: int = 0
@@ -533,105 +519,80 @@ class ProfileBuilder:
     # ------------------------------------------------------------------ 推断模式
 
     def _build_inferred_patterns(self, user, settings) -> list[ProfileField]:
-        """由 CoreMemory 推断画像模式 并回写 ProfileStore
+        """从 ProfileStore 读取已持久化的结构化推断画像。
 
-        流程:
-            1. inferred_profile_enabled=False 时返回空
-            2. 取 ProfileStore 中被 suppress 的 field_key 集合
-            3. 取该用户全部 CoreMemory
-            4. 按 category 映射到 field_key (默认 user_fact) 跳过被抑制的
-            5. 构造 ProfileField (origin=INFERRED_PATTERN confidence=0.7)
-            6. 同步 upsert_dimension 写回 ProfileStore
+        CoreMemory 原始内容不再由 ProfileBuilder 自动读取。CoreMemory 仅通过
+        search_core_memories / get_core_memories Tool 按需访问，避免正常对话轮次
+        通过画像旁路把全部长期记忆重新注入 Prompt。
 
-        安全策略 (fail-closed):
-            当 ProfileStore 不可用时 不返回任何推断字段 避免被抑制的敏感字段泄漏。
-            当 CoreMemory 不可用时 返回空 而非冒用旧数据。
-
-        Args:
-            user: UserRecord         => 用户数据对象
-            settings: MemorySettings => 记忆开关
-
-        Returns:
-            list[ProfileField] => 未被抑制的推断模式
+        ProfileStore 是结构化画像的持久化/审核层：这里只读取 status=active 且
+        origin 属于 inferred_pattern / confirmed_memory 的维度。ProfileStore 不可用
+        时 fail-closed，返回空列表。
         """
         if not getattr(settings, "inferred_profile_enabled", True):
             return []
 
-        # 1. 取被抑制的 field_key 集合
-        # fail-closed: ProfileStore 不可用时返回空 避免被抑制字段泄漏
-        suppressed: set[str] = set()
         try:
-            suppressed_rows = self._profile_store.list_dimensions(
+            rows = self._profile_store.list_dimensions(
                 user.id,
-                status_filter="suppressed",
+                status_filter="active",
             )
         except Exception:
             logger.exception(
-                "ProfileStore 不可用 fail-closed: 跳过全部推断字段 user=%s",
+                "ProfileStore 不可用 fail-closed: 跳过全部推断画像 user=%s",
                 user.id,
             )
             return []
 
-        for row in suppressed_rows or []:
-            field_key = row.get("field_key") if isinstance(row, dict) else None
-            if field_key:
-                suppressed.add(field_key)
-
-        # 2. 取全部 CoreMemory
-        # CoreMemory 不可用时返回空 而非冒用旧数据
-        try:
-            memories = self._core_memory.get_all(user.username)
-        except Exception:
-            logger.exception(
-                "CoreMemory 不可用 跳过推断字段 user=%s",
-                user.username,
-            )
-            return []
-
+        allowed_origins = {
+            ProfileOrigin.INFERRED_PATTERN.value,
+            ProfileOrigin.CONFIRMED_MEMORY.value,
+        }
         fields: list[ProfileField] = []
-        for memory in memories or []:
-            if not isinstance(memory, dict):
+
+        for row in rows or []:
+            if not isinstance(row, dict):
                 continue
 
-            category = memory.get("category") or "general"
-            field_key = CATEGORY_MAP.get(category, "user_fact")
-
-            # 被用户抑制的 field_key 跳过 永不出现在推断画像中
-            if field_key in suppressed:
+            field_key = str(row.get("field_key") or "").strip()
+            origin_value = str(row.get("origin") or "").strip()
+            if not field_key or origin_value not in allowed_origins:
                 continue
 
-            content = memory.get("content")
-            memory_id = memory.get("id")
-            source_ids = [str(memory_id)] if memory_id is not None else []
+            try:
+                origin = ProfileOrigin(origin_value)
+            except ValueError:
+                continue
+
+            confidence = row.get("confidence", 0.7)
+            try:
+                confidence = max(0.0, min(1.0, float(confidence)))
+            except (TypeError, ValueError):
+                confidence = 0.7
+
+            source_ids = [
+                str(item)
+                for item in (row.get("source_memory_ids") or [])
+            ]
+
+            last_confirmed_at = None
+            raw_confirmed_at = row.get("last_confirmed_at")
+            if raw_confirmed_at:
+                try:
+                    last_confirmed_at = datetime.fromisoformat(str(raw_confirmed_at))
+                except ValueError:
+                    last_confirmed_at = None
 
             fields.append(
                 ProfileField(
                     field=field_key,
-                    value=content,
-                    origin=ProfileOrigin.INFERRED_PATTERN,
-                    confidence=0.7,
+                    value=row.get("value"),
+                    origin=origin,
+                    confidence=confidence,
                     source_memory_ids=source_ids,
+                    last_confirmed_at=last_confirmed_at,
                 )
             )
-
-            # 同步回写 ProfileStore 失败不影响本轮画像返回
-            try:
-                self._profile_store.upsert_dimension(
-                    user.id,
-                    field_key,
-                    content,
-                    origin="inferred_pattern",
-                    confidence=0.7,
-                    source_memory_ids=source_ids,
-                    status="active",
-                )
-            except Exception:
-                logger.warning(
-                    "ProfileStore upsert 失败 field_key=%s user=%s",
-                    field_key,
-                    user.id,
-                    exc_info=True,
-                )
 
         return fields
 
