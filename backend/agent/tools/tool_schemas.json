@@ -88,13 +88,13 @@
     "type": "function",
     "function": {
       "name": "save_core_memory",
-      "description": "保存用户长期稳定的信息例如用户偏好 学习目标 项目信息；只有当用户明确要求记住或信息长期有效时才调用",
+      "description": "保存用户长期稳定的信息，例如偏好、学习目标、项目或约束。只有用户明确要求记住或信息确实长期稳定时调用。不要保存密码、API Key、访问令牌或其他认证秘密。短小的 preference/profile 记忆可能被安全投影为结构化画像；项目详情和一般记忆仍只按需检索。",
       "parameters": {
         "type": "object",
         "properties": {
           "memory_key": {
             "type": "string",
-            "description": "记忆的唯一名称 例如 response_style 或 learning_goal"
+            "description": "稳定、可复用的记忆键，例如 preferred_code_language"
           },
           "content": {
             "type": "string",
@@ -110,7 +110,7 @@
               "constraint",
               "general"
             ],
-            "description": "记忆的分类",
+            "description": "记忆分类",
             "default": "general"
           }
         },
@@ -125,13 +125,13 @@
     "type": "function",
     "function": {
       "name": "search_core_memories",
-      "description": "按需检索与当前任务相关的少量长期核心记忆。仅当当前问题确实依赖过去的偏好、目标、项目、约束或已记住事实时调用；不要在每轮对话开始时例行调用。isolated 会话不可读取",
+      "description": "按需检索与当前任务相关的少量长期核心记忆。仅当当前问题确实依赖过去的偏好、目标、项目、约束或已记住事实时调用；不要在每轮对话开始时例行调用。isolated 会话不可读取。",
       "parameters": {
         "type": "object",
         "properties": {
           "query": {
             "type": "string",
-            "description": "要检索的具体主题，例如 Python 偏好、当前项目、学习目标"
+            "description": "要检索的具体主题"
           },
           "category": {
             "type": "string",
@@ -154,7 +154,7 @@
     "type": "function",
     "function": {
       "name": "get_core_memories",
-      "description": "列出当前用户全部核心记忆。仅当用户明确要求查看、管理或核对系统记住了什么时调用；一般任务应优先使用 search_core_memories。isolated 会话不可读取",
+      "description": "列出当前用户全部核心记忆。仅当用户明确要求查看、管理或核对系统记住了什么时调用；一般任务应优先使用 search_core_memories。isolated 会话不可读取。",
       "parameters": {
         "type": "object",
         "properties": {},
@@ -166,7 +166,7 @@
     "type": "function",
     "function": {
       "name": "delete_core_memory",
-      "description": "删除当前用户的一条核心记忆；只有当用户明确要求忘掉某条记忆时才能调用，no_write/isolated 会话不可删除",
+      "description": "删除当前用户的一条核心记忆。只有用户明确要求忘掉某条记忆时才能调用；no_write/isolated 会话不可删除。",
       "parameters": {
         "type": "object",
         "properties": {
