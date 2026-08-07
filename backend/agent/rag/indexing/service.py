@@ -41,7 +41,9 @@ class IndexGeneration:
             "index_fingerprint",
         ):
             value = getattr(self, name)
-            if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+            if len(value) != 64 or any(
+                char not in "0123456789abcdef" for char in value
+            ):
                 raise ValueError(f"{name} must be a lowercase SHA-256")
         if self.dense_dimension <= 0:
             raise ValueError("dense_dimension must be positive")
@@ -99,9 +101,7 @@ class IndexGeneration:
             schema_version=str(payload["schema_version"]),
             index_generation_id=str(payload["index_generation_id"]),
             collection_id=str(payload["collection_id"]),
-            collection_manifest_sha256=str(
-                payload["collection_manifest_sha256"]
-            ),
+            collection_manifest_sha256=str(payload["collection_manifest_sha256"]),
             embedding_fingerprint=str(payload["embedding_fingerprint"]),
             index_fingerprint=str(payload["index_fingerprint"]),
             dense_dimension=dense_dimension,
@@ -151,10 +151,7 @@ class IndexingService:
             vectors,
             expected_count=len(self.collection.chunks),
         )
-        if (
-            declared_dimension is not None
-            and dense_dimension != declared_dimension
-        ):
+        if declared_dimension is not None and dense_dimension != declared_dimension:
             raise ValueError("embedding output dimension does not match declaration")
         generation = self._make_generation(dense_dimension)
         expected_count = len(self.collection.chunks)
@@ -198,9 +195,7 @@ class IndexingService:
             "embed_documents",
             self.embedding.embed,
         )
-        return embed_documents(
-            [chunk.dense_text for chunk in self.collection.chunks]
-        )
+        return embed_documents([chunk.dense_text for chunk in self.collection.chunks])
 
     def _make_generation(self, dense_dimension: int) -> IndexGeneration:
         """根据 Collection 与后端配置生成稳定索引代次。"""
@@ -243,7 +238,9 @@ def _validate_vector_matrix(
     dimensions = {len(vector) for vector in vectors}
     if not dimensions or len(dimensions) != 1 or 0 in dimensions:
         raise ValueError("embedding output must have one non-zero dimension")
-    if any(not isinstance(value, (int, float)) for vector in vectors for value in vector):
+    if any(
+        not isinstance(value, (int, float)) for vector in vectors for value in vector
+    ):
         raise ValueError("embedding output must contain numeric values")
     return dimensions.pop()
 

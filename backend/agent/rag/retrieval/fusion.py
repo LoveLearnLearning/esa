@@ -17,7 +17,10 @@ from .contracts import RankedItem
 
 
 def reciprocal_rank_fusion(
-    rankings: Mapping[str, Sequence[RankedItem]], *, rrf_k: int = 60, limit: int | None = None
+    rankings: Mapping[str, Sequence[RankedItem]],
+    *,
+    rrf_k: int = 60,
+    limit: int | None = None,
 ) -> list[RankedItem]:
     """只根据名次计算 RRF，不混用 Dense、BM25 的原始分数量纲。"""
 

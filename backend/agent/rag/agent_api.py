@@ -63,15 +63,13 @@ def retrieve_knowledge_payload(
         "query": response.query,
         "result_count": len(hits),
         "results": [
-            _result_payload(hit, rank)
-            for rank, hit in enumerate(hits, start=1)
+            _result_payload(hit, rank) for rank, hit in enumerate(hits, start=1)
         ],
         "sources": [_source_label(hit, rank) for rank, hit in enumerate(hits, start=1)],
         "context_text": "\n\n".join(hit.context_text for hit in hits),
         "degraded": list(response.trace.degraded),
         "rankings": {
-            name: list(chunk_ids)
-            for name, chunk_ids in response.trace.rankings.items()
+            name: list(chunk_ids) for name, chunk_ids in response.trace.rankings.items()
         },
     }
 

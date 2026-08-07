@@ -20,6 +20,3 @@ def workspace_root() -> Path:
     if configured:
         return Path(configured).expanduser().resolve()
     return Path(__file__).resolve().parents[3]
-
-
-WORKSPACE_ROOT = workspace_root()
