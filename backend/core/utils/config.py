@@ -19,7 +19,6 @@ SEARXNG_BASE_URL = "http://115.29.197.244:8888"
 
 # model
 MODEL_PATH: str = "/remote_dir/home/chenxuzhao/models/Qwen3.5-122B-A10B"
-MODEL_ADAPTER: str = "auto"
 MODEL_DTYPE: ModelDType = "bfloat16"
 MODEL_KV_CACHE_DTYPE: CacheDType = "auto"
 MODEL_GPU_MEMORY_UTILIZATION: float = 0.95

@@ -55,7 +55,6 @@ class Agent:
         max_model_len: int = 32768,
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
-        model_adapter: str = "auto",
     ) -> None:
         # 在加载昂贵的 vLLM 模型之前 fail-fast，避免 Skill/Tool 漂移带病启动。
         skill_errors = validate_skill_contracts()
@@ -76,7 +75,6 @@ class Agent:
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
             tensor_parallel_size=tensor_parallel_size,
-            model_adapter=model_adapter,
         )
 
     def _prepare_run(
