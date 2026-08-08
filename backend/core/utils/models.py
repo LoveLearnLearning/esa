@@ -31,11 +31,8 @@ class AgentStreamEvent:
 
 @dataclass
 class UserRecord:
-    """
-    用来存放用户数据
-    """
+    """用来存放用户数据。"""
 
-    # 系统默认学期总周数（18 周）
     TOTAL_WEEKS_DEFAULT: ClassVar[int] = 18
 
     id: str
@@ -43,36 +40,28 @@ class UserRecord:
     password_hash: str
     status: str
 
-    # 用户偏好设置
     preferred_style: str = "concise"
     preferred_tone: str = "friendly"
     custom_instruction: str = ""
 
-    # 学习档案设置（spec Task 4）
-    # major: 专业 当前仅支持 "cs"（计算机学科）
-    # grade: 年级 自由字符串 如 "大二" / "2023级"
-    # current_week: 当前教学周 1-based
-    # total_weeks: 学期总周数 影响 recommend_practice 优先级计算
-    # profile_enabled: 用户画像开关 关闭时 Agent 不注入学情档案 + 不加载 profile_personalization skill
     major: str = "cs"
     grade: str = ""
     current_week: int = 1
     total_weeks: int = TOTAL_WEEKS_DEFAULT
-    profile_enabled: bool = True  # deprecated: 已迁移到 memory_settings 表 由 learning_profile_enabled + inferred_profile_enabled 替代
+    profile_enabled: bool = True
 
-    # 画像细粒度开关 (迁移自 profile_enabled 实际存储在 memory_settings 表)
     learning_profile_enabled: bool = True
     inferred_profile_enabled: bool = True
 
 
 @dataclass
 class MemorySettings:
-    """记忆与画像开关设置 实际持久化在 memory_settings 表"""
+    """记忆与画像开关设置，实际持久化在 memory_settings 表。"""
 
     user_id: str
     learning_profile_enabled: bool = True
     inferred_profile_enabled: bool = True
-    default_conversation_mode: str = "normal"  # normal / no_write / isolated
+    default_conversation_mode: str = "normal"
     episodic_retention_days: int = 180
     created_at: datetime = ""
     updated_at: datetime = ""
@@ -80,9 +69,7 @@ class MemorySettings:
 
 @dataclass
 class SessionPrincipal:
-    """
-    生命周期内的对象
-    """
+    """生命周期内的登录会话对象。"""
 
     session_id: str
     user_id: str
@@ -93,31 +80,41 @@ class SessionPrincipal:
 @dataclass
 class PromptContext:
     """
-    Prompt 构建上下文 收敛 agent 与 build_system_prompt 的 prompt 相关参数
+    Prompt 构建上下文。
 
-    风格/语调合并规则: group_style/group_tone 非 None 时覆盖 preferred_style/preferred_tone
-    指令合并顺序: 系统 -> 用户级(custom_instruction) -> 分组级(group_custom_instruction) -> 当前消息
+    风格/语调合并规则:
+      group_style/group_tone 非 None 时覆盖 preferred_style/preferred_tone。
+
+    指令合并顺序:
+      系统 -> 用户级 -> 分组级 -> 系统生成的教学路由提示 -> 当前消息。
+
+    pedagogy_context 与 autoload_skills_context 都是系统内部生成内容，
+    不能由客户端直接控制。
     """
 
     preferred_style: str = "concise"
     preferred_tone: str = "friendly"
     custom_instruction: str = ""
+<<<<<<< HEAD
     user_profile_context: "ProfileSnapshot | None" = (
         None  # 结构化画像快照 由 ProfileBuilder 生成
     )
+=======
+    user_profile_context: "ProfileSnapshot | None" = None
+>>>>>>> c32e307ecdd9b1fd84c3f604f827889ec1543621
     group_style: str | None = None
     group_tone: str | None = None
     group_custom_instruction: str = ""
+    conversation_mode: str = "normal"
+
+    # 由 Agent._prepare_run 内部生成，不属于用户可写偏好。
+    pedagogy_context: str = ""
+    autoload_skills_context: str = ""
 
 
 @dataclass
 class MessageContext:
-    """
-    发消息公共前置结果 含 agent 调用所需的全部上下文
-
-    由 chat._prepare_message 构建供 send_message / stream_message 共用
-    消除两个端点前 35 行重复代码
-    """
+    """发消息公共前置结果，含 Agent 调用所需上下文。"""
 
     user: UserRecord
     history: list[dict]
@@ -125,3 +122,4 @@ class MessageContext:
     group_style: str | None
     group_tone: str | None
     group_custom_instruction: str
+    conversation_mode: str = "normal"

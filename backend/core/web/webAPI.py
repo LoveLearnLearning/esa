@@ -10,7 +10,6 @@ from fastapi.responses import PlainTextResponse
 from backend.agent.agent import Agent
 from backend.agent.memories.profile_builder import ProfileBuilder
 from backend.agent.tools.mastery_tools import kg_store, mastery_store
-from backend.agent.tools.memory_tools import core_memory
 from backend.core.services.auth_service import AuthService
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
@@ -73,7 +72,6 @@ async def lifespan(app: FastAPI):
         user_store=app.state.user_store,
         mastery_store=mastery_store,
         kg_store=kg_store,
-        core_memory=core_memory,
         profile_store=app.state.profile_store,
     )
     try:

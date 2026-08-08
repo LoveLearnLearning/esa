@@ -1,21 +1,8 @@
 # backend/agent/tools/mastery_tools.py
 #
-# 注册 3 个 Agent 工具，向 LLM 暴露 MasteryStore + KnowledgeGraphStore 的数据能力：
-#   - recommend_practice: 推荐练习知识点（含优先级与理由）
-#   - get_mastery_report: 获取掌握度报告
-#   - record_answer:      记录一次练习结果并更新掌握度
-#
-# 设计决策：
-#   1. 工具签名不含 user_name 参数，从 memory_tools.current_user ContextVar 获取
-#      与 save_core_memory 等现有工具一致，避免 Agent 被诱导跨用户写库
-#   2. 模块级实例化 MasteryStore + KnowledgeGraphStore，数据库路径与 core_memory.db
-#      对齐到 memories/data/，便于统一备份与迁移
-#   3. recommend_practice 对 Top5 推荐项追加 get_weak_prerequisites 追溯结果
-#   4. 触发时机由 Skill 文档定义，本模块只提供数据能力不做自动落库
-#   5. total_weeks（学期总周数）属于用户学习档案字段，定义在 UserRecord 中
-#      本模块通过 current_total_weeks ContextVar 接收 Agent 注入的用户实际值
-#      （Task 6 _prepare_run 调用 set_current_total_weeks）
-#      未注入时 fallback 到 UserRecord.TOTAL_WEEKS_DEFAULT，避免硬编码
+# 向 LLM 暴露 MasteryStore + KnowledgeGraphStore 的受控数据能力。
+# 所有工具从 ContextVar 获取当前用户，避免模型跨用户读取/写入数据。
+# 读取工具遵守 isolated 模式；写入工具遵守 no_write/isolated 模式。
 
 from __future__ import annotations
 
@@ -25,22 +12,49 @@ from typing import Any
 
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 from backend.agent.memories.mastery_store import MasteryStore
-from backend.agent.tools.memory_tools import get_current_user
+from backend.agent.tools.memory_tools import (
+    get_current_user,
+    memory_read_allowed,
+    memory_write_allowed,
+)
 from backend.agent.tools.tools import tr
 from backend.core.utils.models import UserRecord
 
 MEMORIES_DIR = Path(__file__).resolve().parent.parent / "memories"
 
-# 模块级实例化（参考 memory_tools.py 中 core_memory 的模式）
+class EsaMasteryStore(MasteryStore):
+    """ESA 运行时 MasteryStore：收紧前置知识点语义。"""
+
+    def get_weak_prerequisites(
+        self,
+        user_name: str,
+        kp_id: str,
+        kg_store,
+        mastery_threshold: float = 50.0,
+        max_depth: int = 5,
+    ) -> list[dict]:
+        items = super().get_weak_prerequisites(
+            user_name=user_name,
+            kp_id=kp_id,
+            kg_store=kg_store,
+            mastery_threshold=mastery_threshold,
+            max_depth=max_depth,
+        )
+        return [
+            item
+            for item in items
+            if int(item.get("depth", 0)) > 0
+            and item.get("kp_id") != kp_id
+        ]
+
+
 kg_store = KnowledgeGraphStore(
     database_path=MEMORIES_DIR / "data" / "knowledge_graph.db",
 )
-mastery_store = MasteryStore(
+mastery_store = EsaMasteryStore(
     database_path=MEMORIES_DIR / "data" / "mastery.db",
 )
 
-# 当前用户的学期总周数（由 Agent 在 _prepare_run 时通过 set_current_total_weeks 注入）
-# 未注入时为 None，recommend_practice 会 fallback 到 UserRecord.TOTAL_WEEKS_DEFAULT
 current_total_weeks: ContextVar[int | None] = ContextVar(
     "current_total_weeks",
     default=None,
@@ -48,15 +62,16 @@ current_total_weeks: ContextVar[int | None] = ContextVar(
 
 
 def set_current_total_weeks(total_weeks: int) -> None:
-    """辅助函数：设置当前用户的学期总周数
-
-    由 Agent._prepare_run 在每次对话开始时调用（Task 6 集成）
-    从 UserRecord.total_weeks 读取并注入 ContextVar
-
-    Args:
-        total_weeks: int => 学期总周数
-    """
+    """由 Agent 在每轮开始时注入用户学期总周数。"""
     current_total_weeks.set(total_weeks)
+
+
+def _read_blocked_payload(action: str) -> dict[str, Any]:
+    return {
+        "allowed": False,
+        "action": action,
+        "reason": "当前会话为 isolated 模式，禁止读取长期学习状态",
+    }
 
 
 def _build_reasons(
@@ -65,23 +80,6 @@ def _build_reasons(
     weeks_to_exam: int,
     total_weeks: int,
 ) -> list[str]:
-    """辅助函数 生成推荐理由
-
-    根据 spec 推荐理由覆盖 4 类:
-        - 掌握度低: mastery_level < 50
-        - 权重高:   weight >= 0.7
-        - 距期末近: weeks_to_exam <= total_weeks / 4
-        - 前置薄弱: weak_prereqs 非空
-
-    Args:
-        point: dict          => get_priority_ranking 返回的知识点项
-        weak_prereqs: list   => get_weak_prerequisites 返回的薄弱前置链
-        weeks_to_exam: int   => 距期末周数
-        total_weeks: int     => 学期总周数
-
-    Returns:
-        list[str]            => 推荐理由列表 至少 1 条
-    """
     reasons: list[str] = []
 
     mastery = float(point.get("mastery_level", 50.0))
@@ -111,21 +109,21 @@ def _build_reasons(
         "function": {
             "name": "recommend_practice",
             "description": (
-                "推荐当前用户在某课程中需要重点练习的知识点 "
-                "返回按优先级降序的知识点列表 每条包含掌握度 权重 优先级得分 推荐理由 "
-                "优先级综合考虑掌握度 考试权重 距期末时间 前置依赖薄弱程度 "
-                "当用户要求推荐练习 制定刷题计划 或询问今天练什么时调用"
+                "推荐当前用户在某课程中需要重点练习的知识点；"
+                "综合掌握度、考试权重、距期末时间和前置依赖。"
+                "当用户问今天练什么、制定刷题计划或请求练习推荐时调用。"
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "course": {
                         "type": "string",
-                        "description": "课程名 例如 数据结构 / 操作系统 / 算法设计与分析",
+                        "description": "课程名，例如 数据结构 / 操作系统",
                     },
                     "weeks_to_exam": {
                         "type": "integer",
-                        "description": "距期末考试的周数 0 表示本周考试 16+ 表示距期末很远",
+                        "minimum": 0,
+                        "description": "距考试周数，0 表示本周考试",
                     },
                 },
                 "required": ["course", "weeks_to_exam"],
@@ -137,28 +135,17 @@ def recommend_practice(
     course: str,
     weeks_to_exam: int,
 ) -> dict[str, Any]:
-    """推荐当前用户在某课程中需要重点练习的知识点
-
-    内部流程：
-        1. 调用 MasteryStore.get_priority_ranking 获取按优先级降序的知识点
-        2. 对前 5 个推荐项 调用 MasteryStore.get_weak_prerequisites 追溯前置薄弱点
-        3. 拼装推荐理由（掌握度低/权重高/距期末近/前置薄弱）
-
-    Args:
-        course: str          => 课程名
-        weeks_to_exam: int   => 距期末周数
-
-    Returns:
-        dict => {
-            user_name, course, count, recommendations: [
-                {kp_id, name, course, weight, mastery_level,
-                 practice_count, priority, reasons, weak_prerequisites}
-            ]
-        }
-    """
     user_name = get_current_user()
 
-    # 学期总周数：优先用 Agent 注入的当前用户值，否则用系统默认值
+    if not memory_read_allowed():
+        return {
+            **_read_blocked_payload("recommend_practice"),
+            "user_name": user_name,
+            "course": course,
+            "count": 0,
+            "recommendations": [],
+        }
+
     total_weeks = current_total_weeks.get() or UserRecord.TOTAL_WEEKS_DEFAULT
 
     ranking = mastery_store.get_priority_ranking(
@@ -171,14 +158,14 @@ def recommend_practice(
 
     if not ranking:
         return {
+            "allowed": True,
             "user_name": user_name,
             "course": course,
             "count": 0,
             "recommendations": [],
-            "note": f"未找到课程 {course!r} 的知识点 请确认课程名",
+            "note": f"未找到课程 {course!r} 的知识点，请确认课程名",
         }
 
-    # 对 Top5 推荐项追加前置薄弱追溯与理由
     recommendations: list[dict[str, Any]] = []
     for point in ranking[:5]:
         weak_prereqs = mastery_store.get_weak_prerequisites(
@@ -207,6 +194,7 @@ def recommend_practice(
         )
 
     return {
+        "allowed": True,
         "user_name": user_name,
         "course": course,
         "count": len(recommendations),
@@ -220,16 +208,15 @@ def recommend_practice(
         "function": {
             "name": "get_mastery_report",
             "description": (
-                "获取当前用户的掌握度报告 包含平均掌握度 掌握度最低/最高的知识点 "
-                "以及超过 7 天未练习的知识点 "
-                "当用户询问掌握度 学习情况 学情 进度时调用"
+                "获取当前用户的掌握度报告，包含平均掌握度、薄弱/优势知识点"
+                "以及超过 7 天未练习的知识点。"
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "course": {
                         "type": "string",
-                        "description": "课程名 留空则返回全部课程数据",
+                        "description": "课程名；留空返回全部课程",
                     },
                 },
                 "required": [],
@@ -238,26 +225,195 @@ def recommend_practice(
     }
 )
 def get_mastery_report(course: str = "") -> dict[str, Any]:
-    """获取当前用户的掌握度报告
-
-    内部调用 MasteryStore.get_report，当指定 course 时通过 kg_store 过滤该课程知识点
-
-    Args:
-        course: str = ""   => 课程名 留空返回全部
-
-    Returns:
-        dict => {user_name, course, total_points, avg_mastery,
-                 weak_points, strong_points, stale_points}
-    """
     user_name = get_current_user()
 
-    course_arg = course.strip() if course else None
+    if not memory_read_allowed():
+        return {
+            **_read_blocked_payload("get_mastery_report"),
+            "user_name": user_name,
+            "course": course or None,
+            "total_points": 0,
+            "avg_mastery": 0.0,
+            "weak_points": [],
+            "strong_points": [],
+            "stale_points": [],
+        }
 
-    return mastery_store.get_report(
+    course_arg = course.strip() if course else None
+    report = mastery_store.get_report(
         user_name=user_name,
         course=course_arg,
         kg_store=kg_store,
     )
+    return {"allowed": True, **report}
+
+
+@tr.register(
+    {
+        "type": "function",
+        "function": {
+            "name": "get_mastery_level",
+            "description": (
+                "读取当前用户某个知识点的掌握度和练习统计；"
+                "当 Skill 需要针对单个知识点调节讲解深度时调用。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "kp_id": {
+                        "type": "string",
+                        "description": "知识点 id",
+                    }
+                },
+                "required": ["kp_id"],
+            },
+        },
+    }
+)
+def get_mastery_level(kp_id: str) -> dict[str, Any]:
+    user_name = get_current_user()
+    if not memory_read_allowed():
+        return {
+            **_read_blocked_payload("get_mastery_level"),
+            "user_name": user_name,
+            "kp_id": kp_id,
+        }
+
+    record = mastery_store.get(user_name, kp_id)
+    if record is None:
+        return {
+            "allowed": True,
+            "user_name": user_name,
+            "kp_id": kp_id,
+            "mastery_level": mastery_store.DEFAULT_MASTERY,
+            "practice_count": 0,
+            "correct_count": 0,
+            "has_record": False,
+        }
+
+    return {
+        "allowed": True,
+        "has_record": True,
+        **record,
+    }
+
+
+@tr.register(
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weak_prerequisites",
+            "description": (
+                "追溯某知识点的薄弱前置知识点，按依赖深度优先返回；"
+                "用于判断应该直接练当前知识点还是先补前置。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "kp_id": {
+                        "type": "string",
+                        "description": "目标知识点 id",
+                    },
+                    "mastery_threshold": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100,
+                        "description": "低于该掌握度视为薄弱，默认 50",
+                    },
+                    "max_depth": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10,
+                        "description": "最大追溯深度，默认 5",
+                    },
+                },
+                "required": ["kp_id"],
+            },
+        },
+    }
+)
+def get_weak_prerequisites(
+    kp_id: str,
+    mastery_threshold: float = 50.0,
+    max_depth: int = 5,
+) -> dict[str, Any]:
+    user_name = get_current_user()
+    if not memory_read_allowed():
+        return {
+            **_read_blocked_payload("get_weak_prerequisites"),
+            "user_name": user_name,
+            "kp_id": kp_id,
+            "count": 0,
+            "weak_prerequisites": [],
+        }
+
+    items = mastery_store.get_weak_prerequisites(
+        user_name=user_name,
+        kp_id=kp_id,
+        kg_store=kg_store,
+        mastery_threshold=mastery_threshold,
+        max_depth=max_depth,
+    )
+    return {
+        "allowed": True,
+        "user_name": user_name,
+        "kp_id": kp_id,
+        "count": len(items),
+        "weak_prerequisites": items,
+    }
+
+
+@tr.register(
+    {
+        "type": "function",
+        "function": {
+            "name": "get_review_timing",
+            "description": (
+                "预测某知识点当前回忆概率以及推荐复习日期；"
+                "用于学习计划和间隔复习，而不是替代掌握度。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "kp_id": {
+                        "type": "string",
+                        "description": "知识点 id",
+                    },
+                    "threshold": {
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 0.99,
+                        "description": "回忆概率低于该阈值时触发复习，默认 0.7",
+                    },
+                },
+                "required": ["kp_id"],
+            },
+        },
+    }
+)
+def get_review_timing(
+    kp_id: str,
+    threshold: float = 0.7,
+) -> dict[str, Any]:
+    user_name = get_current_user()
+    if not memory_read_allowed():
+        return {
+            **_read_blocked_payload("get_review_timing"),
+            "user_name": user_name,
+            "kp_id": kp_id,
+        }
+
+    result = mastery_store.get_review_timing(
+        user_name=user_name,
+        kp_id=kp_id,
+        threshold=threshold,
+    )
+    return {
+        "allowed": True,
+        "user_name": user_name,
+        "kp_id": kp_id,
+        **result,
+    }
 
 
 @tr.register(
@@ -266,28 +422,28 @@ def get_mastery_report(course: str = "") -> dict[str, Any]:
         "function": {
             "name": "record_answer",
             "description": (
-                "记录当前用户一次练习结果并更新该知识点的掌握度 "
-                "答对 mastery 上升(随练习次数递减 不超过 95) "
-                "答错 mastery 下降(不低于 10) "
-                "由练习批改 Skill 引导调用 用户主动提交答案后才记录"
+                "记录当前用户一次练习结果并更新知识点掌握度。"
+                "confidence 是这次答案作为掌握证据的可靠性权重，"
+                "不是学生主观自信；学生自评信心应记录到 record_learning_evidence。"
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "kp_id": {
                         "type": "string",
-                        "description": "知识点 id 例如 binary_tree_traversal / process_scheduling",
+                        "description": "知识点 id",
                     },
                     "correct": {
                         "type": "boolean",
-                        "description": "是否答对 True=答对 False=答错",
+                        "description": "是否答对",
                     },
                     "confidence": {
                         "type": "number",
+                        "minimum": 0.0,
+                        "maximum": 1.0,
                         "description": (
-                            "答题置信度 0.0-1.0 模拟 BKT 的 P(G)/P(S) 概率 "
-                            "1.0=高置信度(填空/编程/证明) 0.5=低置信度(选择题可能蒙对) "
-                            "默认 1.0"
+                            "证据可靠性 0-1；"
+                            "填空/编程/证明通常高，选择题可能因猜测而降低。默认 1.0"
                         ),
                     },
                 },
@@ -301,24 +457,20 @@ def record_answer(
     correct: bool,
     confidence: float = 1.0,
 ) -> dict[str, Any]:
-    """记录一次练习结果并更新掌握度
-
-    内部调用 MasteryStore.record_answer，confidence 模拟 BKT 的 P(G)/P(S)
-
-    Args:
-        kp_id: str                => 知识点 id
-        correct: bool             => 是否答对
-        confidence: float = 1.0   => 答题置信度 0.0-1.0
-
-    Returns:
-        dict => {user_name, kp_id, mastery_level, practice_count,
-                 correct_count, last_practiced_at}
-    """
     user_name = get_current_user()
 
-    return mastery_store.record_answer(
+    if not memory_write_allowed():
+        return {
+            "user_name": user_name,
+            "kp_id": kp_id,
+            "saved": False,
+            "reason": "当前会话为 no_write/isolated 模式，禁止记录练习结果",
+        }
+
+    result = mastery_store.record_answer(
         user_name=user_name,
         kp_id=kp_id,
         correct=correct,
         confidence=confidence,
     )
+    return {"saved": True, **result}

@@ -376,3 +376,98 @@ class ChatStore(BaseSQLiteStore):
                 message["name"] = row["name"]
             model_messages.append(message)
         return model_messages
+
+    def get_model_history_and_append(
+        self,
+        conversation_id: str,
+        messages: list[dict],
+    ) -> list[dict]:
+        """原子地读取模型历史并追加消息 返回追加前的历史。
+
+        在同一事务内完成 SELECT + INSERT 并持有写锁 (BEGIN IMMEDIATE)
+        避免并发请求下"读到的历史互相缺失对方刚追加的消息" (读-写竞态)。
+
+        Args:
+            conversation_id: str    => 对话 id
+            messages: list[dict]    => 待追加的消息 每条含 role/content 可选 name/is_visible
+
+        Returns:
+            list[dict]              => 追加前的完整模型历史 (与 get_model_messages 同格式)
+        """
+        if not messages:
+            raise ValueError("messages 不能为空")
+
+        current_time = self._now()
+        connection = self._connect()
+        connection.isolation_level = None  # 手动事务 避免隐式事务冲突
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+
+            exists = connection.execute(
+                "SELECT 1 FROM conversations WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()
+            if exists is None:
+                raise ValueError("对话不存在")
+
+            rows = connection.execute(
+                """
+                SELECT role, content, name
+                FROM messages
+                WHERE conversation_id = ?
+                ORDER BY id ASC
+                """,
+                (conversation_id,),
+            ).fetchall()
+
+            history: list[dict] = []
+            for row in rows:
+                message: dict = {
+                    "role": row["role"],
+                    "content": row["content"],
+                }
+                if row["name"] is not None:
+                    message["name"] = row["name"]
+                history.append(message)
+
+            connection.executemany(
+                """
+                INSERT INTO messages (
+                    conversation_id,
+                    role,
+                    content,
+                    name,
+                    is_visible,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        conversation_id,
+                        message["role"],
+                        message["content"],
+                        message.get("name"),
+                        1 if message.get("is_visible", True) else 0,
+                        current_time,
+                    )
+                    for message in messages
+                ],
+            )
+            connection.execute(
+                """
+                UPDATE conversations
+                SET updated_at = ?
+                WHERE conversation_id = ?
+                """,
+                (current_time, conversation_id),
+            )
+
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+        return history

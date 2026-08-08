@@ -118,7 +118,7 @@ def _make_builder(
     kg_store = StubKGStore(kg_points)
     core_memory = StubCoreMemory(memories)
     profile_store = StubProfileStore(suppressed)
-    return ProfileBuilder(user_store, mastery_store, kg_store, core_memory, profile_store)
+    return ProfileBuilder(user_store, mastery_store, kg_store, profile_store)
 
 
 def _make_query(current_message="", group_style=None, recent_messages=None):
@@ -218,7 +218,7 @@ def test_learning_state_disabled():
     assert snapshot.relevant_learning_state == []
 
 
-def test_inferred_patterns_from_core_memory():
+def test_core_memory_is_not_automatically_promoted_into_profile():
     memories = [
         {"id": "m1", "category": "language", "content": "python"},
     ]
@@ -228,13 +228,8 @@ def test_inferred_patterns_from_core_memory():
     )
     snapshot = builder.build(_make_query(current_message="hello"))
 
-    lang_field = _field(snapshot.inferred_patterns, "preferred_code_language")
-    assert lang_field is not None
-    assert lang_field.value == "python"
-    assert lang_field.origin == ProfileOrigin.INFERRED_PATTERN
-    assert lang_field.confidence == 0.7
-    assert "m1" in lang_field.source_memory_ids
-
+    # Raw CoreMemory must be fetched only through memory tools on demand.
+    assert snapshot.inferred_patterns == []
 
 def test_inferred_patterns_disabled():
     memories = [

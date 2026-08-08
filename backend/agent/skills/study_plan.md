@@ -1,22 +1,38 @@
 ---
 name: study_plan
-description: 根据用户的学习目标和时间制定学习计划
+description: 根据学习目标、剩余时间和真实学习状态生成可执行复习计划
+version: 2
+category: planning
+priority: 83
+autoload: false
+triggers:
+  - study_plan
+requires_tools:
+  - get_mastery_report
+  - recommend_practice
+  - get_review_timing
+related_skills:
+  - practice_recommendation
 ---
 
 # 学习计划 Skill
 
-当用户要求制定学习计划时按照以下步骤执行
+不要只靠 LLM 凭感觉排日程。计划应优先消费现有学习状态。
 
-1 询问用户的学习目标
+## 流程
 
-2 确认用户每天可以投入的时间
+1. 确认目标、考试/截止时间和每天可用时间；上下文已有时不要重复问。
+2. 调用 `get_mastery_report(course)` 获取薄弱点、优势点和长期未复习内容。
+3. 调用 `recommend_practice(course, weeks_to_exam)` 得到学习优先级。
+4. 对进入近期计划的关键知识点调用 `get_review_timing(kp_id)`，避免把复习全部堆到考试前。
+5. 按以下顺序排：
+   - 已到复习阈值/即将遗忘
+   - 薄弱前置
+   - 高权重且中低掌握度
+   - 综合/迁移练习
+6. 每个学习块必须有可验证产出，例如：
+   “完成 3 道二叉树遍历题，其中至少 2 道独立完成”，
+   不要只写“复习二叉树 1 小时”。
+7. 计划保留 10%-20% 缓冲时间，避免排满导致一次延期后整体崩溃。
 
-3 确认计划持续时间
-
-4 将学习内容拆分成阶段
-
-5 为每个阶段安排学习和复习任务
-
-6 输出清晰的每日或每周计划
-
-如果用户提供的信息不足 先询问缺少的信息
+输出优先按天/周给出：任务、预计时长、完成标准、复习触发点。
