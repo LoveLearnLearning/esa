@@ -18,7 +18,8 @@ import os
 from pathlib import Path
 from typing import Any, Literal
 
-from .. import config as rag_config
+from backend.core.utils import config as core_config
+
 from ..collection import LoadedChunkCollection, load_chunk_collection
 from ..fingerprints import backend_fingerprint
 from ..indexes import QdrantIndex
@@ -253,7 +254,7 @@ def _add_manifest_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--manifest",
         type=Path,
-        default=rag_config.COLLECTION_MANIFEST_PATH,
+        default=core_config.RAG_COLLECTION_MANIFEST_PATH,
     )
 
 
@@ -284,7 +285,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     build.add_argument(
         "--embedding-model",
-        default=rag_config.EMBEDDING_MODEL_PATH,
+        default=core_config.RAG_EMBEDDING_MODEL_PATH,
     )
     build.add_argument("--embedding-url", default=rag_config.EMBEDDING_BASE_URL)
     build.add_argument(
@@ -308,7 +309,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     query.add_argument(
         "--reranker-model",
-        default=rag_config.RERANKER_MODEL_PATH,
+        default=core_config.RAG_RERANKER_MODEL_PATH,
     )
     query.add_argument("--reranker-url", default=rag_config.RERANKER_BASE_URL)
     query.set_defaults(handler=query_deployment)
