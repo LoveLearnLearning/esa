@@ -89,7 +89,6 @@ def _create_app(tmp_path) -> FastAPI:
         user_store=user_store,
         mastery_store=StubMasteryStore(),
         kg_store=StubKGStore(),
-        core_memory=StubCoreMemory(),
         profile_store=profile_store,
     )
 

@@ -146,11 +146,16 @@ def _prepare_message(
         session_store.revoke(session.session_id)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在！")
 
-    history: list[dict] = chat_store.get_model_messages(conversation_id)
-
-    chat_store.append_messages(
+    # 读取模型历史 + 落库用户消息 同一事务原子完成 避免并发读-写竞态
+    history: list[dict] = chat_store.get_model_history_and_append(
         conversation_id,
         [{"role": "user", "content": body.content, "is_visible": True}],
+    )
+
+    # 会话记忆模式: normal(读+写) / no_write(只读) / isolated(不读不写)
+    settings = user_store.get_memory_settings(user.id)
+    conversation_mode = (
+        settings.default_conversation_mode if settings is not None else "normal"
     )
 
     group_style, group_tone, group_custom_instruction = _load_group_params(
@@ -158,10 +163,11 @@ def _prepare_message(
         conversation,
     )
 
-    return MessageContext(
-        user=user,
-        history=history,
-        user_profile_context=request.app.state.profile_builder.build(
+    # isolated 会话不读取长期记忆 不构建画像快照
+    user_profile_context = (
+        None
+        if conversation_mode == "isolated"
+        else request.app.state.profile_builder.build(
             ProfileQuery(
                 user_id=user.id,
                 username=user.username,
@@ -173,10 +179,38 @@ def _prepare_message(
                 group_tone=group_tone,
                 group_custom_instruction=group_custom_instruction,
             )
-        ),
+        )
+    )
+
+    return MessageContext(
+        user=user,
+        history=history,
+        user_profile_context=user_profile_context,
         group_style=group_style,
         group_tone=group_tone,
         group_custom_instruction=group_custom_instruction,
+        conversation_mode=conversation_mode,
+    )
+
+
+def _build_prompt_context(ctx: MessageContext) -> PromptContext:
+    """将 MessageContext 收敛为 PromptContext 供 agent 构建提示词
+
+    Args:
+        ctx: MessageContext => 发消息公共前置结果
+
+    Returns:
+        PromptContext => prompt 构建上下文
+    """
+    return PromptContext(
+        preferred_style=ctx.user.preferred_style,
+        preferred_tone=ctx.user.preferred_tone,
+        custom_instruction=ctx.user.custom_instruction,
+        user_profile_context=ctx.user_profile_context,
+        group_style=ctx.group_style,
+        group_tone=ctx.group_tone,
+        group_custom_instruction=ctx.group_custom_instruction,
+        conversation_mode=ctx.conversation_mode,
     )
 
 
@@ -271,21 +305,11 @@ async def send_message(
     chat_store: ChatStore = request.app.state.chat_store
     agent: Agent = request.app.state.agent
 
-    prompt_ctx = PromptContext(
-        preferred_style=ctx.user.preferred_style,
-        preferred_tone=ctx.user.preferred_tone,
-        custom_instruction=ctx.user.custom_instruction,
-        user_profile_context=ctx.user_profile_context,
-        group_style=ctx.group_style,
-        group_tone=ctx.group_tone,
-        group_custom_instruction=ctx.group_custom_instruction,
-    )
-
     new_messages: list[dict] = await agent.run(
         body.content,
         ctx.user.username,
         history=ctx.history,
-        prompt_ctx=prompt_ctx,
+        prompt_ctx=_build_prompt_context(ctx),
         total_weeks=ctx.user.total_weeks,
     )
 
@@ -310,16 +334,7 @@ async def stream_message(
     ctx: MessageContext = _prepare_message(request, conversation_id, body, session)
     chat_store: ChatStore = request.app.state.chat_store
     agent: Agent = request.app.state.agent
-
-    prompt_ctx = PromptContext(
-        preferred_style=ctx.user.preferred_style,
-        preferred_tone=ctx.user.preferred_tone,
-        custom_instruction=ctx.user.custom_instruction,
-        user_profile_context=ctx.user_profile_context,
-        group_style=ctx.group_style,
-        group_tone=ctx.group_tone,
-        group_custom_instruction=ctx.group_custom_instruction,
-    )
+    prompt_ctx = _build_prompt_context(ctx)
 
     # 在创建 event_stream 前把分组参数绑定为局部变量
     # 闭包直接读取这些值 保证生成器生命周期内取值稳定
