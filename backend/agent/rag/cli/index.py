@@ -153,10 +153,10 @@ def _embedding_provider(
     if backend == "transformers":
         return TransformersEmbeddingProvider(
             model_name=model_name,
-            device=rag_config.EMBEDDING_DEVICE,
-            dimension=dense_dimension or rag_config.EMBEDDING_DIMENSION,
-            max_length=rag_config.EMBEDDING_MAX_LENGTH,
-            batch_size=rag_config.EMBEDDING_BATCH_SIZE,
+            device=core_config.RAG_EMBEDDING_DEVICE,
+            dimension=dense_dimension or core_config.RAG_EMBEDDING_DIMENSION,
+            max_length=core_config.RAG_EMBEDDING_MAX_LENGTH,
+            batch_size=core_config.RAG_EMBEDDING_BATCH_SIZE,
         )
     if not base_url:
         raise ValueError("--embedding-url is required for vllm backend")
@@ -164,7 +164,7 @@ def _embedding_provider(
         base_url=base_url,
         model_name=model_name,
         api_key=os.environ.get("VLLM_API_KEY"),
-        timeout=rag_config.EMBEDDING_TIMEOUT,
+        timeout=core_config.RAG_EMBEDDING_TIMEOUT,
     )
 
 
@@ -175,8 +175,8 @@ def _qdrant_index(base_url: str, collection: str) -> QdrantIndex:
         base_url=base_url,
         collection=collection,
         api_key=os.environ.get("QDRANT_API_KEY"),
-        timeout=rag_config.QDRANT_TIMEOUT,
-        upsert_batch_size=rag_config.QDRANT_UPSERT_BATCH_SIZE,
+        timeout=core_config.RAG_QDRANT_TIMEOUT,
+        upsert_batch_size=core_config.RAG_QDRANT_UPSERT_BATCH_SIZE,
     )
 
 
@@ -192,8 +192,8 @@ def _reranker(
     if backend == "transformers":
         return TransformersReranker(
             model_name=model_name,
-            device=rag_config.RERANKER_DEVICE,
-            max_length=rag_config.RERANKER_MAX_LENGTH,
+            device=core_config.RAG_RERANKER_DEVICE,
+            max_length=core_config.RAG_RERANKER_MAX_LENGTH,
         )
     if not base_url:
         raise ValueError("--reranker-url is required for vllm backend")
@@ -201,7 +201,7 @@ def _reranker(
         base_url=base_url,
         model_name=model_name,
         api_key=os.environ.get("VLLM_API_KEY"),
-        timeout=rag_config.RERANKER_TIMEOUT,
+        timeout=core_config.RAG_RERANKER_TIMEOUT,
     )
 
 
@@ -209,15 +209,15 @@ def _retrieval_config() -> RetrievalConfig:
     """把集中配置转换为核心检索链的稳定配置对象。"""
 
     return RetrievalConfig(
-        dense_limit=rag_config.DENSE_LIMIT,
-        bm25_body_limit=rag_config.BM25_BODY_LIMIT,
-        bm25_heading_limit=rag_config.BM25_HEADING_LIMIT,
-        rrf_limit=rag_config.RRF_LIMIT,
-        rerank_limit=rag_config.RERANK_LIMIT,
-        final_limit=rag_config.FINAL_LIMIT,
-        rrf_k=rag_config.RRF_K,
-        section_window=rag_config.SECTION_WINDOW,
-        rerank_threshold=rag_config.RERANK_THRESHOLD,
+        dense_limit=core_config.RAG_DENSE_LIMIT,
+        bm25_body_limit=core_config.RAG_BM25_BODY_LIMIT,
+        bm25_heading_limit=core_config.RAG_BM25_HEADING_LIMIT,
+        rrf_limit=core_config.RAG_RRF_LIMIT,
+        rerank_limit=core_config.RAG_RERANK_LIMIT,
+        final_limit=core_config.RAG_FINAL_LIMIT,
+        rrf_k=core_config.RAG_RRF_K,
+        section_window=core_config.RAG_SECTION_WINDOW,
+        rerank_threshold=core_config.RAG_RERANK_THRESHOLD,
     )
 
 
@@ -274,24 +274,27 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument(
         "--output",
         type=Path,
-        default=rag_config.INDEX_DEPLOYMENT_ROOT,
+        default=core_config.RAG_INDEX_DEPLOYMENT_ROOT,
     )
-    build.add_argument("--qdrant-url", default=rag_config.QDRANT_BASE_URL)
-    build.add_argument("--collection", default=rag_config.QDRANT_COLLECTION)
+    build.add_argument("--qdrant-url", default=core_config.RAG_QDRANT_BASE_URL)
+    build.add_argument("--collection", default=core_config.RAG_QDRANT_COLLECTION)
     build.add_argument(
         "--embedding-backend",
         choices=("reference", "transformers", "vllm"),
-        default=rag_config.EMBEDDING_BACKEND,
+        default=core_config.RAG_EMBEDDING_BACKEND,
     )
     build.add_argument(
         "--embedding-model",
         default=core_config.RAG_EMBEDDING_MODEL_PATH,
     )
-    build.add_argument("--embedding-url", default=rag_config.EMBEDDING_BASE_URL)
+    build.add_argument(
+        "--embedding-url",
+        default=core_config.RAG_EMBEDDING_BASE_URL,
+    )
     build.add_argument(
         "--embedding-dimension",
         type=int,
-        default=rag_config.EMBEDDING_DIMENSION,
+        default=core_config.RAG_EMBEDDING_DIMENSION,
     )
     build.set_defaults(handler=build_deployment)
 
@@ -305,13 +308,16 @@ def _parser() -> argparse.ArgumentParser:
     query.add_argument(
         "--reranker-backend",
         choices=("none", "transformers", "vllm"),
-        default=rag_config.RERANKER_BACKEND,
+        default=core_config.RAG_RERANKER_BACKEND,
     )
     query.add_argument(
         "--reranker-model",
         default=core_config.RAG_RERANKER_MODEL_PATH,
     )
-    query.add_argument("--reranker-url", default=rag_config.RERANKER_BASE_URL)
+    query.add_argument(
+        "--reranker-url",
+        default=core_config.RAG_RERANKER_BASE_URL,
+    )
     query.set_defaults(handler=query_deployment)
     return parser
 
