@@ -95,13 +95,9 @@ class PromptContext:
     preferred_style: str = "concise"
     preferred_tone: str = "friendly"
     custom_instruction: str = ""
-<<<<<<< HEAD
     user_profile_context: "ProfileSnapshot | None" = (
         None  # 结构化画像快照 由 ProfileBuilder 生成
     )
-=======
-    user_profile_context: "ProfileSnapshot | None" = None
->>>>>>> c32e307ecdd9b1fd84c3f604f827889ec1543621
     group_style: str | None = None
     group_tone: str | None = None
     group_custom_instruction: str = ""
