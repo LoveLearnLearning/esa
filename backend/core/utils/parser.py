@@ -5,7 +5,6 @@ import re
 
 from backend.core.utils.models import ParsedOutput, ToolCall
 
-
 DEEPSEEK_V4_EOS = "<｜end▁of▁sentence｜>"
 DEEPSEEK_V4_DSML = "｜DSML｜"
 DEEPSEEK_V4_TOOL_CALLS_OPEN = f"<{DEEPSEEK_V4_DSML}tool_calls>"
@@ -131,9 +130,8 @@ class StreamOutputParser:
 
             if stripped.startswith(self.THINK_OPEN):
                 leading_length = len(self.pending) - len(stripped)
-                self.pending = (
-                    self.pending[:leading_length]
-                    + stripped.removeprefix(self.THINK_OPEN)
+                self.pending = self.pending[:leading_length] + stripped.removeprefix(
+                    self.THINK_OPEN
                 )
 
             self.opening_tag_handled = True
