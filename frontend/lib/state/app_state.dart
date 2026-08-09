@@ -4,6 +4,7 @@
 
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +23,8 @@ class AppState extends ChangeNotifier {
   static const _rememberUserIdKey = 'esa.remember.user_id';
   static const _rememberUsernameKey = 'esa.remember.username';
   static const _rememberExpiresAtKey = 'esa.remember.expires_at';
+  static const _scheduleStoragePrefix = 'esa.schedule.';
+  static const _scheduleSettingsStoragePrefix = 'esa.schedule.settings.';
 
   // ---- 本地设置(不落后端) ----
   ThemeMode themeMode = ThemeMode.dark;
@@ -42,6 +45,9 @@ class AppState extends ChangeNotifier {
   bool busy = false; // 正在发消息
   bool loadingConversations = false;
   bool loadingMessages = false;
+  final List<ScheduleCourse> scheduleCourses = [];
+  ScheduleSettings scheduleSettings = const ScheduleSettings();
+  bool scheduleLoaded = false;
 
   String get username => api.username ?? '';
   bool get isLoggedIn => api.isLoggedIn;
@@ -209,11 +215,112 @@ class AppState extends ChangeNotifier {
     conversations.clear();
     _messages.clear();
     _pinned.clear();
+    scheduleCourses.clear();
+    scheduleSettings = const ScheduleSettings();
+    scheduleLoaded = false;
     activeId = null;
     busy = false;
     preferences = const UserPreferences();
     userProfile = const UserProfile();
     notifyListeners();
+  }
+
+  // ============ 本地课表 ============
+  String get _scheduleStorageKey =>
+      '$_scheduleStoragePrefix${api.userId ?? api.username ?? 'guest'}';
+
+  String get _scheduleSettingsStorageKey =>
+      '$_scheduleSettingsStoragePrefix${api.userId ?? api.username ?? 'guest'}';
+
+  Future<void> loadSchedule({bool force = false}) async {
+    if (scheduleLoaded && !force) return;
+    scheduleLoaded = true;
+    final localPreferences = await _getLocalPreferences();
+    if (localPreferences == null) {
+      notifyListeners();
+      return;
+    }
+    final raw = localPreferences.getString(_scheduleStorageKey);
+    final rawSettings = localPreferences.getString(_scheduleSettingsStorageKey);
+    scheduleCourses.clear();
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          scheduleCourses.addAll(
+            decoded.whereType<Map>().map(
+              (item) =>
+                  ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
+            ),
+          );
+        }
+      } on FormatException {
+        // 本地缓存损坏时显示空课表，不影响主功能。
+      }
+    }
+    scheduleSettings = const ScheduleSettings();
+    if (rawSettings != null && rawSettings.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawSettings);
+        if (decoded is Map) {
+          scheduleSettings = ScheduleSettings.fromJson(
+            Map<String, dynamic>.from(decoded),
+          );
+        }
+      } on FormatException {
+        // 设置缓存损坏时使用默认作息。
+      }
+    }
+    _sortSchedule();
+    notifyListeners();
+  }
+
+  Future<void> saveScheduleCourse(ScheduleCourse course) async {
+    final index = scheduleCourses.indexWhere((item) => item.id == course.id);
+    if (index < 0) {
+      scheduleCourses.add(course);
+    } else {
+      scheduleCourses[index] = course;
+    }
+    _sortSchedule();
+    scheduleLoaded = true;
+    notifyListeners();
+    await _persistSchedule();
+  }
+
+  Future<void> deleteScheduleCourse(String courseId) async {
+    scheduleCourses.removeWhere((course) => course.id == courseId);
+    scheduleLoaded = true;
+    notifyListeners();
+    await _persistSchedule();
+  }
+
+  Future<void> saveScheduleSettings(ScheduleSettings settings) async {
+    scheduleSettings = settings;
+    scheduleLoaded = true;
+    notifyListeners();
+    final localPreferences = await _getLocalPreferences();
+    if (localPreferences == null) return;
+    await localPreferences.setString(
+      _scheduleSettingsStorageKey,
+      jsonEncode(settings.toJson()),
+    );
+  }
+
+  void _sortSchedule() {
+    scheduleCourses.sort((a, b) {
+      final day = a.weekday.compareTo(b.weekday);
+      return day != 0 ? day : a.startPeriod.compareTo(b.startPeriod);
+    });
+  }
+
+  Future<void> _persistSchedule() async {
+    final localPreferences = await _getLocalPreferences();
+    if (localPreferences == null) return;
+    await localPreferences.setString(
+      _scheduleStorageKey,
+      jsonEncode(scheduleCourses.map((course) => course.toJson()).toList()),
+    );
   }
 
   /// 统一处理 401 会话失效 直接回登录页

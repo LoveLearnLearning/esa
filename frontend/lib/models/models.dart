@@ -62,6 +62,165 @@ class UserProfile {
   }
 }
 
+class ScheduleCourse {
+  const ScheduleCourse({
+    required this.id,
+    required this.name,
+    required this.weekday,
+    required this.startPeriod,
+    required this.endPeriod,
+    required this.startWeek,
+    required this.endWeek,
+    required this.colorValue,
+    this.teacher = '',
+    this.location = '',
+  });
+
+  final String id;
+  final String name;
+  final String teacher;
+  final String location;
+  final int weekday;
+  final int startPeriod;
+  final int endPeriod;
+  final int startWeek;
+  final int endWeek;
+  final int colorValue;
+
+  bool occursInWeek(int week) => week >= startWeek && week <= endWeek;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'teacher': teacher,
+    'location': location,
+    'weekday': weekday,
+    'start_period': startPeriod,
+    'end_period': endPeriod,
+    'start_week': startWeek,
+    'end_week': endWeek,
+    'color_value': colorValue,
+  };
+
+  factory ScheduleCourse.fromJson(Map<String, dynamic> json) {
+    int number(String key, int fallback) =>
+        (json[key] as num?)?.toInt() ?? fallback;
+    return ScheduleCourse(
+      id: json['id']?.toString() ?? _nextId(),
+      name: json['name']?.toString() ?? '未命名课程',
+      teacher: json['teacher']?.toString() ?? '',
+      location: json['location']?.toString() ?? '',
+      weekday: number('weekday', 1).clamp(1, 7),
+      startPeriod: number('start_period', 1).clamp(1, 24),
+      endPeriod: number('end_period', 2).clamp(1, 24),
+      startWeek: number('start_week', 1).clamp(1, 30),
+      endWeek: number('end_week', 18).clamp(1, 30),
+      colorValue: number('color_value', 0xFF2563EB),
+    );
+  }
+}
+
+class ScheduleSettings {
+  const ScheduleSettings({
+    this.morningPeriodCount = 4,
+    this.afternoonPeriodCount = 4,
+    this.eveningPeriodCount = 4,
+    this.morningStartMinutes = 8 * 60,
+    this.afternoonStartMinutes = 14 * 60,
+    this.eveningStartMinutes = 19 * 60,
+    this.periodDurationMinutes = 45,
+    this.breakDurationMinutes = 10,
+  });
+
+  final int morningPeriodCount;
+  final int afternoonPeriodCount;
+  final int eveningPeriodCount;
+  final int morningStartMinutes;
+  final int afternoonStartMinutes;
+  final int eveningStartMinutes;
+  final int periodDurationMinutes;
+  final int breakDurationMinutes;
+
+  int get totalPeriods =>
+      morningPeriodCount + afternoonPeriodCount + eveningPeriodCount;
+
+  int periodStartMinutes(int period) {
+    final normalizedPeriod = period.clamp(
+      1,
+      totalPeriods == 0 ? 1 : totalPeriods,
+    );
+    final step = periodDurationMinutes + breakDurationMinutes;
+    if (normalizedPeriod <= morningPeriodCount) {
+      return morningStartMinutes + (normalizedPeriod - 1) * step;
+    }
+    final afternoonEnd = morningPeriodCount + afternoonPeriodCount;
+    if (normalizedPeriod <= afternoonEnd) {
+      return afternoonStartMinutes +
+          (normalizedPeriod - morningPeriodCount - 1) * step;
+    }
+    return eveningStartMinutes + (normalizedPeriod - afternoonEnd - 1) * step;
+  }
+
+  int periodEndMinutes(int period) =>
+      periodStartMinutes(period) + periodDurationMinutes;
+
+  String periodStartLabel(int period) =>
+      formatClockMinutes(periodStartMinutes(period));
+
+  String periodEndLabel(int period) =>
+      formatClockMinutes(periodEndMinutes(period));
+
+  String courseTimeLabel(int startPeriod, int endPeriod) =>
+      '${periodStartLabel(startPeriod)}–${periodEndLabel(endPeriod)}';
+
+  Map<String, dynamic> toJson() => {
+    'morning_period_count': morningPeriodCount,
+    'afternoon_period_count': afternoonPeriodCount,
+    'evening_period_count': eveningPeriodCount,
+    'morning_start_minutes': morningStartMinutes,
+    'afternoon_start_minutes': afternoonStartMinutes,
+    'evening_start_minutes': eveningStartMinutes,
+    'period_duration_minutes': periodDurationMinutes,
+    'break_duration_minutes': breakDurationMinutes,
+  };
+
+  factory ScheduleSettings.fromJson(Map<String, dynamic> json) {
+    int number(String key, int fallback) =>
+        (json[key] as num?)?.toInt() ?? fallback;
+    final legacyStart = number('first_period_start_minutes', 8 * 60);
+    return ScheduleSettings(
+      morningPeriodCount: number('morning_period_count', 4).clamp(0, 8),
+      afternoonPeriodCount: number('afternoon_period_count', 4).clamp(0, 8),
+      eveningPeriodCount: number('evening_period_count', 4).clamp(0, 8),
+      morningStartMinutes: number(
+        'morning_start_minutes',
+        legacyStart,
+      ).clamp(0, 23 * 60 + 59),
+      afternoonStartMinutes: number(
+        'afternoon_start_minutes',
+        14 * 60,
+      ).clamp(0, 23 * 60 + 59),
+      eveningStartMinutes: number(
+        'evening_start_minutes',
+        19 * 60,
+      ).clamp(0, 23 * 60 + 59),
+      periodDurationMinutes: number(
+        'period_duration_minutes',
+        45,
+      ).clamp(20, 180),
+      breakDurationMinutes: number('break_duration_minutes', 10).clamp(0, 120),
+    );
+  }
+}
+
+String formatClockMinutes(int totalMinutes) {
+  final normalized = totalMinutes % (24 * 60);
+  final hours = normalized ~/ 60;
+  final minutes = normalized % 60;
+  return '${hours.toString().padLeft(2, '0')}:'
+      '${minutes.toString().padLeft(2, '0')}';
+}
+
 class MasteryPoint {
   const MasteryPoint({required this.name, required this.masteryLevel});
 

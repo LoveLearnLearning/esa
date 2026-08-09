@@ -115,21 +115,53 @@ final answer = 42;
       ),
     );
 
-    message.text = '实时';
+    message.text = '实';
     message.notifyListeners();
-    await tester.pump();
-    expect(find.text('实时'), findsOneWidget);
-
-    message.text += '生成';
+    message.text += '时生成';
     message.notifyListeners();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 130));
     expect(find.text('实时生成'), findsOneWidget);
-    expect(contentChanges, 2);
+    expect(contentChanges, 1);
 
     message.typing = false;
     message.notifyListeners();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 130));
+    expect(find.byType(SelectionArea), findsOneWidget);
   });
+
+  testWidgets(
+    'stream rendering pauses while reading and catches up on resume',
+    (tester) async {
+      final message = ChatMessage.typingPlaceholder();
+      final renderPaused = ValueNotifier(true);
+      addTearDown(renderPaused.dispose);
+
+      await tester.pumpWidget(
+        app(
+          AssistantMessage(
+            message: message,
+            renderPaused: renderPaused,
+            onRegenerate: () {},
+          ),
+        ),
+      );
+
+      message.text = '后台继续接收的内容';
+      message.notifyListeners();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.text('后台继续接收的内容'), findsNothing);
+
+      renderPaused.value = false;
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(find.text('后台继续接收的内容'), findsOneWidget);
+      expect(find.byType(SelectionArea), findsNothing);
+
+      message.typing = false;
+      message.notifyListeners();
+      await tester.pump(const Duration(milliseconds: 130));
+      expect(find.byType(SelectionArea), findsOneWidget);
+    },
+  );
 
   testWidgets('user message is selectable and has a working copy action', (
     tester,

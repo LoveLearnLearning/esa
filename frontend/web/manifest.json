@@ -1,11 +1,11 @@
 {
-    "name": "frontend",
-    "short_name": "frontend",
+    "name": "星知智链",
+    "short_name": "星知智链",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1B1A19",
+    "theme_color": "#2563EB",
+    "description": "星知智链智能学习助手",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

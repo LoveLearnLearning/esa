@@ -143,14 +143,18 @@ class _EditableCodeBlock extends StatefulWidget {
 
 class _EditableCodeBlockState extends State<_EditableCodeBlock> {
   late final _HighlightEditingController _controller;
+  late String _originalCode;
   bool _editing = false;
   bool _copied = false;
+
+  bool get _modified => _controller.text != _originalCode;
 
   @override
   void initState() {
     super.initState();
+    _originalCode = widget.code.trimRight();
     _controller = _HighlightEditingController(
-      text: widget.code.trimRight(),
+      text: _originalCode,
       language: widget.language,
     );
   }
@@ -159,13 +163,23 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
   void didUpdateWidget(covariant _EditableCodeBlock oldWidget) {
     super.didUpdateWidget(oldWidget);
     _controller.language = widget.language;
-    if (!_editing && widget.code != oldWidget.code) {
-      final updatedCode = widget.code.trimRight();
+    if (widget.code != oldWidget.code) {
+      final hadLocalChanges = _modified;
+      _originalCode = widget.code.trimRight();
+      if (hadLocalChanges) return;
       _controller.value = TextEditingValue(
-        text: updatedCode,
-        selection: TextSelection.collapsed(offset: updatedCode.length),
+        text: _originalCode,
+        selection: TextSelection.collapsed(offset: _originalCode.length),
       );
     }
+  }
+
+  void _resetCode() {
+    _controller.value = TextEditingValue(
+      text: _originalCode,
+      selection: TextSelection.collapsed(offset: _originalCode.length),
+    );
+    setState(() {});
   }
 
   @override
@@ -207,6 +221,8 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                   _editing ? '预览' : '编辑',
                   () => setState(() => _editing = !_editing),
                 ),
+                if (_modified)
+                  _action(Icons.restore_rounded, '重置为模型生成内容', _resetCode),
                 _action(
                   _copied ? Icons.check : Icons.copy_outlined,
                   '复制',
@@ -238,25 +254,44 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
           ),
           if (_editing)
             SelectionContainer.disabled(
-              child: TextField(
-                controller: _controller,
-                minLines: 4,
-                maxLines: null,
-                onChanged: (_) => setState(() {}),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontFamily: 'JetBrainsMono',
-                  fontSize: 14,
-                  height: 1.65,
-                ),
-                cursorWidth: 2,
-                decoration: const InputDecoration(
-                  isCollapsed: true,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.all(14),
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Container(
+                    color: const Color(0xFF282C34),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minWidth: constraints.maxWidth,
+                        ),
+                        child: IntrinsicWidth(
+                          child: TextField(
+                            controller: _controller,
+                            minLines: 4,
+                            maxLines: null,
+                            keyboardType: TextInputType.multiline,
+                            onChanged: (_) => setState(() {}),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontFamily: 'JetBrainsMono',
+                              fontSize: 14,
+                              height: 1.65,
+                            ),
+                            cursorWidth: 2,
+                            decoration: const InputDecoration(
+                              isCollapsed: true,
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              contentPadding: EdgeInsets.all(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             )
           else
@@ -306,8 +341,10 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
 }
 
 const _codeTheme = <String, TextStyle>{
-  'comment': TextStyle(color: Color(0xFF7F848E), fontStyle: FontStyle.italic),
-  'quote': TextStyle(color: Color(0xFF7F848E), fontStyle: FontStyle.italic),
+  // 项目只内置了 JetBrains Mono Regular。不要对 token 使用合成斜体或不同
+  // 字重，否则 Flutter Web 的编辑选择层会和实际 glyph 度量发生偏移。
+  'comment': TextStyle(color: Color(0xFF7F848E)),
+  'quote': TextStyle(color: Color(0xFF7F848E)),
   'keyword': TextStyle(color: Color(0xFFC678DD)),
   'selector-tag': TextStyle(color: Color(0xFFE06C75)),
   'type': TextStyle(color: Color(0xFFE5C07B)),
