@@ -2,7 +2,9 @@
 // 顶栏 + 消息区(用户气泡 / 助手平铺 / 工具块 / 空状态)+ 输入区
 // 侧边栏用 Scaffold.drawer 资料弹层用 showProfileSheet
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/models.dart';
@@ -29,6 +31,9 @@ class _ChatPageState extends State<ChatPage> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _scrollController = ScrollController();
   bool _followOutput = true;
+  bool _userScrollInProgress = false;
+  int _bottomScrollRequest = 0;
+  String? _lastActiveId;
   TaskMode? _taskMode;
 
   @override
@@ -40,27 +45,71 @@ class _ChatPageState extends State<ChatPage> {
   void _scrollToBottom() {
     if (!_followOutput) return;
 
+    final request = ++_bottomScrollRequest;
+    _scheduleBottomPass(request, 0);
+  }
+
+  void _scheduleBottomPass(int request, int pass) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_followOutput && _scrollController.hasClients) {
-        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      if (!mounted ||
+          !_followOutput ||
+          request != _bottomScrollRequest ||
+          !_scrollController.hasClients) {
+        return;
+      }
+
+      final position = _scrollController.position;
+      final target = position.maxScrollExtent;
+      if ((position.pixels - target).abs() > 0.5) position.jumpTo(target);
+
+      // ListView 会在滚动后继续布局之前尚未创建的消息。跨数帧再次校准，
+      // 避免只跳到懒加载列表的“旧底部”。
+      if (pass < 6) {
+        WidgetsBinding.instance.scheduleFrame();
+        _scheduleBottomPass(request, pass + 1);
       }
     });
   }
 
+  void _resumeFollowing() {
+    _userScrollInProgress = false;
+    _followOutput = true;
+    _scrollToBottom();
+  }
+
+  void _pauseFollowing() {
+    _followOutput = false;
+    _bottomScrollRequest++;
+  }
+
   bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is UserScrollNotification) {
+      if (notification.direction == ScrollDirection.idle) {
+        if (_userScrollInProgress) {
+          _followOutput = notification.metrics.extentAfter <= 24;
+          _userScrollInProgress = false;
+        }
+      } else {
+        _userScrollInProgress = true;
+        _pauseFollowing();
+      }
+    }
+
     if (notification is ScrollStartNotification &&
         notification.dragDetails != null) {
-      _followOutput = false;
+      _userScrollInProgress = true;
+      _pauseFollowing();
     }
 
     if (notification is ScrollUpdateNotification &&
-        notification.dragDetails != null &&
+        _userScrollInProgress &&
         notification.metrics.extentAfter <= 24) {
       _followOutput = true;
     }
 
-    if (notification is ScrollEndNotification) {
+    if (notification is ScrollEndNotification && _userScrollInProgress) {
       _followOutput = notification.metrics.extentAfter <= 24;
+      _userScrollInProgress = false;
     }
 
     return false;
@@ -69,6 +118,11 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    if (_lastActiveId != app.activeId) {
+      _lastActiveId = app.activeId;
+      _userScrollInProgress = false;
+      _followOutput = true;
+    }
     _scrollToBottom();
     final narrow = MediaQuery.of(context).size.width < 600;
 
@@ -102,11 +156,14 @@ class _ChatPageState extends State<ChatPage> {
               busy: app.busy,
               taskMode: _taskMode,
               onClearTaskMode: () => setState(() => _taskMode = null),
-              onSend: (text, markdown) => app.send(
-                _taskMode?.buildPrompt(text) ?? text,
-                markdown: markdown,
-                displayText: text,
-              ),
+              onSend: (text, markdown) {
+                _resumeFollowing();
+                app.send(
+                  _taskMode?.buildPrompt(text) ?? text,
+                  markdown: markdown,
+                  displayText: text,
+                );
+              },
             ),
           ],
         ),
@@ -119,39 +176,53 @@ class _ChatPageState extends State<ChatPage> {
     final messages = app.toolsOn
         ? app.messages
         : app.messages.where((m) => !m.isTool).toList();
-    return NotificationListener<ScrollNotification>(
-      onNotification: _handleScrollNotification,
-      child: ListView.separated(
-        controller: _scrollController,
-        padding: const EdgeInsets.fromLTRB(20, 34, 20, 24),
-        itemCount: messages.length,
-        separatorBuilder: (_, _) => const SizedBox(height: EsaSpace.messageGap),
-        itemBuilder: (context, index) {
-          final m = messages[index];
-          final Widget child;
-          switch (m.role) {
-            case MessageRole.user:
-              child = UserBubble(text: m.text, markdown: m.markdown);
-            case MessageRole.tool:
-              child = Align(
-                alignment: Alignment.centerLeft,
-                child: ToolCallCard(name: m.name ?? 'tool', output: m.text),
-              );
-            case MessageRole.assistant:
-              child = AssistantMessage(
-                message: m,
-                onRegenerate: () => app.regenerate(m.id),
-              );
-          }
-          return Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: EsaSpace.contentMaxWidth,
+    return Listener(
+      onPointerSignal: (event) {
+        if (event is PointerScrollEvent) {
+          _userScrollInProgress = true;
+          _pauseFollowing();
+        }
+      },
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _handleScrollNotification,
+        child: ListView.separated(
+          key: const ValueKey('chat-message-list'),
+          controller: _scrollController,
+          padding: const EdgeInsets.fromLTRB(20, 34, 20, 24),
+          itemCount: messages.length,
+          separatorBuilder: (_, _) =>
+              const SizedBox(height: EsaSpace.messageGap),
+          itemBuilder: (context, index) {
+            final m = messages[index];
+            final Widget child;
+            switch (m.role) {
+              case MessageRole.user:
+                child = UserBubble(text: m.text, markdown: m.markdown);
+              case MessageRole.tool:
+                child = Align(
+                  alignment: Alignment.centerLeft,
+                  child: ToolCallCard(name: m.name ?? 'tool', output: m.text),
+                );
+              case MessageRole.assistant:
+                child = AssistantMessage(
+                  message: m,
+                  onContentChanged: _scrollToBottom,
+                  onRegenerate: () {
+                    _resumeFollowing();
+                    app.regenerate(m.id);
+                  },
+                );
+            }
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: EsaSpace.contentMaxWidth,
+                ),
+                child: SizedBox(width: double.infinity, child: child),
               ),
-              child: SizedBox(width: double.infinity, child: child),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

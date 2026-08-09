@@ -5,6 +5,24 @@ import 'package:frontend/theme/esa_theme.dart';
 import 'package:frontend/widgets/composer.dart';
 
 void main() {
+  testWidgets('uses the same line metrics for hint and input cursor', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(body: Composer(busy: false, onSend: (_, _) {})),
+      ),
+    );
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.cursorHeight, isNull);
+    expect(field.strutStyle, isNull);
+    expect(field.decoration?.isCollapsed, isTrue);
+    expect(field.decoration?.filled, isFalse);
+    expect(field.decoration?.contentPadding, EdgeInsets.zero);
+  });
+
   testWidgets('does not send when Enter confirms an IME composition', (
     tester,
   ) async {

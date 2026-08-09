@@ -66,7 +66,9 @@ class StreamOutputParser:
     THINK_OPEN = "<think>"
     THINK_CLOSE = "</think>"
     TOOL_OPEN = "<tool_call>"
-    CONTENT_STOP_TOKENS: tuple[str, ...] = ()
+    # 有些模型会先输出一段可见说明，再输出工具调用。工具协议无论出现在
+    # `</think>` 后的哪个位置，都不能作为正文 SSE 事件发送给前端。
+    CONTENT_STOP_TOKENS: tuple[str, ...] = (TOOL_OPEN,)
 
     def __init__(self) -> None:
         self.phase = "reasoning"

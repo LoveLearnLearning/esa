@@ -4,12 +4,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/models.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import '../utils/clipboard.dart';
 import 'esa_markdown.dart';
 
 class AssistantMessage extends StatefulWidget {
@@ -17,10 +17,12 @@ class AssistantMessage extends StatefulWidget {
     super.key,
     required this.message,
     required this.onRegenerate,
+    this.onContentChanged,
   });
 
   final ChatMessage message;
   final VoidCallback onRegenerate;
+  final VoidCallback? onContentChanged;
 
   @override
   State<AssistantMessage> createState() => _AssistantMessageState();
@@ -32,15 +34,39 @@ class _AssistantMessageState extends State<AssistantMessage> {
   Timer? _copyTimer;
 
   @override
+  void initState() {
+    super.initState();
+    widget.message.addListener(_handleMessageChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant AssistantMessage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.message == widget.message) return;
+    oldWidget.message.removeListener(_handleMessageChanged);
+    widget.message.addListener(_handleMessageChanged);
+  }
+
+  void _handleMessageChanged() {
+    widget.onContentChanged?.call();
+  }
+
+  @override
   void dispose() {
+    widget.message.removeListener(_handleMessageChanged);
     _copyTimer?.cancel();
     super.dispose();
   }
 
-  void _copy() {
-    Clipboard.setData(
-      ClipboardData(text: _withoutTrailingAiLabel(widget.message.text)),
-    );
+  Future<void> _copy() async {
+    final copied = await copyText(_visibleAssistantText(widget.message.text));
+    if (!mounted) return;
+    if (!copied) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('复制失败，请手动选择正文复制。')));
+      return;
+    }
     setState(() => _copied = true);
     _copyTimer?.cancel();
     _copyTimer = Timer(const Duration(milliseconds: 1400), () {
@@ -50,6 +76,13 @@ class _AssistantMessageState extends State<AssistantMessage> {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.message,
+      builder: (context, _) => _buildMessage(context),
+    );
+  }
+
+  Widget _buildMessage(BuildContext context) {
     final m = widget.message;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -69,7 +102,9 @@ class _AssistantMessageState extends State<AssistantMessage> {
                 icon: LucideIcons.copy,
                 color: _copied ? EsaColors.accent : context.n.n600,
                 tooltip: '复制',
-                onTap: _copy,
+                onTap: () {
+                  _copy();
+                },
               ),
               const SizedBox(width: 4),
               _IconAction(
@@ -159,10 +194,7 @@ class _AssistantMessageState extends State<AssistantMessage> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.only(top: EsaSpace.md),
-                      child: EsaMarkdown(
-                        data: reasoning,
-                        selectable: true,
-                      ),
+                      child: EsaMarkdown(data: reasoning, selectable: true),
                     ),
                   )
                 : Padding(
@@ -188,11 +220,8 @@ class _AssistantMessageState extends State<AssistantMessage> {
   }
 
   Widget _body(BuildContext context, ChatMessage m) {
-    final visibleText = _withoutTrailingAiLabel(m.text);
-    final markdown = EsaMarkdown(
-      data: visibleText,
-      selectable: true,
-    );
+    final visibleText = _visibleAssistantText(m.text);
+    final markdown = EsaMarkdown(data: visibleText, selectable: true);
 
     if (!m.typing) return markdown;
 
@@ -207,6 +236,35 @@ class _AssistantMessageState extends State<AssistantMessage> {
       ],
     );
   }
+}
+
+String _visibleAssistantText(String text) {
+  return _withoutTrailingAiLabel(_withoutToolCallMarkup(text));
+}
+
+String _withoutToolCallMarkup(String text) {
+  const marker = '<tool_call>';
+  var visible = text.replaceAll(
+    RegExp(
+      r'<tool_call\b[^>]*>.*?</tool_call\s*>',
+      caseSensitive: false,
+      dotAll: true,
+    ),
+    '',
+  );
+
+  // 流式过程中结束标签尚未到达时，从工具调用开始处隐藏后续内容。
+  final openIndex = visible.toLowerCase().indexOf('<tool_call');
+  if (openIndex >= 0) visible = visible.substring(0, openIndex);
+
+  // 防止分块恰好落在 `<tool_call>` 中间时短暂显示半截协议标签。
+  final lower = visible.toLowerCase();
+  for (var length = marker.length - 1; length > 0; length--) {
+    if (lower.endsWith(marker.substring(0, length))) {
+      return visible.substring(0, visible.length - length);
+    }
+  }
+  return visible;
 }
 
 String _withoutTrailingAiLabel(String text) {

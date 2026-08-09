@@ -71,6 +71,24 @@ class StreamOutputParserTests(unittest.TestCase):
         self.assertEqual(content, "")
         self.assertEqual(collected, raw)
 
+    def test_hides_tool_call_that_follows_visible_content(self) -> None:
+        raw = """分析完成</think>
+平均情况需要计算期望值。
+<tool_call>
+<function=math_solver>
+<parameter=expression>n * log(n, 2)</parameter>
+</function>
+</tool_call>"""
+        chunks = [raw[index : index + 2] for index in range(0, len(raw), 2)]
+
+        reasoning, content, collected = self.parse_chunks(chunks)
+
+        self.assertEqual(reasoning, "分析完成")
+        self.assertEqual(content, "\n平均情况需要计算期望值。\n")
+        self.assertNotIn("<tool_call>", content)
+        self.assertNotIn("<function=", content)
+        self.assertEqual(collected, raw)
+
     def test_accepts_think_open_from_generation_output(self) -> None:
         reasoning, content, _ = self.parse_chunks(
             ["<thi", "nk>推理</thi", "nk>回答"]

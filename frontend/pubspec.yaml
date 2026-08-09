@@ -36,11 +36,13 @@ dependencies:
   cupertino_icons: ^1.0.8
   lucide_icons: ^0.257.0
   http: ^1.6.0
-  flutter_markdown_plus: ^1.0.7
+  # 1.0.12 强制 Strut 行高，会让 Flutter Web 的文字选择高亮发生偏移。
+  flutter_markdown_plus: 1.0.7
   flutter_markdown_plus_latex: ^1.0.5
   markdown: ^7.3.0
   highlight: ^0.7.0
   shared_preferences: ^2.5.5
+  web: ^1.1.1
 
 dev_dependencies:
   flutter_test:
