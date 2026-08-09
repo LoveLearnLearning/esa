@@ -41,12 +41,23 @@ class UserProfile {
   final bool profileEnabled;
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
+    final explicit = <String, dynamic>{};
+    final rawExplicit = json['explicit'];
+    if (rawExplicit is List) {
+      for (final item in rawExplicit.whereType<Map>()) {
+        final field = item['field'];
+        if (field is String) explicit[field] = item['value'];
+      }
+    }
+
+    dynamic value(String key) => json[key] ?? explicit[key];
+
     return UserProfile(
-      major: json['major'] as String? ?? 'cs',
-      grade: json['grade'] as String? ?? '',
-      currentWeek: json['current_week'] as int? ?? 1,
-      totalWeeks: json['total_weeks'] as int? ?? 16,
-      profileEnabled: json['profile_enabled'] as bool? ?? false,
+      major: value('major') as String? ?? 'cs',
+      grade: value('grade') as String? ?? '',
+      currentWeek: (value('current_week') as num?)?.toInt() ?? 1,
+      totalWeeks: (value('total_weeks') as num?)?.toInt() ?? 18,
+      profileEnabled: value('profile_enabled') as bool? ?? true,
     );
   }
 }

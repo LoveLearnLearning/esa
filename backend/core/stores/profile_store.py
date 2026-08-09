@@ -50,7 +50,8 @@ class ProfileStore(BaseSQLiteStore):
                     before_json TEXT,
                     after_json TEXT,
                     actor TEXT NOT NULL DEFAULT 'user',
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 )
                 """
             )
@@ -64,7 +65,8 @@ class ProfileStore(BaseSQLiteStore):
                     user_id TEXT NOT NULL,
                     version INTEGER NOT NULL,
                     generated_at TEXT NOT NULL,
-                    PRIMARY KEY(user_id, version)
+                    PRIMARY KEY(user_id, version),
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 )
                 """
             )

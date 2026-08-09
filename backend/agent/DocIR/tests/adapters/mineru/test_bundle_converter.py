@@ -10,6 +10,8 @@
 import hashlib
 from pathlib import Path
 
+import pytest
+
 from backend.agent.DocIR.adapters.mineru import convert_bundle, load_bundle
 from backend.agent.DocIR.adapters.mineru.bundle import MinerUBundle
 from backend.agent.DocIR.adapters.mineru.models import (
@@ -22,6 +24,7 @@ from backend.agent.DocIR.core.enums import TextOrigin
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "mineru_3_4_4_text_page"
 
 
+@pytest.mark.skipif(not FIXTURE.exists(), reason="external MinerU fixture not present")
 def test_real_mineru_fixture_converts():
     bundle = load_bundle(FIXTURE / "raw")
     document = convert_bundle(bundle, FIXTURE / "assets" / "source.pdf", source_page_count=30)
@@ -39,6 +42,7 @@ def test_real_mineru_fixture_converts():
     )
 
 
+@pytest.mark.skipif(not FIXTURE.exists(), reason="external MinerU fixture not present")
 def test_real_mineru_fixture_passes_strict_alignment():
     bundle = load_bundle(FIXTURE / "raw")
     document = convert_bundle(

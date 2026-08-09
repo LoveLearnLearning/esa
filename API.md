@@ -337,7 +337,16 @@ data: {"delta":"回答正文"}
 
 ### GET /me/profile
 
-返回专业、年级、当前教学周、总教学周和档案开关。
+返回 Profile V2 结构化画像视图，包括 `explicit`、`preferences`、`learning_state`、
+`inferred_patterns`、`profile_version` 等分节。为兼容旧客户端，响应顶层同时保留：
+
+- `major`
+- `grade`
+- `current_week`
+- `total_weeks`
+- `profile_enabled`
+
+新客户端应优先使用分节字段；只需要编辑基础学情资料的客户端可以继续读取上述顶层字段。
 
 ### PATCH /me/profile
 

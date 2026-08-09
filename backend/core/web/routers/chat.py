@@ -23,6 +23,12 @@ from backend.core.utils.models import (
     SessionPrincipal,
     UserRecord,
 )
+from backend.core.web.concurrency import (
+    ConversationTurnCoordinator,
+    ConversationTurnLease,
+    ConversationTurnTargetMissingError,
+    ConversationTurnTimeoutError,
+)
 from backend.core.web.deps import get_current_session
 from backend.core.web.schemas import (
     ConversationCreateRequest,
@@ -35,6 +41,35 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["chat"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
+
+
+def _turn_coordinator(request: Request) -> ConversationTurnCoordinator:
+    coordinator = getattr(
+        request.app.state,
+        "conversation_turn_coordinator",
+        None,
+    )
+    if not isinstance(coordinator, ConversationTurnCoordinator):
+        raise RuntimeError("对话并发协调器尚未初始化")
+    return coordinator
+
+
+async def _acquire_turn(
+    request: Request,
+    conversation_id: str,
+) -> ConversationTurnLease:
+    try:
+        return await _turn_coordinator(request).acquire(conversation_id)
+    except ConversationTurnTargetMissingError as error:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "对话不存在",
+        ) from error
+    except ConversationTurnTimeoutError as error:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "上一条消息仍在生成，请稍后重试",
+        ) from error
 
 
 def _load_owned(
@@ -301,25 +336,25 @@ async def send_message(
     request: Request,
     session: CurrentSession,
 ) -> list[dict]:
-    ctx: MessageContext = _prepare_message(request, conversation_id, body, session)
-    chat_store: ChatStore = request.app.state.chat_store
-    agent: Agent = request.app.state.agent
+    # 在排队前先校验归属，避免无权用户占用其他会话的租约。
+    _load_owned(request, conversation_id, session)
+    lease = await _acquire_turn(request, conversation_id)
+    async with lease:
+        ctx = _prepare_message(request, conversation_id, body, session)
+        chat_store: ChatStore = request.app.state.chat_store
+        agent: Agent = request.app.state.agent
 
-    new_messages: list[dict] = await agent.run(
-        body.content,
-        ctx.user.username,
-        history=ctx.history,
-        prompt_ctx=_build_prompt_context(ctx),
-        total_weeks=ctx.user.total_weeks,
-    )
-
-    generated_messages: list[dict] = new_messages[1:]
-
-    if generated_messages:
-        chat_store.append_messages(
-            conversation_id,
-            generated_messages,
+        new_messages: list[dict] = await agent.run(
+            body.content,
+            ctx.user.username,
+            history=ctx.history,
+            prompt_ctx=_build_prompt_context(ctx),
+            total_weeks=ctx.user.total_weeks,
         )
+
+        generated_messages: list[dict] = new_messages[1:]
+        if generated_messages:
+            chat_store.append_messages(conversation_id, generated_messages)
 
     return [message for message in new_messages if message.get("is_visible", True)]
 
@@ -331,18 +366,16 @@ async def stream_message(
     request: Request,
     session: CurrentSession,
 ) -> StreamingResponse:
-    ctx: MessageContext = _prepare_message(request, conversation_id, body, session)
-    chat_store: ChatStore = request.app.state.chat_store
-    agent: Agent = request.app.state.agent
-    prompt_ctx = _build_prompt_context(ctx)
-
-    # 在创建 event_stream 前把分组参数绑定为局部变量
-    # 闭包直接读取这些值 保证生成器生命周期内取值稳定
-    group_style, group_tone, group_custom_instruction = (
-        ctx.group_style,
-        ctx.group_tone,
-        ctx.group_custom_instruction,
-    )
+    _load_owned(request, conversation_id, session)
+    lease = await _acquire_turn(request, conversation_id)
+    try:
+        ctx = _prepare_message(request, conversation_id, body, session)
+        chat_store: ChatStore = request.app.state.chat_store
+        agent: Agent = request.app.state.agent
+        prompt_ctx = _build_prompt_context(ctx)
+    except BaseException:
+        await lease.release()
+        raise
 
     async def event_stream() -> AsyncIterator[str]:
         yield encode_sse(
@@ -366,10 +399,7 @@ async def stream_message(
                     generated_messages = new_messages[1:]
 
                     if generated_messages:
-                        chat_store.append_messages(
-                            conversation_id,
-                            generated_messages,
-                        )
+                        chat_store.append_messages(conversation_id, generated_messages)
 
                     yield encode_sse(
                         "done",
@@ -395,6 +425,8 @@ async def stream_message(
                     "type": type(error).__name__,
                 },
             )
+        finally:
+            await lease.release()
 
     return StreamingResponse(
         event_stream(),

@@ -36,21 +36,22 @@ from backend.core.web.routers import (
     memories,
     preferences,
 )
+from backend.core.web.concurrency import ConversationTurnCoordinator
 
 DB_PATH = Path(__file__).resolve().parent.parent / "stores" / "data" / "user.db"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 执行数据库迁移 (幂等 未应用的版本按序执行)
-    run_migrations(DB_PATH)
-
+    # 先让各 Store 补齐老库的新增列，再由版本迁移原子重建外键表。
     app.state.user_store = UserStore(DB_PATH)
-    app.state.session_store = SessionStore(DB_PATH)
-
-    # ChatStore 必须先执行：它负责为旧 conversations 表迁移 group_id 列。
-    app.state.chat_store = ChatStore(DB_PATH)
     app.state.group_store = GroupStore(DB_PATH)
+    app.state.chat_store = ChatStore(DB_PATH)
+    app.state.session_store = SessionStore(DB_PATH)
+    app.state.profile_store = ProfileStore(DB_PATH)
+
+    run_migrations(DB_PATH)
+    app.state.conversation_turn_coordinator = ConversationTurnCoordinator(DB_PATH)
 
     app.state.auth = AuthService(
         app.state.user_store,
@@ -67,7 +68,6 @@ async def lifespan(app: FastAPI):
         quantization=MODEL_QUANTIZATION,
         tensor_parallel_size=MODEL_TENSOR_PARALLEL_SIZE,
     )
-    app.state.profile_store = ProfileStore(DB_PATH)
     app.state.profile_builder = ProfileBuilder(
         user_store=app.state.user_store,
         mastery_store=mastery_store,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
@@ -63,8 +63,8 @@ class MemorySettings:
     inferred_profile_enabled: bool = True
     default_conversation_mode: str = "normal"
     episodic_retention_days: int = 180
-    created_at: datetime = ""
-    updated_at: datetime = ""
+    created_at: str = ""
+    updated_at: str = ""
 
 
 @dataclass
@@ -73,8 +73,12 @@ class SessionPrincipal:
 
     session_id: str
     user_id: str
-    issued_at: datetime = field(default_factory=datetime.now)
-    expires_at: datetime = field(default_factory=datetime.now)
+    issued_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+    expires_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
 
 @dataclass
@@ -95,13 +99,9 @@ class PromptContext:
     preferred_style: str = "concise"
     preferred_tone: str = "friendly"
     custom_instruction: str = ""
-<<<<<<< HEAD
     user_profile_context: "ProfileSnapshot | None" = (
         None  # 结构化画像快照 由 ProfileBuilder 生成
     )
-=======
-    user_profile_context: "ProfileSnapshot | None" = None
->>>>>>> c32e307ecdd9b1fd84c3f604f827889ec1543621
     group_style: str | None = None
     group_tone: str | None = None
     group_custom_instruction: str = ""

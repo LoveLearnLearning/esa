@@ -74,3 +74,11 @@ flutter build web --release --dart-define=ESA_API_BASE=/api
 - 完成功能后同步勾选 [TODO.md](TODO.md)。
 - 不提交数据库、日志、Flutter 构建目录或 `frontend-web.tar.gz`。
 - 工具 Schema 从 `backend.agent.tools.tr.schemas` 获取；导出方法见 [DATASET_GENERATION.md](DATASET_GENERATION.md)。
+
+提交前安装开发依赖并运行质量检查：
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+ruff check backend
+```

@@ -15,6 +15,7 @@ bitsandbytes
 # Agent tools
 sympy
 httpx
+requests
 
 # RAG
 sentence-transformers

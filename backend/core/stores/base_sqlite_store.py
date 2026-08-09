@@ -6,6 +6,8 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
+from backend.core.stores.sqlite_connection import connect_sqlite
+
 
 class BaseSQLiteStore:
     """
@@ -28,13 +30,7 @@ class BaseSQLiteStore:
         Returns:
             sqlite3.Connection => 数据库连接对象
         """
-        connection: sqlite3.Connection = sqlite3.connect(
-            self.database_path,
-        )
-
-        connection.row_factory = sqlite3.Row
-
-        return connection
+        return connect_sqlite(self.database_path)
 
     def _initialize(self) -> None:
         """辅助函数 初始化数据表 由子类实现"""
