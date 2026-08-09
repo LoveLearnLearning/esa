@@ -1,7 +1,6 @@
 # backend/agent/rag/collection.py
 
 """
-
 这个文件干什么：ChunkCollection 的严格运行时加载视图。
 
 直白点说就是：按清单把多个 Chunk 文档安全地加载进内存，同时核对路径、哈希和数量没有被篡改。

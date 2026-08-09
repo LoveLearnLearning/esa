@@ -53,8 +53,10 @@ def _choose_end(text: str, cursor: int, max_chars: int) -> int:
         return len(text)
     ceiling = cursor + max_chars
     minimum = cursor + max(1, max_chars // 3)
-    newline = text.rfind("\n", minimum, ceiling + 1)
+    # ``ceiling`` is an exclusive end offset. Including the character at that
+    # index can return ``ceiling + 1`` and violate the hard max_chars contract.
+    newline = text.rfind("\n", minimum, ceiling)
     if newline >= minimum:
         return newline + 1
-    matches = list(_SENTENCE_END.finditer(text, minimum, ceiling + 1))
+    matches = list(_SENTENCE_END.finditer(text, minimum, ceiling))
     return matches[-1].end() if matches else ceiling

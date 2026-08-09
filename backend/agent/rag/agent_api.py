@@ -1,7 +1,6 @@
 # backend/agent/rag/agent_api.py
 
 """
-
 这个文件干什么：把正式检索服务适配为 ESA Agent 可调用的稳定接口。
 
 直白点说就是：在正式检索服务和 Agent 之间做翻译，把复杂检索结果整理成 Agent 熟悉的稳定字典格式。
@@ -139,7 +138,6 @@ def _evidence_payload(evidence: Evidence) -> dict[str, Any]:
 
 
 def _source_label(hit: SearchHit, rank: int) -> str:
-    """生成兼容旧 ESA 展示习惯的简短来源标签。"""
 
     primary = hit.evidence[0]
     section = " / ".join(primary.section_path) or "未知章节"
