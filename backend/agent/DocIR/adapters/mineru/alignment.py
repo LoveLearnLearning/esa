@@ -1,7 +1,6 @@
 # backend/agent/DocIR/adapters/mineru/alignment.py
 
 """
-
 这个文件干什么：MinerU middle.json 与 content_list_v2.json 的逐页对齐。
 
 直白点说就是：把 MinerU 两份顺序可能不一样的页面块按坐标和类型一一配对，配不上就明确报错。

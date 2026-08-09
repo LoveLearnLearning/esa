@@ -1,7 +1,6 @@
 # backend/agent/DocIR/adapters/mineru/bundle.py
 
 """
-
 这个文件干什么：发现并校验单个 MinerU 输出 bundle。
 
 直白点说就是：找到同一次 MinerU 解析生成的几份文件，确认它们齐全后打包交给转换器。

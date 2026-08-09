@@ -1,7 +1,6 @@
 # backend/agent/DocIR/core/document.py
 
 """
-
 这个文件干什么：DocIR V0.2 顶层快照与跨对象不变量。
 
 直白点说就是：规定一整份 DocIR 文档由哪些对象组成，并检查页码、元素、章节和资源之间是否互相对得上。
