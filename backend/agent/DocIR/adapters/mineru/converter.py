@@ -526,7 +526,18 @@ class _MinerUConverter:
         if source_type == "title":
             level = content.get("level") if isinstance(content.get("level"), int) else aligned.middle.level
             return HeadingElement(**common, level=max(1, min(6, level or 1)))
-        if source_type in {"text", "paragraph", "page_header", "header", "page_number"}:
+        if source_type in {
+            "text",
+            "paragraph",
+            "abstract",
+            "ref_text",
+            "page_header",
+            "header",
+            "page_number",
+            "page_footnote",
+            "page_aside_text",
+            "aside_text",
+        }:
             return ParagraphElement(**common)
         if source_type in {"list", "index"}:
             attribute = content.get("attribute")

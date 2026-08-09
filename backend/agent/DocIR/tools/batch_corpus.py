@@ -152,7 +152,9 @@ def raw_metrics(bundle: Any) -> dict[str, Any]:
     alignment_deltas = [
         item.bbox_delta or 0.0
         for page_position, page in enumerate(bundle.middle.pdf_info)
-        for item in align_page(page, bundle.content_v2[page_position], strict=True)
+        # Metrics must not turn a successful lenient conversion into a hard
+        # failure. Strict alignment is audited separately in ``convert_one``.
+        for item in align_page(page, bundle.content_v2[page_position], strict=False)
     ]
     v2_count = sum(len(page) for page in bundle.content_v2 if isinstance(page, list))
     for page in bundle.content_v2:
@@ -384,6 +386,7 @@ def aggregate(results: Iterable[dict[str, Any]]) -> dict[str, Any]:
 
 
 def write_report(path: Path, run_id: str, results: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     totals = aggregate(results)
     strict_complete = totals["documents_success"] > 0 and totals["strict_passed"] == totals["documents_success"]
     lines = [

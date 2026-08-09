@@ -13,6 +13,8 @@ import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from backend.agent.DocIR.tools.batch_corpus import (
     aggregate,
     discover_pdfs,
@@ -24,6 +26,10 @@ from backend.agent.DocIR.tools.batch_corpus import (
 )
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "mineru_3_4_4_text_page"
+requires_real_fixture = pytest.mark.skipif(
+    not (FIXTURE / "raw").is_dir() or not (FIXTURE / "assets" / "source.pdf").is_file(),
+    reason="checkout does not include the external MinerU fixture",
+)
 
 
 def test_discover_pdfs_is_sorted_and_case_insensitive(tmp_path: Path):
@@ -105,6 +111,7 @@ def test_resume_does_not_overwrite_verified_success(tmp_path: Path):
     assert restored == expected
 
 
+@requires_real_fixture
 def test_refresh_conversion_reuses_raw_bundle_and_reaudits(tmp_path: Path):
     source = FIXTURE / "assets" / "source.pdf"
     directory = stable_directory_name(source)
