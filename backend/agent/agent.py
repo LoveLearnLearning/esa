@@ -91,6 +91,7 @@ class Agent:
         kv_cache_dtype: CacheDType = "auto",
         gpu_memory_utilization: float = 0.95,
         max_model_len: int = 32768,
+        max_output_tokens: int = 8192,
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
     ) -> None:
@@ -111,6 +112,7 @@ class Agent:
             kv_cache_dtype=kv_cache_dtype,
             gpu_memory_utilization=gpu_memory_utilization,
             max_model_len=max_model_len,
+            max_output_tokens=max_output_tokens,
             max_num_seqs=max_num_seqs,
             tensor_parallel_size=tensor_parallel_size,
         )
