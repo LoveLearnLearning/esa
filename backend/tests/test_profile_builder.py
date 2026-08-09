@@ -16,6 +16,8 @@ class StubUserStore:
 
 
 class StubMasteryStore:
+    DEFAULT_MASTERY = 50.0
+
     def __init__(self, mastery_map=None, prereqs=None):
         self._mastery_map = mastery_map or {}  # kp_id -> dict
         self._prereqs = prereqs or []
@@ -30,11 +32,43 @@ class StubMasteryStore:
 
 
 class StubKGStore:
-    def __init__(self, points=None):
+    def __init__(self, points=None, prerequisites=None):
         self._points = points or []
+        self._prerequisites = prerequisites or {}
 
     def list_all(self):
         return self._points
+
+    def get_point(self, kp_id):
+        return next((point for point in self._points if point["id"] == kp_id), None)
+
+    def get_prerequisites(self, kp_id, max_depth=3):
+        point = self.get_point(kp_id)
+        if point is None:
+            return []
+        return [
+            {
+                "kp_id": kp_id,
+                "name": point["name"],
+                "course": point.get("course", "course"),
+                "depth": 0,
+                "weight": point.get("weight", 0.0),
+            },
+            *self._prerequisites.get(kp_id, []),
+        ]
+
+
+class StubEvidenceStore:
+    def get_summary(self, user_name, *, kp_id=None, limit=20):
+        return {
+            "evidence_count": 0,
+            "correct_rate": None,
+            "avg_hint_level": None,
+            "independent_rate": None,
+            "avg_explanation_score": None,
+            "avg_transfer_score": None,
+            "recent_misconceptions": [],
+        }
 
 
 class StubCoreMemory:
@@ -118,16 +152,28 @@ def _make_builder(
     kg_store = StubKGStore(kg_points)
     core_memory = StubCoreMemory(memories)
     profile_store = StubProfileStore(suppressed)
-    return ProfileBuilder(user_store, mastery_store, kg_store, profile_store)
+    return ProfileBuilder(
+        user_store,
+        mastery_store,
+        kg_store,
+        profile_store,
+        StubEvidenceStore(),
+    )
 
 
-def _make_query(current_message="", group_style=None, recent_messages=None):
+def _make_query(
+    current_message="",
+    group_style=None,
+    recent_messages=None,
+    resolved_kp_ids=None,
+):
     return ProfileQuery(
         user_id="u1",
         username="alice",
         current_message=current_message,
         group_style=group_style,
         recent_messages=recent_messages or [],
+        resolved_kp_ids=resolved_kp_ids or [],
     )
 
 
@@ -176,26 +222,32 @@ def test_group_override_does_not_change_user():
     assert user.preferred_style == "concise"
 
 
-def test_learning_state_filtered_by_question():
-    kg_points = [{"id": "kp1", "name": "二叉树"}]
+def test_learning_state_uses_resolved_knowledge_point():
+    kg_points = [{"id": "kp1", "name": "二叉树", "course": "数据结构"}]
     mastery_map = {"kp1": {"mastery_level": 40.0, "practice_count": 5}}
     builder = _make_builder(
         settings=_make_settings(learning=True),
         mastery_map=mastery_map,
         kg_points=kg_points,
     )
-    snapshot = builder.build(_make_query(current_message="二叉树的遍历怎么做"))
+    snapshot = builder.build(
+        _make_query(
+            current_message="二叉树的遍历怎么做",
+            resolved_kp_ids=["kp1"],
+        )
+    )
 
     assert len(snapshot.relevant_learning_state) >= 1
-    kp_field = _field(snapshot.relevant_learning_state, "kp1")
+    kp_field = _field(snapshot.relevant_learning_state, "knowledge.kp1")
     assert kp_field is not None
     assert kp_field.origin == ProfileOrigin.DERIVED_LEARNING_STATE
-    assert kp_field.value["mastery_level"] == 40.0
-    assert kp_field.value["practice_count"] == 5
+    assert kp_field.value["mastery"]["has_record"] is True
+    assert kp_field.value["mastery"]["level"] == 40.0
+    assert kp_field.value["mastery"]["practice_count"] == 5
 
 
 def test_learning_state_empty_no_match():
-    kg_points = [{"id": "kp1", "name": "二叉树"}]
+    kg_points = [{"id": "kp1", "name": "二叉树", "course": "数据结构"}]
     builder = _make_builder(
         settings=_make_settings(learning=True),
         kg_points=kg_points,
@@ -206,16 +258,31 @@ def test_learning_state_empty_no_match():
 
 
 def test_learning_state_disabled():
-    kg_points = [{"id": "kp1", "name": "二叉树"}]
+    kg_points = [{"id": "kp1", "name": "二叉树", "course": "数据结构"}]
     mastery_map = {"kp1": {"mastery_level": 40.0, "practice_count": 5}}
     builder = _make_builder(
         settings=_make_settings(learning=False),
         mastery_map=mastery_map,
         kg_points=kg_points,
     )
-    snapshot = builder.build(_make_query(current_message="二叉树的遍历怎么做"))
+    snapshot = builder.build(
+        _make_query(
+            current_message="二叉树的遍历怎么做",
+            resolved_kp_ids=["kp1"],
+        )
+    )
 
     assert snapshot.relevant_learning_state == []
+
+
+def test_profile_disabled_returns_empty_prompt_snapshot():
+    user = _make_user()
+    user.profile_enabled = False
+    builder = _make_builder(user=user)
+
+    snapshot = builder.build(_make_query(current_message="二叉树"))
+
+    assert snapshot.to_prompt_json() == "{}"
 
 
 def test_core_memory_is_not_automatically_promoted_into_profile():

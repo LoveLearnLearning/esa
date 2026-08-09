@@ -42,6 +42,11 @@ class StubKGStore:
         return []
 
 
+class StubEvidenceStore:
+    def get_summary(self, user_name, *, kp_id=None, limit=20):
+        raise AssertionError("API profile view has no resolved knowledge point")
+
+
 class StubCoreMemory:
     def get_all(self, user_name):
         return []
@@ -90,6 +95,7 @@ def _create_app(tmp_path) -> FastAPI:
         mastery_store=StubMasteryStore(),
         kg_store=StubKGStore(),
         profile_store=profile_store,
+        evidence_store=StubEvidenceStore(),
     )
 
     app = FastAPI()

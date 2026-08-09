@@ -1,14 +1,18 @@
 # backend/core/web/webAPI.py
 
 from contextlib import asynccontextmanager
-from pathlib import Path
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
 from backend.agent.agent import Agent
+from backend.agent.memories.kg_loader import ensure_knowledge_graph_seeded
+from backend.agent.memories.kp_resolver import KnowledgePointResolver
+from backend.agent.memories.paths import USER_DB_PATH
 from backend.agent.memories.profile_builder import ProfileBuilder
+from backend.agent.tools.learning_tools import evidence_store
 from backend.agent.tools.mastery_tools import kg_store, mastery_store
 from backend.core.services.auth_service import AuthService
 from backend.core.stores.chat_store import ChatStore
@@ -37,11 +41,29 @@ from backend.core.web.routers import (
     preferences,
 )
 
-DB_PATH = Path(__file__).resolve().parent.parent / "stores" / "data" / "user.db"
+DB_PATH = USER_DB_PATH
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    point_count, edge_count = ensure_knowledge_graph_seeded(kg_store)
+    actual_points = kg_store.count_points()
+    actual_edges = kg_store.count_prerequisites()
+
+    if actual_points <= 0:
+        raise RuntimeError("Knowledge Graph 初始化失败：knowledge_points 为空")
+
+    logger.info(
+        "Knowledge Graph ready: points=%d edges=%d "
+        "(synced points=%d edges=%d)",
+        actual_points,
+        actual_edges,
+        point_count,
+        edge_count,
+    )
+    app.state.kp_resolver = KnowledgePointResolver(kg_store=kg_store)
+
     # 执行数据库迁移 (幂等 未应用的版本按序执行)
     run_migrations(DB_PATH)
 
@@ -73,6 +95,7 @@ async def lifespan(app: FastAPI):
         mastery_store=mastery_store,
         kg_store=kg_store,
         profile_store=app.state.profile_store,
+        evidence_store=evidence_store,
     )
     try:
         yield

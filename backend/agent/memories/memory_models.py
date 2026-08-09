@@ -168,6 +168,7 @@ class ProfileQuery:
     group_id: str | None = None
     current_message: str = ""
     recent_messages: list[dict] = field(default_factory=list)
+    resolved_kp_ids: list[str] = field(default_factory=list)
     group_style: str | None = None
     group_tone: str | None = None
     group_custom_instruction: str = ""

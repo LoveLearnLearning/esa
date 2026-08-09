@@ -7,11 +7,11 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-from pathlib import Path
 from typing import Any
 
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 from backend.agent.memories.mastery_store import MasteryStore
+from backend.agent.memories.paths import KNOWLEDGE_GRAPH_DB_PATH, MASTERY_DB_PATH
 from backend.agent.tools.memory_tools import (
     get_current_user,
     memory_read_allowed,
@@ -19,8 +19,6 @@ from backend.agent.tools.memory_tools import (
 )
 from backend.agent.tools.tools import tr
 from backend.core.utils.models import UserRecord
-
-MEMORIES_DIR = Path(__file__).resolve().parent.parent / "memories"
 
 class EsaMasteryStore(MasteryStore):
     """ESA 运行时 MasteryStore：收紧前置知识点语义。"""
@@ -49,10 +47,10 @@ class EsaMasteryStore(MasteryStore):
 
 
 kg_store = KnowledgeGraphStore(
-    database_path=MEMORIES_DIR / "data" / "knowledge_graph.db",
+    database_path=KNOWLEDGE_GRAPH_DB_PATH,
 )
 mastery_store = EsaMasteryStore(
-    database_path=MEMORIES_DIR / "data" / "mastery.db",
+    database_path=MASTERY_DB_PATH,
 )
 
 current_total_weeks: ContextVar[int | None] = ContextVar(
