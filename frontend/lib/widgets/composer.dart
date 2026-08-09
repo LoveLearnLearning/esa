@@ -127,14 +127,15 @@ class _ComposerState extends State<Composer> {
                         maxLines: 6,
                         onChanged: (_) => setState(() {}),
                         style: inputStyle,
-                        strutStyle: StrutStyle.fromTextStyle(
-                          inputStyle,
-                          forceStrutHeight: true,
-                        ),
                         textAlignVertical: TextAlignVertical.top,
-                        cursorHeight: 21.75,
                         cursorWidth: 2,
-                        decoration: InputDecoration.collapsed(
+                        decoration: InputDecoration(
+                          isCollapsed: true,
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
                           hintText: widget.taskMode?.hint ?? '问点什么…',
                           hintStyle: inputStyle.copyWith(color: context.n.n600),
                         ),

@@ -73,12 +73,8 @@ class SessionPrincipal:
 
     session_id: str
     user_id: str
-    issued_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
-    expires_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    issued_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass

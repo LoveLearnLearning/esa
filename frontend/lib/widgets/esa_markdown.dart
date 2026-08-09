@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_markdown_plus_latex/flutter_markdown_plus_latex.dart';
 import 'package:highlight/highlight.dart' show Node, highlight;
@@ -7,6 +6,8 @@ import 'package:markdown/markdown.dart' as md;
 
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import '../utils/clipboard.dart';
+import 'copyable_selection_area.dart';
 
 String normalizeMarkdownLatex(String source) {
   final lines = source.split('\n');
@@ -56,9 +57,11 @@ class EsaMarkdown extends StatelessWidget {
       fontWeight: FontWeight.w700,
     );
 
-    return MarkdownBody(
+    final markdown = MarkdownBody(
       data: normalizeMarkdownLatex(data),
-      selectable: selectable,
+      // 单个 SelectableText 无法跨 Markdown 段落选择。外层统一交给
+      // SelectionArea，段落内部保持普通 Text/RichText。
+      selectable: false,
       builders: {
         'latex': LatexElementBuilder(textStyle: bodyStyle),
         'pre': _CodeBlockBuilder(),
@@ -94,17 +97,17 @@ class EsaMarkdown extends StatelessWidget {
           color: context.scheme.onSurface,
           backgroundColor: context.n.n200,
         ),
-        codeblockDecoration: BoxDecoration(
-          color: context.n.n100,
-          border: Border.all(color: context.n.divider),
-          borderRadius: BorderRadius.circular(EsaRadii.toolCard),
-        ),
+        // `pre` 已由 _EditableCodeBlock 自己绘制背景、边框和圆角。
+        // 这里保持透明，避免 MarkdownBody 再套一层形成顶部横线和露底。
+        codeblockDecoration: const BoxDecoration(),
         a: bodyStyle?.copyWith(
           color: EsaColors.accent,
           decoration: TextDecoration.underline,
         ),
       ),
     );
+
+    return selectable ? CopyableSelectionArea(child: markdown) : markdown;
   }
 }
 
@@ -175,7 +178,6 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xFF171717),
         border: Border.all(color: context.n.divider),
@@ -209,11 +211,15 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                   _copied ? Icons.check : Icons.copy_outlined,
                   '复制',
                   () async {
-                    await Clipboard.setData(
-                      ClipboardData(text: _controller.text),
-                    );
-                    if (!mounted) return;
-                    setState(() => _copied = true);
+                    final copied = await copyText(_controller.text);
+                    if (!context.mounted) return;
+                    if (!copied) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('复制失败，请手动选择代码复制。')),
+                      );
+                      return;
+                    }
+                    setState(() => _copied = copied);
                     Future<void>.delayed(
                       const Duration(milliseconds: 1200),
                       () {
@@ -224,9 +230,7 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                 ),
                 _action(Icons.play_arrow_rounded, '运行', () {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('尚未配置隔离代码执行服务，已阻止在浏览器中直接执行。'),
-                    ),
+                    const SnackBar(content: Text('尚未配置隔离代码执行服务，已阻止在浏览器中直接执行。')),
                   );
                 }),
               ],
@@ -245,13 +249,6 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                   fontSize: 14,
                   height: 1.65,
                 ),
-                strutStyle: const StrutStyle(
-                  fontFamily: 'JetBrainsMono',
-                  fontSize: 14,
-                  height: 1.65,
-                  forceStrutHeight: true,
-                ),
-                cursorHeight: 23.1,
                 cursorWidth: 2,
                 decoration: const InputDecoration(
                   isCollapsed: true,
@@ -275,7 +272,7 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                         horizontal: 16,
                         vertical: 14,
                       ),
-                      child: SelectableText.rich(
+                      child: Text.rich(
                         TextSpan(
                           style: const TextStyle(
                             color: Color(0xFFABB2BF),
@@ -287,12 +284,6 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                             _controller.text,
                             widget.language,
                           ),
-                        ),
-                        strutStyle: const StrutStyle(
-                          fontFamily: 'JetBrainsMono',
-                          fontSize: 14,
-                          height: 1.65,
-                          forceStrutHeight: true,
                         ),
                       ),
                     ),
