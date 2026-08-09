@@ -877,3 +877,48 @@
 - `get_next_profile_version` 已改为单条 `INSERT ... SELECT COALESCE(MAX(version),0)+1` 原子自增，消除并发竞态
 - cleanup 脚本 `backend/scripts/cleanup_profile_dimensions.py` 支持 `--retention-days` / `--db-path` 参数，需由部署运维配置 cron/systemd timer 定期执行（建议每天凌晨运行）
 - 评估数据集 `profile_eval_dataset.jsonl` 已扩充至 50 条样本（eval_001 ~ eval_050），覆盖显式/偏好/群组/学习状态/suppressed/Token 截断/边界值/开关组合等场景
+
+---
+
+## 2026-08-09 第十六次开发记录
+
+### SQLite 数据完整性
+
+- 新增统一的 `connect_sqlite()`，所有连接默认启用 `PRAGMA foreign_keys = ON` 和
+  `busy_timeout`。
+- V5 迁移原子重建用户、会话、分组、对话、消息、画像和版本相关表，补齐外键、
+  级联规则与跨用户归属触发器。
+- 历史孤儿数据写入 `migration_orphans`，保留来源表、原始主键、原因和 JSON 快照，
+  不静默丢弃。
+- 使用真实 `user.db` 的副本完成迁移烟测：迁移可重复执行、外键检查无违规，真实数据库
+  未被写入。
+
+### 同一对话并发顺序
+
+- 新增对话级租约，从读取历史、写入用户消息到持久化助手消息保持同一临界区。
+- 进程内 keyed lock 减少轮询，SQLite 租约保证多个 Uvicorn worker 之间也不会乱序。
+- 租约包含心跳、TTL 和短暂锁冲突重试；异常退出后可以自动恢复。
+- 同一对话排队等待超时返回 `409`，不同对话仍可并行推理。
+
+### 工程质量与文档治理
+
+- 增加 `requirements-dev.txt`、`pyproject.toml`、`Makefile` 和 GitHub Actions 质量门禁。
+- 根目录 `.gitignore` 统一覆盖缓存、日志、SQLite、密钥、模型权重、构建产物和集群本地
+  脚本。
+- 合并重复的修改/修复/优化文档到 `OPTIMIZATION_NOTES.md`，合并产品与重构待办到
+  `TODO.md`；README、API、需求文档和专题设计状态同步到当前实现。
+
+### 验证结果
+
+```text
+SQLite/并发定向测试：10 passed
+其余可运行测试：168 passed, 24 skipped
+Ruff：通过
+mypy：通过（关键持久化路径）
+compileall：通过
+git diff --check：通过
+```
+
+24 个跳过项依赖仓库外的 MinerU、真实语料或评测数据。超算节点上的 Starlette
+`TestClient` 在进入业务路由前卡于 AnyIO blocking portal，Profile API 集成测试继续由
+干净 CI 环境负责验证。

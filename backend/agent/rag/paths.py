@@ -20,3 +20,7 @@ def workspace_root() -> Path:
     if configured:
         return Path(configured).expanduser().resolve()
     return Path(__file__).resolve().parents[3]
+
+
+# 向后兼容仍按常量导入路径的 CLI、评估脚本和测试。
+WORKSPACE_ROOT = workspace_root()

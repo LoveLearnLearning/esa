@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from pathlib import Path
@@ -34,6 +35,43 @@ from backend.core.utils.models import (
     ToolCall,
     UserRecord,
 )
+
+
+_UNSUPPORTED_TOOL_CALLS_PATTERN = re.compile(
+    r"<[^<>]*tool_calls(?:\s[^<>]*)?>",
+    re.IGNORECASE,
+)
+
+
+def sanitize_qwen_history(history: list[dict]) -> list[dict]:
+    """移除不属于 Qwen XML 协议的旧工具调用轮次。
+
+    Qwen 使用单数 ``<tool_call>``。旧会话中可能残留复数
+    ``<...tool_calls>`` 协议；把它重新放进 prompt 会诱导 Qwen 模仿旧格式。
+    删除旧 assistant 调用时，也删除紧随其后的 tool 结果，避免孤立消息。
+    """
+    sanitized: list[dict] = []
+    skip_following_tools = False
+
+    for message in history:
+        role = message.get("role")
+        content = message.get("content", "")
+
+        if role == "assistant":
+            skip_following_tools = isinstance(content, str) and bool(
+                _UNSUPPORTED_TOOL_CALLS_PATTERN.search(content)
+            )
+            if skip_following_tools:
+                continue
+        elif role == "tool":
+            if skip_following_tools:
+                continue
+        else:
+            skip_following_tools = False
+
+        sanitized.append(message)
+
+    return sanitized
 
 
 def build_user_profile_context(
@@ -86,6 +124,7 @@ class Agent:
         total_weeks: int | None = None,
     ) -> tuple[list[dict], list[dict]]:
         prompt_ctx = prompt_ctx or PromptContext()
+        history = sanitize_qwen_history(history or [])
 
         set_current_user(user_name)
         set_current_conversation_mode(prompt_ctx.conversation_mode)
@@ -96,7 +135,7 @@ class Agent:
         # 轻量确定性路由只给主 Agent 一个“候选策略”，不直接执行 Skill。
         decision = PedagogyRouter.route(
             input,
-            history=history or [],
+            history=history,
             profile=prompt_ctx.user_profile_context,
         )
 
@@ -123,7 +162,7 @@ class Agent:
                 "role": "system",
                 "content": system_prompt,
             },
-            *(history or []),
+            *history,
             user_message,
         ]
 

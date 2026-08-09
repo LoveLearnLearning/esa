@@ -70,6 +70,7 @@ class _ComposerState extends State<Composer> {
 
   @override
   Widget build(BuildContext context) {
+    final narrow = MediaQuery.sizeOf(context).width < 600;
     final inputStyle = (context.texts.bodyLarge ?? const TextStyle()).copyWith(
       color: context.scheme.onSurface,
       fontSize: 15,
@@ -120,23 +121,33 @@ class _ComposerState extends State<Composer> {
                     ],
                     Focus(
                       onKeyEvent: _onKey,
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focus,
-                        minLines: 2,
-                        maxLines: 6,
-                        onChanged: (_) => setState(() {}),
-                        style: inputStyle,
-                        strutStyle: StrutStyle.fromTextStyle(
-                          inputStyle,
-                          forceStrutHeight: true,
-                        ),
-                        textAlignVertical: TextAlignVertical.top,
-                        cursorHeight: 21.75,
-                        cursorWidth: 2,
-                        decoration: InputDecoration.collapsed(
-                          hintText: widget.taskMode?.hint ?? '问点什么…',
-                          hintStyle: inputStyle.copyWith(color: context.n.n600),
+                      child: ListenableBuilder(
+                        listenable: _focus,
+                        builder: (context, _) => TextField(
+                          controller: _controller,
+                          focusNode: _focus,
+                          minLines: 2,
+                          maxLines: 6,
+                          onChanged: (_) => setState(() {}),
+                          style: inputStyle,
+                          textAlignVertical: TextAlignVertical.top,
+                          cursorWidth: 2,
+                          decoration: InputDecoration(
+                            isCollapsed: true,
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                            // Flutter Web 会让空字段的光标和 hint 从同一个
+                            // x 坐标开始绘制，光标会盖住首字形成“重影”。
+                            hintText: _focus.hasFocus
+                                ? null
+                                : widget.taskMode?.hint ?? '问点什么…',
+                            hintStyle: inputStyle.copyWith(
+                              color: context.n.n600,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -146,14 +157,16 @@ class _ComposerState extends State<Composer> {
                         _attachButton(context),
                         const SizedBox(width: EsaSpace.sm),
                         _markdownButton(context),
-                        const SizedBox(width: EsaSpace.md),
-                        Text(
-                          'Enter 发送 · Shift + Enter 换行',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: context.n.n600,
+                        if (!narrow) ...[
+                          const SizedBox(width: EsaSpace.md),
+                          Text(
+                            'Enter 发送 · Shift + Enter 换行',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: context.n.n600,
+                            ),
                           ),
-                        ),
+                        ],
                         const Spacer(),
                         _sendButton(context),
                       ],

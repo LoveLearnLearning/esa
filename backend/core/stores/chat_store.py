@@ -30,7 +30,9 @@ class ChatStore(BaseSQLiteStore):
                     title TEXT NOT NULL,
                     group_id TEXT,
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE SET NULL
                 )
                 """
             )
@@ -43,7 +45,21 @@ class ChatStore(BaseSQLiteStore):
                     content TEXT NOT NULL,
                     name TEXT,
                     is_visible INTEGER NOT NULL DEFAULT 1,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(conversation_id)
+                        REFERENCES conversations(conversation_id) ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversation_turn_leases (
+                    conversation_id TEXT PRIMARY KEY,
+                    owner_token TEXT NOT NULL,
+                    acquired_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    FOREIGN KEY(conversation_id)
+                        REFERENCES conversations(conversation_id) ON DELETE CASCADE
                 )
                 """
             )
@@ -87,6 +103,50 @@ class ChatStore(BaseSQLiteStore):
                 """
                 CREATE INDEX IF NOT EXISTS idx_conversations_group
                 ON conversations (user_id, group_id, updated_at)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_turn_leases_expires
+                ON conversation_turn_leases (expires_at)
+                """
+            )
+            connection.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS conversations_group_owner_insert
+                BEFORE INSERT ON conversations
+                FOR EACH ROW
+                WHEN NEW.group_id IS NOT NULL
+                 AND NOT EXISTS (
+                     SELECT 1 FROM groups
+                     WHERE group_id = NEW.group_id
+                       AND user_id = NEW.user_id
+                 )
+                BEGIN
+                    SELECT RAISE(
+                        ABORT,
+                        'conversation group must belong to its user'
+                    );
+                END
+                """
+            )
+            connection.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS conversations_group_owner_update
+                BEFORE UPDATE OF group_id, user_id ON conversations
+                FOR EACH ROW
+                WHEN NEW.group_id IS NOT NULL
+                 AND NOT EXISTS (
+                     SELECT 1 FROM groups
+                     WHERE group_id = NEW.group_id
+                       AND user_id = NEW.user_id
+                 )
+                BEGIN
+                    SELECT RAISE(
+                        ABORT,
+                        'conversation group must belong to its user'
+                    );
+                END
                 """
             )
 

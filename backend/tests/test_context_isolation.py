@@ -15,7 +15,9 @@ from backend.agent.tools.memory_tools import (
 )
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.stores.chat_store import ChatStore
-from backend.core.utils.models import PromptContext
+from backend.core.stores.group_store import GroupStore
+from backend.core.stores.user_store import UserStore
+from backend.core.utils.models import PromptContext, UserRecord
 
 
 def test_system_prompt_no_longer_contains_temp_memory_section():
@@ -30,6 +32,16 @@ def test_system_prompt_no_longer_contains_temp_memory_section():
 def test_get_model_history_and_append_is_atomic(tmp_path):
     """RC#3: 原子方法返回追加前的历史 且消息在同一事务内落库。"""
     db_path = tmp_path / "chat.db"
+    user_store = UserStore(db_path)
+    assert user_store.create(
+        UserRecord(
+            id="u1",
+            username="u1",
+            password_hash="hash",
+            status="active",
+        )
+    )
+    GroupStore(db_path)
     chat_store = ChatStore(db_path)
     conversation = chat_store.create_conversation(user_id="u1")
     conversation_id = conversation["conversation_id"]

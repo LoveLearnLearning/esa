@@ -410,7 +410,9 @@ def write_report(path: Path, run_id: str, results: list[dict[str, Any]]) -> None
     ]
     for item in results:
         if item.get("metrics"):
-            raw = item["metrics"]["raw"]; docir = item["metrics"]["docir"]; strict = item["metrics"]["strict_audit"]
+            raw = item["metrics"]["raw"]
+            docir = item["metrics"]["docir"]
+            strict = item["metrics"]["strict_audit"]
             strict_error = (strict.get("error") or "passed").replace("|", "\\|").replace("\n", " ")
             lines.append(f"| {item['filename']} | {item['status']} | {docir['pages']} | {item.get('mineru', {}).get('elapsed_seconds', 0):.1f} | {raw['middle_blocks']}+{raw['discarded_blocks']}/{raw['v2_blocks']} | {docir['unknown_elements']} ({docir['unknown_rate']:.1%}) | {docir['quality_issues'].get('middle_v2_mismatch', 0)} | {raw['discarded_blocks']} | `{strict_error}` |")
         else:

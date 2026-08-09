@@ -2,6 +2,24 @@ import sqlite3
 
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
+from backend.core.stores.user_store import UserStore
+from backend.core.utils.models import UserRecord
+
+
+def _setup_stores(db_path):
+    user_store = UserStore(db_path)
+    for user_id in ("u1", "u2"):
+        assert user_store.create(
+            UserRecord(
+                id=user_id,
+                username=user_id,
+                password_hash="hash",
+                status="active",
+            )
+        )
+    group_store = GroupStore(db_path)
+    chat_store = ChatStore(db_path)
+    return chat_store, group_store
 
 
 def test_legacy_database_migrates_and_supports_grouping(tmp_path):
@@ -21,8 +39,7 @@ def test_legacy_database_migrates_and_supports_grouping(tmp_path):
     connection.commit()
     connection.close()
 
-    chat_store = ChatStore(db_path)
-    group_store = GroupStore(db_path)
+    chat_store, group_store = _setup_stores(db_path)
 
     columns = {
         row[1]
@@ -55,8 +72,7 @@ def test_legacy_database_migrates_and_supports_grouping(tmp_path):
 
 def test_move_delete_and_ownership_guards(tmp_path):
     db_path = tmp_path / "esa.db"
-    chat_store = ChatStore(db_path)
-    group_store = GroupStore(db_path)
+    chat_store, group_store = _setup_stores(db_path)
 
     group_u1 = group_store.create_group("u1", "数学")
     group_u2 = group_store.create_group("u2", "私有分组")
@@ -87,8 +103,7 @@ def test_move_delete_and_ownership_guards(tmp_path):
 
 def test_group_limit_is_enforced(tmp_path):
     db_path = tmp_path / "esa.db"
-    ChatStore(db_path)
-    group_store = GroupStore(db_path)
+    _, group_store = _setup_stores(db_path)
 
     assert group_store.create_group("u1", "A", group_limit=1) is not None
     assert group_store.create_group("u1", "B", group_limit=1) is None
@@ -97,8 +112,7 @@ def test_group_limit_is_enforced(tmp_path):
 
 def test_list_conversations_can_filter_group_and_ungrouped(tmp_path):
     db_path = tmp_path / "esa.db"
-    chat_store = ChatStore(db_path)
-    group_store = GroupStore(db_path)
+    chat_store, group_store = _setup_stores(db_path)
     group = group_store.create_group("u1", "系统")
     assert group is not None
 
@@ -117,8 +131,7 @@ def test_list_conversations_can_filter_group_and_ungrouped(tmp_path):
 
 def test_update_conversation_is_atomic_and_user_scoped(tmp_path):
     db_path = tmp_path / "esa.db"
-    chat_store = ChatStore(db_path)
-    group_store = GroupStore(db_path)
+    chat_store, group_store = _setup_stores(db_path)
 
     group = group_store.create_group("u1", "算法")
     assert group is not None
@@ -150,8 +163,7 @@ def test_update_conversation_is_atomic_and_user_scoped(tmp_path):
 
 def test_update_conversation_can_move_to_ungrouped(tmp_path):
     db_path = tmp_path / "esa.db"
-    chat_store = ChatStore(db_path)
-    group_store = GroupStore(db_path)
+    chat_store, group_store = _setup_stores(db_path)
 
     group = group_store.create_group("u1", "数学")
     assert group is not None

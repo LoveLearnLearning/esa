@@ -1,7 +1,7 @@
 import sys
 from importlib import import_module
 
-from backend.agent.agent import build_user_profile_context
+from backend.agent.agent import build_user_profile_context, sanitize_qwen_history
 from backend.agent.memories.memory_models import (
     ProfileField,
     ProfileOrigin,
@@ -30,6 +30,37 @@ def test_build_user_profile_context_returns_none():
         status="active",
     )
     assert build_user_profile_context(user) is None
+
+
+def test_sanitize_qwen_history_removes_unsupported_tool_protocol_turn():
+    history = [
+        {"role": "user", "content": "计算这个积分"},
+        {
+            "role": "assistant",
+            "content": "<｜DSML｜tool_calls><｜DSML｜invoke name=\"math_solver\">",
+        },
+        {"role": "tool", "name": "math_solver", "content": "旧结果"},
+        {"role": "assistant", "content": "最终讲解"},
+        {"role": "user", "content": "下一题"},
+    ]
+
+    assert sanitize_qwen_history(history) == [
+        {"role": "user", "content": "计算这个积分"},
+        {"role": "assistant", "content": "最终讲解"},
+        {"role": "user", "content": "下一题"},
+    ]
+
+
+def test_sanitize_qwen_history_keeps_qwen_tool_protocol_turn():
+    history = [
+        {
+            "role": "assistant",
+            "content": "<tool_call><function=math_solver></function></tool_call>",
+        },
+        {"role": "tool", "name": "math_solver", "content": "结果"},
+    ]
+
+    assert sanitize_qwen_history(history) == history
 
 
 def test_profile_snapshot_injected_into_system_prompt():

@@ -40,6 +40,7 @@ from backend.core.web.routers import (
     memories,
     preferences,
 )
+from backend.core.web.concurrency import ConversationTurnCoordinator
 
 DB_PATH = USER_DB_PATH
 logger = logging.getLogger(__name__)
@@ -47,32 +48,15 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    point_count, edge_count = ensure_knowledge_graph_seeded(kg_store)
-    actual_points = kg_store.count_points()
-    actual_edges = kg_store.count_prerequisites()
-
-    if actual_points <= 0:
-        raise RuntimeError("Knowledge Graph 初始化失败：knowledge_points 为空")
-
-    logger.info(
-        "Knowledge Graph ready: points=%d edges=%d "
-        "(synced points=%d edges=%d)",
-        actual_points,
-        actual_edges,
-        point_count,
-        edge_count,
-    )
-    app.state.kp_resolver = KnowledgePointResolver(kg_store=kg_store)
-
-    # 执行数据库迁移 (幂等 未应用的版本按序执行)
-    run_migrations(DB_PATH)
-
+    # 先让各 Store 补齐老库的新增列，再由版本迁移原子重建外键表。
     app.state.user_store = UserStore(DB_PATH)
-    app.state.session_store = SessionStore(DB_PATH)
-
-    # ChatStore 必须先执行：它负责为旧 conversations 表迁移 group_id 列。
-    app.state.chat_store = ChatStore(DB_PATH)
     app.state.group_store = GroupStore(DB_PATH)
+    app.state.chat_store = ChatStore(DB_PATH)
+    app.state.session_store = SessionStore(DB_PATH)
+    app.state.profile_store = ProfileStore(DB_PATH)
+
+    run_migrations(DB_PATH)
+    app.state.conversation_turn_coordinator = ConversationTurnCoordinator(DB_PATH)
 
     app.state.auth = AuthService(
         app.state.user_store,
@@ -89,7 +73,6 @@ async def lifespan(app: FastAPI):
         quantization=MODEL_QUANTIZATION,
         tensor_parallel_size=MODEL_TENSOR_PARALLEL_SIZE,
     )
-    app.state.profile_store = ProfileStore(DB_PATH)
     app.state.profile_builder = ProfileBuilder(
         user_store=app.state.user_store,
         mastery_store=mastery_store,

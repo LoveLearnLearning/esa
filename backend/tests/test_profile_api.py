@@ -136,6 +136,13 @@ def test_get_profile_returns_structured_view(tmp_path):
     assert "profile_version" in body
     assert "generated_at" in body
 
+    # 旧客户端仍可读取基础学情字段，避免 Profile V2 升级造成静默默认值。
+    assert body["major"] == "cs"
+    assert body["grade"] == "大二"
+    assert body["current_week"] == 3
+    assert body["total_weeks"] == 18
+    assert body["profile_enabled"] is True
+
     # explicit 包含 major 字段 origin=explicit_setting confidence=1.0
     explicit_fields = {item["field"]: item for item in body["explicit"]}
     assert "major" in explicit_fields

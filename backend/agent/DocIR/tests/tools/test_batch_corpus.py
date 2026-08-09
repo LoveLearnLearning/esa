@@ -13,6 +13,8 @@ import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from backend.agent.DocIR.tools.batch_corpus import (
     aggregate,
     discover_pdfs,
@@ -105,6 +107,7 @@ def test_resume_does_not_overwrite_verified_success(tmp_path: Path):
     assert restored == expected
 
 
+@pytest.mark.skipif(not FIXTURE.exists(), reason="external MinerU fixture not present")
 def test_refresh_conversion_reuses_raw_bundle_and_reaudits(tmp_path: Path):
     source = FIXTURE / "assets" / "source.pdf"
     directory = stable_directory_name(source)

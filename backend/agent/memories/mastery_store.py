@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from math import exp, log
 from pathlib import Path
 
+from backend.core.stores.sqlite_connection import connect_sqlite
+
 
 class MasteryStore:
     """
@@ -62,13 +64,7 @@ class MasteryStore:
 
     def __connect(self) -> sqlite3.Connection:
         """辅助函数 链接 SQLite 数据库"""
-        connection: sqlite3.Connection = sqlite3.connect(
-            self.database_path,
-        )
-
-        connection.row_factory = sqlite3.Row
-
-        return connection
+        return connect_sqlite(self.database_path)
 
     def __initialize(self) -> None:
         """辅助函数 初始化 SQLite 数据库"""

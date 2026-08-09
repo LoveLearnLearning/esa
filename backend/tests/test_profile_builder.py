@@ -150,7 +150,6 @@ def _make_builder(
     user_store = StubUserStore(user, settings)
     mastery_store = StubMasteryStore(mastery_map, prereqs)
     kg_store = StubKGStore(kg_points)
-    core_memory = StubCoreMemory(memories)
     profile_store = StubProfileStore(suppressed)
     return ProfileBuilder(
         user_store,
