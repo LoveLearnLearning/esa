@@ -72,6 +72,7 @@ unknown syntax
   testWidgets('code stays highlighted while editing', (tester) async {
     await tester.pumpWidget(
       app('''```dart
+// model comment
 final answer = 42;
 ```'''),
     );
@@ -80,8 +81,31 @@ final answer = 42;
     await tester.pump();
 
     expect(find.byType(TextField), findsOneWidget);
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.decoration?.filled, isFalse);
+    expect(
+      find.ancestor(
+        of: find.byType(TextField),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is SingleChildScrollView &&
+              widget.scrollDirection == Axis.horizontal,
+        ),
+      ),
+      findsOneWidget,
+    );
     await tester.enterText(find.byType(TextField), 'const answer = 43;');
     await tester.pump();
+
+    expect(find.byTooltip('重置为模型生成内容'), findsOneWidget);
+    await tester.tap(find.byTooltip('重置为模型生成内容'));
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      '// model comment\nfinal answer = 42;',
+    );
+    expect(find.byTooltip('重置为模型生成内容'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

@@ -30,16 +30,30 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _scrollController = ScrollController();
+  final _streamRenderingPaused = ValueNotifier(false);
   bool _followOutput = true;
   bool _userScrollInProgress = false;
+  bool _messagePointerDown = false;
   int _bottomScrollRequest = 0;
   String? _lastActiveId;
   TaskMode? _taskMode;
 
   @override
   void dispose() {
+    _streamRenderingPaused.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _setFollowOutput(bool value) {
+    // 真机拖动会连续产生很小的 ScrollUpdate。即使当前位置仍在底部阈值内，
+    // 只要手指没有松开，就绝不能重新开启追底。
+    if (value && _messagePointerDown) return;
+    _followOutput = value;
+    final paused = !value;
+    if (_streamRenderingPaused.value != paused) {
+      _streamRenderingPaused.value = paused;
+    }
   }
 
   void _scrollToBottom() {
@@ -73,20 +87,40 @@ class _ChatPageState extends State<ChatPage> {
 
   void _resumeFollowing() {
     _userScrollInProgress = false;
-    _followOutput = true;
+    _setFollowOutput(true);
     _scrollToBottom();
   }
 
   void _pauseFollowing() {
-    _followOutput = false;
+    _setFollowOutput(false);
     _bottomScrollRequest++;
+  }
+
+  void _handleMessagePointerDown(PointerDownEvent event) {
+    // 在移动端，等到 ScrollStartNotification 才暂停已经太晚：流式回复可能
+    // 已在手指产生位移前再次 jumpTo 底部。按下正文时立刻冻结追底和流式重绘。
+    FocusManager.instance.primaryFocus?.unfocus();
+    _messagePointerDown = true;
+    _userScrollInProgress = true;
+    _pauseFollowing();
+  }
+
+  void _finishMessagePointerInteraction(PointerEvent event) {
+    _messagePointerDown = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final atBottom = _scrollController.position.extentAfter <= 24;
+      _userScrollInProgress = false;
+      _setFollowOutput(atBottom);
+      if (atBottom) _scrollToBottom();
+    });
   }
 
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification is UserScrollNotification) {
       if (notification.direction == ScrollDirection.idle) {
         if (_userScrollInProgress) {
-          _followOutput = notification.metrics.extentAfter <= 24;
+          _setFollowOutput(notification.metrics.extentAfter <= 24);
           _userScrollInProgress = false;
         }
       } else {
@@ -101,14 +135,8 @@ class _ChatPageState extends State<ChatPage> {
       _pauseFollowing();
     }
 
-    if (notification is ScrollUpdateNotification &&
-        _userScrollInProgress &&
-        notification.metrics.extentAfter <= 24) {
-      _followOutput = true;
-    }
-
     if (notification is ScrollEndNotification && _userScrollInProgress) {
-      _followOutput = notification.metrics.extentAfter <= 24;
+      _setFollowOutput(notification.metrics.extentAfter <= 24);
       _userScrollInProgress = false;
     }
 
@@ -121,7 +149,7 @@ class _ChatPageState extends State<ChatPage> {
     if (_lastActiveId != app.activeId) {
       _lastActiveId = app.activeId;
       _userScrollInProgress = false;
-      _followOutput = true;
+      _setFollowOutput(true);
     }
     _scrollToBottom();
     final narrow = MediaQuery.of(context).size.width < 600;
@@ -177,8 +205,13 @@ class _ChatPageState extends State<ChatPage> {
         ? app.messages
         : app.messages.where((m) => !m.isTool).toList();
     return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _handleMessagePointerDown,
+      onPointerUp: _finishMessagePointerInteraction,
+      onPointerCancel: _finishMessagePointerInteraction,
       onPointerSignal: (event) {
         if (event is PointerScrollEvent) {
+          FocusManager.instance.primaryFocus?.unfocus();
           _userScrollInProgress = true;
           _pauseFollowing();
         }
@@ -188,6 +221,7 @@ class _ChatPageState extends State<ChatPage> {
         child: ListView.separated(
           key: const ValueKey('chat-message-list'),
           controller: _scrollController,
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.fromLTRB(20, 34, 20, 24),
           itemCount: messages.length,
           separatorBuilder: (_, _) =>
@@ -206,6 +240,7 @@ class _ChatPageState extends State<ChatPage> {
               case MessageRole.assistant:
                 child = AssistantMessage(
                   message: m,
+                  renderPaused: _streamRenderingPaused,
                   onContentChanged: _scrollToBottom,
                   onRegenerate: () {
                     _resumeFollowing();

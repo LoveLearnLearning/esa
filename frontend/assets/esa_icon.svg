@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="216" fill="#1B1A19"/>
+
+  <!-- Geometric E / knowledge-link backbone -->
+  <path d="M332 292 V732
+           M332 292 H658
+           M332 512 H582
+           M332 732 H658"
+        fill="none"
+        stroke="#2563EB"
+        stroke-width="92"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Terminal nodes reinforce the knowledge-graph / memory-link motif -->
+  <circle cx="658" cy="292" r="46" fill="#2563EB"/>
+  <circle cx="658" cy="732" r="46" fill="#2563EB"/>
+
+  <!-- '星' / intelligence spark: the middle E arm resolves into a star -->
+  <path d="M664 430
+           C674 477 687 490 734 500
+           C687 510 674 523 664 570
+           C654 523 641 510 594 500
+           C641 490 654 477 664 430Z"
+        fill="#F0EEEC"/>
+
+  <!-- small accent core keeps the spark tied visually to ESA blue -->
+  <circle cx="664" cy="500" r="13" fill="#2563EB"/>
+</svg>

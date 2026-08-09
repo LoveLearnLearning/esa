@@ -1,0 +1,49 @@
+aliases:
+  二叉搜索树:
+    - BST
+    - binary search tree
+    - 二叉查找树
+  深度优先搜索:
+    - DFS
+    - depth first search
+    - 深搜
+  广度优先搜索:
+    - BFS
+    - breadth first search
+    - 广搜
+  最短路径:
+    - shortest path
+  哈希表:
+    - hash table
+    - hashmap
+    - hash map
+    - 散列表
+  动态规划:
+    - DP
+    - dynamic programming
+  算法复杂度:
+    - complexity
+    - time complexity
+    - 时间复杂度
+    - 复杂度
+  二叉树:
+    - binary tree
+  图的遍历:
+    - graph traversal
+  最小生成树:
+    - MST
+    - minimum spanning tree
+  并查集:
+    - DSU
+    - union find
+    - union-find
+  堆:
+    - heap
+  优先队列:
+    - priority queue
+  链表:
+    - linked list
+  栈:
+    - stack
+  队列:
+    - queue

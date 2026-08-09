@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from backend.agent.learning.evidence_store import LearningEvidenceStore
+from backend.agent.memories.paths import LEARNING_EVIDENCE_DB_PATH
 from backend.agent.tools.memory_tools import (
     get_current_user,
     memory_read_allowed,
@@ -13,10 +13,8 @@ from backend.agent.tools.memory_tools import (
 )
 from backend.agent.tools.tools import tr
 
-MEMORIES_DIR = Path(__file__).resolve().parent.parent / "memories"
-
 evidence_store = LearningEvidenceStore(
-    database_path=MEMORIES_DIR / "data" / "learning_evidence.db",
+    database_path=LEARNING_EVIDENCE_DB_PATH,
 )
 
 

@@ -3,6 +3,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -18,11 +19,13 @@ class AssistantMessage extends StatefulWidget {
     required this.message,
     required this.onRegenerate,
     this.onContentChanged,
+    this.renderPaused,
   });
 
   final ChatMessage message;
   final VoidCallback onRegenerate;
   final VoidCallback? onContentChanged;
+  final ValueListenable<bool>? renderPaused;
 
   @override
   State<AssistantMessage> createState() => _AssistantMessageState();
@@ -32,29 +35,77 @@ class _AssistantMessageState extends State<AssistantMessage> {
   bool _copied = false;
   bool _reasoningExpanded = false;
   Timer? _copyTimer;
+  Timer? _renderTimer;
+  bool _renderPending = false;
+
+  bool get _renderPaused => widget.renderPaused?.value ?? false;
+
+  Duration get _renderInterval {
+    final length = widget.message.text.length + widget.message.reasoning.length;
+    if (length < 1500) return const Duration(milliseconds: 48);
+    if (length < 6000) return const Duration(milliseconds: 80);
+    return const Duration(milliseconds: 120);
+  }
 
   @override
   void initState() {
     super.initState();
     widget.message.addListener(_handleMessageChanged);
+    widget.renderPaused?.addListener(_handleRenderPausedChanged);
   }
 
   @override
   void didUpdateWidget(covariant AssistantMessage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.message == widget.message) return;
-    oldWidget.message.removeListener(_handleMessageChanged);
-    widget.message.addListener(_handleMessageChanged);
+    if (oldWidget.message != widget.message) {
+      oldWidget.message.removeListener(_handleMessageChanged);
+      widget.message.addListener(_handleMessageChanged);
+      _renderTimer?.cancel();
+      _renderTimer = null;
+      _renderPending = false;
+    }
+    if (oldWidget.renderPaused != widget.renderPaused) {
+      oldWidget.renderPaused?.removeListener(_handleRenderPausedChanged);
+      widget.renderPaused?.addListener(_handleRenderPausedChanged);
+    }
   }
 
   void _handleMessageChanged() {
-    widget.onContentChanged?.call();
+    _renderPending = true;
+    if (_renderPaused) {
+      _renderTimer?.cancel();
+      _renderTimer = null;
+      return;
+    }
+    _scheduleRender();
+  }
+
+  void _handleRenderPausedChanged() {
+    if (_renderPaused) {
+      _renderTimer?.cancel();
+      _renderTimer = null;
+      return;
+    }
+    if (_renderPending) _scheduleRender(immediate: true);
+  }
+
+  void _scheduleRender({bool immediate = false}) {
+    if (_renderTimer != null) return;
+    _renderTimer = Timer(immediate ? Duration.zero : _renderInterval, () {
+      _renderTimer = null;
+      if (!mounted || _renderPaused || !_renderPending) return;
+      _renderPending = false;
+      setState(() {});
+      widget.onContentChanged?.call();
+    });
   }
 
   @override
   void dispose() {
     widget.message.removeListener(_handleMessageChanged);
+    widget.renderPaused?.removeListener(_handleRenderPausedChanged);
     _copyTimer?.cancel();
+    _renderTimer?.cancel();
     super.dispose();
   }
 
@@ -76,10 +127,7 @@ class _AssistantMessageState extends State<AssistantMessage> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.message,
-      builder: (context, _) => _buildMessage(context),
-    );
+    return _buildMessage(context);
   }
 
   Widget _buildMessage(BuildContext context) {
@@ -221,7 +269,10 @@ class _AssistantMessageState extends State<AssistantMessage> {
 
   Widget _body(BuildContext context, ChatMessage m) {
     final visibleText = _visibleAssistantText(m.text);
-    final markdown = EsaMarkdown(data: visibleText, selectable: true);
+    // 正在流式更新的 Markdown 节点不能加入 Flutter 的选择树。否则用户拖选
+    // 其他正文时，这里的子节点又被流式重建，会触发 ConcurrentModificationError。
+    // 生成完成后会立即恢复跨段落选择。
+    final markdown = EsaMarkdown(data: visibleText, selectable: !m.typing);
 
     if (!m.typing) return markdown;
 

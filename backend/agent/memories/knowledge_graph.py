@@ -237,6 +237,50 @@ class KnowledgeGraphStore:
 
         return [dict(row) for row in rows]
 
+    def count_points(self) -> int:
+        """返回知识点总数。"""
+        with self.__connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS cnt FROM knowledge_points"
+            ).fetchone()
+
+        return int(row["cnt"]) if row else 0
+
+    def count_prerequisites(self) -> int:
+        """返回知识点依赖边总数。"""
+        with self.__connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS cnt FROM knowledge_prerequisites"
+            ).fetchone()
+
+        return int(row["cnt"]) if row else 0
+
+    def get_points(self, ids: list[str]) -> list[dict]:
+        """批量读取知识点，并保持调用方给出的 ID 顺序。"""
+        normalized = [
+            item.strip()
+            for item in ids
+            if isinstance(item, str) and item.strip()
+        ]
+
+        if not normalized:
+            return []
+
+        placeholders = ",".join("?" for _ in normalized)
+
+        with self.__connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT id, name, course, weight, category
+                FROM knowledge_points
+                WHERE id IN ({placeholders})
+                """,
+                tuple(normalized),
+            ).fetchall()
+
+        by_id = {row["id"]: dict(row) for row in rows}
+        return [by_id[kp_id] for kp_id in normalized if kp_id in by_id]
+
     def get_prerequisites(
         self,
         kp_id: str,

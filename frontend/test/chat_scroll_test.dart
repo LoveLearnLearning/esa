@@ -166,4 +166,53 @@ void main() {
     expect(position(tester).pixels, closeTo(readingPosition, 1));
     expect(isAtBottom(position(tester)), isFalse);
   });
+
+  testWidgets(
+    'touching messages during generation dismisses keyboard and permits drag',
+    (tester) async {
+      final fixture = await createState();
+      addTearDown(fixture.state.dispose);
+      await tester.pumpWidget(app(fixture.state));
+      await tester.pumpAndSettle();
+
+      final streamingMessage = fixture.api.messageData['first']!.last;
+      streamingMessage.typing = true;
+      streamingMessage.notifyListeners();
+      await tester.pump(const Duration(milliseconds: 130));
+
+      final field = tester.widget<TextField>(find.byType(TextField));
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      expect(field.focusNode!.hasFocus, isTrue);
+
+      final bottomPosition = position(tester).pixels;
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(listKey)),
+      );
+      await tester.pump();
+      expect(field.focusNode!.hasFocus, isFalse);
+
+      // 真机首先产生很小的移动。旧实现会在 extentAfter <= 24 时误恢复
+      // 自动追底，导致后续拖动被流式更新重新拉回底部。
+      await gesture.moveBy(const Offset(0, 10));
+      await tester.pump();
+
+      streamingMessage.text += '\n按下后到达的流式内容';
+      streamingMessage.notifyListeners();
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(find.textContaining('按下后到达的流式内容'), findsNothing);
+
+      await gesture.moveBy(const Offset(0, 310));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 30));
+
+      expect(position(tester).pixels, lessThan(bottomPosition - 50));
+      expect(isAtBottom(position(tester)), isFalse);
+
+      streamingMessage.typing = false;
+      streamingMessage.notifyListeners();
+      await tester.pump(const Duration(milliseconds: 130));
+    },
+  );
 }

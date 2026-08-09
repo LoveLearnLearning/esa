@@ -3,10 +3,10 @@ from __future__ import annotations
 import logging
 from contextvars import ContextVar
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
 from backend.agent.memories.core_memory import CoreMemory
+from backend.agent.memories.paths import CORE_MEMORY_DB_PATH, USER_DB_PATH
 from backend.agent.memories.profile_projection import ProfileProjection
 from backend.agent.tools.tools import tr
 from backend.core.stores.profile_store import ProfileStore
@@ -20,18 +20,14 @@ current_conversation_mode: ContextVar[str] = ContextVar(
     default="normal",
 )
 
-MEMORIES_DIR = Path(__file__).resolve().parent.parent / "memories"
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-PROFILE_DB_PATH = BACKEND_DIR / "core" / "stores" / "data" / "user.db"
-
-core_memory = CoreMemory(database_path=MEMORIES_DIR / "data" / "core_memory.db")
+core_memory = CoreMemory(database_path=CORE_MEMORY_DB_PATH)
 
 
 @lru_cache(maxsize=1)
 def _get_profile_projection() -> ProfileProjection:
     """延迟创建投影依赖，避免普通读记忆路径无意义初始化 ProfileStore。"""
-    user_store = UserStore(PROFILE_DB_PATH)
-    profile_store = ProfileStore(PROFILE_DB_PATH)
+    user_store = UserStore(USER_DB_PATH)
+    profile_store = ProfileStore(USER_DB_PATH)
     return ProfileProjection(user_store=user_store, profile_store=profile_store)
 
 

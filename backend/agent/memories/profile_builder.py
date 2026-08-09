@@ -99,15 +99,21 @@ class ProfileMetrics:
 
 
 class ProfileBuilder:
-    LEARNING_STATE_MAX_ITEMS = 8
     CACHE_TTL_SECONDS = 60
-    KP_MIN_MATCH_LENGTH = 2
 
-    def __init__(self, user_store, mastery_store, kg_store, profile_store):
+    def __init__(
+        self,
+        user_store,
+        mastery_store,
+        kg_store,
+        profile_store,
+        evidence_store,
+    ):
         self._user_store = user_store
         self._mastery_store = mastery_store
         self._kg_store = kg_store
         self._profile_store = profile_store
+        self._evidence_store = evidence_store
         self._version_counter = 0
         self._cache: dict[str, tuple[str, ProfileSnapshot, datetime]] = {}
         self._metrics = ProfileMetrics()
@@ -129,6 +135,8 @@ class ProfileBuilder:
         start_ts = time.monotonic()
         user = self._user_store.get_by_id(query.user_id)
         if user is None:
+            return self._empty_snapshot(query.user_id)
+        if not getattr(user, "profile_enabled", True):
             return self._empty_snapshot(query.user_id)
 
         settings = self._user_store.get_memory_settings(query.user_id)
@@ -271,83 +279,90 @@ class ProfileBuilder:
         if not getattr(settings, "learning_profile_enabled", True):
             return []
 
-        knowledge_points = self._kg_store.list_all()
-        if not knowledge_points:
-            return []
-
-        candidate_texts: list[str] = []
-        if query.current_message:
-            candidate_texts.append(query.current_message)
-        for message in query.recent_messages or []:
-            if isinstance(message, dict) and isinstance(message.get("content"), str):
-                if message["content"]:
-                    candidate_texts.append(message["content"])
-        if not candidate_texts:
-            return []
-
-        lowered_texts = [text.lower() for text in candidate_texts]
-        matched_kp_ids: list[str] = []
-        seen_kp_ids: set[str] = set()
-        for point in knowledge_points:
-            name = str(point.get("name") or "").strip()
-            if len(name) < self.KP_MIN_MATCH_LENGTH:
-                continue
-            if not any(name.lower() in text for text in lowered_texts):
-                continue
-            kp_id = str(point.get("id") or "").strip()
-            if kp_id and kp_id not in seen_kp_ids:
-                seen_kp_ids.add(kp_id)
-                matched_kp_ids.append(kp_id)
-
-        if not matched_kp_ids:
+        kp_ids = query.resolved_kp_ids[:3]
+        if not kp_ids:
             return []
 
         fields: list[ProfileField] = []
-        added_field_ids: set[str] = set()
-        for kp_id in matched_kp_ids:
-            if len(fields) >= self.LEARNING_STATE_MAX_ITEMS:
-                break
-
+        for kp_id in kp_ids:
+            point = self._kg_store.get_point(kp_id)
+            if point is None:
+                continue
             mastery = self._mastery_store.get(user.username, kp_id)
-            if mastery is not None and kp_id not in added_field_ids:
-                fields.append(
-                    ProfileField(
-                        field=kp_id,
-                        value={
-                            "mastery_level": mastery.get("mastery_level"),
-                            "practice_count": mastery.get("practice_count"),
-                        },
-                        origin=ProfileOrigin.DERIVED_LEARNING_STATE,
-                        confidence=0.9,
-                    )
-                )
-                added_field_ids.add(kp_id)
-
-            weak_prereqs = self._mastery_store.get_weak_prerequisites(
-                user.username,
-                kp_id,
-                self._kg_store,
+            has_mastery_record = mastery is not None
+            mastery_level = (
+                float(mastery["mastery_level"])
+                if mastery is not None
+                else self._mastery_store.DEFAULT_MASTERY
             )
-            for prereq in weak_prereqs or []:
-                if len(fields) >= self.LEARNING_STATE_MAX_ITEMS:
-                    break
-                prereq_id = str(prereq.get("kp_id") or "").strip()
-                if not prereq_id or prereq_id == kp_id or prereq_id in added_field_ids:
+            practice_count = (
+                int(mastery["practice_count"]) if mastery is not None else 0
+            )
+
+            evidence = self._evidence_store.get_summary(
+                user.username,
+                kp_id=kp_id,
+                limit=20,
+            )
+            prerequisites = self._kg_store.get_prerequisites(kp_id, max_depth=3)
+            prerequisite_items = []
+            for prereq in prerequisites:
+                if prereq["kp_id"] == kp_id:
                     continue
-                fields.append(
-                    ProfileField(
-                        field=prereq_id,
-                        value={
-                            "name": prereq.get("name"),
-                            "course": prereq.get("course"),
-                            "depth": prereq.get("depth"),
-                            "mastery_level": prereq.get("mastery_level"),
-                        },
-                        origin=ProfileOrigin.DERIVED_LEARNING_STATE,
-                        confidence=0.9,
-                    )
+                prereq_mastery = self._mastery_store.get(
+                    user.username,
+                    prereq["kp_id"],
                 )
-                added_field_ids.add(prereq_id)
+
+                if prereq_mastery is None:
+                    status = "unknown"
+                    prereq_level = None
+                else:
+                    prereq_level = float(prereq_mastery["mastery_level"])
+                    status = "weak" if prereq_level < 50.0 else "known"
+
+                prerequisite_items.append(
+                    {
+                        "kp_id": prereq["kp_id"],
+                        "name": prereq["name"],
+                        "course": prereq["course"],
+                        "depth": prereq["depth"],
+                        "mastery_level": prereq_level,
+                        "status": status,
+                    }
+                )
+
+            fields.append(
+                ProfileField(
+                    field=f"knowledge.{kp_id}",
+                    value={
+                        "kp_id": kp_id,
+                        "name": point["name"],
+                        "course": point["course"],
+                        "mastery": {
+                            "has_record": has_mastery_record,
+                            "level": mastery_level,
+                            "practice_count": practice_count,
+                        },
+                        "evidence": {
+                            "count": evidence["evidence_count"],
+                            "correct_rate": evidence["correct_rate"],
+                            "avg_hint_level": evidence["avg_hint_level"],
+                            "independent_rate": evidence["independent_rate"],
+                            "avg_explanation_score": evidence[
+                                "avg_explanation_score"
+                            ],
+                            "avg_transfer_score": evidence["avg_transfer_score"],
+                            "recent_misconceptions": evidence[
+                                "recent_misconceptions"
+                            ],
+                        },
+                        "prerequisites": prerequisite_items,
+                    },
+                    origin=ProfileOrigin.DERIVED_LEARNING_STATE,
+                    confidence=0.95 if has_mastery_record else 0.65,
+                )
+            )
         return fields
 
     def _build_inferred_patterns(self, user, settings) -> list[ProfileField]:
@@ -490,6 +505,7 @@ class ProfileBuilder:
                 "group_id": query.group_id,
                 "current_message": query.current_message,
                 "recent_messages": self._compact_recent_messages(query.recent_messages),
+                "resolved_kp_ids": list(query.resolved_kp_ids),
                 "group_style": query.group_style,
                 "group_tone": query.group_tone,
                 "group_custom_instruction": query.group_custom_instruction,

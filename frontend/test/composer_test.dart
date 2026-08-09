@@ -23,6 +23,30 @@ void main() {
     expect(field.decoration?.contentPadding, EdgeInsets.zero);
   });
 
+  testWidgets('hides the empty hint while the composer is focused', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(body: Composer(busy: false, onSend: (_, _) {})),
+      ),
+    );
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).decoration?.hintText,
+      '问点什么…',
+    );
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).decoration?.hintText,
+      isNull,
+    );
+  });
+
   testWidgets('does not send when Enter confirms an IME composition', (
     tester,
   ) async {
@@ -57,5 +81,24 @@ void main() {
     await tester.pump();
 
     expect(sent, ['english']);
+  });
+
+  testWidgets('hides desktop keyboard shortcuts on narrow screens', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(body: Composer(busy: false, onSend: (_, _) {})),
+      ),
+    );
+
+    expect(find.text('Enter 发送 · Shift + Enter 换行'), findsNothing);
+    expect(find.text('发送'), findsOneWidget);
   });
 }
