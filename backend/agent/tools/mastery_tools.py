@@ -80,10 +80,13 @@ def _build_reasons(
 ) -> list[str]:
     reasons: list[str] = []
 
-    mastery = float(point.get("mastery_level", 50.0))
+    raw_mastery = point.get("mastery_level")
+    mastery = None if raw_mastery is None else float(raw_mastery)
     weight = float(point.get("weight", 0.0))
 
-    if mastery < 50.0:
+    if mastery is None:
+        reasons.append("尚无学习证据")
+    elif mastery < 50.0:
         reasons.append(f"掌握度低(mastery={mastery:.1f})")
 
     if weight >= 0.7:
@@ -283,7 +286,10 @@ def get_mastery_level(kp_id: str) -> dict[str, Any]:
             "allowed": True,
             "user_name": user_name,
             "kp_id": kp_id,
-            "mastery_level": mastery_store.DEFAULT_MASTERY,
+            "mastery_level": None,
+            "status": "unseen",
+            "retention": None,
+            "evidence_confidence": 0.0,
             "practice_count": 0,
             "correct_count": 0,
             "has_record": False,
@@ -465,10 +471,14 @@ def record_answer(
             "reason": "当前会话为 no_write/isolated 模式，禁止记录练习结果",
         }
 
-    result = mastery_store.record_answer(
+    # 本地导入避免工具模块初始化时的循环依赖。
+    from backend.agent.tools.learning_tools import learning_state_service
+
+    result = learning_state_service.record_event(
         user_name=user_name,
         kp_id=kp_id,
+        activity_type="practice",
         correct=correct,
-        confidence=confidence,
+        evidence_reliability=confidence,
     )
     return {"saved": True, **result}

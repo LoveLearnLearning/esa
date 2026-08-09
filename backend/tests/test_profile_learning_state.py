@@ -122,7 +122,11 @@ def test_unseen_point_is_present_but_marked_without_mastery_record():
     value = _build()
     assert value["mastery"] == {
         "has_record": False,
-        "level": 50.0,
+        "level": None,
+        "status": "unseen",
+        "retention": None,
+        "evidence_confidence": 0.0,
+        "needs_review": False,
         "practice_count": 0,
     }
 

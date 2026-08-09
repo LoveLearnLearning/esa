@@ -192,7 +192,12 @@ def _prepare_message(
     conversation_mode = (
         settings.default_conversation_mode if settings is not None else "normal"
     )
-    kp_matches = request.app.state.kp_resolver.resolve(body.content, limit=3)
+    kp_resolver = getattr(request.app.state, "kp_resolver", None)
+    kp_matches = (
+        kp_resolver.resolve(body.content, limit=3)
+        if kp_resolver is not None
+        else []
+    )
     resolved_kp_ids = [match.kp_id for match in kp_matches]
 
     group_style, group_tone, group_custom_instruction = _load_group_params(

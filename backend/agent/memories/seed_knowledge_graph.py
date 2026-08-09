@@ -9,7 +9,7 @@ from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 from backend.agent.memories.paths import KNOWLEDGE_GRAPH_DB_PATH
 
 # 向后兼容：从 YAML 加载后暴露为模块级常量
-POINTS, PREREQUISITES, COURSES = load_yaml_files()
+POINTS, PREREQUISITES, ALIASES, COURSES = load_yaml_files()
 
 
 def seed(store: KnowledgeGraphStore) -> tuple[int, int]:

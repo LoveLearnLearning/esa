@@ -21,6 +21,7 @@ from backend.core.stores.migrations import run_migrations
 from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
+from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.utils.config import (
     AGENT_LOOP_TIME,
     MODEL_DTYPE,
@@ -56,8 +57,18 @@ async def lifespan(app: FastAPI):
     app.state.profile_store = ProfileStore(DB_PATH)
 
     run_migrations(DB_PATH)
+    app.state.user_course_store = UserCourseStore(DB_PATH)
     app.state.conversation_turn_coordinator = ConversationTurnCoordinator(DB_PATH)
 
+    synced_points, synced_edges = ensure_knowledge_graph_seeded(kg_store)
+    if kg_store.count_points() <= 0:
+        raise RuntimeError("Knowledge Graph 初始化失败：未从 YAML 加载任何知识点")
+    logger.info(
+        "Knowledge Graph 已同步：points=%s, edges=%s",
+        synced_points,
+        synced_edges,
+    )
+    app.state.kp_resolver = KnowledgePointResolver(kg_store)
     app.state.auth = AuthService(
         app.state.user_store,
         app.state.session_store,

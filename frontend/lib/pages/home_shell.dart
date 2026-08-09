@@ -3,6 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../theme/esa_context.dart';
 import 'chat_page.dart';
+import 'knowledge_map_page.dart';
 import 'schedule_page.dart';
 
 class HomeShell extends StatefulWidget {
@@ -26,7 +27,14 @@ class _HomeShellState extends State<HomeShell> {
       resizeToAvoidBottomInset: false,
       body: IndexedStack(
         index: _index,
-        children: const [ChatPage(), SchedulePage()],
+        children: [
+          const ChatPage(),
+          const SchedulePage(),
+          KnowledgeMapPage(
+            onOpenChat: () => _select(0),
+            onOpenSchedule: () => _select(1),
+          ),
+        ],
       ),
       bottomNavigationBar: DecoratedBox(
         decoration: BoxDecoration(
@@ -61,6 +69,14 @@ class _HomeShellState extends State<HomeShell> {
                       color: Color(0xFF2563EB),
                     ),
                     label: '课表',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(LucideIcons.gitBranch),
+                    selectedIcon: Icon(
+                      LucideIcons.gitBranch,
+                      color: Color(0xFF2563EB),
+                    ),
+                    label: '知识地图',
                   ),
                 ],
               ),

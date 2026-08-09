@@ -57,6 +57,17 @@ class KnowledgeGraphStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS knowledge_point_aliases (
+                    alias TEXT PRIMARY KEY,
+                    kp_id TEXT NOT NULL,
+                    FOREIGN KEY (kp_id)
+                        REFERENCES knowledge_points(id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
 
     def add_point(
         self,
@@ -167,6 +178,52 @@ class KnowledgeGraphStore:
             )
 
         return True
+
+    def add_alias(self, alias: str, kp_id: str) -> bool:
+        """添加或更新知识点别名。"""
+        alias = alias.strip()
+        kp_id = kp_id.strip()
+        if not alias or not kp_id or self.get_point(kp_id) is None:
+            return False
+        with self.__connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO knowledge_point_aliases (alias, kp_id)
+                VALUES (?, ?)
+                ON CONFLICT(alias) DO UPDATE SET kp_id = excluded.kp_id
+                """,
+                (alias, kp_id),
+            )
+        return True
+
+    def resolve_kp_id(self, value: str) -> str | None:
+        """将规范 ID、知识点名称或别名解析成规范 ID。"""
+        value = value.strip()
+        if not value:
+            return None
+        with self.__connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id
+                FROM knowledge_points
+                WHERE id = ? OR name = ?
+                ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
+                LIMIT 1
+                """,
+                (value, value, value),
+            ).fetchone()
+            if row is not None:
+                return str(row["id"])
+            row = connection.execute(
+                """
+                SELECT kp_id
+                FROM knowledge_point_aliases
+                WHERE alias = ?
+                LIMIT 1
+                """,
+                (value,),
+            ).fetchone()
+        return None if row is None else str(row["kp_id"])
 
     def get_point(self, id: str) -> dict | None:
         """获取数据库中单条知识点
@@ -280,6 +337,66 @@ class KnowledgeGraphStore:
 
         by_id = {row["id"]: dict(row) for row in rows}
         return [by_id[kp_id] for kp_id in normalized if kp_id in by_id]
+
+    def get_points_by_ids(self, ids: list[str]) -> list[dict]:
+        """Knowledge Map 服务使用的批量查询别名。"""
+        return self.get_points(ids)
+
+    def list_courses(self) -> list[str]:
+        with self.__connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT course
+                FROM knowledge_points
+                ORDER BY course ASC
+                """
+            ).fetchall()
+        return [str(row["course"]) for row in rows]
+
+    def resolve_course_name(self, value: str) -> str | None:
+        """Resolve a timetable label to an exact canonical KG course."""
+        normalized = "".join(value.split()).casefold()
+        if not normalized:
+            return None
+        for course in self.list_courses():
+            if "".join(course.split()).casefold() == normalized:
+                return course
+        return None
+
+    def get_edges(
+        self,
+        course: str | None = None,
+        include_external_prerequisites: bool = False,
+    ) -> list[dict]:
+        """返回前置知识点到依赖知识点的有向边。"""
+        params: tuple[str, ...] = ()
+        condition = ""
+        if course is not None and course.strip():
+            if include_external_prerequisites:
+                condition = "WHERE dependent.course = ?"
+                params = (course.strip(),)
+            else:
+                condition = (
+                    "WHERE dependent.course = ? AND prerequisite.course = ?"
+                )
+                params = (course.strip(), course.strip())
+        with self.__connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT p.prerequisite_kp_id AS "from", p.kp_id AS "to"
+                FROM knowledge_prerequisites p
+                JOIN knowledge_points dependent ON dependent.id = p.kp_id
+                JOIN knowledge_points prerequisite
+                    ON prerequisite.id = p.prerequisite_kp_id
+                {condition}
+                ORDER BY p.prerequisite_kp_id ASC, p.kp_id ASC
+                """,
+                params,
+            ).fetchall()
+        return [
+            {"from": row["from"], "to": row["to"], "type": "prerequisite"}
+            for row in rows
+        ]
 
     def get_prerequisites(
         self,

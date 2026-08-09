@@ -159,6 +159,18 @@ class PedagogyRouter:
         )
 
         notes = []
+        retention = mastery.get("retention")
+        if retention is not None and float(retention) < 0.65:
+            notes.append(
+                "掌握度代表长期理解，当前记忆保持率较低；先做主动回忆或快速复习"
+            )
+
+        evidence_confidence = mastery.get("evidence_confidence")
+        if evidence_confidence is not None and float(evidence_confidence) < 0.35:
+            notes.append(
+                "当前水平判断证据不足，不要武断断言用户会或不会；优先用小题确认"
+            )
+
         evidence = value.get("evidence", {})
         avg_hint = evidence.get("avg_hint_level")
         if avg_hint is not None and avg_hint >= 2:

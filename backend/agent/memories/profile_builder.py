@@ -293,7 +293,7 @@ class ProfileBuilder:
             mastery_level = (
                 float(mastery["mastery_level"])
                 if mastery is not None
-                else self._mastery_store.DEFAULT_MASTERY
+                else None
             )
             practice_count = (
                 int(mastery["practice_count"]) if mastery is not None else 0
@@ -342,6 +342,26 @@ class ProfileBuilder:
                         "mastery": {
                             "has_record": has_mastery_record,
                             "level": mastery_level,
+                            "status": (
+                                mastery.get("status", "learning")
+                                if mastery is not None
+                                else "unseen"
+                            ),
+                            "retention": (
+                                mastery.get("retention")
+                                if mastery is not None
+                                else None
+                            ),
+                            "evidence_confidence": (
+                                mastery.get("evidence_confidence", 0.0)
+                                if mastery is not None
+                                else 0.0
+                            ),
+                            "needs_review": (
+                                bool(mastery.get("needs_review", False))
+                                if mastery is not None
+                                else False
+                            ),
                             "practice_count": practice_count,
                         },
                         "evidence": {
@@ -358,6 +378,11 @@ class ProfileBuilder:
                             ],
                         },
                         "prerequisites": prerequisite_items,
+                        "weak_prerequisites": [
+                            item["name"]
+                            for item in prerequisite_items
+                            if item["status"] == "weak"
+                        ],
                     },
                     origin=ProfileOrigin.DERIVED_LEARNING_STATE,
                     confidence=0.95 if has_mastery_record else 0.65,

@@ -228,6 +228,91 @@ class ApiClient {
     return MasteryReport.fromJson(_decode(r) as Map<String, dynamic>);
   }
 
+  Future<List<LearningCourseSummary>> getLearningCourses() async {
+    final r = await http.get(
+      _uri('/me/learning/courses'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    final data = _decode(r) as Map<String, dynamic>;
+    return (data['courses'] as List? ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) =>
+              LearningCourseSummary.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .where((item) => item.name.isNotEmpty)
+        .toList();
+  }
+
+  Future<List<LearningCourseCatalogItem>> getLearningCourseCatalog({
+    String query = '',
+  }) async {
+    final suffix = query.trim().isEmpty
+        ? ''
+        : '?query=${Uri.encodeQueryComponent(query.trim())}';
+    final r = await http.get(
+      _uri('/me/learning/course-catalog$suffix'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    final data = _decode(r) as Map<String, dynamic>;
+    return (data['courses'] as List? ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => LearningCourseCatalogItem.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .where((item) => item.name.isNotEmpty)
+        .toList();
+  }
+
+  Future<void> addLearningCourses(
+    Iterable<String> names, {
+    required String source,
+  }) async {
+    final courses = names
+        .map((name) => name.trim())
+        .where((name) => name.isNotEmpty)
+        .map((name) => {'name': name, 'source': source})
+        .toList();
+    if (courses.isEmpty) return;
+    final r = await http.post(
+      _uri('/me/learning/courses'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'courses': courses}),
+    );
+    if (r.statusCode != 201) _fail(r);
+  }
+
+  Future<void> removeLearningCourse(String name) async {
+    final r = await http.delete(
+      _uri('/me/learning/courses/${Uri.encodeComponent(name.trim())}'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204) _fail(r);
+  }
+
+  Future<KnowledgeMapData> getKnowledgeMap(String course) async {
+    final query = Uri.encodeQueryComponent(course.trim());
+    final r = await http.get(
+      _uri('/me/learning/knowledge-map?course=$query'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return KnowledgeMapData.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<KnowledgePointDetail> getKnowledgePointDetail(String kpId) async {
+    final r = await http.get(
+      _uri('/me/learning/knowledge-points/${Uri.encodeComponent(kpId)}'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return KnowledgePointDetail(raw: _decode(r) as Map<String, dynamic>);
+  }
+
   Future<List<CoreMemoryItem>> listCoreMemories() async {
     final r = await http.get(
       _uri('/me/memories'),

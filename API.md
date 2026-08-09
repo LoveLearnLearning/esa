@@ -303,6 +303,53 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 
 可选查询参数 `course`。返回知识点总数、平均掌握度、薄弱点、优势点和需要复习的知识点。
 
+### GET /me/learning/courses
+
+返回当前用户已加入学习空间的课程，而不是返回全部全局课程。每项包含
+`canonical_course`、`supported`、`source`，以及已评估、薄弱、待复习知识点数量和
+平均掌握度。未匹配 canonical KG 的课表课程仍会保留，此时 `supported: false`；
+未产生学习证据的课程，其 `average_mastery` 为 `null`。
+
+### GET /me/learning/course-catalog
+
+返回 ESA 全局支持的 canonical 课程目录。可选查询参数 `query` 做名称搜索；每项的
+`added` 表示当前用户是否已加入。课程目录和 KG 为全局共享数据，不会按用户复制。
+
+### POST /me/learning/courses
+
+把一门或多门课程加入当前用户的学习空间：
+
+```json
+{
+  "courses": [
+    {"name": "数据结构", "source": "timetable"},
+    {"name": "高等数学", "source": "manual"}
+  ]
+}
+```
+
+`source` 可为 `timetable` 或 `manual`。课表来源允许暂不受 KG 支持的课程，以便前端显示
+明确的“不支持”状态；手动来源必须从 canonical 课程目录选择。
+
+### DELETE /me/learning/courses/{course_name}
+
+从当前用户的学习空间移除课程，成功响应 `204`；不会删除全局课程或知识图谱。
+
+### GET /me/learning/knowledge-map
+
+必填查询参数 `course`。返回课程知识图的 `nodes` 和 `edges`。边方向固定为
+`prerequisite -> dependent`。未评估节点返回 `mastery_level: null`、
+`status: "unseen"`，不会伪装成 50 分掌握度。
+
+### GET /me/learning/knowledge-points/{kp_id}
+
+返回单个知识点的规范信息、掌握度、记忆保持率、判断可信度、学习证据摘要和薄弱前置。
+路径参数既可以是规范 `kp_id`，也可以是已配置的知识点名称或别名。
+
+### GET /me/learning/review-queue
+
+可选查询参数 `course`。按当前记忆保持率从低到高返回待复习知识点。
+
 ### GET /me/learning/recommendations
 
 查询参数：`course`（必填）、`weeks_to_exam`（可选，默认 4）。返回按优先级排序的练习推荐。

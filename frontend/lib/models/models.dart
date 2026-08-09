@@ -263,6 +263,182 @@ class MasteryReport {
   }
 }
 
+class LearningCourseSummary {
+  const LearningCourseSummary({
+    required this.name,
+    required this.totalPoints,
+    required this.evaluatedPoints,
+    required this.weakPoints,
+    required this.reviewPoints,
+    this.canonicalCourse,
+    this.supported = true,
+    this.source = 'manual',
+    this.averageMastery,
+  });
+
+  final String name;
+  final int totalPoints;
+  final int evaluatedPoints;
+  final int weakPoints;
+  final int reviewPoints;
+  final String? canonicalCourse;
+  final bool supported;
+  final String source;
+  final double? averageMastery;
+
+  factory LearningCourseSummary.fromJson(Map<String, dynamic> json) =>
+      LearningCourseSummary(
+        name: json['name']?.toString() ?? '',
+        totalPoints: (json['total_points'] as num?)?.toInt() ?? 0,
+        evaluatedPoints: (json['evaluated_points'] as num?)?.toInt() ?? 0,
+        weakPoints: (json['weak_points'] as num?)?.toInt() ?? 0,
+        reviewPoints: (json['review_points'] as num?)?.toInt() ?? 0,
+        canonicalCourse: json['canonical_course']?.toString(),
+        supported: json['supported'] as bool? ?? true,
+        source: json['source']?.toString() ?? 'manual',
+        averageMastery: (json['average_mastery'] as num?)?.toDouble(),
+      );
+}
+
+class LearningCourseCatalogItem {
+  const LearningCourseCatalogItem({required this.name, required this.added});
+
+  final String name;
+  final bool added;
+
+  factory LearningCourseCatalogItem.fromJson(Map<String, dynamic> json) =>
+      LearningCourseCatalogItem(
+        name: json['name']?.toString() ?? '',
+        added: json['added'] as bool? ?? false,
+      );
+}
+
+class KnowledgeMapNode {
+  const KnowledgeMapNode({
+    required this.id,
+    required this.name,
+    required this.course,
+    required this.category,
+    required this.weight,
+    required this.external,
+    required this.hasRecord,
+    required this.status,
+    required this.needsReview,
+    required this.practiceCount,
+    required this.evidenceCount,
+    required this.weakPrerequisiteCount,
+    required this.level,
+    this.masteryLevel,
+    this.retention,
+    this.evidenceConfidence,
+  });
+
+  final String id;
+  final String name;
+  final String course;
+  final String category;
+  final double weight;
+  final bool external;
+  final bool hasRecord;
+  final double? masteryLevel;
+  final String status;
+  final double? retention;
+  final double? evidenceConfidence;
+  final bool needsReview;
+  final int practiceCount;
+  final int evidenceCount;
+  final int weakPrerequisiteCount;
+  final int level;
+
+  factory KnowledgeMapNode.fromJson(Map<String, dynamic> json) =>
+      KnowledgeMapNode(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        course: json['course']?.toString() ?? '',
+        category: json['category']?.toString() ?? 'general',
+        weight: (json['weight'] as num?)?.toDouble() ?? 0,
+        external: json['external'] as bool? ?? false,
+        hasRecord: json['has_record'] as bool? ?? false,
+        masteryLevel: (json['mastery_level'] as num?)?.toDouble(),
+        status: json['status']?.toString() ?? 'unseen',
+        retention: (json['retention'] as num?)?.toDouble(),
+        evidenceConfidence: (json['evidence_confidence'] as num?)?.toDouble(),
+        needsReview: json['needs_review'] as bool? ?? false,
+        practiceCount: (json['practice_count'] as num?)?.toInt() ?? 0,
+        evidenceCount: (json['evidence_count'] as num?)?.toInt() ?? 0,
+        weakPrerequisiteCount:
+            (json['weak_prerequisite_count'] as num?)?.toInt() ?? 0,
+        level: (json['level'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class KnowledgeMapEdge {
+  const KnowledgeMapEdge({
+    required this.from,
+    required this.to,
+    required this.type,
+  });
+
+  final String from;
+  final String to;
+  final String type;
+
+  factory KnowledgeMapEdge.fromJson(Map<String, dynamic> json) =>
+      KnowledgeMapEdge(
+        from: json['from']?.toString() ?? '',
+        to: json['to']?.toString() ?? '',
+        type: json['type']?.toString() ?? 'prerequisite',
+      );
+}
+
+class KnowledgeMapData {
+  const KnowledgeMapData({
+    required this.course,
+    required this.nodes,
+    required this.edges,
+  });
+
+  final String course;
+  final List<KnowledgeMapNode> nodes;
+  final List<KnowledgeMapEdge> edges;
+
+  factory KnowledgeMapData.fromJson(Map<String, dynamic> json) =>
+      KnowledgeMapData(
+        course: json['course']?.toString() ?? '',
+        nodes: (json['nodes'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  KnowledgeMapNode.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
+        edges: (json['edges'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  KnowledgeMapEdge.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
+      );
+}
+
+class KnowledgePointDetail {
+  const KnowledgePointDetail({required this.raw});
+
+  final Map<String, dynamic> raw;
+  Map<String, dynamic> get point =>
+      Map<String, dynamic>.from(raw['point'] as Map? ?? const {});
+  Map<String, dynamic> get state =>
+      Map<String, dynamic>.from(raw['state'] as Map? ?? const {});
+  Map<String, dynamic> get evidence =>
+      Map<String, dynamic>.from(raw['evidence_summary'] as Map? ?? const {});
+  List<Map<String, dynamic>> get weakPrerequisites =>
+      (raw['weak_prerequisites'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+}
+
 class CoreMemoryItem {
   const CoreMemoryItem({
     required this.key,

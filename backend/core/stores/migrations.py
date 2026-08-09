@@ -701,6 +701,26 @@ MIGRATIONS: list[MigrationDef] = [
         "enforce_relational_integrity_and_add_turn_leases",
         _migrate_relational_integrity,
     ),
+    (
+        6,
+        "create_user_courses",
+        [
+            """
+            CREATE TABLE IF NOT EXISTS user_courses (
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                canonical_course TEXT,
+                source TEXT NOT NULL DEFAULT 'manual',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, name),
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                CHECK(source IN ('manual', 'timetable'))
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_user_courses_user_id ON user_courses(user_id)",
+        ],
+    ),
 ]
 
 
