@@ -228,7 +228,7 @@ def test_legacy_migration_quarantines_orphans_and_preserves_valid_rows(tmp_path)
     # 引用 groups 的归属触发器。迁移必须能安全拆除并重建它们。
     ChatStore(database_path)
 
-    assert run_migrations(database_path) == 6
+    assert run_migrations(database_path) == 7
     assert run_migrations(database_path) == 0
 
     connection = sqlite3.connect(database_path)

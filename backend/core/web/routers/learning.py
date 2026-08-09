@@ -36,6 +36,10 @@ class AddUserCoursesRequest(BaseModel):
     courses: list[UserCourseInput] = Field(min_length=1, max_length=100)
 
 
+class BindUserCourseRequest(BaseModel):
+    canonical_course: str = Field(min_length=1, max_length=64)
+
+
 def _prepare_user(request: Request, session: SessionPrincipal) -> UserRecord:
     user_store: UserStore = request.app.state.user_store
     user = user_store.get_by_id(session.user_id)
@@ -75,6 +79,30 @@ def learning_courses(request: Request, session: CurrentSession) -> dict:
     user = _prepare_user(request, session)
     store: UserCourseStore = request.app.state.user_course_store
     associations = store.list_for_user(user.id)
+    for item in associations:
+        if item["canonical_course"]:
+            continue
+        resolved = kg_store.resolve_course_name(item["name"])
+        if resolved is None:
+            continue
+        store.upsert(
+            user_id=user.id,
+            name=item["name"],
+            canonical_course=resolved,
+            source=item["source"],
+        )
+        item["canonical_course"] = resolved
+    unique_associations = []
+    seen_courses: set[str] = set()
+    for item in associations:
+        identity = item["canonical_course"] or (
+            "unmatched:" + "".join(item["name"].split()).casefold()
+        )
+        if identity in seen_courses:
+            continue
+        seen_courses.add(identity)
+        unique_associations.append(item)
+    associations = unique_associations
     supported_names = [
         item["canonical_course"]
         for item in associations
@@ -121,10 +149,17 @@ def learning_course_catalog(
         if item["canonical_course"]
     }
     needle = "".join(query.split()).casefold()
+    alias_matches = {
+        item["course"]
+        for item in kg_store.list_course_aliases()
+        if needle and needle in item["alias"]
+    }
     courses = [
         {"name": name, "added": name in added}
         for name in kg_store.list_courses()
-        if not needle or needle in "".join(name.split()).casefold()
+        if not needle
+        or needle in "".join(name.split()).casefold()
+        or name in alias_matches
     ]
     return {"courses": courses}
 
@@ -146,6 +181,12 @@ def add_learning_courses(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 f"“{name}”不是可用的课程知识地图",
             )
+        current = store.list_for_user(user.id)
+        if canonical and any(
+            existing["canonical_course"] == canonical for existing in current
+        ):
+            added.append(canonical)
+            continue
         store.upsert(
             user_id=user.id,
             name=canonical or name,
@@ -154,6 +195,44 @@ def add_learning_courses(
         )
         added.append(canonical or name)
     return {"added": added}
+
+
+@router.patch("/courses/{course_name}")
+def bind_learning_course(
+    course_name: str,
+    payload: BindUserCourseRequest,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    user = _prepare_user(request, session)
+    store: UserCourseStore = request.app.state.user_course_store
+    association = next(
+        (
+            item
+            for item in store.list_for_user(user.id)
+            if item["name"] == course_name
+        ),
+        None,
+    )
+    if association is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "课程不在我的学习空间中")
+    canonical = kg_store.resolve_course_name(payload.canonical_course)
+    if canonical is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "目标课程不是可用的 canonical 课程",
+        )
+    store.upsert(
+        user_id=user.id,
+        name=association["name"],
+        canonical_course=canonical,
+        source=association["source"],
+    )
+    return {
+        "name": association["name"],
+        "canonical_course": canonical,
+        "supported": True,
+    }
 
 
 @router.delete("/courses/{course_name}", status_code=status.HTTP_204_NO_CONTENT)

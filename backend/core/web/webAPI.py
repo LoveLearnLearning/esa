@@ -20,6 +20,7 @@ from backend.core.stores.group_store import GroupStore
 from backend.core.stores.migrations import run_migrations
 from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.session_store import SessionStore
+from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_store import UserStore
 from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.utils.config import (
@@ -41,6 +42,7 @@ from backend.core.web.routers import (
     learning,
     memories,
     preferences,
+    schedule,
 )
 from backend.core.web.concurrency import ConversationTurnCoordinator
 
@@ -59,6 +61,7 @@ async def lifespan(app: FastAPI):
 
     run_migrations(DB_PATH)
     app.state.user_course_store = UserCourseStore(DB_PATH)
+    app.state.schedule_store = ScheduleStore(DB_PATH)
     app.state.conversation_turn_coordinator = ConversationTurnCoordinator(DB_PATH)
 
     synced_points, synced_edges = ensure_knowledge_graph_seeded(kg_store)
@@ -115,6 +118,7 @@ app.include_router(preferences.router)
 app.include_router(preferences.profile_router)
 app.include_router(preferences.memory_settings_router)
 app.include_router(learning.router)
+app.include_router(schedule.router)
 app.include_router(memories.router)
 
 

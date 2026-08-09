@@ -438,6 +438,90 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
     }
   }
 
+  Future<void> _matchSelectedCourse() async {
+    final sourceName = _course;
+    if (sourceName == null) return;
+    try {
+      final catalog = await _api.getLearningCourseCatalog();
+      if (!mounted) return;
+      var query = '';
+      final canonical = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            final visible = catalog.where((item) {
+              return item.name.toLowerCase().contains(
+                query.trim().toLowerCase(),
+              );
+            }).toList();
+            return AlertDialog(
+              title: Text('“$sourceName”对应哪门课程？'),
+              content: SizedBox(
+                width: 440,
+                height: 360,
+                child: Column(
+                  children: [
+                    TextField(
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: '搜索 ESA 已支持的课程',
+                        prefixIcon: Icon(LucideIcons.search),
+                      ),
+                      onChanged: (value) => setDialogState(() => query = value),
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: visible.isEmpty
+                          ? const Center(child: Text('没有找到匹配课程'))
+                          : ListView.builder(
+                              itemCount: visible.length,
+                              itemBuilder: (context, index) {
+                                final item = visible[index];
+                                return ListTile(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      EsaRadii.field,
+                                    ),
+                                  ),
+                                  title: Text(item.name),
+                                  trailing: const Icon(
+                                    LucideIcons.chevronRight,
+                                    size: 18,
+                                  ),
+                                  onTap: () =>
+                                      Navigator.pop(dialogContext, item.name),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('取消'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+      if (canonical == null || !mounted) return;
+      await _api.bindLearningCourse(
+        name: sourceName,
+        canonicalCourse: canonical,
+      );
+      if (!mounted) return;
+      await _loadCourses(select: sourceName);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.detail)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -652,10 +736,22 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
               style: TextStyle(color: context.n.n500, height: 1.55),
             ),
             const SizedBox(height: 22),
-            OutlinedButton.icon(
-              onPressed: _showAddMenu,
-              icon: const Icon(LucideIcons.listRestart),
-              label: const Text('添加其他课程'),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: _matchSelectedCourse,
+                  icon: const Icon(LucideIcons.link),
+                  label: const Text('匹配已有课程'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _showAddMenu,
+                  icon: const Icon(LucideIcons.listRestart),
+                  label: const Text('添加其他课程'),
+                ),
+              ],
             ),
           ],
         ),

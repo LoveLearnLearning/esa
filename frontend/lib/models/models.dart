@@ -130,6 +130,7 @@ class ScheduleSettings {
     this.eveningStartMinutes = 19 * 60,
     this.periodDurationMinutes = 45,
     this.breakDurationMinutes = 10,
+    this.termStartDate = '',
   });
 
   final int morningPeriodCount;
@@ -140,9 +141,21 @@ class ScheduleSettings {
   final int eveningStartMinutes;
   final int periodDurationMinutes;
   final int breakDurationMinutes;
+  final String termStartDate;
 
   int get totalPeriods =>
       morningPeriodCount + afternoonPeriodCount + eveningPeriodCount;
+
+  DateTime? get parsedTermStartDate => DateTime.tryParse(termStartDate);
+
+  int weekForDate(DateTime date) {
+    final start = parsedTermStartDate;
+    if (start == null) return 1;
+    final current = DateTime(date.year, date.month, date.day);
+    final firstDay = DateTime(start.year, start.month, start.day);
+    final elapsedDays = current.difference(firstDay).inDays;
+    return elapsedDays < 0 ? 1 : elapsedDays ~/ 7 + 1;
+  }
 
   int periodStartMinutes(int period) {
     final normalizedPeriod = period.clamp(
@@ -182,6 +195,7 @@ class ScheduleSettings {
     'evening_start_minutes': eveningStartMinutes,
     'period_duration_minutes': periodDurationMinutes,
     'break_duration_minutes': breakDurationMinutes,
+    'term_start_date': termStartDate,
   };
 
   factory ScheduleSettings.fromJson(Map<String, dynamic> json) {
@@ -209,8 +223,30 @@ class ScheduleSettings {
         45,
       ).clamp(20, 180),
       breakDurationMinutes: number('break_duration_minutes', 10).clamp(0, 120),
+      termStartDate: json['term_start_date']?.toString() ?? '',
     );
   }
+}
+
+class ScheduleSnapshot {
+  const ScheduleSnapshot({required this.courses, required this.settings});
+
+  final List<ScheduleCourse> courses;
+  final ScheduleSettings settings;
+
+  factory ScheduleSnapshot.fromJson(Map<String, dynamic> json) =>
+      ScheduleSnapshot(
+        courses: (json['courses'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
+        settings: ScheduleSettings.fromJson(
+          Map<String, dynamic>.from(json['settings'] as Map? ?? const {}),
+        ),
+      );
 }
 
 String formatClockMinutes(int totalMinutes) {

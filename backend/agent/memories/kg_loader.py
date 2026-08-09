@@ -7,6 +7,7 @@ import yaml
 
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 from backend.agent.memories.paths import (
+    COURSE_ALIASES_YAML,
     CORE_COURSES_YAML,
     ELECTIVE_COURSES_YAML,
     KNOWLEDGE_ALIASES_YAML,
@@ -97,6 +98,12 @@ def load_into_store(store: KnowledgeGraphStore) -> tuple[int, int]:
             edge_count += 1
     for alias, kp_id in dict(aliases).items():
         store.add_alias(alias, kp_id)
+    if COURSE_ALIASES_YAML.exists():
+        with open(COURSE_ALIASES_YAML, "r", encoding="utf-8") as file:
+            course_alias_data = yaml.safe_load(file) or {}
+        for course, values in course_alias_data.get("course_aliases", {}).items():
+            for alias in values or []:
+                store.add_course_alias(str(alias), str(course))
     return point_count, edge_count
 
 

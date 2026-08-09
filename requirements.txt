@@ -2,6 +2,7 @@
 fastapi
 uvicorn[standard]
 pydantic>=2,<3
+python-multipart
 
 # Authentication
 bcrypt
@@ -20,6 +21,8 @@ requests
 # RAG
 sentence-transformers
 pypdf
+pillow
+pytesseract
 
 # KHG
 pyyaml

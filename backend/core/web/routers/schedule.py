@@ -1,0 +1,211 @@
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from pydantic import BaseModel, Field, model_validator
+
+from backend.agent.tools.mastery_tools import kg_store
+from backend.core.services.schedule_import_service import (
+    extract_document_text,
+    extract_schedule_courses,
+)
+from backend.core.stores.schedule_store import ScheduleStore
+from backend.core.stores.user_course_store import UserCourseStore
+from backend.core.stores.user_store import UserStore
+from backend.core.utils.models import SessionPrincipal, UserRecord
+from backend.core.web.deps import get_current_session
+
+router = APIRouter(prefix="/me/schedule", tags=["schedule"])
+CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024
+COURSE_COLORS = (
+    0xFF2563EB,
+    0xFF7C3AED,
+    0xFF059669,
+    0xFFD97706,
+    0xFFDC2626,
+    0xFF0891B2,
+    0xFFDB2777,
+)
+
+
+class ScheduleCoursePayload(BaseModel):
+    id: str | None = Field(default=None, max_length=80)
+    name: str = Field(min_length=1, max_length=80)
+    teacher: str = Field(default="", max_length=80)
+    location: str = Field(default="", max_length=80)
+    weekday: int = Field(ge=1, le=7)
+    start_period: int = Field(ge=1, le=24)
+    end_period: int = Field(ge=1, le=24)
+    start_week: int = Field(ge=1, le=30)
+    end_week: int = Field(ge=1, le=30)
+    color_value: int = Field(default=0xFF2563EB, ge=0, le=0xFFFFFFFF)
+
+    @model_validator(mode="after")
+    def validate_ranges(self) -> "ScheduleCoursePayload":
+        if self.end_period < self.start_period:
+            raise ValueError("结束节次不能小于开始节次")
+        if self.end_week < self.start_week:
+            raise ValueError("结束周不能小于开始周")
+        return self
+
+
+class ScheduleSettingsPayload(BaseModel):
+    morning_period_count: int = Field(ge=0, le=8)
+    afternoon_period_count: int = Field(ge=0, le=8)
+    evening_period_count: int = Field(ge=0, le=8)
+    morning_start_minutes: int = Field(ge=0, le=1439)
+    afternoon_start_minutes: int = Field(ge=0, le=1439)
+    evening_start_minutes: int = Field(ge=0, le=1439)
+    period_duration_minutes: int = Field(ge=20, le=180)
+    break_duration_minutes: int = Field(ge=0, le=120)
+    term_start_date: str = Field(default="", pattern=r"^$|^\d{4}-\d{2}-\d{2}$")
+
+    @model_validator(mode="after")
+    def validate_period_count(self) -> "ScheduleSettingsPayload":
+        if (
+            self.morning_period_count
+            + self.afternoon_period_count
+            + self.evening_period_count
+            == 0
+        ):
+            raise ValueError("课表至少需要一节课")
+        return self
+
+
+def _user(request: Request, session: SessionPrincipal) -> UserRecord:
+    store: UserStore = request.app.state.user_store
+    user = store.get_by_id(session.user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "用户不存在")
+    return user
+
+
+def _sync_learning_course(request: Request, user_id: str, name: str) -> None:
+    store: UserCourseStore = request.app.state.user_course_store
+    canonical = kg_store.resolve_course_name(name)
+    store.upsert(
+        user_id=user_id,
+        name=name,
+        canonical_course=canonical,
+        source="timetable",
+    )
+
+
+def _remove_unused_learning_course(
+    request: Request, user_id: str, name: str
+) -> None:
+    schedule_store: ScheduleStore = request.app.state.schedule_store
+    if any(course["name"] == name for course in schedule_store.list_courses(user_id)):
+        return
+    course_store: UserCourseStore = request.app.state.user_course_store
+    association = next(
+        (
+            item
+            for item in course_store.list_for_user(user_id)
+            if item["name"] == name and item["source"] == "timetable"
+        ),
+        None,
+    )
+    if association is not None:
+        course_store.delete(user_id=user_id, name=name)
+
+
+@router.get("")
+def get_schedule(request: Request, session: CurrentSession) -> dict:
+    user = _user(request, session)
+    store: ScheduleStore = request.app.state.schedule_store
+    return {
+        "courses": store.list_courses(user.id),
+        "settings": store.get_settings(user.id),
+    }
+
+
+@router.put("/courses")
+def save_schedule_course(
+    payload: ScheduleCoursePayload,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    user = _user(request, session)
+    store: ScheduleStore = request.app.state.schedule_store
+    previous = store.get_course(user.id, payload.id) if payload.id else None
+    course = store.upsert_course(user.id, payload.model_dump(exclude_none=True))
+    _sync_learning_course(request, user.id, course["name"])
+    if previous is not None and previous["name"] != course["name"]:
+        _remove_unused_learning_course(request, user.id, previous["name"])
+    return course
+
+
+@router.delete("/courses/{course_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_schedule_course(
+    course_id: str, request: Request, session: CurrentSession
+) -> None:
+    user = _user(request, session)
+    store: ScheduleStore = request.app.state.schedule_store
+    course = store.get_course(user.id, course_id)
+    if not store.delete_course(user.id, course_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "课程不存在")
+    if course is not None:
+        _remove_unused_learning_course(request, user.id, course["name"])
+
+
+@router.put("/settings")
+def save_schedule_settings(
+    payload: ScheduleSettingsPayload,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    user = _user(request, session)
+    store: ScheduleStore = request.app.state.schedule_store
+    return store.save_settings(user.id, payload.model_dump())
+
+
+@router.post("/import")
+async def import_schedule(
+    request: Request,
+    session: CurrentSession,
+    file: Annotated[UploadFile, File()],
+) -> dict:
+    user = _user(request, session)
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    await file.close()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "文件不能超过 15 MB")
+    if not data:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "文件为空")
+    filename = file.filename or "schedule"
+    content_type = file.content_type or "application/octet-stream"
+    try:
+        text = await extract_document_text(
+            filename=filename,
+            content_type=content_type,
+            data=data,
+        )
+        store: ScheduleStore = request.app.state.schedule_store
+        courses = await extract_schedule_courses(
+            llm_provider=request.app.state.agent.llm_provider,
+            document_text=text,
+            total_weeks=user.total_weeks,
+            settings=store.get_settings(user.id),
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            str(error),
+        ) from error
+    except RuntimeError as error:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "模型暂时无法解析课表",
+        ) from error
+
+    prepared = [
+        {**course, "color_value": COURSE_COLORS[index % len(COURSE_COLORS)]}
+        for index, course in enumerate(courses)
+    ]
+    imported = store.import_courses(user.id, prepared)
+    for course in imported:
+        _sync_learning_course(request, user.id, course["name"])
+    return {"courses": imported, "imported_count": len(imported)}

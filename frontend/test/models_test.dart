@@ -75,6 +75,7 @@ void main() {
       eveningStartMinutes: 19 * 60,
       periodDurationMinutes: 50,
       breakDurationMinutes: 10,
+      termStartDate: '2026-08-03',
     );
 
     expect(settings.periodStartLabel(1), '08:20');
@@ -84,6 +85,8 @@ void main() {
     expect(settings.periodStartLabel(4), '13:30');
     expect(settings.periodStartLabel(6), '19:00');
     expect(settings.totalPeriods, 6);
+    expect(settings.weekForDate(DateTime(2026, 8, 3)), 1);
+    expect(settings.weekForDate(DateTime(2026, 8, 17)), 3);
 
     final restored = ScheduleSettings.fromJson(settings.toJson());
     expect(restored.morningStartMinutes, 500);
@@ -94,5 +97,6 @@ void main() {
     expect(restored.eveningPeriodCount, 1);
     expect(restored.periodDurationMinutes, 50);
     expect(restored.breakDurationMinutes, 10);
+    expect(restored.termStartDate, '2026-08-03');
   });
 }

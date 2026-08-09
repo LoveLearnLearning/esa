@@ -329,7 +329,19 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 ```
 
 `source` 可为 `timetable` 或 `manual`。课表来源允许暂不受 KG 支持的课程，以便前端显示
-明确的“不支持”状态；手动来源必须从 canonical 课程目录选择。
+明确的“不支持”状态；手动来源必须从 canonical 课程目录选择。后端会先用
+`course_aliases.yaml` 做确定性别名解析，例如“数字电路技术”会关联到
+“数字逻辑与数字电路”；不会使用可能误绑课程的自动模糊匹配。
+
+### PATCH /me/learning/courses/{course_name}
+
+将一个尚未匹配的课表课程手动关联到 canonical 课程，同时保留原课表显示名称：
+
+```json
+{"canonical_course": "数字逻辑与数字电路"}
+```
+
+该关联只改变用户课程到全局 KG 的引用，不复制或修改 KG。
 
 ### DELETE /me/learning/courses/{course_name}
 
@@ -353,6 +365,46 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 ### GET /me/learning/recommendations
 
 查询参数：`course`（必填）、`weeks_to_exam`（可选，默认 4）。返回按优先级排序的练习推荐。
+
+---
+
+## 课表接口
+
+以下接口均需要认证，数据按用户隔离并存储在 SQLite。保存或导入课程时，会同步维护
+`user_courses` 关联，使知识地图不需要再次录入课程。
+
+### GET /me/schedule
+
+返回当前用户的 `courses` 和 `settings`。设置包括上午/下午/晚上的节数与开始时间、
+单节时长、课间间隔，以及 `term_start_date`（第一教学周周一，`YYYY-MM-DD`）。前端据此
+结合系统日期计算当前教学周和星期。
+
+### PUT /me/schedule/courses
+
+新增或更新一条课程安排。字段包括 `id`、`name`、`teacher`、`location`、`weekday`
+（周一为 1）、`start_period`、`end_period`、`start_week`、`end_week` 和 `color_value`。
+
+### DELETE /me/schedule/courses/{course_id}
+
+删除课程安排。若相同名称的课表课程已全部删除，也会移除由课表自动创建且不再使用的
+用户课程关联，不影响全局 canonical KG。
+
+### PUT /me/schedule/settings
+
+保存课表作息和第一周日期，返回服务端持久化后的完整设置。
+
+### POST /me/schedule/import
+
+使用 `multipart/form-data` 上传字段名为 `file` 的课表文件，最大 15 MB，支持 PDF、
+PNG/JPEG/WebP/BMP 和 HTML。服务端先从 PDF/HTML 提取文字或对图片执行 OCR，再让当前
+大模型输出经过严格校验的课程结构，最后去重写入用户课表。扫描版 PDF 如果无法提取文字，
+应改为上传清晰图片。
+
+图片识别依赖服务器安装 Tesseract 及中文语言包，例如 Debian/Ubuntu：
+
+```bash
+sudo apt install tesseract-ocr tesseract-ocr-chi-sim
+```
 
 ---
 

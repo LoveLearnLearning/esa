@@ -5,6 +5,7 @@
 // 当 config.dart 里 kOfflineMode == true 时 所有方法走本地假数据 完全不发网络请求
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -292,6 +293,78 @@ class ApiClient {
       headers: _headers(auth: true),
     );
     if (r.statusCode != 204) _fail(r);
+  }
+
+  Future<void> bindLearningCourse({
+    required String name,
+    required String canonicalCourse,
+  }) async {
+    final r = await http.patch(
+      _uri('/me/learning/courses/${Uri.encodeComponent(name.trim())}'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'canonical_course': canonicalCourse.trim()}),
+    );
+    if (r.statusCode != 200) _fail(r);
+  }
+
+  Future<ScheduleSnapshot> getSchedule() async {
+    final r = await http.get(
+      _uri('/me/schedule'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ScheduleSnapshot.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<ScheduleCourse> saveScheduleCourse(ScheduleCourse course) async {
+    final r = await http.put(
+      _uri('/me/schedule/courses'),
+      headers: _headers(auth: true),
+      body: jsonEncode(course.toJson()),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ScheduleCourse.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteScheduleCourse(String courseId) async {
+    final r = await http.delete(
+      _uri('/me/schedule/courses/${Uri.encodeComponent(courseId)}'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204) _fail(r);
+  }
+
+  Future<ScheduleSettings> saveScheduleSettings(
+    ScheduleSettings settings,
+  ) async {
+    final r = await http.put(
+      _uri('/me/schedule/settings'),
+      headers: _headers(auth: true),
+      body: jsonEncode(settings.toJson()),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ScheduleSettings.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<List<ScheduleCourse>> importScheduleFile({
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    final request = http.MultipartRequest('POST', _uri('/me/schedule/import'));
+    if (sessionId != null) {
+      request.headers['Authorization'] = 'Bearer $sessionId';
+    }
+    request.files.add(
+      http.MultipartFile.fromBytes('file', bytes, filename: filename),
+    );
+    final streamed = await request.send();
+    final r = await http.Response.fromStream(streamed);
+    if (r.statusCode != 200) _fail(r);
+    final data = _decode(r) as Map<String, dynamic>;
+    return (data['courses'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => ScheduleCourse.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
   }
 
   Future<KnowledgeMapData> getKnowledgeMap(String course) async {

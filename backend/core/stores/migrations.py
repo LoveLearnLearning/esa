@@ -721,6 +721,52 @@ MIGRATIONS: list[MigrationDef] = [
             "CREATE INDEX IF NOT EXISTS idx_user_courses_user_id ON user_courses(user_id)",
         ],
     ),
+    (
+        7,
+        "create_user_schedules",
+        [
+            """
+            CREATE TABLE IF NOT EXISTS schedule_courses (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                teacher TEXT NOT NULL DEFAULT '',
+                location TEXT NOT NULL DEFAULT '',
+                weekday INTEGER NOT NULL,
+                start_period INTEGER NOT NULL,
+                end_period INTEGER NOT NULL,
+                start_week INTEGER NOT NULL,
+                end_week INTEGER NOT NULL,
+                color_value INTEGER NOT NULL DEFAULT 4280701931,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                CHECK(weekday BETWEEN 1 AND 7),
+                CHECK(start_period BETWEEN 1 AND 24),
+                CHECK(end_period BETWEEN start_period AND 24),
+                CHECK(start_week BETWEEN 1 AND 30),
+                CHECK(end_week BETWEEN start_week AND 30)
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_schedule_courses_user ON schedule_courses(user_id, weekday, start_period)",
+            """
+            CREATE TABLE IF NOT EXISTS schedule_settings (
+                user_id TEXT PRIMARY KEY,
+                morning_period_count INTEGER NOT NULL DEFAULT 4,
+                afternoon_period_count INTEGER NOT NULL DEFAULT 4,
+                evening_period_count INTEGER NOT NULL DEFAULT 4,
+                morning_start_minutes INTEGER NOT NULL DEFAULT 480,
+                afternoon_start_minutes INTEGER NOT NULL DEFAULT 840,
+                evening_start_minutes INTEGER NOT NULL DEFAULT 1140,
+                period_duration_minutes INTEGER NOT NULL DEFAULT 45,
+                break_duration_minutes INTEGER NOT NULL DEFAULT 10,
+                term_start_date TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """,
+        ],
+    ),
 ]
 
 

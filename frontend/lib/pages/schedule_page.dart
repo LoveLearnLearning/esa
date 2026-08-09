@@ -1,6 +1,9 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../api/api_client.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
@@ -27,8 +30,9 @@ class SchedulePage extends StatefulWidget {
 class _SchedulePageState extends State<SchedulePage> {
   final ScrollController _desktopVerticalController = ScrollController();
   bool _requestedSchedule = false;
+  bool _resolvedCalendarWeek = false;
+  bool _importing = false;
   int _week = 1;
-  int _selectedDay = DateTime.now().weekday;
 
   @override
   void didChangeDependencies() {
@@ -50,6 +54,12 @@ class _SchedulePageState extends State<SchedulePage> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final totalWeeks = app.userProfile.totalWeeks.clamp(1, 30);
+    if (app.scheduleLoaded && !_resolvedCalendarWeek) {
+      _resolvedCalendarWeek = true;
+      _week = app.scheduleSettings
+          .weekForDate(DateTime.now())
+          .clamp(1, totalWeeks);
+    }
     if (_week > totalWeeks) _week = totalWeeks;
     final narrow = MediaQuery.sizeOf(context).width < 760;
 
@@ -59,11 +69,24 @@ class _SchedulePageState extends State<SchedulePage> {
           children: [
             _header(context, app, totalWeeks, narrow),
             Expanded(
-              child: !app.scheduleLoaded
-                  ? const Center(child: CircularProgressIndicator())
-                  : narrow
-                  ? _mobileSchedule(context, app)
-                  : _desktopSchedule(context, app),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragEnd: narrow
+                    ? (details) {
+                        final velocity = details.primaryVelocity ?? 0;
+                        if (velocity < -250 && _week < totalWeeks) {
+                          setState(() => _week++);
+                        } else if (velocity > 250 && _week > 1) {
+                          setState(() => _week--);
+                        }
+                      }
+                    : null,
+                child: !app.scheduleLoaded
+                    ? const Center(child: CircularProgressIndicator())
+                    : narrow
+                    ? _mobileSchedule(context, app)
+                    : _desktopSchedule(context, app),
+              ),
             ),
           ],
         ),
@@ -112,6 +135,14 @@ class _SchedulePageState extends State<SchedulePage> {
           if (!narrow) ...[
             const SizedBox(width: 8),
             Text('共 $totalWeeks 周', style: context.texts.bodySmall),
+            if (app.scheduleSettings.parsedTermStartDate != null) ...[
+              const SizedBox(width: 10),
+              Text(
+                '今天：第 ${app.scheduleSettings.weekForDate(DateTime.now()).clamp(1, totalWeeks)} 周 · '
+                '${_weekdays[DateTime.now().weekday - 1]}',
+                style: context.texts.bodySmall,
+              ),
+            ],
           ],
           const Spacer(),
           IconButton(
@@ -146,6 +177,17 @@ class _SchedulePageState extends State<SchedulePage> {
             icon: const Icon(LucideIcons.chevronRight, size: 18),
           ),
           IconButton(
+            tooltip: '从文件导入课表',
+            visualDensity: VisualDensity.compact,
+            onPressed: _importing ? null : () => _importSchedule(app),
+            icon: _importing
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(LucideIcons.fileUp, size: 18),
+          ),
+          IconButton(
             key: const ValueKey('schedule-settings-button'),
             tooltip: '课表设置',
             visualDensity: VisualDensity.compact,
@@ -166,82 +208,68 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   Widget _mobileSchedule(BuildContext context, AppState app) {
-    final courses = app.scheduleCourses
-        .where(
-          (course) =>
-              course.weekday == _selectedDay && course.occursInWeek(_week),
-        )
+    final weekCourses = app.scheduleCourses
+        .where((course) => course.occursInWeek(_week))
         .toList();
-    return Column(
+    if (weekCourses.isEmpty) return _emptyDay(context);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 96),
       children: [
-        SizedBox(
-          height: 66,
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            scrollDirection: Axis.horizontal,
-            itemCount: 7,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              final day = index + 1;
-              final selected = day == _selectedDay;
-              final count = app.scheduleCourses
-                  .where(
-                    (course) =>
-                        course.weekday == day && course.occursInWeek(_week),
-                  )
-                  .length;
-              return InkWell(
-                onTap: () => setState(() => _selectedDay = day),
-                borderRadius: BorderRadius.circular(EsaRadii.pill),
-                child: AnimatedContainer(
-                  duration: EsaMotion.fade,
-                  width: 64,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: selected ? EsaColors.accent : context.n.n100,
-                    border: Border.all(
-                      color: selected ? EsaColors.accent : context.n.divider,
-                    ),
-                    borderRadius: BorderRadius.circular(EsaRadii.pill),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _weekdays[index],
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: selected
-                              ? EsaColors.onAccent
-                              : context.scheme.onSurface,
-                        ),
-                      ),
-                      Text(
-                        count == 0 ? '无课' : '$count 节',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: selected ? EsaColors.onAccent : context.n.n600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+        Container(
+          margin: const EdgeInsets.only(bottom: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: context.n.n100,
+            borderRadius: BorderRadius.circular(EsaRadii.card),
+          ),
+          child: Row(
+            children: [
+              const Icon(LucideIcons.moveHorizontal, size: 17),
+              const SizedBox(width: 8),
+              Text('左右滑动切换教学周', style: context.texts.bodySmall),
+              const Spacer(),
+              Text(
+                '今天 ${_weekdays[DateTime.now().weekday - 1]}',
+                style: context.texts.bodySmall,
+              ),
+            ],
           ),
         ),
-        Expanded(
-          child: courses.isEmpty
-              ? _emptyDay(context)
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 96),
-                  itemCount: courses.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) =>
-                      _mobileCourseCard(context, app, courses[index]),
+        for (var day = 1; day <= 7; day++)
+          if (weekCourses.any((course) => course.weekday == day)) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(3, 8, 3, 8),
+              child: Text(
+                _weekdays[day - 1],
+                style: context.texts.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
-        ),
+              ),
+            ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const gap = 10.0;
+                final columns = constraints.maxWidth >= 330 ? 2 : 1;
+                final width =
+                    (constraints.maxWidth - gap * (columns - 1)) / columns;
+                final courses = weekCourses
+                    .where((course) => course.weekday == day)
+                    .toList();
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: [
+                    for (final course in courses)
+                      SizedBox(
+                        width: width,
+                        child: _mobileCourseCard(context, app, course),
+                      ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
       ],
     );
   }
@@ -255,9 +283,9 @@ class _SchedulePageState extends State<SchedulePage> {
           children: [
             Icon(LucideIcons.coffee, size: 34, color: context.n.n600),
             const SizedBox(height: 12),
-            Text('这一天还没有课程', style: context.texts.titleMedium),
+            Text('这一周还没有课程', style: context.texts.titleMedium),
             const SizedBox(height: 4),
-            Text('点击右下角 + 添加课程', style: context.texts.bodySmall),
+            Text('点击右下角 + 添加，或从文件导入课表', style: context.texts.bodySmall),
           ],
         ),
       ),
@@ -274,63 +302,57 @@ class _SchedulePageState extends State<SchedulePage> {
       onTap: () => _openEditor(app, app.userProfile.totalWeeks, course),
       borderRadius: BorderRadius.circular(EsaRadii.card),
       child: Container(
-        padding: const EdgeInsets.all(15),
+        padding: const EdgeInsets.all(13),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.13),
           border: Border.all(color: color.withValues(alpha: 0.45)),
           borderRadius: BorderRadius.circular(EsaRadii.card),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 5,
-              height: 54,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(EsaRadii.pill),
-              ),
-            ),
-            const SizedBox(width: 13),
-            SizedBox(
-              width: 100,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${course.startPeriod}-${course.endPeriod} 节',
+            Row(
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    course.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: context.texts.titleMedium,
                   ),
-                  Text(
-                    app.scheduleSettings.courseTimeLabel(
-                      course.startPeriod,
-                      course.endPeriod,
-                    ),
-                    style: context.texts.bodySmall?.copyWith(fontSize: 10.5),
-                  ),
-                  Text(
-                    '${course.startWeek}-${course.endWeek} 周',
-                    style: context.texts.bodySmall?.copyWith(fontSize: 10.5),
-                  ),
-                ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '${course.startPeriod}-${course.endPeriod} 节 · '
+              '${app.scheduleSettings.courseTimeLabel(course.startPeriod, course.endPeriod)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.texts.bodySmall?.copyWith(
+                color: context.scheme.onSurface,
               ),
             ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(course.name, style: context.texts.titleMedium),
-                  const SizedBox(height: 4),
-                  Text(
-                    [
-                      course.location,
-                      course.teacher,
-                    ].where((value) => value.isNotEmpty).join(' · '),
-                    style: context.texts.bodySmall,
-                  ),
-                ],
-              ),
+            const SizedBox(height: 3),
+            Text(
+              [
+                course.location,
+                course.teacher,
+                '${course.startWeek}-${course.endWeek} 周',
+              ].where((value) => value.isNotEmpty).join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.texts.bodySmall?.copyWith(fontSize: 10.5),
             ),
-            Icon(LucideIcons.chevronRight, size: 17, color: context.n.n600),
           ],
         ),
       ),
@@ -564,6 +586,55 @@ class _SchedulePageState extends State<SchedulePage> {
     );
   }
 
+  Future<void> _importSchedule(AppState app) async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          'pdf',
+          'png',
+          'jpg',
+          'jpeg',
+          'webp',
+          'html',
+          'htm',
+        ],
+        withData: true,
+      );
+      final file = result?.files.singleOrNull;
+      if (file == null) return;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        throw PlatformException(code: 'missing-bytes', message: '无法读取文件内容');
+      }
+      setState(() => _importing = true);
+      final count = await app.importScheduleFile(
+        filename: file.name,
+        bytes: bytes,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            count == 0 ? '没有发现新的课程，已有课程不会重复导入' : '已识别并导入 $count 条课程安排',
+          ),
+        ),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.detail)));
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message ?? '文件读取失败')));
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
   Future<void> _openEditor(
     AppState app,
     int totalWeeks, [
@@ -580,10 +651,17 @@ class _SchedulePageState extends State<SchedulePage> {
       ),
     );
     if (result == null) return;
-    if (result.deleteId != null) {
-      await app.deleteScheduleCourse(result.deleteId!);
-    } else if (result.course != null) {
-      await app.saveScheduleCourse(result.course!);
+    try {
+      if (result.deleteId != null) {
+        await app.deleteScheduleCourse(result.deleteId!);
+      } else if (result.course != null) {
+        await app.saveScheduleCourse(result.course!);
+      }
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.detail)));
     }
   }
 
@@ -601,7 +679,17 @@ class _SchedulePageState extends State<SchedulePage> {
         ),
       ),
     );
-    if (settings != null) await app.saveScheduleSettings(settings);
+    if (settings != null) {
+      try {
+        await app.saveScheduleSettings(settings);
+        if (mounted) setState(() => _resolvedCalendarWeek = false);
+      } on ApiException catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.detail)));
+      }
+    }
   }
 }
 
@@ -628,6 +716,7 @@ class _ScheduleSettingsSheetState extends State<_ScheduleSettingsSheet> {
   late final TextEditingController _eveningCount;
   late final TextEditingController _duration;
   late final TextEditingController _breakDuration;
+  DateTime? _termStartDate;
 
   @override
   void initState() {
@@ -651,6 +740,7 @@ class _ScheduleSettingsSheetState extends State<_ScheduleSettingsSheet> {
     _breakDuration = TextEditingController(
       text: settings.breakDurationMinutes.toString(),
     );
+    _termStartDate = settings.parsedTermStartDate;
   }
 
   @override
@@ -667,6 +757,26 @@ class _ScheduleSettingsSheetState extends State<_ScheduleSettingsSheet> {
       TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
 
   int _minutesOfDay(TimeOfDay time) => time.hour * 60 + time.minute;
+
+  String _dateValue(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickTermStartDate() async {
+    final now = DateTime.now();
+    final currentMonday = now.subtract(Duration(days: now.weekday - 1));
+    final value = await showDatePicker(
+      context: context,
+      initialDate: _termStartDate ?? currentMonday,
+      firstDate: DateTime(now.year - 2),
+      lastDate: DateTime(now.year + 2),
+      helpText: '选择第一教学周的周一',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+    if (value != null) setState(() => _termStartDate = value);
+  }
 
   Future<void> _pickStartTime(
     TimeOfDay initialTime,
@@ -733,6 +843,7 @@ class _ScheduleSettingsSheetState extends State<_ScheduleSettingsSheet> {
     eveningStartMinutes: _minutesOfDay(_eveningStart),
     periodDurationMinutes: int.tryParse(_duration.text) ?? 45,
     breakDurationMinutes: int.tryParse(_breakDuration.text) ?? 10,
+    termStartDate: _termStartDate == null ? '' : _dateValue(_termStartDate!),
   );
 
   bool _sessionsDoNotOverlap(ScheduleSettings settings) {
@@ -865,6 +976,43 @@ class _ScheduleSettingsSheetState extends State<_ScheduleSettingsSheet> {
                       ],
                     ),
                     const SizedBox(height: 12),
+                    InkWell(
+                      key: const ValueKey('schedule-term-start-date'),
+                      onTap: _pickTermStartDate,
+                      borderRadius: BorderRadius.circular(EsaRadii.card),
+                      child: Container(
+                        padding: const EdgeInsets.all(13),
+                        decoration: BoxDecoration(
+                          color: context.n.n100,
+                          borderRadius: BorderRadius.circular(EsaRadii.card),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(LucideIcons.calendarRange, size: 18),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '第一周日期',
+                                    style: context.texts.titleMedium,
+                                  ),
+                                  Text(
+                                    _termStartDate == null
+                                        ? '未设置（点击选择第一周周一）'
+                                        : '${_dateValue(_termStartDate!)} · 系统将自动计算当前教学周',
+                                    style: context.texts.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(LucideIcons.chevronRight, size: 17),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     _sessionRow(
                       context,
                       title: '上午',

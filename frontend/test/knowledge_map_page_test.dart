@@ -122,6 +122,41 @@ class _UnassessedKnowledgeApi extends _KnowledgeApi {
   ];
 }
 
+class _BindableKnowledgeApi extends _KnowledgeApi {
+  bool bound = false;
+
+  @override
+  Future<List<LearningCourseSummary>> getLearningCourses() async => [
+    LearningCourseSummary(
+      name: '数字电路技术',
+      canonicalCourse: bound ? '数字逻辑与数字电路' : null,
+      totalPoints: bound ? 2 : 0,
+      evaluatedPoints: 0,
+      weakPoints: 0,
+      reviewPoints: 0,
+      supported: bound,
+      source: 'timetable',
+    ),
+  ];
+
+  @override
+  Future<List<LearningCourseCatalogItem>> getLearningCourseCatalog({
+    String query = '',
+  }) async => const [
+    LearningCourseCatalogItem(name: '数字逻辑与数字电路', added: false),
+  ];
+
+  @override
+  Future<void> bindLearningCourse({
+    required String name,
+    required String canonicalCourse,
+  }) async {
+    if (name == '数字电路技术' && canonicalCourse == '数字逻辑与数字电路') {
+      bound = true;
+    }
+  }
+}
+
 class _SyncKnowledgeApi extends _KnowledgeApi {
   bool added = false;
   List<String> syncedNames = const [];
@@ -224,6 +259,7 @@ void main() {
 
     expect(find.text('这门课程暂时没有可用的知识地图'), findsOneWidget);
     expect(find.textContaining('日语口语训练'), findsWidgets);
+    expect(find.text('匹配已有课程'), findsOneWidget);
     expect(find.textContaining('Not Found'), findsNothing);
   });
 
@@ -279,6 +315,23 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.syncedNames, ['数据结构']);
+    expect(find.text('递归'), findsOneWidget);
+  });
+
+  testWidgets('lets an unsupported timetable name bind to a canonical course', (
+    tester,
+  ) async {
+    final api = _BindableKnowledgeApi();
+    await _pumpPage(tester, api);
+
+    await tester.tap(find.text('匹配已有课程'));
+    await tester.pumpAndSettle();
+    expect(find.text('数字逻辑与数字电路'), findsOneWidget);
+
+    await tester.tap(find.text('数字逻辑与数字电路'));
+    await tester.pumpAndSettle();
+
+    expect(api.bound, isTrue);
     expect(find.text('递归'), findsOneWidget);
   });
 }

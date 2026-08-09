@@ -1,6 +1,7 @@
 from backend.agent.learning.evidence_store import LearningEvidenceStore
 from backend.agent.learning.knowledge_map_service import KnowledgeMapService
 from backend.agent.learning.learning_state_service import LearningStateService
+from backend.agent.memories.kg_loader import load_into_store
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 from backend.agent.memories.mastery_store import MasteryStore
 
@@ -50,3 +51,12 @@ def test_courses_and_point_detail_reflect_learning_event(tmp_path):
     detail = service.get_point_detail(user_name="alice", kp_id="advanced")
     assert detail["state"]["has_record"] is True
     assert detail["evidence_summary"]["evidence_count"] == 1
+
+
+def test_course_alias_resolves_to_canonical_course(tmp_path):
+    store = KnowledgeGraphStore(tmp_path / "kg-with-aliases.db")
+    load_into_store(store)
+
+    assert store.resolve_course_name("数字电路技术") == "数字逻辑与数字电路"
+    assert store.resolve_course_name("  数字 电路技术 ") == "数字逻辑与数字电路"
+    assert store.resolve_course_name("不存在的课程") is None

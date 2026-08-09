@@ -52,6 +52,13 @@ class _UserCourseStore:
         return list(self.items)
 
     def upsert(self, *, user_id, name, canonical_course, source):
+        for item in self.items:
+            if item["name"] == name:
+                item.update(
+                    canonical_course=canonical_course,
+                    source=source,
+                )
+                return True
         self.items.append(
             {
                 "name": name,
@@ -149,3 +156,31 @@ def test_timetable_course_without_kg_is_kept_as_unsupported(monkeypatch):
     )
     assert unsupported["supported"] is False
     assert unsupported["canonical_course"] is None
+
+
+def test_unsupported_course_can_be_bound_to_canonical_course(monkeypatch):
+    app = _app(monkeypatch)
+    store = app.state.user_course_store
+    store.items.append(
+        {
+            "name": "数字电路技术",
+            "canonical_course": None,
+            "source": "timetable",
+        }
+    )
+    monkeypatch.setattr(
+        learning.kg_store,
+        "resolve_course_name",
+        lambda _name: "数字逻辑与数字电路",
+    )
+    client = TestClient(app)
+
+    response = client.patch(
+        "/me/learning/courses/数字电路技术",
+        json={"canonical_course": "数字逻辑与数字电路"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["canonical_course"] == "数字逻辑与数字电路"
+    bound = next(item for item in store.items if item["name"] == "数字电路技术")
+    assert bound["canonical_course"] == "数字逻辑与数字电路"

@@ -8,6 +8,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' show ClientException;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
@@ -225,7 +226,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ============ 本地课表 ============
+  // ============ 服务端课表（SharedPreferences 仅作离线缓存/旧数据迁移） ============
   String get _scheduleStorageKey =>
       '$_scheduleStoragePrefix${api.userId ?? api.username ?? 'guest'}';
 
@@ -234,9 +235,70 @@ class AppState extends ChangeNotifier {
 
   Future<void> loadSchedule({bool force = false}) async {
     if (scheduleLoaded && !force) return;
-    scheduleLoaded = true;
+    scheduleLoaded = false;
+    try {
+      final snapshot = await api.getSchedule();
+      var serverCourses = snapshot.courses;
+      var serverSettings = snapshot.settings;
+      final localPreferences = await _getLocalPreferences();
+      if (serverCourses.isEmpty && localPreferences != null) {
+        final rawCourses = localPreferences.getString(_scheduleStorageKey);
+        if (rawCourses != null && rawCourses.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(rawCourses);
+            if (decoded is List) {
+              final legacyCourses = decoded
+                  .whereType<Map>()
+                  .map(
+                    (item) => ScheduleCourse.fromJson(
+                      Map<String, dynamic>.from(item),
+                    ),
+                  )
+                  .toList();
+              final migrated = <ScheduleCourse>[];
+              for (final course in legacyCourses) {
+                migrated.add(await api.saveScheduleCourse(course));
+              }
+              serverCourses = migrated;
+            }
+          } on FormatException {
+            // 损坏的旧缓存不迁移。
+          }
+        }
+        final rawSettings = localPreferences.getString(
+          _scheduleSettingsStorageKey,
+        );
+        if (rawSettings != null && rawSettings.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(rawSettings);
+            if (decoded is Map) {
+              serverSettings = await api.saveScheduleSettings(
+                ScheduleSettings.fromJson(Map<String, dynamic>.from(decoded)),
+              );
+            }
+          } on FormatException {
+            // 损坏的旧缓存不迁移。
+          }
+        }
+      }
+      scheduleCourses
+        ..clear()
+        ..addAll(serverCourses);
+      scheduleSettings = serverSettings;
+      scheduleLoaded = true;
+      _sortSchedule();
+      await _persistSchedule();
+      notifyListeners();
+      return;
+    } on ApiException catch (error) {
+      if (_handled401(error)) return;
+      // 网络暂时不可用时读旧缓存，恢复联网后的写操作仍以服务端为准。
+    } on ClientException {
+      // 同上，保留离线只读回退。
+    }
     final localPreferences = await _getLocalPreferences();
     if (localPreferences == null) {
+      scheduleLoaded = true;
       notifyListeners();
       return;
     }
@@ -272,15 +334,17 @@ class AppState extends ChangeNotifier {
       }
     }
     _sortSchedule();
+    scheduleLoaded = true;
     notifyListeners();
   }
 
   Future<void> saveScheduleCourse(ScheduleCourse course) async {
-    final index = scheduleCourses.indexWhere((item) => item.id == course.id);
+    final saved = await api.saveScheduleCourse(course);
+    final index = scheduleCourses.indexWhere((item) => item.id == saved.id);
     if (index < 0) {
-      scheduleCourses.add(course);
+      scheduleCourses.add(saved);
     } else {
-      scheduleCourses[index] = course;
+      scheduleCourses[index] = saved;
     }
     _sortSchedule();
     scheduleLoaded = true;
@@ -289,6 +353,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> deleteScheduleCourse(String courseId) async {
+    await api.deleteScheduleCourse(courseId);
     scheduleCourses.removeWhere((course) => course.id == courseId);
     scheduleLoaded = true;
     notifyListeners();
@@ -296,15 +361,38 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> saveScheduleSettings(ScheduleSettings settings) async {
-    scheduleSettings = settings;
+    scheduleSettings = await api.saveScheduleSettings(settings);
     scheduleLoaded = true;
     notifyListeners();
     final localPreferences = await _getLocalPreferences();
     if (localPreferences == null) return;
     await localPreferences.setString(
       _scheduleSettingsStorageKey,
-      jsonEncode(settings.toJson()),
+      jsonEncode(scheduleSettings.toJson()),
     );
+  }
+
+  Future<int> importScheduleFile({
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    final imported = await api.importScheduleFile(
+      filename: filename,
+      bytes: bytes,
+    );
+    for (final course in imported) {
+      final index = scheduleCourses.indexWhere((item) => item.id == course.id);
+      if (index < 0) {
+        scheduleCourses.add(course);
+      } else {
+        scheduleCourses[index] = course;
+      }
+    }
+    _sortSchedule();
+    scheduleLoaded = true;
+    notifyListeners();
+    await _persistSchedule();
+    return imported.length;
   }
 
   void _sortSchedule() {

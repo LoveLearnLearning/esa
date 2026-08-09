@@ -68,6 +68,14 @@ class KnowledgeGraphStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS course_aliases (
+                    alias TEXT PRIMARY KEY,
+                    course TEXT NOT NULL
+                )
+                """
+            )
 
     def add_point(
         self,
@@ -354,14 +362,42 @@ class KnowledgeGraphStore:
         return [str(row["course"]) for row in rows]
 
     def resolve_course_name(self, value: str) -> str | None:
-        """Resolve a timetable label to an exact canonical KG course."""
+        """Resolve an exact canonical name or configured course alias."""
         normalized = "".join(value.split()).casefold()
         if not normalized:
             return None
         for course in self.list_courses():
             if "".join(course.split()).casefold() == normalized:
                 return course
-        return None
+        with self.__connect() as connection:
+            row = connection.execute(
+                "SELECT course FROM course_aliases WHERE alias = ?",
+                (normalized,),
+            ).fetchone()
+        return str(row["course"]) if row is not None else None
+
+    def add_course_alias(self, alias: str, course: str) -> bool:
+        normalized = "".join(alias.split()).casefold()
+        canonical = course.strip()
+        if not normalized or canonical not in set(self.list_courses()):
+            return False
+        with self.__connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO course_aliases (alias, course)
+                VALUES (?, ?)
+                ON CONFLICT(alias) DO UPDATE SET course = excluded.course
+                """,
+                (normalized, canonical),
+            )
+        return True
+
+    def list_course_aliases(self) -> list[dict]:
+        with self.__connect() as connection:
+            rows = connection.execute(
+                "SELECT alias, course FROM course_aliases ORDER BY alias"
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def get_edges(
         self,

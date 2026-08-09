@@ -7,11 +7,40 @@ import 'package:frontend/state/app_state.dart';
 import 'package:frontend/theme/esa_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class _ScheduleApi extends ApiClient {
+  _ScheduleApi() : super(baseUrl: 'http://test.invalid');
+
+  final List<ScheduleCourse> courses = [];
+  ScheduleSettings settings = const ScheduleSettings();
+
+  @override
+  Future<ScheduleSnapshot> getSchedule() async =>
+      ScheduleSnapshot(courses: List.of(courses), settings: settings);
+
+  @override
+  Future<ScheduleCourse> saveScheduleCourse(ScheduleCourse course) async {
+    final index = courses.indexWhere((item) => item.id == course.id);
+    index < 0 ? courses.add(course) : courses[index] = course;
+    return course;
+  }
+
+  @override
+  Future<void> deleteScheduleCourse(String courseId) async {
+    courses.removeWhere((course) => course.id == courseId);
+  }
+
+  @override
+  Future<ScheduleSettings> saveScheduleSettings(ScheduleSettings value) async {
+    settings = value;
+    return value;
+  }
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  AppState createState() {
-    final api = ApiClient(baseUrl: 'http://test.invalid')
+  AppState createState([_ScheduleApi? existingApi]) {
+    final api = (existingApi ?? _ScheduleApi())
       ..sessionId = 'session'
       ..userId = 'user-1'
       ..username = 'tester';
@@ -29,7 +58,8 @@ void main() {
   testWidgets('bottom navigation opens the timetable and adds a course', (
     tester,
   ) async {
-    final state = createState();
+    final api = _ScheduleApi();
+    final state = createState(api);
     addTearDown(state.dispose);
     await tester.pumpWidget(app(state));
     await tester.pumpAndSettle();
@@ -79,6 +109,9 @@ void main() {
       find.byKey(const ValueKey('schedule-break-duration')),
       '10',
     );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('save-schedule-settings')),
+    );
     await tester.tap(find.byKey(const ValueKey('save-schedule-settings')));
     await tester.pumpAndSettle();
 
@@ -102,7 +135,7 @@ void main() {
     expect(find.text('09:50'), findsOneWidget);
     expect(state.scheduleCourses, hasLength(1));
 
-    final restored = createState();
+    final restored = createState(api);
     addTearDown(restored.dispose);
     await restored.loadSchedule();
     expect(restored.scheduleCourses.single.name, '数据结构');
@@ -133,16 +166,36 @@ void main() {
         colorValue: 0xFF2563EB,
       ),
     );
+    await state.saveScheduleCourse(
+      const ScheduleCourse(
+        id: 'mobile-course-2',
+        name: '操作系统',
+        weekday: 2,
+        startPeriod: 3,
+        endPeriod: 4,
+        startWeek: 1,
+        endWeek: 18,
+        colorValue: 0xFF7C3AED,
+      ),
+    );
 
     await tester.pumpWidget(app(state));
     await tester.pumpAndSettle();
     await tester.tap(find.text('课表'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('周一'));
-    await tester.pumpAndSettle();
-
     expect(find.text('高等数学'), findsOneWidget);
-    expect(find.text('08:00–09:40'), findsOneWidget);
+    expect(find.text('操作系统'), findsOneWidget);
+    expect(find.textContaining('08:00–09:40'), findsOneWidget);
+    expect(tester.getSize(find.text('高等数学')).width, lessThan(180));
+
+    expect(find.text('第 1 周'), findsOneWidget);
+    await tester.fling(
+      find.text('高等数学'),
+      const Offset(-320, 0),
+      1000,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('第 2 周'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('schedule-settings-button')),
       findsOneWidget,
