@@ -28,6 +28,7 @@ class LLMProvider:
         model_path: str | Path,
         gpu_memory_utilization: float = 0.95,
         max_model_len: int = 32768,
+        max_output_tokens: int = 8192,
         quantization: QuantizationMethods | None = None,
         dtype: ModelDType = "auto",
         kv_cache_dtype: CacheDType = "auto",
@@ -35,11 +36,15 @@ class LLMProvider:
         tensor_parallel_size: int = 1,
     ) -> None:
         self.model_path = Path(model_path)
+        if max_output_tokens <= 0:
+            raise ValueError("max_output_tokens 必须大于 0")
+        self.max_output_tokens = max_output_tokens
         logger.info(
-            "正在加载千问模型：path=%s，TP=%s，max_model_len=%s",
+            "正在加载千问模型：path=%s，TP=%s，max_model_len=%s，max_output_tokens=%s",
             self.model_path,
             tensor_parallel_size,
             max_model_len,
+            max_output_tokens,
         )
 
         engine_args = AsyncEngineArgs(
@@ -122,7 +127,7 @@ class LLMProvider:
         sampling_params = SamplingParams(
             temperature=0.7,
             top_p=0.8,
-            max_tokens=2048,
+            max_tokens=self.max_output_tokens,
             output_kind=RequestOutputKind.DELTA,
         )
 
