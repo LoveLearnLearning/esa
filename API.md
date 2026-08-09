@@ -2,7 +2,7 @@
 
 > 在这里记录前后端网络 endpoint 前端照此对接 后端改动接口时同步更新本文档
 >
-> 最后核对：2026-08-04。
+> 最后核对：2026-08-09。
 
 - Base URL（`python -m backend.main`）: `http://127.0.0.1:51024`
 - 开发启动命令: `uvicorn backend.core.web.webAPI:app --host 0.0.0.0 --port 51024 --reload`
@@ -32,7 +32,7 @@ Authorization: Bearer <session_id>
 |---|---|
 | 401 | 未登录 / 会话无效 / 会话过期 / 用户名或密码错误 |
 | 404 | 资源不存在或不属于当前用户 |
-| 409 | 资源冲突 如用户名已存在 |
+| 409 | 资源冲突，如用户名已存在、分组达到上限或同一对话上一轮仍在生成 |
 | 422 | 请求体校验不通过 由 pydantic 自动返回 |
 
 ---
@@ -215,6 +215,18 @@ data: {"delta":"回答正文"}
 
 客户端必须按 SSE 空行分隔事件，并将同类 `delta` 按收到顺序追加，不能把每个增量作为独立消息。工具调用 XML 不会作为可见内容发送。
 
+### 同一对话并发约定
+
+同步与流式发送接口共用对话级租约。同一 `conversation_id` 的请求会跨协程和多个
+Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手消息持久化都保持顺序；
+不同对话不互相阻塞。等待上一轮超过服务端时限时返回 `409`：
+
+```json
+{ "detail": "上一条消息仍在生成，请稍后重试" }
+```
+
+客户端收到该响应后不应自动重复追加用户消息，提示用户稍后重试即可。
+
 ---
 
 ## 对话分组接口
@@ -351,6 +363,78 @@ data: {"delta":"回答正文"}
 ### PATCH /me/profile
 
 更新当前用户学情档案。档案开启时，Agent 会将相关学情信息注入本轮上下文。
+
+请求字段均可选：`major`、`grade`、`current_week`、`total_weeks`、
+`profile_enabled`。其中当前只接受 `major="cs"`，并要求
+`current_week <= total_weeks`。
+
+### PATCH /me/profile/explicit
+
+Profile V2 的显式字段统一更新入口，可部分更新：
+
+```json
+{
+  "major": "cs",
+  "grade": "大二",
+  "current_week": 6,
+  "total_weeks": 18,
+  "preferred_style": "concise",
+  "preferred_tone": "friendly",
+  "custom_instruction": "先给思路，再给答案"
+}
+```
+
+成功时返回最新的完整 Profile V2 视图。该接口每个用户每分钟最多 10 次。
+
+### GET /me/profile/sources
+
+使用查询参数 `field_key` 查看一个推断画像字段的来源、置信度、支撑记忆 ID 和最后确认
+时间。例如：`GET /me/profile/sources?field_key=learning_goal`。未命中时返回
+`found: false`，不返回 404。
+
+### DELETE /me/profile/inferred/{field_key}
+
+抑制一个推断画像字段，使其后续不再注入 Prompt。该操作保留审计记录，不删除原始长期
+记忆；字段不存在或已经被抑制时返回 `404`。成功响应：
+
+```json
+{ "deleted": true, "field_key": "learning_goal" }
+```
+
+### GET /me/profile/export
+
+导出当前用户全部画像维度，包括 active 和 suppressed 记录。响应包含 `user_id`、
+`exported_at` 和 `dimensions`。
+
+### DELETE /me/profile?confirm=DELETE
+
+物理删除当前用户的全部派生画像维度，并失效画像缓存。缺少精确的
+`confirm=DELETE` 时返回 `400`。该接口不删除登录账户、长期记忆或记忆设置，每个用户
+每分钟最多调用一次。
+
+## 记忆与画像开关
+
+### GET /me/memory-settings
+
+返回：
+
+```json
+{
+  "learning_profile_enabled": true,
+  "inferred_profile_enabled": true,
+  "default_conversation_mode": "normal"
+}
+```
+
+### PATCH /me/memory-settings
+
+上述字段均可部分更新。`default_conversation_mode` 只允许：
+
+- `normal`：允许读取和写入长期状态
+- `no_write`：允许读取，不写入长期状态
+- `isolated`：不读取也不写入长期状态
+
+成功时返回最新设置；该接口每个用户每分钟最多 10 次。
 
 ## Web 部署约定
 

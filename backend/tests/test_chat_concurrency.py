@@ -107,6 +107,41 @@ def test_same_conversation_turns_are_serialized(tmp_path):
     assert chat_store.query_one("SELECT COUNT(*) FROM conversation_turn_leases")[0] == 0
 
 
+def test_different_conversations_can_run_in_parallel(tmp_path):
+    database_path = tmp_path / "chat.db"
+    user_store, chat_store, first_conversation_id = _setup(database_path)
+    second_conversation_id = chat_store.create_conversation("u1")["conversation_id"]
+    agent = _Agent()
+    coordinator = ConversationTurnCoordinator(database_path)
+    request = _request(user_store, chat_store, agent, coordinator)
+    session = SessionPrincipal(session_id="s1", user_id="u1")
+
+    async def run_concurrently():
+        await asyncio.gather(
+            send_message(
+                first_conversation_id,
+                SendMessageRequest(content="first"),
+                request,
+                session,
+            ),
+            send_message(
+                second_conversation_id,
+                SendMessageRequest(content="second"),
+                request,
+                session,
+            ),
+        )
+
+    asyncio.run(run_concurrently())
+
+    assert agent.max_active_runs == 2
+    for conversation_id in (first_conversation_id, second_conversation_id):
+        assert [
+            message["role"]
+            for message in chat_store.get_model_messages(conversation_id)
+        ] == ["user", "assistant"]
+
+
 def test_two_worker_coordinators_share_the_database_lease(tmp_path):
     """两个独立协调器没有共享内存锁，用数据库租约仍必须串行。"""
     database_path = tmp_path / "chat.db"

@@ -1,6 +1,9 @@
 # 记忆功能与提示词系统 — 行业对标分析报告
 
-> 项目状态复核：2026-08-04。本文的行业对标数据属于研究记录；项目状态以本节修订和 [TODO.md](TODO.md) 为准。
+> 当前状态（2026-08-09）：CoreMemory 已改为 Tool 按需检索，Prompt 与 Skill 已收口，
+> Profile V2 已实现；容量预算、冲突/过期策略和系统化评测仍待完成。本文评分表保留
+> 2026-08-04 的基线快照，不代表当前实现得分。最新任务以 [TODO.md](TODO.md) 为准，
+> 已完成改造见 [OPTIMIZATION_NOTES.md](OPTIMIZATION_NOTES.md)。
 
 > 负责模块：记忆系统（TempMemory / CoreMemory / 知识图谱 / 掌握度模型）+ 提示词系统（build_prompt / 风格语调 / 学情档案注入）
 >
