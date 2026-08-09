@@ -20,3 +20,9 @@ def workspace_root() -> Path:
     if configured:
         return Path(configured).expanduser().resolve()
     return Path(__file__).resolve().parents[3]
+
+
+# Backwards-compatible package constant used by the chunk and evaluation CLIs.
+# It is intentionally computed through ``workspace_root`` so ESA_WORKSPACE and
+# RAG_WORKSPACE keep working when commands are launched outside the checkout.
+WORKSPACE_ROOT = workspace_root()

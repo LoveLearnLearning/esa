@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -35,12 +36,21 @@ AGENT_LOOP_TIME: int = 10
 
 RAG_WORKSPACE_ROOT = workspace_root()
 
+
+def _path_from_env(name: str, default: Path) -> Path:
+    """Return an absolute, expanded path while keeping deployment configurable."""
+
+    return Path(os.environ.get(name, default)).expanduser().resolve()
+
 # collection and deployment
-RAG_COLLECTION_MANIFEST_PATH: Path = (
+RAG_COLLECTION_MANIFEST_PATH: Path = _path_from_env(
+    "RAG_COLLECTION_MANIFEST_PATH",
     RAG_WORKSPACE_ROOT
-    / "artifacts/chunk/collections/collection_bc7a6054e159eb7346e94df0/manifest.json"
+    / "artifacts/chunk/collections/collection_e55166f798ef1c361c72de9a/manifest.json",
 )
-RAG_INDEX_DEPLOYMENT_ROOT: Path = RAG_WORKSPACE_ROOT / "artifacts/rag/indexes"
+RAG_INDEX_DEPLOYMENT_ROOT: Path = _path_from_env(
+    "RAG_INDEX_DEPLOYMENT_ROOT", RAG_WORKSPACE_ROOT / "artifacts/rag/indexes"
+)
 
 # qdrant
 RAG_QDRANT_BASE_URL: str = "http://127.0.0.1:6333"
@@ -51,7 +61,9 @@ RAG_QDRANT_UPSERT_BATCH_SIZE: int = 64
 # embedding
 EmbeddingBackend = Literal["reference", "transformers", "vllm"]
 RAG_EMBEDDING_BACKEND: EmbeddingBackend = "transformers"
-RAG_EMBEDDING_MODEL_PATH: str = "/home/qwq/models/Qwen3-Embedding-4B"
+RAG_EMBEDDING_MODEL_PATH: str = os.environ.get(
+    "RAG_EMBEDDING_MODEL_PATH", "/home/karatani/models/Qwen3-Embedding-4B"
+)
 RAG_EMBEDDING_BASE_URL: str | None = None
 RAG_EMBEDDING_DEVICE: str = "cuda"
 RAG_EMBEDDING_DIMENSION: int = 2560
@@ -62,7 +74,9 @@ RAG_EMBEDDING_TIMEOUT: float = 120.0
 # reranker
 RerankerBackend = Literal["none", "transformers", "vllm"]
 RAG_RERANKER_BACKEND: RerankerBackend = "transformers"
-RAG_RERANKER_MODEL_PATH: str = "/home/qwq/models/Qwen3-Reranker-4B"
+RAG_RERANKER_MODEL_PATH: str = os.environ.get(
+    "RAG_RERANKER_MODEL_PATH", "/home/karatani/models/Qwen3-Reranker-4B"
+)
 RAG_RERANKER_BASE_URL: str | None = None
 RAG_RERANKER_DEVICE: str = "cuda"
 RAG_RERANKER_MAX_LENGTH: int = 8192
@@ -78,3 +92,9 @@ RAG_FINAL_LIMIT: int = 5
 RAG_RRF_K: int = 60
 RAG_SECTION_WINDOW: int = 1
 RAG_RERANK_THRESHOLD: float | None = None
+
+RAG_INDEX_DEPLOYMENT_MANIFEST_PATH: Path = _path_from_env(
+    "RAG_INDEX_DEPLOYMENT_MANIFEST_PATH",
+    RAG_INDEX_DEPLOYMENT_ROOT
+    / "deployment_357bd9c84d8404fae42c2740/manifest.json",
+)

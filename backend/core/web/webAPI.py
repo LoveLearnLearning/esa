@@ -17,17 +17,7 @@ from backend.core.stores.migrations import run_migrations
 from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
-from backend.core.utils.config import (
-    AGENT_LOOP_TIME,
-    MODEL_DTYPE,
-    MODEL_GPU_MEMORY_UTILIZATION,
-    MODEL_KV_CACHE_DTYPE,
-    MODEL_MAX_MODEL_LENGTH,
-    MODEL_MAX_NUM_SEQS,
-    MODEL_PATH,
-    MODEL_QUANTIZATION,
-    MODEL_TENSOR_PARALLEL_SIZE,
-)
+from backend.core.utils import config
 from backend.core.web.routers import (
     auth,
     chat,
@@ -36,6 +26,12 @@ from backend.core.web.routers import (
     memories,
     preferences,
 )
+from backend.agent.rag.agent_api import (
+    configure_retrieval_service,
+    reset_retrieval_service,
+)
+from backend.agent.rag.runtime import create_retrieval_service
+
 
 DB_PATH = Path(__file__).resolve().parent.parent / "stores" / "data" / "user.db"
 
@@ -57,15 +53,15 @@ async def lifespan(app: FastAPI):
         app.state.session_store,
     )
     app.state.agent = Agent(
-        loop_times=AGENT_LOOP_TIME,
-        model_path=MODEL_PATH,
-        dtype=MODEL_DTYPE,
-        kv_cache_dtype=MODEL_KV_CACHE_DTYPE,
-        gpu_memory_utilization=MODEL_GPU_MEMORY_UTILIZATION,
-        max_model_len=MODEL_MAX_MODEL_LENGTH,
-        max_num_seqs=MODEL_MAX_NUM_SEQS,
-        quantization=MODEL_QUANTIZATION,
-        tensor_parallel_size=MODEL_TENSOR_PARALLEL_SIZE,
+        loop_times=config.AGENT_LOOP_TIME,
+        model_path=config.MODEL_PATH,
+        dtype=config.MODEL_DTYPE,
+        kv_cache_dtype=config.MODEL_KV_CACHE_DTYPE,
+        gpu_memory_utilization=config.MODEL_GPU_MEMORY_UTILIZATION,
+        max_model_len=config.MODEL_MAX_MODEL_LENGTH,
+        max_num_seqs=config.MODEL_MAX_NUM_SEQS,
+        quantization=config.MODEL_QUANTIZATION,
+        tensor_parallel_size=config.MODEL_TENSOR_PARALLEL_SIZE,
     )
     app.state.profile_store = ProfileStore(DB_PATH)
     app.state.profile_builder = ProfileBuilder(
@@ -74,9 +70,14 @@ async def lifespan(app: FastAPI):
         kg_store=kg_store,
         profile_store=app.state.profile_store,
     )
+    app.state.rag_service = create_retrieval_service(
+        config.RAG_INDEX_DEPLOYMENT_MANIFEST_PATH
+    )
+    configure_retrieval_service(app.state.rag_service)
     try:
         yield
     finally:
+        reset_retrieval_service()
         app.state.agent.llm_provider.engine.shutdown()
 
 
