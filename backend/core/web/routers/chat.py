@@ -182,9 +182,11 @@ def _prepare_message(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在！")
 
     # 读取模型历史 + 落库用户消息 同一事务原子完成 避免并发读-写竞态
-    history: list[dict] = chat_store.get_model_history_and_append(
-        conversation_id,
-        [{"role": "user", "content": body.content, "is_visible": True}],
+    conversation_summary, history = (
+        chat_store.get_compressed_model_history_and_append(
+            conversation_id,
+            [{"role": "user", "content": body.content, "is_visible": True}],
+        )
     )
 
     # 会话记忆模式: normal(读+写) / no_write(只读) / isolated(不读不写)
@@ -232,6 +234,7 @@ def _prepare_message(
         group_style=group_style,
         group_tone=group_tone,
         group_custom_instruction=group_custom_instruction,
+        conversation_summary=conversation_summary or "",
         conversation_mode=conversation_mode,
     )
 
@@ -253,6 +256,7 @@ def _build_prompt_context(ctx: MessageContext) -> PromptContext:
         group_style=ctx.group_style,
         group_tone=ctx.group_tone,
         group_custom_instruction=ctx.group_custom_instruction,
+        conversation_summary=ctx.conversation_summary,
         conversation_mode=ctx.conversation_mode,
     )
 

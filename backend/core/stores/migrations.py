@@ -767,6 +767,37 @@ MIGRATIONS: list[MigrationDef] = [
             """,
         ],
     ),
+    (
+        8,
+        "create_presence_and_conversation_summaries",
+        [
+            """
+            CREATE TABLE IF NOT EXISTS user_presence (
+                user_id TEXT PRIMARY KEY,
+                is_online INTEGER NOT NULL DEFAULT 0,
+                last_seen_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS conversation_summaries (
+                conversation_id TEXT PRIMARY KEY,
+                summarized_through_message_id INTEGER NOT NULL DEFAULT 0,
+                summary TEXT NOT NULL,
+                source_message_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(conversation_id)
+                    REFERENCES conversations(conversation_id) ON DELETE CASCADE
+            )
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS idx_conversation_summaries_updated
+            ON conversation_summaries(updated_at)
+            """,
+        ],
+    ),
 ]
 
 

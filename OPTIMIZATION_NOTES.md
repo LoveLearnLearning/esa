@@ -83,6 +83,28 @@ Mastery          LearningEvidence
 - `.github/workflows/quality.yml` 在 Python 3.10.20 上执行静态检查和测试。
 - Web 路由统一位于 `backend/core/web/routers/`，不再保留漂移的旧版副本。
 
+## 五卡双模型与离线上下文压缩
+
+2026-08-10 将第五张 A800 隔离给本机 Qwen3.5-9B 辅助服务：
+
+- 122B 主模型固定使用前 4 张可见 GPU，辅助模型固定使用第 5 张，两个进程拥有独立的
+  `CUDA_VISIBLE_DEVICES` 和 Triton 缓存目录。
+- 辅助 OpenAI 兼容接口仅监听 `127.0.0.1:51025`，课表文件结构化提取不再占用主模型。
+- 认证请求刷新持久化在线时间；显式退出或 5 分钟无活动后，对话进入后台压缩候选集。
+- 压缩始终保留最近 8 条原始消息，历史消息从不删除；下一轮主模型上下文由“系统摘要 +
+  最近原文”组成。
+- 摘要写入前在同一 SQLite 写事务内复核用户仍离线且没有活跃对话租约，避免与新消息竞态。
+- 辅助模型不可用只影响课表智能导入和新摘要生成，不阻止主后端启动，已有摘要和原始消息
+  仍可正常使用。
+
+主要实现位于：
+
+- `backend/scripts/run_esa_stack.sh`
+- `backend/core/services/auxiliary_llm_service.py`
+- `backend/core/services/conversation_compression_service.py`
+- `backend/core/stores/conversation_summary_store.py`
+- `backend/core/stores/user_presence_store.py`
+
 ## 最近验证结果
 
 ```text

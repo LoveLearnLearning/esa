@@ -1,19 +1,19 @@
-from types import SimpleNamespace
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.stores.user_store import UserStore
-from backend.core.utils.models import ParsedOutput, SessionPrincipal, UserRecord
+from backend.core.utils.models import SessionPrincipal, UserRecord
 from backend.core.web.deps import get_current_session
 from backend.core.web.routers import schedule
 
 
-class _LLMProvider:
-    async def generate(self, messages, tools):
+class _LLMClient:
+    async def chat(self, messages, *, max_tokens, temperature):
         assert "数据结构" in messages[-1]["content"]
+        assert max_tokens > 0
+        assert temperature == 0.0
         return """[
           {
             "name": "数据结构",
@@ -26,10 +26,6 @@ class _LLMProvider:
             "end_week": 18
           }
         ]"""
-
-    def parse_output(self, raw):
-        return ParsedOutput(content=raw)
-
 
 def _app(tmp_path, monkeypatch):
     database = tmp_path / "schedule-api.db"
@@ -45,7 +41,7 @@ def _app(tmp_path, monkeypatch):
     app.state.user_store = user_store
     app.state.schedule_store = ScheduleStore(database)
     app.state.user_course_store = UserCourseStore(database)
-    app.state.agent = SimpleNamespace(llm_provider=_LLMProvider())
+    app.state.auxiliary_llm_client = _LLMClient()
     app.include_router(schedule.router)
     app.dependency_overrides[get_current_session] = lambda: SessionPrincipal(
         session_id="session", user_id=user.id

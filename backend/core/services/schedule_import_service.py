@@ -125,10 +125,11 @@ def _json_array(raw: str) -> list[dict]:
 
 async def extract_schedule_courses(
     *,
-    llm_provider: Any,
+    llm_client: Any,
     document_text: str,
     total_weeks: int,
     settings: dict,
+    max_output_tokens: int = 4096,
 ) -> list[dict]:
     schema = {
         "name": "课程名称",
@@ -158,9 +159,12 @@ async def extract_schedule_courses(
             ),
         },
     ]
-    raw = await llm_provider.generate(messages, [])
-    parsed = llm_provider.parse_output(raw)
-    items = _json_array(parsed.content or raw)
+    raw = await llm_client.chat(
+        messages,
+        max_tokens=max_output_tokens,
+        temperature=0.0,
+    )
+    items = _json_array(raw)
     courses: list[dict] = []
     errors = []
     for item in items:

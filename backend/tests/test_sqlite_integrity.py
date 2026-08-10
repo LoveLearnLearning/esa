@@ -4,11 +4,13 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from backend.core.stores.chat_store import ChatStore
+from backend.core.stores.conversation_summary_store import ConversationSummaryStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.migrations import run_migrations
 from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
+from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
 
 
@@ -133,6 +135,13 @@ def test_user_delete_cascades_all_main_database_records(tmp_path):
             (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
         ),
     )
+    UserPresenceStore(database_path).mark_online("u1")
+    ConversationSummaryStore(database_path).upsert(
+        conversation_id=conversation["conversation_id"],
+        summarized_through_message_id=1,
+        summary="older context",
+        source_message_count=1,
+    )
 
     user_store.execute("DELETE FROM users WHERE id = ?", ("u1",))
 
@@ -145,6 +154,8 @@ def test_user_delete_cascades_all_main_database_records(tmp_path):
         "profile_audit_log",
         "profile_versions",
         "conversation_turn_leases",
+        "user_presence",
+        "conversation_summaries",
     ):
         assert user_store.query_one(f"SELECT COUNT(*) FROM {table}")[0] == 0
 
@@ -228,7 +239,7 @@ def test_legacy_migration_quarantines_orphans_and_preserves_valid_rows(tmp_path)
     # 引用 groups 的归属触发器。迁移必须能安全拆除并重建它们。
     ChatStore(database_path)
 
-    assert run_migrations(database_path) == 7
+    assert run_migrations(database_path) == 8
     assert run_migrations(database_path) == 0
 
     connection = sqlite3.connect(database_path)

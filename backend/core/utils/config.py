@@ -28,8 +28,32 @@ MODEL_MAX_NUM_SEQS: int = 16
 MODEL_QUANTIZATION: QuantizationMethods | None = None
 MODEL_TENSOR_PARALLEL_SIZE: int = 4
 
+# Auxiliary model: dedicated to document parsing and offline context compression.
+# It is served by the local vLLM sidecar and is never exposed publicly.
+AUXILIARY_MODEL_PATH: str = "/remote_dir/home/chenxuzhao/models/Qwen3.5-9B"
+AUXILIARY_MODEL_NAME: str = "esa-qwen3.5-9b"
+AUXILIARY_MODEL_BASE_URL: str = "http://127.0.0.1:51025/v1"
+AUXILIARY_MODEL_PORT: int = 51025
+AUXILIARY_MODEL_DTYPE: str = "bfloat16"
+AUXILIARY_MODEL_GPU_MEMORY_UTILIZATION: float = 0.80
+AUXILIARY_MODEL_MAX_MODEL_LENGTH: int = 32768
+AUXILIARY_MODEL_MAX_OUTPUT_TOKENS: int = 4096
+AUXILIARY_MODEL_MAX_NUM_SEQS: int = 8
+AUXILIARY_MODEL_REQUEST_TIMEOUT: float = 180.0
+
 # agent
 AGENT_LOOP_TIME: int = 10
+
+# Offline conversation context compression. Original messages are retained;
+# the summary only replaces old messages in the next model prompt.
+CONVERSATION_COMPRESSION_ENABLED: bool = True
+CONVERSATION_OFFLINE_AFTER_SECONDS: int = 300
+CONVERSATION_COMPRESSION_SCAN_INTERVAL: int = 30
+CONVERSATION_COMPRESSION_MIN_MESSAGES: int = 12
+CONVERSATION_COMPRESSION_MIN_NEW_MESSAGES: int = 6
+CONVERSATION_COMPRESSION_KEEP_RECENT_MESSAGES: int = 8
+CONVERSATION_COMPRESSION_MAX_INPUT_CHARS: int = 60000
+CONVERSATION_COMPRESSION_MAX_OUTPUT_TOKENS: int = 2048
 
 # ------------- rag ---------------
 

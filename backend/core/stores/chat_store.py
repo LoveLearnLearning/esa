@@ -454,6 +454,32 @@ class ChatStore(BaseSQLiteStore):
         Returns:
             list[dict]              => 追加前的完整模型历史 (与 get_model_messages 同格式)
         """
+        _, history = self._get_model_context_and_append(
+            conversation_id,
+            messages,
+            use_summary=False,
+        )
+        return history
+
+    def get_compressed_model_history_and_append(
+        self,
+        conversation_id: str,
+        messages: list[dict],
+    ) -> tuple[str | None, list[dict]]:
+        """Return the persisted summary plus raw messages after its boundary."""
+        return self._get_model_context_and_append(
+            conversation_id,
+            messages,
+            use_summary=True,
+        )
+
+    def _get_model_context_and_append(
+        self,
+        conversation_id: str,
+        messages: list[dict],
+        *,
+        use_summary: bool,
+    ) -> tuple[str | None, list[dict]]:
         if not messages:
             raise ValueError("messages 不能为空")
 
@@ -470,14 +496,31 @@ class ChatStore(BaseSQLiteStore):
             if exists is None:
                 raise ValueError("对话不存在")
 
+            summary: str | None = None
+            summarized_through_message_id = 0
+            if use_summary:
+                summary_row = connection.execute(
+                    """
+                    SELECT summary, summarized_through_message_id
+                    FROM conversation_summaries
+                    WHERE conversation_id = ?
+                    """,
+                    (conversation_id,),
+                ).fetchone()
+                if summary_row is not None:
+                    summary = str(summary_row["summary"])
+                    summarized_through_message_id = int(
+                        summary_row["summarized_through_message_id"]
+                    )
+
             rows = connection.execute(
                 """
                 SELECT role, content, name
                 FROM messages
-                WHERE conversation_id = ?
+                WHERE conversation_id = ? AND id > ?
                 ORDER BY id ASC
                 """,
-                (conversation_id,),
+                (conversation_id, summarized_through_message_id),
             ).fetchall()
 
             history: list[dict] = []
@@ -530,4 +573,4 @@ class ChatStore(BaseSQLiteStore):
         finally:
             connection.close()
 
-        return history
+        return summary, history

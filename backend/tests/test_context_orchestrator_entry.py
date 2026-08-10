@@ -9,8 +9,8 @@ class ChatStore:
     def get_conversation(self, conversation_id):
         return {"id": conversation_id, "user_id": "u1", "group_id": None}
 
-    def get_model_history_and_append(self, conversation_id, messages):
-        return [{"role": "user", "content": messages[0]["content"]}]
+    def get_compressed_model_history_and_append(self, conversation_id, messages):
+        return None, [{"role": "user", "content": messages[0]["content"]}]
 
 
 class UserStore:

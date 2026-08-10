@@ -15,7 +15,12 @@ from backend.agent.memories.profile_builder import ProfileBuilder
 from backend.agent.tools.learning_tools import evidence_store
 from backend.agent.tools.mastery_tools import kg_store, mastery_store
 from backend.core.services.auth_service import AuthService
+from backend.core.services.auxiliary_llm_service import AuxiliaryLLMClient
+from backend.core.services.conversation_compression_service import (
+    ConversationCompressionService,
+)
 from backend.core.stores.chat_store import ChatStore
+from backend.core.stores.conversation_summary_store import ConversationSummaryStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.migrations import run_migrations
 from backend.core.stores.profile_store import ProfileStore
@@ -23,8 +28,20 @@ from backend.core.stores.session_store import SessionStore
 from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_store import UserStore
 from backend.core.stores.user_course_store import UserCourseStore
+from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.utils.config import (
     AGENT_LOOP_TIME,
+    AUXILIARY_MODEL_BASE_URL,
+    AUXILIARY_MODEL_NAME,
+    AUXILIARY_MODEL_REQUEST_TIMEOUT,
+    CONVERSATION_COMPRESSION_ENABLED,
+    CONVERSATION_COMPRESSION_KEEP_RECENT_MESSAGES,
+    CONVERSATION_COMPRESSION_MAX_INPUT_CHARS,
+    CONVERSATION_COMPRESSION_MAX_OUTPUT_TOKENS,
+    CONVERSATION_COMPRESSION_MIN_MESSAGES,
+    CONVERSATION_COMPRESSION_MIN_NEW_MESSAGES,
+    CONVERSATION_COMPRESSION_SCAN_INTERVAL,
+    CONVERSATION_OFFLINE_AFTER_SECONDS,
     MODEL_DTYPE,
     MODEL_GPU_MEMORY_UTILIZATION,
     MODEL_KV_CACHE_DTYPE,
@@ -62,7 +79,18 @@ async def lifespan(app: FastAPI):
     run_migrations(DB_PATH)
     app.state.user_course_store = UserCourseStore(DB_PATH)
     app.state.schedule_store = ScheduleStore(DB_PATH)
+    app.state.user_presence_store = UserPresenceStore(DB_PATH)
+    app.state.conversation_summary_store = ConversationSummaryStore(DB_PATH)
     app.state.conversation_turn_coordinator = ConversationTurnCoordinator(DB_PATH)
+    app.state.auxiliary_llm_client = AuxiliaryLLMClient(
+        base_url=AUXILIARY_MODEL_BASE_URL,
+        model=AUXILIARY_MODEL_NAME,
+        timeout=AUXILIARY_MODEL_REQUEST_TIMEOUT,
+    )
+    if not await app.state.auxiliary_llm_client.is_ready():
+        logger.warning(
+            "辅助 Qwen 服务尚未就绪，课表解析与离线上下文压缩将暂时不可用"
+        )
 
     synced_points, synced_edges = ensure_knowledge_graph_seeded(kg_store)
     if kg_store.count_points() <= 0:
@@ -96,9 +124,24 @@ async def lifespan(app: FastAPI):
         profile_store=app.state.profile_store,
         evidence_store=evidence_store,
     )
+    app.state.conversation_compression_service = ConversationCompressionService(
+        llm_client=app.state.auxiliary_llm_client,
+        summary_store=app.state.conversation_summary_store,
+        offline_after_seconds=CONVERSATION_OFFLINE_AFTER_SECONDS,
+        scan_interval_seconds=CONVERSATION_COMPRESSION_SCAN_INTERVAL,
+        min_messages=CONVERSATION_COMPRESSION_MIN_MESSAGES,
+        min_new_messages=CONVERSATION_COMPRESSION_MIN_NEW_MESSAGES,
+        keep_recent_messages=CONVERSATION_COMPRESSION_KEEP_RECENT_MESSAGES,
+        max_input_chars=CONVERSATION_COMPRESSION_MAX_INPUT_CHARS,
+        max_output_tokens=CONVERSATION_COMPRESSION_MAX_OUTPUT_TOKENS,
+        enabled=CONVERSATION_COMPRESSION_ENABLED,
+    )
+    app.state.conversation_compression_service.start()
     try:
         yield
     finally:
+        await app.state.conversation_compression_service.stop()
+        await app.state.auxiliary_llm_client.close()
         app.state.agent.llm_provider.engine.shutdown()
 
 

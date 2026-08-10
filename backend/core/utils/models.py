@@ -101,6 +101,7 @@ class PromptContext:
     group_style: str | None = None
     group_tone: str | None = None
     group_custom_instruction: str = ""
+    conversation_summary: str = ""
     conversation_mode: str = "normal"
 
     # 由 Agent._prepare_run 内部生成，不属于用户可写偏好。
@@ -118,4 +119,5 @@ class MessageContext:
     group_style: str | None
     group_tone: str | None
     group_custom_instruction: str
+    conversation_summary: str = ""
     conversation_mode: str = "normal"
