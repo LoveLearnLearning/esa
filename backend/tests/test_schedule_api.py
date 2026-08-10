@@ -94,3 +94,54 @@ def test_schedule_crud_and_html_model_import(tmp_path, monkeypatch):
     ]
     assert "操作系统" not in names
     assert "数据结构" in names
+
+
+def test_schedule_table_management_and_import_to_new_table(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch)
+    client = TestClient(app)
+
+    initial = client.get("/me/schedule").json()
+    assert len(initial["tables"]) == 1
+    assert initial["tables"][0]["is_active"]
+    default_id = initial["active_table_id"]
+
+    created = client.post("/me/schedule/tables", json={"name": "大二上"})
+    assert created.status_code == 201
+    new_id = created.json()["id"]
+    assert client.get("/me/schedule").json()["active_table_id"] == new_id
+
+    renamed = client.patch(
+        f"/me/schedule/tables/{new_id}", json={"name": "大二上学期"}
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "大二上学期"
+
+    imported = client.post(
+        "/me/schedule/import",
+        data={"target": "new", "table_name": "导入的课表"},
+        files={"file": ("schedule.html", "<p>数据结构</p>".encode(), "text/html")},
+    )
+    assert imported.status_code == 200
+    body = imported.json()
+    assert body["imported_count"] == 1
+    imported_table_id = body["active_table_id"]
+    assert imported_table_id not in {default_id, new_id}
+    assert {t["name"] for t in body["tables"]} == {"默认课表", "大二上学期", "导入的课表"}
+    assert body["courses"][0]["table_id"] == imported_table_id
+
+    # 切回默认表看不到导入的课
+    activated = client.post(f"/me/schedule/tables/{default_id}/activate")
+    assert activated.status_code == 200
+    assert activated.json()["courses"] == []
+
+    # 删除导入的课表连带清理 timetable 来源的学习课程关联
+    deleted = client.delete(f"/me/schedule/tables/{imported_table_id}")
+    assert deleted.status_code == 204
+    names = [
+        item["name"] for item in app.state.user_course_store.list_for_user("user-id")
+    ]
+    assert "数据结构" not in names
+
+    # 剩两张，逐个删到最后一张时拒绝
+    assert client.delete(f"/me/schedule/tables/{new_id}").status_code == 204
+    assert client.delete(f"/me/schedule/tables/{default_id}").status_code == 409

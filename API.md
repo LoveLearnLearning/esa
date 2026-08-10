@@ -28,12 +28,12 @@ Authorization: Bearer <session_id>
 { "detail": "错误说明" }
 ```
 
-| 状态码 | 含义 |
-|---|---|
-| 401 | 未登录 / 会话无效 / 会话过期 / 用户名或密码错误 |
-| 404 | 资源不存在或不属于当前用户 |
-| 409 | 资源冲突，如用户名已存在、分组达到上限或同一对话上一轮仍在生成 |
-| 422 | 请求体校验不通过 由 pydantic 自动返回 |
+| 状态码 | 含义                                                           |
+| ------ | -------------------------------------------------------------- |
+| 401    | 未登录 / 会话无效 / 会话过期 / 用户名或密码错误                |
+| 404    | 资源不存在或不属于当前用户                                     |
+| 409    | 资源冲突，如用户名已存在、分组达到上限或同一对话上一轮仍在生成 |
+| 422    | 请求体校验不通过 由 pydantic 自动返回                          |
 
 ---
 
@@ -73,10 +73,10 @@ Authorization: Bearer <session_id>
 
 ```json
 {
-  "session_id": "uuid 作为后续请求的 Bearer token",
-  "user_id": "用户uuid",
-  "username": "feng",
-  "expires_at": "2026-07-24T07:22:08.123456+00:00"
+    "session_id": "uuid 作为后续请求的 Bearer token",
+    "user_id": "用户uuid",
+    "username": "feng",
+    "expires_at": "2026-07-24T07:22:08.123456+00:00"
 }
 ```
 
@@ -96,8 +96,8 @@ Authorization: Bearer <session_id>
 
 ```json
 {
-  "old_password": "old-password",
-  "new_password": "new-password"
+    "old_password": "old-password",
+    "new_password": "new-password"
 }
 ```
 
@@ -115,14 +115,14 @@ Authorization: Bearer <session_id>
 
 ```json
 [
-  {
-    "conversation_id": "uuid",
-    "user_id": "用户uuid",
-    "title": "对话标题",
-    "group_id": "分组uuid 或 null(未分组)",
-    "created_at": "...",
-    "updated_at": "..."
-  }
+    {
+        "conversation_id": "uuid",
+        "user_id": "用户uuid",
+        "title": "对话标题",
+        "group_id": "分组uuid 或 null(未分组)",
+        "created_at": "...",
+        "updated_at": "..."
+    }
 ]
 ```
 
@@ -160,12 +160,12 @@ Authorization: Bearer <session_id>
 
 ```json
 [
-  {
-    "role": "user | assistant | tool",
-    "content": "消息内容",
-    "name": "工具名 仅 tool 消息有 其余为 null",
-    "created_at": "..."
-  }
+    {
+        "role": "user | assistant | tool",
+        "content": "消息内容",
+        "name": "工具名 仅 tool 消息有 其余为 null",
+        "created_at": "..."
+    }
 ]
 ```
 
@@ -204,14 +204,14 @@ data: {"delta":"回答正文"}
 
 事件类型:
 
-| event | data | 含义 |
-|---|---|---|
-| `start` | `conversation_id` | 服务端开始处理 |
-| `reasoning` | `delta` | 模型思考内容增量 |
-| `content` | `delta` | 最终回答增量 |
-| `tool` | `name`, `content` | 工具执行结果 |
-| `done` | `conversation_id` | 本轮完成且消息已持久化 |
-| `error` | `detail`, `type` | 流建立后发生生成错误 |
+| event       | data              | 含义                   |
+| ----------- | ----------------- | ---------------------- |
+| `start`     | `conversation_id` | 服务端开始处理         |
+| `reasoning` | `delta`           | 模型思考内容增量       |
+| `content`   | `delta`           | 最终回答增量           |
+| `tool`      | `name`, `content` | 工具执行结果           |
+| `done`      | `conversation_id` | 本轮完成且消息已持久化 |
+| `error`     | `detail`, `type`  | 流建立后发生生成错误   |
 
 客户端必须按 SSE 空行分隔事件，并将同类 `delta` 按收到顺序追加，不能把每个增量作为独立消息。工具调用 XML 不会作为可见内容发送。
 
@@ -239,18 +239,18 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 
 ```json
 [
-  {
-    "group_id": "uuid",
-    "user_id": "用户uuid",
-    "name": "分组名称",
-    "description": "分组描述",
-    "custom_instruction": "分组内自定义指令",
-    "style": "concise | detailed | socratic 或 null(继承用户级)",
-    "tone": "friendly | formal | encouraging | strict 或 null(继承用户级)",
-    "conversation_count": 3,
-    "created_at": "...",
-    "updated_at": "..."
-  }
+    {
+        "group_id": "uuid",
+        "user_id": "用户uuid",
+        "name": "分组名称",
+        "description": "分组描述",
+        "custom_instruction": "分组内自定义指令",
+        "style": "concise | detailed | socratic 或 null(继承用户级)",
+        "tone": "friendly | formal | encouraging | strict 或 null(继承用户级)",
+        "conversation_count": 3,
+        "created_at": "...",
+        "updated_at": "..."
+    }
 ]
 ```
 
@@ -260,11 +260,11 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 
 ```json
 {
-  "name": "高数",
-  "description": "高等数学复习",
-  "custom_instruction": "用苏格拉底式提问引导我",
-  "style": null,
-  "tone": null
+    "name": "高数",
+    "description": "高等数学复习",
+    "custom_instruction": "用苏格拉底式提问引导我",
+    "style": null,
+    "tone": null
 }
 ```
 
@@ -277,7 +277,12 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 请求体为部分更新 以下字段均可选 (`style` / `tone` 传 `null` 表示改回继承用户级):
 
 ```json
-{ "name": "高等数学", "custom_instruction": "先给思路", "style": "socratic", "tone": null }
+{
+    "name": "高等数学",
+    "custom_instruction": "先给思路",
+    "style": "socratic",
+    "tone": null
+}
 ```
 
 响应 `200`: 最新分组对象; 不存在或不属于当前用户: `404`; 枚举非法: `400`
@@ -321,10 +326,10 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 
 ```json
 {
-  "courses": [
-    {"name": "数据结构", "source": "timetable"},
-    {"name": "高等数学", "source": "manual"}
-  ]
+    "courses": [
+        { "name": "数据结构", "source": "timetable" },
+        { "name": "高等数学", "source": "manual" }
+    ]
 }
 ```
 
@@ -338,7 +343,7 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 将一个尚未匹配的课表课程手动关联到 canonical 课程，同时保留原课表显示名称：
 
 ```json
-{"canonical_course": "数字逻辑与数字电路"}
+{ "canonical_course": "数字逻辑与数字电路" }
 ```
 
 该关联只改变用户课程到全局 KG 的引用，不复制或修改 KG。
@@ -373,16 +378,40 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 以下接口均需要认证，数据按用户隔离并存储在 SQLite。保存或导入课程时，会同步维护
 `user_courses` 关联，使知识地图不需要再次录入课程。
 
+每个用户可拥有多张课程表（`schedule_tables`），课程归属某一张课程表，且始终有一张
+处于激活状态；没有课程表时服务端会自动创建"默认课表"，历史课程在迁移时归入其中。
+
 ### GET /me/schedule
 
-返回当前用户的 `courses` 和 `settings`。设置包括上午/下午/晚上的节数与开始时间、
+返回当前用户的 `tables`（每项含 `id`、`name`、`is_active`）、`active_table_id`、
+激活课程表下的 `courses` 和 `settings`。设置包括上午/下午/晚上的节数与开始时间、
 单节时长、课间间隔，以及 `term_start_date`（第一教学周周一，`YYYY-MM-DD`）。前端据此
-结合系统日期计算当前教学周和星期。
+结合系统日期计算当前教学周和星期。作息设置为用户级，所有课程表共用。
+
+### POST /me/schedule/tables
+
+创建课程表：`{"name": "大二上", "activate": true}`（`activate` 缺省 true，创建后
+立即切换为激活表）。返回 201 与新表信息。
+
+### PATCH /me/schedule/tables/{table_id}
+
+重命名课程表：`{"name": "新名称"}`。
+
+### POST /me/schedule/tables/{table_id}/activate
+
+切换激活课程表，返回与 `GET /me/schedule` 相同结构的快照。
+
+### DELETE /me/schedule/tables/{table_id}
+
+删除课程表及其全部课程；删除的是激活表时自动激活剩余最早创建的一张。最后一张课程表
+不允许删除（409）。被删课程若不再出现于任何课程表，会同步清理 timetable 来源的用户
+课程关联。
 
 ### PUT /me/schedule/courses
 
 新增或更新一条课程安排。字段包括 `id`、`name`、`teacher`、`location`、`weekday`
 （周一为 1）、`start_period`、`end_period`、`start_week`、`end_week` 和 `color_value`。
+新课程写入当前激活课程表；更新已有课程保持其原课程表归属。
 
 ### DELETE /me/schedule/courses/{course_id}
 
@@ -423,9 +452,9 @@ sudo apt install tesseract-ocr tesseract-ocr-chi-sim
 
 ```json
 {
-  "memory_key": "learning_goal",
-  "content": "本学期重点学习操作系统",
-  "category": "learning"
+    "memory_key": "learning_goal",
+    "content": "本学期重点学习操作系统",
+    "category": "learning"
 }
 ```
 
@@ -474,13 +503,13 @@ Profile V2 的显式字段统一更新入口，可部分更新：
 
 ```json
 {
-  "major": "cs",
-  "grade": "大二",
-  "current_week": 6,
-  "total_weeks": 18,
-  "preferred_style": "concise",
-  "preferred_tone": "friendly",
-  "custom_instruction": "先给思路，再给答案"
+    "major": "cs",
+    "grade": "大二",
+    "current_week": 6,
+    "total_weeks": 18,
+    "preferred_style": "concise",
+    "preferred_tone": "friendly",
+    "custom_instruction": "先给思路，再给答案"
 }
 ```
 
@@ -520,9 +549,9 @@ Profile V2 的显式字段统一更新入口，可部分更新：
 
 ```json
 {
-  "learning_profile_enabled": true,
-  "inferred_profile_enabled": true,
-  "default_conversation_mode": "normal"
+    "learning_profile_enabled": true,
+    "inferred_profile_enabled": true,
+    "default_conversation_mode": "normal"
 }
 ```
 

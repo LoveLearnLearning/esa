@@ -228,11 +228,36 @@ class ScheduleSettings {
   }
 }
 
+class ScheduleTable {
+  const ScheduleTable({
+    required this.id,
+    required this.name,
+    required this.isActive,
+  });
+
+  final String id;
+  final String name;
+  final bool isActive;
+
+  factory ScheduleTable.fromJson(Map<String, dynamic> json) => ScheduleTable(
+        id: json['id'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        isActive: json['is_active'] as bool? ?? false,
+      );
+}
+
 class ScheduleSnapshot {
-  const ScheduleSnapshot({required this.courses, required this.settings});
+  const ScheduleSnapshot({
+    required this.courses,
+    required this.settings,
+    this.tables = const [],
+    this.activeTableId = '',
+  });
 
   final List<ScheduleCourse> courses;
   final ScheduleSettings settings;
+  final List<ScheduleTable> tables;
+  final String activeTableId;
 
   factory ScheduleSnapshot.fromJson(Map<String, dynamic> json) =>
       ScheduleSnapshot(
@@ -246,7 +271,22 @@ class ScheduleSnapshot {
         settings: ScheduleSettings.fromJson(
           Map<String, dynamic>.from(json['settings'] as Map? ?? const {}),
         ),
+        tables: (json['tables'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (item) => ScheduleTable.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
+        activeTableId: json['active_table_id'] as String? ?? '',
       );
+}
+
+/// POST /me/schedule/import 的结果：成功导入的课程 + 因时间冲突被跳过的条数
+class ScheduleImportResult {
+  const ScheduleImportResult({required this.courses, required this.skippedCount});
+
+  final List<ScheduleCourse> courses;
+  final int skippedCount;
 }
 
 String formatClockMinutes(int totalMinutes) {

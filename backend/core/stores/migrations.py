@@ -136,9 +136,7 @@ def _has_foreign_key(
         and row["table"] == target_table
         and row["to"] == target_column
         and str(row["on_delete"]).upper() == expected_delete
-        for row in connection.execute(
-            f'PRAGMA foreign_key_list("{table}")'
-        ).fetchall()
+        for row in connection.execute(f'PRAGMA foreign_key_list("{table}")').fetchall()
     )
 
 
@@ -220,22 +218,16 @@ def _replace_table(
     connection.execute(f'DROP TABLE IF EXISTS "{replacement}"')
     connection.execute(ddl.format(table=replacement))
     column_sql = ", ".join(columns)
-    connection.execute(
-        f'INSERT INTO "{replacement}" ({column_sql}) {select_sql}'
-    )
+    connection.execute(f'INSERT INTO "{replacement}" ({column_sql}) {select_sql}')
     connection.execute(f'DROP TABLE "{table}"')
-    connection.execute(
-        f'ALTER TABLE "{replacement}" RENAME TO "{table}"'
-    )
+    connection.execute(f'ALTER TABLE "{replacement}" RENAME TO "{table}"')
 
 
 def _migrate_sessions(connection: sqlite3.Connection) -> None:
     if not _table_exists(connection, "sessions"):
         connection.execute(SESSIONS_DDL.format(table="sessions"))
         return
-    if _has_foreign_key(
-        connection, "sessions", "user_id", "users", "id", "CASCADE"
-    ):
+    if _has_foreign_key(connection, "sessions", "user_id", "users", "id", "CASCADE"):
         return
 
     _quarantine_rows(
@@ -304,8 +296,7 @@ def _migrate_groups(connection: sqlite3.Connection) -> None:
         )
 
     connection.execute(
-        "CREATE INDEX IF NOT EXISTS idx_groups_user "
-        "ON groups (user_id, updated_at)"
+        "CREATE INDEX IF NOT EXISTS idx_groups_user ON groups (user_id, updated_at)"
     )
 
 
@@ -314,9 +305,7 @@ def _migrate_conversations(connection: sqlite3.Connection) -> None:
         connection.execute(CONVERSATIONS_DDL.format(table="conversations"))
     else:
         if "group_id" not in _columns(connection, "conversations"):
-            connection.execute(
-                "ALTER TABLE conversations ADD COLUMN group_id TEXT"
-            )
+            connection.execute("ALTER TABLE conversations ADD COLUMN group_id TEXT")
 
         required_keys = (
             _has_foreign_key(
@@ -403,8 +392,7 @@ def _migrate_messages(connection: sqlite3.Connection) -> None:
     else:
         if "is_visible" not in _columns(connection, "messages"):
             connection.execute(
-                "ALTER TABLE messages "
-                "ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1"
+                "ALTER TABLE messages ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1"
             )
         if not _has_foreign_key(
             connection,
@@ -499,8 +487,7 @@ def _migrate_profile_tables(connection: sqlite3.Connection) -> None:
         )
 
     connection.execute(
-        "CREATE INDEX IF NOT EXISTS idx_audit_user_id "
-        "ON profile_audit_log(user_id)"
+        "CREATE INDEX IF NOT EXISTS idx_audit_user_id ON profile_audit_log(user_id)"
     )
     connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_audit_created_at "
@@ -612,6 +599,13 @@ def _migrate_relational_integrity(connection: sqlite3.Connection) -> None:
         raise sqlite3.IntegrityError(
             f"迁移后仍存在外键违规 ({len(violations)}): {details}"
         )
+
+
+def _migrate_schedule_tables(connection: sqlite3.Connection) -> None:
+    """V8：多课程表——建 schedule_tables、courses 补 table_id 并回填默认课表。"""
+    from backend.core.stores.schedule_store import ensure_schedule_tables_schema
+
+    ensure_schedule_tables_schema(connection)
 
 
 MIGRATIONS: list[MigrationDef] = [
@@ -869,9 +863,7 @@ def run_migrations(database_path: str | Path) -> int:
 
         violations = connection.execute("PRAGMA foreign_key_check").fetchall()
         if violations:
-            raise sqlite3.IntegrityError(
-                f"数据库仍存在 {len(violations)} 条外键违规"
-            )
+            raise sqlite3.IntegrityError(f"数据库仍存在 {len(violations)} 条外键违规")
     finally:
         connection.close()
 
