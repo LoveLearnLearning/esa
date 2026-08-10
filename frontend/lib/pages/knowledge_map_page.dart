@@ -164,12 +164,7 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
           detail: detail,
           onExplain: () {
             Navigator.pop(sheetContext);
-            widget.onOpenChat();
-            unawaited(
-              app.send(
-                '请针对“${node.name}”结合我的掌握度、记忆状态、学习证据和薄弱前置进行讲解，并给我一道检验理解的小题。',
-              ),
-            );
+            unawaited(_startLearningPoint(app, node));
           },
         ),
       );
@@ -179,6 +174,13 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
         context,
       ).showSnackBar(SnackBar(content: Text(error.detail)));
     }
+  }
+
+  Future<void> _startLearningPoint(AppState app, KnowledgeMapNode node) async {
+    final createConversation = app.newConversation();
+    widget.onOpenChat();
+    await createConversation;
+    await app.send('请针对“${node.name}”结合我的掌握度、记忆状态、学习证据和薄弱前置进行讲解，并给我一道检验理解的小题。');
   }
 
   Future<void> _showAddMenu() async {
@@ -775,7 +777,14 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
         const Expanded(
           child: Text('你的知识地图已经建立。目前还没有足够的学习记录，灰色节点表示“未评估”；完成练习后会逐步形成个人掌握状态。'),
         ),
-        TextButton(onPressed: widget.onOpenChat, child: const Text('开始学习')),
+        TextButton(
+          onPressed: () {
+            final app = AppScope.of(context);
+            unawaited(app.newConversation());
+            widget.onOpenChat();
+          },
+          child: const Text('开始学习'),
+        ),
       ],
     ),
   );

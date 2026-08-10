@@ -83,9 +83,7 @@ class _SchedulePageState extends State<SchedulePage> {
                     : null,
                 child: !app.scheduleLoaded
                     ? const Center(child: CircularProgressIndicator())
-                    : narrow
-                    ? _mobileSchedule(context, app)
-                    : _desktopSchedule(context, app),
+                    : _weekSchedule(context, app, compactLayout: narrow),
               ),
             ),
           ],
@@ -177,6 +175,7 @@ class _SchedulePageState extends State<SchedulePage> {
             icon: const Icon(LucideIcons.chevronRight, size: 18),
           ),
           IconButton(
+            key: const ValueKey('schedule-import-button'),
             tooltip: '从文件导入课表',
             visualDensity: VisualDensity.compact,
             onPressed: _importing ? null : () => _importSchedule(app),
@@ -207,161 +206,13 @@ class _SchedulePageState extends State<SchedulePage> {
     );
   }
 
-  Widget _mobileSchedule(BuildContext context, AppState app) {
-    final weekCourses = app.scheduleCourses
-        .where((course) => course.occursInWeek(_week))
-        .toList();
-    if (weekCourses.isEmpty) return _emptyDay(context);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 96),
-      children: [
-        Container(
-          margin: const EdgeInsets.only(bottom: 14),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          decoration: BoxDecoration(
-            color: context.n.n100,
-            borderRadius: BorderRadius.circular(EsaRadii.card),
-          ),
-          child: Row(
-            children: [
-              const Icon(LucideIcons.moveHorizontal, size: 17),
-              const SizedBox(width: 8),
-              Text('左右滑动切换教学周', style: context.texts.bodySmall),
-              const Spacer(),
-              Text(
-                '今天 ${_weekdays[DateTime.now().weekday - 1]}',
-                style: context.texts.bodySmall,
-              ),
-            ],
-          ),
-        ),
-        for (var day = 1; day <= 7; day++)
-          if (weekCourses.any((course) => course.weekday == day)) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(3, 8, 3, 8),
-              child: Text(
-                _weekdays[day - 1],
-                style: context.texts.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                const gap = 10.0;
-                final columns = constraints.maxWidth >= 330 ? 2 : 1;
-                final width =
-                    (constraints.maxWidth - gap * (columns - 1)) / columns;
-                final courses = weekCourses
-                    .where((course) => course.weekday == day)
-                    .toList();
-                return Wrap(
-                  spacing: gap,
-                  runSpacing: gap,
-                  children: [
-                    for (final course in courses)
-                      SizedBox(
-                        width: width,
-                        child: _mobileCourseCard(context, app, course),
-                      ),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-      ],
-    );
-  }
-
-  Widget _emptyDay(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(LucideIcons.coffee, size: 34, color: context.n.n600),
-            const SizedBox(height: 12),
-            Text('这一周还没有课程', style: context.texts.titleMedium),
-            const SizedBox(height: 4),
-            Text('点击右下角 + 添加，或从文件导入课表', style: context.texts.bodySmall),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _mobileCourseCard(
+  Widget _weekSchedule(
     BuildContext context,
-    AppState app,
-    ScheduleCourse course,
-  ) {
-    final color = Color(course.colorValue);
-    return InkWell(
-      onTap: () => _openEditor(app, app.userProfile.totalWeeks, course),
-      borderRadius: BorderRadius.circular(EsaRadii.card),
-      child: Container(
-        padding: const EdgeInsets.all(13),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.13),
-          border: Border.all(color: color.withValues(alpha: 0.45)),
-          borderRadius: BorderRadius.circular(EsaRadii.card),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 7),
-                Expanded(
-                  child: Text(
-                    course.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.texts.titleMedium,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '${course.startPeriod}-${course.endPeriod} 节 · '
-              '${app.scheduleSettings.courseTimeLabel(course.startPeriod, course.endPeriod)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.texts.bodySmall?.copyWith(
-                color: context.scheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              [
-                course.location,
-                course.teacher,
-                '${course.startWeek}-${course.endWeek} 周',
-              ].where((value) => value.isNotEmpty).join(' · '),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.texts.bodySmall?.copyWith(fontSize: 10.5),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _desktopSchedule(BuildContext context, AppState app) {
-    const periodHeight = 76.0;
-    const headerHeight = 46.0;
+    AppState app, {
+    required bool compactLayout,
+  }) {
+    final periodHeight = compactLayout ? 62.0 : 76.0;
+    final headerHeight = compactLayout ? 38.0 : 46.0;
     final totalPeriods = app.scheduleSettings.totalPeriods;
     final totalHeight = headerHeight + periodHeight * totalPeriods;
     final courses = app.scheduleCourses
@@ -370,8 +221,16 @@ class _SchedulePageState extends State<SchedulePage> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final horizontalMargin = constraints.maxWidth < 1000 ? 18.0 : 32.0;
-        final cardPadding = constraints.maxWidth < 1000 ? 10.0 : 12.0;
+        final horizontalMargin = compactLayout
+            ? 6.0
+            : constraints.maxWidth < 1000
+            ? 18.0
+            : 32.0;
+        final cardPadding = compactLayout
+            ? 5.0
+            : constraints.maxWidth < 1000
+            ? 10.0
+            : 12.0;
         final cardWidth = constraints.maxWidth - horizontalMargin * 2;
 
         return Scrollbar(
@@ -382,9 +241,9 @@ class _SchedulePageState extends State<SchedulePage> {
             primary: false,
             padding: EdgeInsets.fromLTRB(
               horizontalMargin,
-              24,
+              compactLayout ? 10 : 24,
               horizontalMargin,
-              28,
+              compactLayout ? 92 : 28,
             ),
             child: Container(
               key: const ValueKey('schedule-week-card'),
@@ -393,7 +252,7 @@ class _SchedulePageState extends State<SchedulePage> {
               decoration: BoxDecoration(
                 color: context.scheme.surface,
                 border: Border.all(color: context.n.divider),
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(compactLayout ? 16 : 22),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(
@@ -410,9 +269,13 @@ class _SchedulePageState extends State<SchedulePage> {
               child: LayoutBuilder(
                 builder: (context, gridConstraints) {
                   final gridWidth = gridConstraints.maxWidth;
-                  final labelWidth = (gridWidth * 0.105).clamp(72.0, 88.0);
+                  final labelWidth = compactLayout
+                      ? (gridWidth * 0.13).clamp(42.0, 52.0)
+                      : (gridWidth * 0.105).clamp(72.0, 88.0);
                   final dayWidth = (gridWidth - labelWidth) / 7;
                   final compactTiles = dayWidth < 118;
+                  final ultraCompactTiles = dayWidth < 64;
+                  final tileInset = ultraCompactTiles ? 2.0 : 4.0;
                   return SizedBox(
                     key: const ValueKey('schedule-week-grid'),
                     width: gridWidth,
@@ -442,7 +305,10 @@ class _SchedulePageState extends State<SchedulePage> {
                               key: ValueKey('schedule-weekday-${day + 1}'),
                               child: Text(
                                 _weekdays[day],
-                                style: context.texts.titleMedium,
+                                maxLines: 1,
+                                style: context.texts.titleMedium?.copyWith(
+                                  fontSize: compactLayout ? 10 : null,
+                                ),
                               ),
                             ),
                           ),
@@ -459,23 +325,24 @@ class _SchedulePageState extends State<SchedulePage> {
                                   Text(
                                     '第 $period 节',
                                     style: context.texts.bodySmall?.copyWith(
+                                      fontSize: compactLayout ? 9 : null,
                                       fontWeight: FontWeight.w700,
                                       color: context.scheme.onSurface,
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
+                                  SizedBox(height: compactLayout ? 1 : 2),
                                   Text(
                                     app.scheduleSettings.periodStartLabel(
                                       period,
                                     ),
                                     style: context.texts.bodySmall?.copyWith(
-                                      fontSize: 10,
+                                      fontSize: compactLayout ? 8 : 10,
                                     ),
                                   ),
                                   Text(
                                     app.scheduleSettings.periodEndLabel(period),
                                     style: context.texts.bodySmall?.copyWith(
-                                      fontSize: 10,
+                                      fontSize: compactLayout ? 8 : 10,
                                     ),
                                   ),
                                 ],
@@ -487,21 +354,22 @@ class _SchedulePageState extends State<SchedulePage> {
                             left:
                                 labelWidth +
                                 (course.weekday - 1) * dayWidth +
-                                4,
+                                tileInset,
                             top:
                                 headerHeight +
                                 (course.startPeriod - 1) * periodHeight +
-                                4,
-                            width: dayWidth - 8,
+                                tileInset,
+                            width: dayWidth - tileInset * 2,
                             height:
                                 (course.endPeriod - course.startPeriod + 1) *
                                     periodHeight -
-                                8,
-                            child: _desktopCourseCard(
+                                tileInset * 2,
+                            child: _courseTile(
                               context,
                               app,
                               course,
                               compact: compactTiles,
+                              ultraCompact: ultraCompactTiles,
                             ),
                           ),
                       ],
@@ -516,11 +384,12 @@ class _SchedulePageState extends State<SchedulePage> {
     );
   }
 
-  Widget _desktopCourseCard(
+  Widget _courseTile(
     BuildContext context,
     AppState app,
     ScheduleCourse course, {
     required bool compact,
+    required bool ultraCompact,
   }) {
     final color = Color(course.colorValue);
     return DecoratedBox(
@@ -541,7 +410,13 @@ class _SchedulePageState extends State<SchedulePage> {
         child: InkWell(
           onTap: () => _openEditor(app, app.userProfile.totalWeeks, course),
           child: Container(
-            padding: EdgeInsets.all(compact ? 7 : 10),
+            padding: EdgeInsets.all(
+              ultraCompact
+                  ? 3
+                  : compact
+                  ? 7
+                  : 10,
+            ),
             decoration: BoxDecoration(
               border: Border.all(color: color.withValues(alpha: 0.6)),
               borderRadius: BorderRadius.circular(EsaRadii.card),
@@ -554,22 +429,32 @@ class _SchedulePageState extends State<SchedulePage> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: context.texts.titleMedium?.copyWith(
-                    fontSize: compact ? 11.5 : 12.5,
+                    fontSize: ultraCompact
+                        ? 8.5
+                        : compact
+                        ? 11.5
+                        : 12.5,
+                    height: ultraCompact ? 1.12 : null,
                   ),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  compact
-                      ? '${course.startPeriod}-${course.endPeriod} 节'
-                      : '${course.startPeriod}-${course.endPeriod} 节 · '
-                            '${app.scheduleSettings.courseTimeLabel(course.startPeriod, course.endPeriod)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.texts.bodySmall?.copyWith(
-                    fontSize: compact ? 9.5 : 10.5,
+                SizedBox(height: ultraCompact ? 1 : 3),
+                if (!ultraCompact || course.endPeriod > course.startPeriod)
+                  Text(
+                    compact
+                        ? '${course.startPeriod}-${course.endPeriod}'
+                        : '${course.startPeriod}-${course.endPeriod} 节 · '
+                              '${app.scheduleSettings.courseTimeLabel(course.startPeriod, course.endPeriod)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.texts.bodySmall?.copyWith(
+                      fontSize: ultraCompact
+                          ? 7.5
+                          : compact
+                          ? 9.5
+                          : 10.5,
+                    ),
                   ),
-                ),
-                if (course.location.isNotEmpty)
+                if (!ultraCompact && course.location.isNotEmpty)
                   Text(
                     course.location,
                     maxLines: 1,
@@ -600,14 +485,12 @@ class _SchedulePageState extends State<SchedulePage> {
           'htm',
         ],
         withData: true,
+        cancelUploadOnWindowBlur: false,
       );
       final file = result?.files.singleOrNull;
       if (file == null) return;
-      final bytes = file.bytes;
-      if (bytes == null) {
-        throw PlatformException(code: 'missing-bytes', message: '无法读取文件内容');
-      }
       setState(() => _importing = true);
+      final bytes = await file.xFile.readAsBytes();
       final count = await app.importScheduleFile(
         filename: file.name,
         bytes: bytes,

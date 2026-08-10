@@ -23,6 +23,23 @@ class ParseOutputTests(unittest.TestCase):
             {"count": 3, "enabled": True, "items": ["a", "b"]},
         )
 
+    def test_tool_arguments_accept_python_style_literals(self) -> None:
+        parsed = parse_output(
+            """</think>
+<tool_call>
+<function=record_learning_evidence>
+<parameter=correct>True</parameter>
+<parameter=independent>False</parameter>
+<parameter=self_confidence>None</parameter>
+</function>
+</tool_call>"""
+        )
+
+        self.assertEqual(
+            parsed.tool_calls[0].arguments,
+            {"correct": True, "independent": False, "self_confidence": None},
+        )
+
 
 class StreamOutputParserTests(unittest.TestCase):
     @staticmethod

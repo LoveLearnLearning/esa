@@ -42,6 +42,7 @@ class AppState extends ChangeNotifier {
   final Map<String, List<ChatMessage>> _messages = {};
   final Set<String> _pinned = {}; // 本地置顶集合
   String? activeId;
+  Future<void>? _conversationCreation;
 
   bool busy = false; // 正在发消息
   bool loadingConversations = false;
@@ -463,7 +464,38 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  bool get _activeConversationIsEmpty {
+    final id = activeId;
+    return id == null ||
+        (_messages.containsKey(id) && (_messages[id]?.isEmpty ?? true));
+  }
+
   Future<void> newConversation() async {
+    if (_activeConversationIsEmpty) return;
+    // 先立即切换到空白页，避免网络延迟期间还看到旧对话。
+    activeId = null;
+    notifyListeners();
+    await _createConversation();
+  }
+
+  Future<void> _createConversation() async {
+    final pending = _conversationCreation;
+    if (pending != null) {
+      await pending;
+      return;
+    }
+    final operation = _createConversationImpl();
+    _conversationCreation = operation;
+    try {
+      await operation;
+    } finally {
+      if (identical(_conversationCreation, operation)) {
+        _conversationCreation = null;
+      }
+    }
+  }
+
+  Future<void> _createConversationImpl() async {
     try {
       final conv = await api.createConversation();
       conversations.insert(0, conv);
@@ -531,7 +563,7 @@ class AppState extends ChangeNotifier {
 
     // 没有活动对话时先建一个
     if (activeId == null) {
-      await newConversation();
+      await _createConversation();
       if (activeId == null) return; // 建失败
     }
     final id = activeId!;

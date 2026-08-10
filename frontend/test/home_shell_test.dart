@@ -144,7 +144,7 @@ void main() {
     expect(restored.scheduleSettings.totalPeriods, 10);
   });
 
-  testWidgets('narrow timetable shows course times without overflowing', (
+  testWidgets('narrow timetable keeps the complete seven-day grid visible', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -185,15 +185,26 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('高等数学'), findsOneWidget);
     expect(find.text('操作系统'), findsOneWidget);
-    expect(find.textContaining('08:00–09:40'), findsOneWidget);
-    expect(tester.getSize(find.text('高等数学')).width, lessThan(180));
+    expect(find.byKey(const ValueKey('schedule-week-grid')), findsOneWidget);
+    expect(find.byKey(const ValueKey('schedule-weekday-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('schedule-weekday-7')), findsOneWidget);
+    final gridRect = tester.getRect(
+      find.byKey(const ValueKey('schedule-week-grid')),
+    );
+    expect(
+      tester.getRect(find.byKey(const ValueKey('schedule-weekday-7'))).right,
+      lessThanOrEqualTo(gridRect.right + 0.01),
+    );
+    expect(tester.getSize(find.text('高等数学')).width, lessThan(48));
+    expect(find.text('08:00'), findsOneWidget);
+    expect(find.text('09:40'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('schedule-import-button')),
+      findsOneWidget,
+    );
 
     expect(find.text('第 1 周'), findsOneWidget);
-    await tester.fling(
-      find.text('高等数学'),
-      const Offset(-320, 0),
-      1000,
-    );
+    await tester.fling(find.text('高等数学'), const Offset(-320, 0), 1000);
     await tester.pumpAndSettle();
     expect(find.text('第 2 周'), findsOneWidget);
     expect(

@@ -9,6 +9,29 @@ import 'package:frontend/theme/esa_theme.dart';
 class _KnowledgeApi extends ApiClient {
   _KnowledgeApi() : super(baseUrl: 'http://test.invalid');
 
+  int createdConversations = 0;
+  final List<String> streamedInputs = [];
+
+  @override
+  Future<ChatConversation> createConversation() async {
+    createdConversations++;
+    return ChatConversation(
+      id: 'conversation-$createdConversations',
+      title: '新对话',
+      updatedAt: DateTime(2026),
+    );
+  }
+
+  @override
+  Future<void> renameConversation(String id, String title) async {}
+
+  @override
+  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+    streamedInputs.add(content);
+    yield const ChatStreamEvent('start', {});
+    yield const ChatStreamEvent('done', {});
+  }
+
   @override
   Future<List<LearningCourseSummary>> getLearningCourses() async => const [
     LearningCourseSummary(
@@ -240,6 +263,40 @@ void main() {
     expect(find.text('学习证据'), findsOneWidget);
     expect(find.text('薄弱前置'), findsOneWidget);
     expect(find.text('让 ESA 讲解'), findsOneWidget);
+  });
+
+  testWidgets('从知识点开始学习会建立独立新对话', (tester) async {
+    final api = _KnowledgeApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+    await state.send('原对话的问题');
+    expect(api.createdConversations, 1);
+    var openedChat = false;
+
+    await tester.pumpWidget(
+      AppScope(
+        state: state,
+        child: MaterialApp(
+          theme: esaTheme(brightness: Brightness.dark),
+          home: KnowledgeMapPage(onOpenChat: () => openedChat = true, api: api),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('二叉树遍历'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('让 ESA 讲解'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('让 ESA 讲解'));
+    await tester.pumpAndSettle();
+
+    expect(openedChat, isTrue);
+    expect(api.createdConversations, 2);
+    expect(state.activeId, 'conversation-2');
+    expect(api.streamedInputs.last, contains('二叉树遍历'));
   });
 
   testWidgets('shows onboarding instead of Not Found when no courses exist', (

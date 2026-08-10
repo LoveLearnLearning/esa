@@ -13,6 +13,13 @@ def _try_cast(value: str):
     if not value:
         return ""
 
+    # DeepSeek 系列偶尔会按 Python 字面量输出 True/False/None，
+    # 而不是 JSON 的 true/false/null。工具参数协议在这里统一归一化。
+    aliases = {"true": True, "false": False, "none": None, "null": None}
+    normalized = value.casefold()
+    if normalized in aliases:
+        return aliases[normalized]
+
     try:
         return json.loads(value)
     except json.JSONDecodeError:
