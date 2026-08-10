@@ -20,6 +20,7 @@ from backend.agent.tools.memory_tools import (
 from backend.agent.tools.tools import tr
 from backend.core.utils.models import UserRecord
 
+
 class EsaMasteryStore(MasteryStore):
     """ESA 运行时 MasteryStore：收紧前置知识点语义。"""
 
@@ -41,8 +42,7 @@ class EsaMasteryStore(MasteryStore):
         return [
             item
             for item in items
-            if int(item.get("depth", 0)) > 0
-            and item.get("kp_id") != kp_id
+            if int(item.get("depth", 0)) > 0 and item.get("kp_id") != kp_id
         ]
 
 
