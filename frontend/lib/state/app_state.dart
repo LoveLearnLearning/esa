@@ -48,6 +48,8 @@ class AppState extends ChangeNotifier {
   bool loadingConversations = false;
   bool loadingMessages = false;
   final List<ScheduleCourse> scheduleCourses = [];
+  final List<ScheduleTable> scheduleTables = [];
+  String activeScheduleTableId = '';
   ScheduleSettings scheduleSettings = const ScheduleSettings();
   bool scheduleLoaded = false;
 
@@ -218,6 +220,8 @@ class AppState extends ChangeNotifier {
     _messages.clear();
     _pinned.clear();
     scheduleCourses.clear();
+    scheduleTables.clear();
+    activeScheduleTableId = '';
     scheduleSettings = const ScheduleSettings();
     scheduleLoaded = false;
     activeId = null;
@@ -242,7 +246,11 @@ class AppState extends ChangeNotifier {
       var serverCourses = snapshot.courses;
       var serverSettings = snapshot.settings;
       final localPreferences = await _getLocalPreferences();
-      if (serverCourses.isEmpty && localPreferences != null) {
+      // 旧版本地缓存只在"用户仅有一张空课表"时迁移上传；
+      // 多张课程表说明服务端数据已是权威，切到空的新表时绝不能回灌缓存
+      if (serverCourses.isEmpty &&
+          snapshot.tables.length <= 1 &&
+          localPreferences != null) {
         final rawCourses = localPreferences.getString(_scheduleStorageKey);
         if (rawCourses != null && rawCourses.isNotEmpty) {
           try {
@@ -285,6 +293,10 @@ class AppState extends ChangeNotifier {
       scheduleCourses
         ..clear()
         ..addAll(serverCourses);
+      scheduleTables
+        ..clear()
+        ..addAll(snapshot.tables);
+      activeScheduleTableId = snapshot.activeTableId;
       scheduleSettings = serverSettings;
       scheduleLoaded = true;
       _sortSchedule();
@@ -373,27 +385,66 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<int> importScheduleFile({
+  void _applyScheduleSnapshot(ScheduleSnapshot snapshot) {
+    scheduleCourses
+      ..clear()
+      ..addAll(snapshot.courses);
+    scheduleTables
+      ..clear()
+      ..addAll(snapshot.tables);
+    activeScheduleTableId = snapshot.activeTableId;
+    scheduleSettings = snapshot.settings;
+    scheduleLoaded = true;
+    _sortSchedule();
+    notifyListeners();
+  }
+
+  ScheduleTable? get activeScheduleTable {
+    for (final table in scheduleTables) {
+      if (table.id == activeScheduleTableId) return table;
+    }
+    return null;
+  }
+
+  Future<void> switchScheduleTable(String tableId) async {
+    if (tableId == activeScheduleTableId) return;
+    final snapshot = await api.activateScheduleTable(tableId);
+    _applyScheduleSnapshot(snapshot);
+    await _persistSchedule();
+  }
+
+  Future<void> createScheduleTable(String name) async {
+    await api.createScheduleTable(name);
+    await loadSchedule(force: true);
+  }
+
+  Future<void> renameScheduleTable(String tableId, String name) async {
+    final renamed = await api.renameScheduleTable(tableId, name);
+    final index = scheduleTables.indexWhere((table) => table.id == tableId);
+    if (index >= 0) scheduleTables[index] = renamed;
+    notifyListeners();
+  }
+
+  Future<void> deleteScheduleTable(String tableId) async {
+    await api.deleteScheduleTable(tableId);
+    await loadSchedule(force: true);
+  }
+
+  Future<ScheduleImportResult> importScheduleFile({
     required String filename,
     required Uint8List bytes,
+    bool toNewTable = false,
+    String? newTableName,
   }) async {
-    final imported = await api.importScheduleFile(
+    final result = await api.importScheduleFile(
       filename: filename,
       bytes: bytes,
+      toNewTable: toNewTable,
+      newTableName: newTableName,
     );
-    for (final course in imported) {
-      final index = scheduleCourses.indexWhere((item) => item.id == course.id);
-      if (index < 0) {
-        scheduleCourses.add(course);
-      } else {
-        scheduleCourses[index] = course;
-      }
-    }
-    _sortSchedule();
-    scheduleLoaded = true;
-    notifyListeners();
-    await _persistSchedule();
-    return imported.length;
+    // 导入可能新建并切换课程表，直接以服务端快照为准
+    await loadSchedule(force: true);
+    return result;
   }
 
   void _sortSchedule() {

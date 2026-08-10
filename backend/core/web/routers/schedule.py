@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field, model_validator
 
 from backend.agent.tools.mastery_tools import kg_store
@@ -112,14 +121,80 @@ def _remove_unused_learning_course(
         course_store.delete(user_id=user_id, name=name)
 
 
+class ScheduleTablePayload(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    activate: bool = True
+
+
 @router.get("")
 def get_schedule(request: Request, session: CurrentSession) -> dict:
     user = _user(request, session)
     store: ScheduleStore = request.app.state.schedule_store
+    active_table_id = store.ensure_active_table(user.id)
     return {
-        "courses": store.list_courses(user.id),
+        "tables": store.list_tables(user.id),
+        "active_table_id": active_table_id,
+        "courses": store.list_courses(user.id, active_table_id),
         "settings": store.get_settings(user.id),
     }
+
+
+@router.post("/tables", status_code=status.HTTP_201_CREATED)
+def create_schedule_table(
+    payload: ScheduleTablePayload, request: Request, session: CurrentSession
+) -> dict:
+    user = _user(request, session)
+    store: ScheduleStore = request.app.state.schedule_store
+    store.ensure_active_table(user.id)
+    return store.create_table(user.id, payload.name, activate=payload.activate)
+
+
+@router.patch("/tables/{table_id}")
+def rename_schedule_table(
+    table_id: str,
+    payload: ScheduleTablePayload,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    user = _user(request, session)
+    store: ScheduleStore = request.app.state.schedule_store
+    if not store.rename_table(user.id, table_id, payload.name):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "课程表不存在")
+    table = store.get_table(user.id, table_id)
+    assert table is not None
+    return table
+
+
+@router.post("/tables/{table_id}/activate")
+def activate_schedule_table(
+    table_id: str, request: Request, session: CurrentSession
+) -> dict:
+    user = _user(request, session)
+    store: ScheduleStore = request.app.state.schedule_store
+    if not store.activate_table(user.id, table_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "课程表不存在")
+    return {
+        "tables": store.list_tables(user.id),
+        "active_table_id": table_id,
+        "courses": store.list_courses(user.id, table_id),
+        "settings": store.get_settings(user.id),
+    }
+
+
+@router.delete("/tables/{table_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_schedule_table(
+    table_id: str, request: Request, session: CurrentSession
+) -> None:
+    user = _user(request, session)
+    store: ScheduleStore = request.app.state.schedule_store
+    if store.get_table(user.id, table_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "课程表不存在")
+    try:
+        removed = store.delete_table(user.id, table_id)
+    except ValueError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+    for name in {course["name"] for course in removed}:
+        _remove_unused_learning_course(request, user.id, name)
 
 
 @router.put("/courses")
@@ -167,7 +242,13 @@ async def import_schedule(
     request: Request,
     session: CurrentSession,
     file: Annotated[UploadFile, File()],
+    target: Annotated[str, Form()] = "current",
+    table_name: Annotated[str | None, Form()] = None,
 ) -> dict:
+    if target not in {"current", "new"}:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "target 必须是 current 或 new"
+        )
     user = _user(request, session)
     data = await file.read(MAX_UPLOAD_BYTES + 1)
     await file.close()
@@ -205,7 +286,31 @@ async def import_schedule(
         {**course, "color_value": COURSE_COLORS[index % len(COURSE_COLORS)]}
         for index, course in enumerate(courses)
     ]
-    imported = store.import_courses(user.id, prepared)
+    if target == "new":
+        # 识别成功后才建新课程表并切换过去，避免留下空表
+        name = (table_name or "").strip() or _default_table_name(store, user.id)
+        table = store.create_table(user.id, name[:40], activate=True)
+        target_table_id = table["id"]
+    else:
+        target_table_id = store.ensure_active_table(user.id)
+    imported, skipped = store.import_courses(user.id, prepared, target_table_id)
     for course in imported:
         _sync_learning_course(request, user.id, course["name"])
-    return {"courses": imported, "imported_count": len(imported)}
+    return {
+        "courses": imported,
+        "imported_count": len(imported),
+        "skipped_count": len(skipped),
+        "tables": store.list_tables(user.id),
+        "active_table_id": store.ensure_active_table(user.id),
+    }
+
+
+def _default_table_name(store: ScheduleStore, user_id: str) -> str:
+    existing = {table["name"] for table in store.list_tables(user_id)}
+    base = "导入课表"
+    if base not in existing:
+        return base
+    index = 2
+    while f"{base} {index}" in existing:
+        index += 1
+    return f"{base} {index}"

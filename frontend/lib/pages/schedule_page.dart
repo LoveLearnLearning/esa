@@ -129,7 +129,76 @@ class _SchedulePageState extends State<SchedulePage> {
             ),
             const SizedBox(width: 10),
           ],
-          Text('课表', style: context.texts.titleMedium?.copyWith(fontSize: 16)),
+          PopupMenuButton<String>(
+            key: const ValueKey('schedule-table-menu'),
+            tooltip: '切换或管理课程表',
+            onSelected: (value) => _onTableMenuSelected(app, value),
+            itemBuilder: (_) => [
+              for (final table in app.scheduleTables)
+                PopupMenuItem(
+                  value: table.id,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 22,
+                        child: table.id == app.activeScheduleTableId
+                            ? const Icon(LucideIcons.check, size: 15)
+                            : null,
+                      ),
+                      Flexible(
+                        child: Text(table.name, overflow: TextOverflow.ellipsis),
+                      ),
+                    ],
+                  ),
+                ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: '__create__',
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.plus, size: 15),
+                    SizedBox(width: 7),
+                    Text('新建课程表'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: '__rename__',
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.pencil, size: 15),
+                    SizedBox(width: 7),
+                    Text('重命名当前课程表'),
+                  ],
+                ),
+              ),
+              if (app.scheduleTables.length > 1)
+                const PopupMenuItem(
+                  value: '__delete__',
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.trash2, size: 15),
+                      SizedBox(width: 7),
+                      Text('删除当前课程表'),
+                    ],
+                  ),
+                ),
+            ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    app.activeScheduleTable?.name ?? '课表',
+                    overflow: TextOverflow.ellipsis,
+                    style: context.texts.titleMedium?.copyWith(fontSize: 16),
+                  ),
+                ),
+                const SizedBox(width: 3),
+                const Icon(LucideIcons.chevronDown, size: 14),
+              ],
+            ),
+          ),
           if (!narrow) ...[
             const SizedBox(width: 8),
             Text('共 $totalWeeks 周', style: context.texts.bodySmall),
@@ -471,6 +540,127 @@ class _SchedulePageState extends State<SchedulePage> {
     );
   }
 
+  Future<void> _onTableMenuSelected(AppState app, String value) async {
+    try {
+      switch (value) {
+        case '__create__':
+          final name = await _promptTableName(title: '新建课程表');
+          if (name == null || name.isEmpty) return;
+          await app.createScheduleTable(name);
+        case '__rename__':
+          final current = app.activeScheduleTable;
+          if (current == null) return;
+          final name = await _promptTableName(
+            title: '重命名课程表',
+            initial: current.name,
+          );
+          if (name == null || name.isEmpty || name == current.name) return;
+          await app.renameScheduleTable(current.id, name);
+        case '__delete__':
+          final current = app.activeScheduleTable;
+          if (current == null) return;
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('删除课程表'),
+              content: Text('确定删除「${current.name}」吗？其中的课程会一并删除。'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('删除'),
+                ),
+              ],
+            ),
+          );
+          if (confirmed != true) return;
+          await app.deleteScheduleTable(current.id);
+        default:
+          await app.switchScheduleTable(value);
+      }
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.detail)));
+    }
+  }
+
+  Future<String?> _promptTableName({
+    required String title,
+    String initial = '',
+  }) async {
+    final controller = TextEditingController(text: initial);
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 40,
+            decoration: const InputDecoration(hintText: '课程表名称'),
+            onSubmitted: (value) => Navigator.pop(context, value.trim()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  /// 返回 null 表示取消；(false, null) 导入当前课程表；(true, name) 导入新课程表
+  Future<(bool, String?)?> _askImportTarget(AppState app) async {
+    final currentName = app.activeScheduleTable?.name ?? '当前课程表';
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('导入到哪个课程表？'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, 'current'),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.calendarCheck, size: 17),
+                const SizedBox(width: 9),
+                Expanded(child: Text('添加到「$currentName」')),
+              ],
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, 'new'),
+            child: const Row(
+              children: [
+                Icon(LucideIcons.calendarPlus, size: 17),
+                SizedBox(width: 9),
+                Expanded(child: Text('创建新课程表')),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted) return null;
+    if (choice == 'current') return (false, null);
+    final name = await _promptTableName(title: '新课程表名称');
+    if (name == null) return null;
+    return (true, name.isEmpty ? null : name);
+  }
+
   Future<void> _importSchedule(AppState app) async {
     try {
       final result = await FilePicker.pickFiles(
@@ -489,19 +679,31 @@ class _SchedulePageState extends State<SchedulePage> {
       );
       final file = result?.files.singleOrNull;
       if (file == null) return;
+      final target = await _askImportTarget(app);
+      if (target == null || !mounted) return;
+      final (toNewTable, newTableName) = target;
       setState(() => _importing = true);
       final bytes = await file.xFile.readAsBytes();
-      final count = await app.importScheduleFile(
+      final importResult = await app.importScheduleFile(
         filename: file.name,
         bytes: bytes,
+        toNewTable: toNewTable,
+        newTableName: newTableName,
       );
       if (!mounted) return;
+      final count = importResult.courses.length;
+      final skipped = importResult.skippedCount;
+      final destination =
+          toNewTable ? '「${app.activeScheduleTable?.name ?? '新课程表'}」' : '';
+      final message = count == 0
+          ? (skipped > 0
+              ? '识别到 $skipped 条课程与现有课表时间冲突，未导入'
+              : '没有发现新的课程，已有课程不会重复导入')
+          : (skipped > 0
+              ? '已导入 $count 条课程安排到$destination，另有 $skipped 条因时间冲突被跳过'
+              : '已识别并导入 $count 条课程安排${destination.isEmpty ? '' : '到$destination'}');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            count == 0 ? '没有发现新的课程，已有课程不会重复导入' : '已识别并导入 $count 条课程安排',
-          ),
-        ),
+        SnackBar(content: Text(message)),
       );
     } on ApiException catch (error) {
       if (!mounted) return;

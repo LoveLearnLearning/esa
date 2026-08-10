@@ -373,16 +373,40 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 以下接口均需要认证，数据按用户隔离并存储在 SQLite。保存或导入课程时，会同步维护
 `user_courses` 关联，使知识地图不需要再次录入课程。
 
+每个用户可拥有多张课程表（`schedule_tables`），课程归属某一张课程表，且始终有一张
+处于激活状态；没有课程表时服务端会自动创建"默认课表"，历史课程在迁移时归入其中。
+
 ### GET /me/schedule
 
-返回当前用户的 `courses` 和 `settings`。设置包括上午/下午/晚上的节数与开始时间、
+返回当前用户的 `tables`（每项含 `id`、`name`、`is_active`）、`active_table_id`、
+激活课程表下的 `courses` 和 `settings`。设置包括上午/下午/晚上的节数与开始时间、
 单节时长、课间间隔，以及 `term_start_date`（第一教学周周一，`YYYY-MM-DD`）。前端据此
-结合系统日期计算当前教学周和星期。
+结合系统日期计算当前教学周和星期。作息设置为用户级，所有课程表共用。
+
+### POST /me/schedule/tables
+
+创建课程表：`{"name": "大二上", "activate": true}`（`activate` 缺省 true，创建后
+立即切换为激活表）。返回 201 与新表信息。
+
+### PATCH /me/schedule/tables/{table_id}
+
+重命名课程表：`{"name": "新名称"}`。
+
+### POST /me/schedule/tables/{table_id}/activate
+
+切换激活课程表，返回与 `GET /me/schedule` 相同结构的快照。
+
+### DELETE /me/schedule/tables/{table_id}
+
+删除课程表及其全部课程；删除的是激活表时自动激活剩余最早创建的一张。最后一张课程表
+不允许删除（409）。被删课程若不再出现于任何课程表，会同步清理 timetable 来源的用户
+课程关联。
 
 ### PUT /me/schedule/courses
 
 新增或更新一条课程安排。字段包括 `id`、`name`、`teacher`、`location`、`weekday`
 （周一为 1）、`start_period`、`end_period`、`start_week`、`end_week` 和 `color_value`。
+新课程写入当前激活课程表；更新已有课程保持其原课程表归属。
 
 ### DELETE /me/schedule/courses/{course_id}
 
@@ -396,9 +420,18 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 ### POST /me/schedule/import
 
 使用 `multipart/form-data` 上传字段名为 `file` 的课表文件，最大 15 MB，支持 PDF、
-PNG/JPEG/WebP/BMP 和 HTML。服务端先从 PDF/HTML 提取文字或对图片执行 OCR，再让当前
-大模型输出经过严格校验的课程结构，最后去重写入用户课表。扫描版 PDF 如果无法提取文字，
-应改为上传清晰图片。
+PNG/JPEG/WebP/BMP 和 HTML。可选表单字段：`target`（`current` 导入当前激活课程表，
+缺省；`new` 识别成功后创建新课程表并切换过去）与 `table_name`（`target=new` 时的
+新表名称，留空则自动命名"导入课表 N"）。服务端先从 PDF/HTML 提取文字（PDF 用
+layout 模式、HTML 保留表格行列结构，保证"星期几"的列信息不丢失）或对图片执行 OCR，
+再让当前大模型输出
+经过严格校验的课程结构，最后写入用户课表。与已有课程完全相同的条目、以及与已有或本批
+课程时间冲突（同星期且节次与周次范围重叠）的条目会被跳过，不会叠加写入。扫描版 PDF
+如果无法提取文字，应改为上传清晰图片。
+
+响应：`{"courses": [...], "imported_count": N, "skipped_count": M, "tables": [...],
+"active_table_id": "..."}`，其中 `skipped_count` 是因时间冲突被跳过的条目数，
+`tables`/`active_table_id` 反映导入后（可能新建并切换课程表）的最新状态。
 
 图片识别依赖服务器安装 Tesseract 及中文语言包，例如 Debian/Ubuntu：
 

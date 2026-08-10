@@ -346,13 +346,19 @@ class ApiClient {
     return ScheduleSettings.fromJson(_decode(r) as Map<String, dynamic>);
   }
 
-  Future<List<ScheduleCourse>> importScheduleFile({
+  Future<ScheduleImportResult> importScheduleFile({
     required String filename,
     required Uint8List bytes,
+    bool toNewTable = false,
+    String? newTableName,
   }) async {
     final request = http.MultipartRequest('POST', _uri('/me/schedule/import'));
     if (sessionId != null) {
       request.headers['Authorization'] = 'Bearer $sessionId';
+    }
+    request.fields['target'] = toNewTable ? 'new' : 'current';
+    if (toNewTable && newTableName != null && newTableName.trim().isNotEmpty) {
+      request.fields['table_name'] = newTableName.trim();
     }
     request.files.add(
       http.MultipartFile.fromBytes('file', bytes, filename: filename),
@@ -361,10 +367,50 @@ class ApiClient {
     final r = await http.Response.fromStream(streamed);
     if (r.statusCode != 200) _fail(r);
     final data = _decode(r) as Map<String, dynamic>;
-    return (data['courses'] as List? ?? const [])
-        .whereType<Map>()
-        .map((item) => ScheduleCourse.fromJson(Map<String, dynamic>.from(item)))
-        .toList();
+    return ScheduleImportResult(
+      courses: (data['courses'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) => ScheduleCourse.fromJson(Map<String, dynamic>.from(item)))
+          .toList(),
+      skippedCount: (data['skipped_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Future<ScheduleTable> createScheduleTable(String name) async {
+    final r = await http.post(
+      _uri('/me/schedule/tables'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'name': name}),
+    );
+    if (r.statusCode != 201) _fail(r);
+    return ScheduleTable.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<ScheduleTable> renameScheduleTable(String tableId, String name) async {
+    final r = await http.patch(
+      _uri('/me/schedule/tables/$tableId'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'name': name}),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ScheduleTable.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<ScheduleSnapshot> activateScheduleTable(String tableId) async {
+    final r = await http.post(
+      _uri('/me/schedule/tables/$tableId/activate'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ScheduleSnapshot.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteScheduleTable(String tableId) async {
+    final r = await http.delete(
+      _uri('/me/schedule/tables/$tableId'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204) _fail(r);
   }
 
   Future<KnowledgeMapData> getKnowledgeMap(String course) async {

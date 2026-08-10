@@ -614,6 +614,13 @@ def _migrate_relational_integrity(connection: sqlite3.Connection) -> None:
         )
 
 
+def _migrate_schedule_tables(connection: sqlite3.Connection) -> None:
+    """V8：多课程表——建 schedule_tables、courses 补 table_id 并回填默认课表。"""
+    from backend.core.stores.schedule_store import ensure_schedule_tables_schema
+
+    ensure_schedule_tables_schema(connection)
+
+
 MIGRATIONS: list[MigrationDef] = [
     (
         1,
@@ -766,6 +773,11 @@ MIGRATIONS: list[MigrationDef] = [
             )
             """,
         ],
+    ),
+    (
+        8,
+        "create_schedule_tables_and_scope_courses",
+        _migrate_schedule_tables,
     ),
 ]
 
