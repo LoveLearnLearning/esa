@@ -90,3 +90,4 @@ backend/agent/DocIR/CS_Book_mineru
 backend/agent/DocIR/CS_Book
 backend/agent/DocIR/tests
 backend/agent/rag/tests
+backend/agent/mm/tests
