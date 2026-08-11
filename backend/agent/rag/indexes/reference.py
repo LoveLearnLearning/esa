@@ -17,7 +17,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from ..chunk import Chunk
+from ..chunk import Chunk, ContentRole
 from ..fingerprints import configuration_sha256
 from ..retrieval.contracts import RankedItem
 
@@ -39,11 +39,7 @@ def reference_tokens(text: str) -> list[str]:
     """执行确定性测试分词，不宣称等价于生产中文分词器。"""
 
     base = _TOKEN_RE.findall(text.lower())
-    cjk = [
-        token
-        for token in base
-        if len(token) == 1 and "\u3400" <= token <= "\u9fff"
-    ]
+    cjk = [token for token in base if len(token) == 1 and "\u3400" <= token <= "\u9fff"]
     bigrams = ["".join(cjk[index : index + 2]) for index in range(len(cjk) - 1)]
     return base + bigrams
 
@@ -62,7 +58,7 @@ class ReferenceIndex:
 
         return configuration_sha256(
             {
-                "backend": "reference-index-0.1",
+                "backend": "reference-index-0.2",
                 "bm25": {"k1": 1.2, "b": 0.75},
                 "tokenizer": "reference-tokenizer-0.1",
             }
@@ -114,7 +110,12 @@ class ReferenceIndex:
         self.vectors = [list(vector) for vector in dense_vectors]
         self.generation_id = generation_id
 
-    def dense(self, query_vector: Sequence[float], limit: int) -> list[RankedItem]:
+    def dense(
+        self,
+        query_vector: Sequence[float],
+        limit: int,
+        content_roles: frozenset[ContentRole] | None = None,
+    ) -> list[RankedItem]:
         """按余弦相似度执行参考 Dense 召回。"""
 
         if self.vectors and len(query_vector) != len(self.vectors[0]):
@@ -122,18 +123,32 @@ class ReferenceIndex:
         ranked = [
             RankedItem(chunk.chunk_id, _cosine(query_vector, vector))
             for chunk, vector in zip(self.chunks, self.vectors)
+            if content_roles is None or chunk.content_role in content_roles
         ]
         return sorted(ranked, key=lambda item: (-item.score, item.chunk_id))[:limit]
 
-    def _bm25(self, query: str, field_name: str, limit: int) -> list[RankedItem]:
+    def _bm25(
+        self,
+        query: str,
+        field_name: str,
+        limit: int,
+        content_roles: frozenset[ContentRole] | None,
+    ) -> list[RankedItem]:
         """在一个 Chunk 文本字段上计算参考 BM25。"""
 
-        documents = [reference_tokens(getattr(chunk, field_name)) for chunk in self.chunks]
+        selected = [
+            chunk
+            for chunk in self.chunks
+            if content_roles is None or chunk.content_role in content_roles
+        ]
+        documents = [reference_tokens(getattr(chunk, field_name)) for chunk in selected]
         query_tokens = reference_tokens(query)
         average_length = sum(map(len, documents)) / len(documents) if documents else 0.0
-        frequencies = Counter(token for document in documents for token in set(document))
+        frequencies = Counter(
+            token for document in documents for token in set(document)
+        )
         ranked: list[RankedItem] = []
-        for chunk, document in zip(self.chunks, documents):
+        for chunk, document in zip(selected, documents):
             counts = Counter(document)
             score = self._bm25_score(
                 query_tokens,
@@ -175,12 +190,22 @@ class ReferenceIndex:
             score += inverse_document_frequency * frequency * 2.2 / normalization
         return score
 
-    def bm25_body(self, query: str, limit: int) -> list[RankedItem]:
+    def bm25_body(
+        self,
+        query: str,
+        limit: int,
+        content_roles: frozenset[ContentRole] | None = None,
+    ) -> list[RankedItem]:
         """对正文执行参考 BM25 召回。"""
 
-        return self._bm25(query, "bm25_body", limit)
+        return self._bm25(query, "bm25_body", limit, content_roles)
 
-    def bm25_heading(self, query: str, limit: int) -> list[RankedItem]:
+    def bm25_heading(
+        self,
+        query: str,
+        limit: int,
+        content_roles: frozenset[ContentRole] | None = None,
+    ) -> list[RankedItem]:
         """对标题与章节路径执行参考 BM25 召回。"""
 
-        return self._bm25(query, "bm25_heading", limit)
+        return self._bm25(query, "bm25_heading", limit, content_roles)

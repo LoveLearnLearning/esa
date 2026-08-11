@@ -122,6 +122,12 @@ class TransformersEmbeddingProvider:
         prompt = f"Instruct: {self.query_instruction}\nQuery: {query}"
         return self.embed([prompt])[0]
 
+    def count_tokens(self, text: str) -> int:
+        """使用实际 Qwen tokenizer 计算 Context 预算。"""
+
+        self._load()
+        return len(self._tokenizer.encode(text, add_special_tokens=False))
+
 
 @dataclass
 class TransformersReranker:

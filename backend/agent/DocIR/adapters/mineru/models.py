@@ -19,21 +19,36 @@ from pydantic import BaseModel, ConfigDict, Field
 class RawModel(BaseModel):
     model_config = ConfigDict(extra="allow")
 
+    def field_was_provided(self, name: str) -> bool:
+        """区分 raw JSON 中缺字段与显式提供 null/empty 的字段。"""
+
+        return name in self.model_fields_set
+
+    def provided_payload(self) -> dict[str, Any]:
+        """保留 alias、extras 和 missing 状态的已建模 payload。"""
+
+        return self.model_dump(mode="json", by_alias=True, exclude_unset=True)
+
 
 class RawMiddleBlock(RawModel):
     type: str
-    bbox: list[float]
+    bbox: list[float] | None = None
+    bbox_fs: list[float] | None = None
     index: int | None = None
     score: float | None = Field(default=None, ge=0, le=1)
     level: int | None = None
-    lines: list[dict[str, Any]] = Field(default_factory=list)
+    lines: list[dict[str, Any]] | None = None
+    is_numbered_style: bool | None = None
+    attribute: str | None = None
+    ilevel: int | None = None
 
 
 class RawMiddlePage(RawModel):
     page_idx: int
-    page_size: list[float]
+    page_size: list[float] | None = None
     para_blocks: list[RawMiddleBlock] = Field(default_factory=list)
     discarded_blocks: list[RawMiddleBlock] = Field(default_factory=list)
+    preproc_blocks: list[dict[str, Any]] | None = None
 
 
 class RawMiddleDocument(RawModel):

@@ -20,7 +20,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from ..chunk import Chunk
+from ..chunk import Chunk, ContentRole
 from ..fingerprints import configuration_sha256
 from ..retrieval.contracts import RankedItem
 from .errors import CollectionNotFound, IndexGenerationConflict, IndexUnavailable
@@ -58,7 +58,7 @@ class QdrantIndex:
 
         return configuration_sha256(
             {
-                "backend": "qdrant-rest-0.1",
+                "backend": "qdrant-rest-0.2",
                 "dense_name": self.dense_name,
                 "body_name": self.body_name,
                 "heading_name": self.heading_name,
@@ -311,18 +311,34 @@ class QdrantIndex:
             "options": self.bm25_options,
         }
 
-    def _query(self, query: Any, using: str, limit: int) -> list[RankedItem]:
+    def _query(
+        self,
+        query: Any,
+        using: str,
+        limit: int,
+        content_roles: frozenset[ContentRole] | None = None,
+    ) -> list[RankedItem]:
         """查询一条命名向量并转换为领域排名项。"""
 
+        payload: dict[str, Any] = {
+            "query": query,
+            "using": using,
+            "limit": limit,
+            "with_payload": True,
+        }
+        if content_roles is not None:
+            payload["filter"] = {
+                "must": [
+                    {
+                        "key": "content_role",
+                        "match": {"any": sorted(role.value for role in content_roles)},
+                    }
+                ]
+            }
         response = self._request(
             "POST",
             f"/collections/{quote(self.collection)}/points/query",
-            {
-                "query": query,
-                "using": using,
-                "limit": limit,
-                "with_payload": True,
-            },
+            payload,
         )
         result = response.get("result", {})
         points = result.get("points", result if isinstance(result, list) else [])
@@ -334,17 +350,36 @@ class QdrantIndex:
         except (KeyError, TypeError, ValueError) as exc:
             raise IndexUnavailable("Qdrant query response is incomplete") from exc
 
-    def dense(self, query_vector: Sequence[float], limit: int) -> list[RankedItem]:
+    def dense(
+        self,
+        query_vector: Sequence[float],
+        limit: int,
+        content_roles: frozenset[ContentRole] | None = None,
+    ) -> list[RankedItem]:
         """通过 Dense 命名向量执行语义召回。"""
 
-        return self._query(list(query_vector), self.dense_name, limit)
+        return self._query(list(query_vector), self.dense_name, limit, content_roles)
 
-    def bm25_body(self, query: str, limit: int) -> list[RankedItem]:
+    def bm25_body(
+        self,
+        query: str,
+        limit: int,
+        content_roles: frozenset[ContentRole] | None = None,
+    ) -> list[RankedItem]:
         """通过正文 BM25 命名向量执行召回。"""
 
-        return self._query(self._bm25_document(query), self.body_name, limit)
+        return self._query(
+            self._bm25_document(query), self.body_name, limit, content_roles
+        )
 
-    def bm25_heading(self, query: str, limit: int) -> list[RankedItem]:
+    def bm25_heading(
+        self,
+        query: str,
+        limit: int,
+        content_roles: frozenset[ContentRole] | None = None,
+    ) -> list[RankedItem]:
         """通过标题 BM25 命名向量执行召回。"""
 
-        return self._query(self._bm25_document(query), self.heading_name, limit)
+        return self._query(
+            self._bm25_document(query), self.heading_name, limit, content_roles
+        )

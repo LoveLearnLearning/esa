@@ -2,11 +2,11 @@
 
 """
 
-这个文件干什么：批量执行 MinerU，并把完整 PDF 语料转换为 DocIR V0.2 基线。
+这个文件干什么：批量执行 MinerU，并把支持的文档语料转换为 DocIR V0.2 基线。
 
-直白点说就是：批量找出 PDF，调用 MinerU 解析，再转换、校验并整理成可长期保存的 DocIR 语料。
+直白点说就是：批量找出 MinerU 支持的文件，调用 MinerU 解析，再转换、校验并整理成可长期保存的 DocIR 语料。
 
-批量执行 MinerU，并把完整 PDF 语料转换为 DocIR V0.2 基线。
+批量执行 MinerU，并把支持的文档语料转换为 DocIR V0.2 基线。
 """
 
 from __future__ import annotations
@@ -21,12 +21,15 @@ import subprocess
 import time
 from collections import Counter
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pypdf import PdfReader
-
-from backend.agent.DocIR.adapters.mineru import convert_bundle, load_bundle
+from backend.agent.DocIR.adapters.mineru import (
+    convert_bundle,
+    load_bundle,
+    source_media_type,
+)
 from backend.agent.DocIR.adapters.mineru.alignment import align_page
 from backend.agent.DocIR.io import export_json_schema, load_document, save_document
 from backend.agent.DocIR.paths import WORKSPACE_ROOT
@@ -35,9 +38,18 @@ WORKSPACE = WORKSPACE_ROOT
 DEFAULT_INPUT = WORKSPACE / "data/source_pdfs"
 DEFAULT_RUN_ID = "full-corpus-20260802"
 MIN_FREE_BYTES = 2 * 1024**3
-RETAIN_SUFFIXES = (".md", "_middle.json", "_content_list_v2.json", "_model.json")
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"}
+OFFICE_SUFFIXES = {".docx", ".pptx", ".xlsx"}
+SUPPORTED_SOURCE_SUFFIXES = {".pdf", *OFFICE_SUFFIXES, *IMAGE_SUFFIXES}
+PRUNABLE_SUFFIXES = ("_layout.pdf", "_span.pdf")
 TERMINAL_STATUSES = {"success"}
+
+
+@dataclass(frozen=True)
+class SourceMetadata:
+    media_type: str
+    page_count: int | None
+    encrypted: bool | None
 
 
 def file_sha256(path: Path) -> str:
@@ -55,8 +67,15 @@ def stable_directory_name(path: Path, sha256: str | None = None) -> str:
     return f"{digest[:12]}--{stem[:96]}"
 
 
-def discover_pdfs(input_dir: Path) -> list[Path]:
-    return sorted((path for path in input_dir.iterdir() if path.is_file() and path.suffix.lower() == ".pdf"), key=lambda p: p.name)
+def discover_documents(input_dir: Path) -> list[Path]:
+    return sorted(
+        (
+            path
+            for path in input_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in SUPPORTED_SOURCE_SUFFIXES
+        ),
+        key=lambda path: path.name,
+    )
 
 
 def atomic_json(path: Path, data: Any) -> None:
@@ -80,18 +99,27 @@ def link_or_copy(source: Path, target: Path) -> str:
 
 
 def find_parse_dir(output_root: Path) -> Path:
-    matches = sorted({path.parent for path in output_root.rglob("*_middle.json")})
+    matches = sorted(
+        {
+            path.parent
+            for path in output_root.rglob("*_middle.json")
+            if any(path.parent.glob("*_content_list_v2.json"))
+        }
+    )
     if len(matches) != 1:
-        raise ValueError(f"期望一个 MinerU parse 目录，实际 {len(matches)} 个: {output_root}")
+        raise ValueError(
+            "期望一个包含 middle + content_list_v2 的 MinerU parse 目录，"
+            f"实际 {len(matches)} 个: {output_root}"
+        )
     return matches[0]
 
 
 def should_retain(path: Path) -> bool:
-    return path.suffix.lower() in IMAGE_SUFFIXES or any(path.name.endswith(suffix) for suffix in RETAIN_SUFFIXES)
+    return not any(path.name.endswith(suffix) for suffix in PRUNABLE_SUFFIXES)
 
 
 def prune_mineru_output(output_root: Path) -> list[str]:
-    """删除可再生调试/重复产物，保留结构文件和全部 MinerU 图片。"""
+    """仅删除已确认可再生的可视化 PDF，保留未知及格式特有产物。"""
     removed: list[str] = []
     for path in sorted(output_root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
         if path.is_file() and not should_retain(path):
@@ -102,9 +130,21 @@ def prune_mineru_output(output_root: Path) -> list[str]:
     return sorted(removed)
 
 
-def pdf_metadata(path: Path) -> tuple[int, bool]:
-    reader = PdfReader(path)
-    return len(reader.pages), bool(reader.is_encrypted)
+def source_metadata(path: Path) -> SourceMetadata:
+    suffix = path.suffix.lower()
+    media_type = source_media_type(path)
+    if suffix == ".pdf":
+        from pypdf import PdfReader
+
+        reader = PdfReader(path)
+        return SourceMetadata(
+            media_type=media_type,
+            page_count=len(reader.pages),
+            encrypted=bool(reader.is_encrypted),
+        )
+    if suffix in IMAGE_SUFFIXES:
+        return SourceMetadata(media_type=media_type, page_count=1, encrypted=None)
+    return SourceMetadata(media_type=media_type, page_count=None, encrypted=None)
 
 
 def run_mineru(source: Path, output_root: Path, log_path: Path, timeout_seconds: int, attempts: int = 2) -> dict[str, Any]:
@@ -269,8 +309,17 @@ def materialize_visual_assets(document: Any, bundle: Any, docir_root: Path) -> d
     return dict(counts)
 
 
-def convert_one(source: Path, parse_dir: Path, docir_root: Path, source_pages: int) -> tuple[Any, dict[str, Any]]:
+def convert_one(
+    source: Path,
+    parse_dir: Path,
+    docir_root: Path,
+    source_pages: int | None,
+) -> tuple[Any, dict[str, Any]]:
     bundle = load_bundle(parse_dir)
+    if source_pages is None:
+        raise ValueError(
+            f"{source.suffix.lower()} 尚无可验证的 source_page_count 语义"
+        )
     document = convert_bundle(bundle, source, source_page_count=source_pages, strict=False)
     docir_root.mkdir(parents=True, exist_ok=True)
     link_or_copy(source, docir_root / "assets" / source.name)
@@ -315,7 +364,7 @@ def aggregate(results: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "documents_total": len(items),
         "documents_success": len(successful),
         "documents_failed": len(items) - len(successful),
-        "source_pages_total": sum(item.get("source_pages", 0) for item in items),
+        "source_pages_total": sum(item.get("source_pages") or 0 for item in items),
         "parsed_pages_total": sum(item.get("metrics", {}).get("docir", {}).get("pages", 0) for item in successful),
         "elements_total": elements_total,
         "unknown_elements_total": unknown_total,
@@ -413,7 +462,9 @@ def write_report(path: Path, run_id: str, results: list[dict[str, Any]]) -> None
     ]
     for item in results:
         if item.get("metrics"):
-            raw = item["metrics"]["raw"]; docir = item["metrics"]["docir"]; strict = item["metrics"]["strict_audit"]
+            raw = item["metrics"]["raw"]
+            docir = item["metrics"]["docir"]
+            strict = item["metrics"]["strict_audit"]
             strict_error = (strict.get("error") or "passed").replace("|", "\\|").replace("\n", " ")
             lines.append(f"| {item['filename']} | {item['status']} | {docir['pages']} | {item.get('mineru', {}).get('elapsed_seconds', 0):.1f} | {raw['middle_blocks']}+{raw['discarded_blocks']}/{raw['v2_blocks']} | {docir['unknown_elements']} ({docir['unknown_rate']:.1%}) | {docir['quality_issues'].get('middle_v2_mismatch', 0)} | {raw['discarded_blocks']} | `{strict_error}` |")
         else:
@@ -465,8 +516,18 @@ def process_document(source: Path, run_id: str, mineru_run: Path, docir_run: Pat
     ):
         print(f"[resume] {source.name}: {existing['status']}", flush=True)
         return existing
-    source_pages, encrypted = pdf_metadata(source)
-    result: dict[str, Any] = {"filename": source.name, "sha256": sha, "directory": directory, "byte_size": source.stat().st_size, "source_pages": source_pages, "encrypted": encrypted, "status": "running"}
+    metadata = source_metadata(source)
+    source_pages = metadata.page_count
+    result: dict[str, Any] = {
+        "filename": source.name,
+        "sha256": sha,
+        "directory": directory,
+        "byte_size": source.stat().st_size,
+        "media_type": metadata.media_type,
+        "source_pages": source_pages,
+        "encrypted": metadata.encrypted,
+        "status": "running",
+    }
     docir_root.mkdir(parents=True, exist_ok=True)
     atomic_json(result_path, result)
     if shutil.disk_usage(WORKSPACE).free < MIN_FREE_BYTES:
@@ -475,7 +536,8 @@ def process_document(source: Path, run_id: str, mineru_run: Path, docir_run: Pat
         return result
     mineru_root = mineru_run / directory
     log_path = docir_root / "mineru.log"
-    print(f"[mineru] {source.name} ({source_pages} pages)", flush=True)
+    page_summary = f"{source_pages} pages" if source_pages is not None else "page count unknown"
+    print(f"[mineru] {source.name} ({page_summary})", flush=True)
     try:
         parse_dir = find_parse_dir(mineru_root)
         if refresh_conversions and existing is not None:
@@ -507,7 +569,7 @@ def process_document(source: Path, run_id: str, mineru_run: Path, docir_run: Pat
     except Exception as exc:  # noqa: BLE001 - 单文档转换失败不能中止整个批次
         result.update(status="conversion_failed", mineru=mineru_result, error=f"{type(exc).__name__}: {exc}")
     finally:
-        removed = prune_mineru_output(mineru_root)
+        removed = prune_mineru_output(mineru_root) if result["status"] == "success" else []
         result.update(retained_mineru_files=sum(1 for p in mineru_root.rglob("*") if p.is_file()), removed_mineru_files=removed)
     atomic_json(result_path, result)
     print(f"[done] {source.name}: {result['status']}", flush=True)
@@ -529,7 +591,7 @@ def main(argv: list[str] | None = None) -> int:
     docir_run.mkdir(parents=True, exist_ok=True)
     export_json_schema(docir_run / "docir-v0.2.schema.json")
     results = []
-    for source in discover_pdfs(args.input_dir):
+    for source in discover_documents(args.input_dir):
         try:
             result = process_document(source, args.run_id, mineru_run, docir_run, args.timeout_seconds, args.resume, args.refresh_conversions)
         except Exception as exc:  # noqa: BLE001 - 最外层批处理必须隔离单文档失败
