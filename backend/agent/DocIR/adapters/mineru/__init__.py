@@ -7,7 +7,14 @@
 直白点说就是：把 MinerU 文件读取和转换功能集中摆到一个入口，外部不用钻进内部模块。
 """
 
-from .bundle import MinerUBundle, load_bundle
-from .converter import convert_bundle, file_sha256
+from .bundle import MinerUBundle, RawV2Group, load_bundle
+from .converter import convert_bundle, file_sha256, source_media_type
 
-__all__ = ["MinerUBundle", "convert_bundle", "file_sha256", "load_bundle"]
+__all__ = [
+    "MinerUBundle",
+    "RawV2Group",
+    "convert_bundle",
+    "file_sha256",
+    "load_bundle",
+    "source_media_type",
+]

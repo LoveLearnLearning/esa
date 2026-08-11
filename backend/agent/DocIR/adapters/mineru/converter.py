@@ -82,6 +82,32 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+_SOURCE_MEDIA_TYPES = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".gif": "image/gif",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+}
+
+
+def source_media_type(path: Path) -> str:
+    """返回源文件 MIME；目标格式使用稳定映射，其他格式保守降级。"""
+    source = Path(path)
+    return (
+        _SOURCE_MEDIA_TYPES.get(source.suffix.lower())
+        or mimetypes.guess_type(source.name)[0]
+        or "application/octet-stream"
+    )
+
+
 def _stable(prefix: str, *parts: object) -> str:
     raw = json.dumps(parts, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return f"{prefix}_{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:24]}"
@@ -266,7 +292,7 @@ class _MinerUConverter:
             asset_id="asset_original",
             kind=AssetKind.ORIGINAL,
             path=f"assets/{self.source_file.name}",
-            media_type="application/pdf",
+            media_type=source_media_type(self.source_file),
             byte_size=self.source_file.stat().st_size,
             sha256=self.source_hash,
         )
@@ -299,8 +325,8 @@ class _MinerUConverter:
             )
 
     def _convert_page(self, page_position: int, raw_page: RawMiddlePage) -> None:
-        if len(raw_page.page_size) != 2:
-            raise ValueError("MinerU page_size 必须包含 width/height")
+        if raw_page.page_size is None or len(raw_page.page_size) != 2:
+            raise ValueError("当前 DocIR conversion 需要 middle page_size(width/height)")
         width, height = map(float, raw_page.page_size)
         page_id = f"page_{raw_page.page_idx:06d}"
         self.state.pages.append(
@@ -375,6 +401,8 @@ class _MinerUConverter:
         width: float,
         height: float,
     ) -> Region:
+        if block.bbox is None:
+            raise ValueError("当前 DocIR conversion 需要 middle block bbox")
         return Region(
             region_id=_stable("region", element_id, int(page_id.removeprefix("page_"))),
             page_id=page_id,
@@ -634,7 +662,7 @@ class _MinerUConverter:
             source=SourceVersion(
                 source_version_id=f"src_{self.source_hash}",
                 filename=self.source_file.name,
-                media_type="application/pdf",
+                media_type=source_media_type(self.source_file),
                 byte_size=self.source_file.stat().st_size,
                 sha256=self.source_hash,
                 original_asset_id=self.original_asset.asset_id,

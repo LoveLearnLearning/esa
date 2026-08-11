@@ -67,7 +67,7 @@ def types_compatible(middle_type: str, v2_type: str | None) -> bool:
 
 
 def _middle_bbox_1000(block: RawMiddleBlock, width: float, height: float) -> tuple[float, float, float, float]:
-    if len(block.bbox) != 4 or width <= 0 or height <= 0:
+    if block.bbox is None or len(block.bbox) != 4 or width <= 0 or height <= 0:
         raise AlignmentError("middle bbox/page_size 无法归一化")
     x0, y0, x1, y1 = map(float, block.bbox)
     return x0 / width * 1000, y0 / height * 1000, x1 / width * 1000, y1 / height * 1000
@@ -104,8 +104,8 @@ def align_page(
     严格模式要求页内基数相等、类型兼容且坐标最大误差不超过
     ``max_bbox_delta``（V2 的 0..1000 坐标系）。
     """
-    if len(page.page_size) != 2:
-        raise AlignmentError("MinerU page_size 必须包含 width/height")
+    if page.page_size is None or len(page.page_size) != 2:
+        raise AlignmentError("当前 bbox alignment 需要 middle page_size(width/height)")
     width, height = map(float, page.page_size)
     middle_items = [(block, False) for block in page.para_blocks]
     middle_items.extend((block, True) for block in page.discarded_blocks)
