@@ -28,7 +28,7 @@ from .models import (
     canonical_sha256,
 )
 from .serializer import file_sha256, load_chunk_document, load_manifest, save_json
-from .stats import CollectionStats, collection_stats
+from .stats import CollectionStats, collection_stats, short_chunk_audit
 
 WORKSPACE = WORKSPACE_ROOT
 DEFAULT_INPUT = WORKSPACE / "artifacts/docir/runs/full-corpus-20260802"
@@ -43,7 +43,7 @@ def _collection_id(
         (document.document_id, document.parse_revision.parse_revision_id)
         for _path, document in documents
     )
-    return f"collection_{canonical_sha256((identity, config.sha256, 'chunk-collection-0.1'))[:24]}"
+    return f"collection_{canonical_sha256((identity, config.sha256, 'chunk-collection-0.2'))[:24]}"
 
 
 def _resume_document(
@@ -65,7 +65,8 @@ def _resume_document(
         document.docir_sha256 != expected_hash
         or document.chunk_config_sha256 != config.sha256
         or document.document_id != source_document.document_id
-        or document.parse_revision_id != source_document.parse_revision.parse_revision_id
+        or document.parse_revision_id
+        != source_document.parse_revision.parse_revision_id
     ):
         raise ValueError(f"已有 ChunkDocument 与当前输入/配置不一致: {path}")
     return document
@@ -90,7 +91,10 @@ def build_collection(
     existing_refs: dict[str, ChunkDocumentRef] = {}
     if resume and manifest_path.is_file():
         existing = load_manifest(manifest_path)
-        if existing.collection_id != collection_id or existing.chunk_config_sha256 != config.sha256:
+        if (
+            existing.collection_id != collection_id
+            or existing.chunk_config_sha256 != config.sha256
+        ):
             raise ValueError(f"已有 manifest 与当前语料/配置不一致: {manifest_path}")
         existing_refs = {item.document_id: item for item in existing.documents}
     builder = ChunkBuilder(config)
@@ -109,7 +113,9 @@ def build_collection(
                 existing_refs.get(source_document.document_id),
             )
         else:
-            chunk_document = builder.build(source_document, docir_sha256=file_sha256(source_path))
+            chunk_document = builder.build(
+                source_document, docir_sha256=file_sha256(source_path)
+            )
             save_json(chunk_document, target)
         digest = file_sha256(target)
         built.append(chunk_document)
@@ -136,22 +142,43 @@ def build_collection(
     stats = collection_stats(built)
     save_json(manifest, manifest_path)
     save_json(stats, collection_root / "stats.json")
+    save_json(short_chunk_audit(built), collection_root / "short_chunk_audit.json")
     return collection_root, manifest, stats
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="从 DocIR V0.2 run 构建 ChunkCollection")
+    parser = argparse.ArgumentParser(
+        description="从 DocIR run 构建 ChunkCollection"
+    )
     parser.add_argument("--input-root", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--target-chars", type=int, default=800)
     parser.add_argument("--max-chars", type=int, default=1200)
+    parser.add_argument("--min-chars", type=int, default=120)
     parser.add_argument("--overlap-elements", type=int, choices=(0, 1), default=1)
+    parser.add_argument(
+        "--fragment-overlap-sentences", type=int, choices=(0, 1), default=1
+    )
+    parser.add_argument(
+        "--filter-standalone-figure-labels",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument(
+        "--filter-navigation-labels",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     parser.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args(argv)
     config = ChunkConfig(
         target_chars=args.target_chars,
         max_chars=args.max_chars,
+        min_chars=args.min_chars,
         overlap_elements=args.overlap_elements,
+        fragment_overlap_sentences=args.fragment_overlap_sentences,
+        filter_standalone_figure_labels=args.filter_standalone_figure_labels,
+        filter_navigation_labels=args.filter_navigation_labels,
     )
     root, manifest, stats = build_collection(
         args.input_root,
