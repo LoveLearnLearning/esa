@@ -62,7 +62,10 @@ def _reset_service() -> Iterator[None]:
     reset_retrieval_service()
 
 
-def _response(rerank_score: float | None = 0.875) -> SearchResponse:
+def _response(
+    rerank_score: float | None = 0.875,
+    locators: tuple[dict[str, object], ...] | None = None,
+) -> SearchResponse:
     evidence = Evidence(
         evidence_id="evidence_1",
         chunk_id="chunk_1",
@@ -80,9 +83,14 @@ def _response(rerank_score: float | None = 0.875) -> SearchResponse:
         parse_revision_id="parse_1",
         document_name="测试文档.pdf",
         section_path=("第一章",),
-        region_ids=("region_1",),
-        page_ids=("page_1",),
-        page_indexes=(0,),
+        locators=locators if locators is not None else (
+            {
+                "locator_id": "locator_1",
+                "kind": "page",
+                "container_id": "page_1",
+                "container_index": 0,
+            },
+        ),
         asset_ids=(),
     )
     hit = SearchHit(
@@ -121,6 +129,32 @@ def test_retrieve_knowledge_preserves_old_shape_and_adds_evidence() -> None:
     assert result["source"] == "测试文档.pdf"
     assert result["score_type"] == "reranker"
     assert result["evidence"][0]["element_id"] == "element_1"
+
+
+def test_group_locator_and_missing_locator_do_not_assume_page() -> None:
+    _configure(
+        _response(
+            locators=(
+                {
+                    "locator_id": "group_1",
+                    "kind": "group",
+                    "container_id": "group_000001",
+                    "container_index": 1,
+                    "metadata": {"source_format": "pptx"},
+                },
+            )
+        )
+    )
+    grouped = retrieve_knowledge_payload("什么是测试？", top_k=1)
+    assert grouped["results"][0]["page"] is None
+    assert grouped["sources"] == [
+        "【来源 1】测试文档.pdf · 第一章 · PPTX 解析组 2"
+    ]
+
+    _configure(_response(locators=()))
+    unlocated = retrieve_knowledge_payload("什么是测试？", top_k=1)
+    assert unlocated["results"][0]["page"] is None
+    assert unlocated["sources"] == ["【来源 1】测试文档.pdf · 第一章"]
 
 
 def test_similarity_threshold_requires_reranker_probability() -> None:

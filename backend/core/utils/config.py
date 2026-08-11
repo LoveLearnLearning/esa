@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, TypeVar, cast
 
 from backend.agent.rag.paths import workspace_root
 
@@ -36,11 +36,99 @@ AGENT_LOOP_TIME: int = 10
 
 RAG_WORKSPACE_ROOT = workspace_root()
 
+_T = TypeVar("_T")
+
 
 def _path_from_env(name: str, default: Path) -> Path:
     """Return an absolute, expanded path while keeping deployment configurable."""
 
     return Path(os.environ.get(name, default)).expanduser().resolve()
+
+
+def _str_from_env(name: str, default: str) -> str:
+    value = os.environ.get(name, default).strip()
+    if not value:
+        raise ValueError(f"{name} cannot be blank")
+    return value
+
+
+def _optional_str_from_env(name: str, default: str | None = None) -> str | None:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    value = value.strip()
+    return value or None
+
+
+def _bool_from_env(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean")
+
+
+def _int_from_env(name: str, default: int, *, minimum: int = 1) -> int:
+    try:
+        value = int(os.environ.get(name, default))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+    return value
+
+
+def _float_from_env(
+    name: str,
+    default: float,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float:
+    try:
+        value = float(os.environ.get(name, default))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{name} must be <= {maximum}")
+    return value
+
+
+def _optional_float_from_env(
+    name: str,
+    default: float | None = None,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float | None:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return _float_from_env(
+        name,
+        0.0,
+        minimum=minimum,
+        maximum=maximum,
+    )
+
+
+def _choice_from_env(
+    name: str,
+    default: _T,
+    choices: tuple[_T, ...],
+) -> _T:
+    value = cast(_T, os.environ.get(name, default))
+    if value not in choices:
+        expected = ", ".join(map(str, choices))
+        raise ValueError(f"{name} must be one of: {expected}")
+    return value
+
 
 # collection and deployment
 RAG_COLLECTION_MANIFEST_PATH: Path = _path_from_env(
@@ -53,48 +141,111 @@ RAG_INDEX_DEPLOYMENT_ROOT: Path = _path_from_env(
 )
 
 # qdrant
-RAG_QDRANT_BASE_URL: str = "http://127.0.0.1:6333"
-RAG_QDRANT_COLLECTION: str = "rag_qwen3_embedding_4b_v2"
-RAG_QDRANT_TIMEOUT: float = 30.0
-RAG_QDRANT_UPSERT_BATCH_SIZE: int = 64
+RAG_QDRANT_BASE_URL: str = _str_from_env(
+    "RAG_QDRANT_BASE_URL", "http://127.0.0.1:6333"
+)
+RAG_QDRANT_COLLECTION: str = _str_from_env(
+    "RAG_QDRANT_COLLECTION", "rag_qwen3_embedding_4b_v2"
+)
+RAG_QDRANT_TIMEOUT: float = _float_from_env(
+    "RAG_QDRANT_TIMEOUT", 30.0, minimum=0.001
+)
+RAG_QDRANT_UPSERT_BATCH_SIZE: int = _int_from_env(
+    "RAG_QDRANT_UPSERT_BATCH_SIZE", 64
+)
 
 # embedding
 EmbeddingBackend = Literal["reference", "transformers", "vllm"]
-RAG_EMBEDDING_BACKEND: EmbeddingBackend = "transformers"
-RAG_EMBEDDING_MODEL_PATH: str = os.environ.get(
+RAG_EMBEDDING_BACKEND: EmbeddingBackend = _choice_from_env(
+    "RAG_EMBEDDING_BACKEND",
+    "transformers",
+    ("reference", "transformers", "vllm"),
+)
+RAG_EMBEDDING_MODEL_PATH: str = _str_from_env(
     "RAG_EMBEDDING_MODEL_PATH", "/home/karatani/models/Qwen3-Embedding-4B"
 )
-RAG_EMBEDDING_BASE_URL: str | None = None
-RAG_EMBEDDING_DEVICE: str = "cuda"
-RAG_EMBEDDING_DIMENSION: int = 2560
-RAG_EMBEDDING_MAX_LENGTH: int = 8192
-RAG_EMBEDDING_BATCH_SIZE: int = 8
-RAG_EMBEDDING_TIMEOUT: float = 120.0
+RAG_EMBEDDING_BASE_URL: str | None = _optional_str_from_env(
+    "RAG_EMBEDDING_BASE_URL"
+)
+RAG_EMBEDDING_DEVICE: str = _str_from_env("RAG_EMBEDDING_DEVICE", "cuda")
+RAG_EMBEDDING_DIMENSION: int = _int_from_env("RAG_EMBEDDING_DIMENSION", 2560)
+RAG_EMBEDDING_MAX_LENGTH: int = _int_from_env("RAG_EMBEDDING_MAX_LENGTH", 8192)
+RAG_EMBEDDING_BATCH_SIZE: int = _int_from_env("RAG_EMBEDDING_BATCH_SIZE", 8)
+RAG_EMBEDDING_TIMEOUT: float = _float_from_env(
+    "RAG_EMBEDDING_TIMEOUT", 120.0, minimum=0.001
+)
 
 # reranker
 RerankerBackend = Literal["none", "transformers", "vllm"]
-RAG_RERANKER_BACKEND: RerankerBackend = "transformers"
-RAG_RERANKER_MODEL_PATH: str = os.environ.get(
+RAG_RERANKER_ENABLED: bool = _bool_from_env("RAG_RERANKER_ENABLED", False)
+RAG_RERANKER_BACKEND: RerankerBackend = _choice_from_env(
+    "RAG_RERANKER_BACKEND",
+    "transformers" if RAG_RERANKER_ENABLED else "none",
+    ("none", "transformers", "vllm"),
+)
+RAG_RERANKER_MODEL_PATH: str = _str_from_env(
     "RAG_RERANKER_MODEL_PATH", "/home/karatani/models/Qwen3-Reranker-4B"
 )
-RAG_RERANKER_BASE_URL: str | None = None
-RAG_RERANKER_DEVICE: str = "cuda"
-RAG_RERANKER_MAX_LENGTH: int = 8192
-RAG_RERANKER_TIMEOUT: float = 120.0
+RAG_RERANKER_BASE_URL: str | None = _optional_str_from_env(
+    "RAG_RERANKER_BASE_URL"
+)
+RAG_RERANKER_DEVICE: str = _str_from_env("RAG_RERANKER_DEVICE", "cuda")
+RAG_RERANKER_MAX_LENGTH: int = _int_from_env("RAG_RERANKER_MAX_LENGTH", 8192)
+RAG_RERANKER_TIMEOUT: float = _float_from_env(
+    "RAG_RERANKER_TIMEOUT", 120.0, minimum=0.001
+)
 
 # retrieval
-RAG_DENSE_LIMIT: int = 20
-RAG_BM25_BODY_LIMIT: int = 20
-RAG_BM25_HEADING_LIMIT: int = 20
-RAG_RRF_LIMIT: int = 30
-RAG_RERANK_LIMIT: int = 10
-RAG_FINAL_LIMIT: int = 5
-RAG_RRF_K: int = 60
-RAG_SECTION_WINDOW: int = 1
-RAG_RERANK_THRESHOLD: float | None = None
+RAG_DENSE_LIMIT: int = _int_from_env("RAG_DENSE_LIMIT", 20)
+RAG_BM25_BODY_LIMIT: int = _int_from_env("RAG_BM25_BODY_LIMIT", 20)
+RAG_BM25_HEADING_LIMIT: int = _int_from_env("RAG_BM25_HEADING_LIMIT", 20)
+RAG_RRF_LIMIT: int = _int_from_env("RAG_RRF_LIMIT", 30)
+RAG_RERANK_LIMIT: int = _int_from_env("RAG_RERANK_LIMIT", 20)
+RAG_RERANKER_BATCH_SIZE: int = _int_from_env("RAG_RERANKER_BATCH_SIZE", 4)
+RAG_FINAL_LIMIT: int = _int_from_env("RAG_FINAL_LIMIT", 5)
+RAG_RRF_K: int = _int_from_env("RAG_RRF_K", 60)
+RAG_SECTION_WINDOW: int = _int_from_env("RAG_SECTION_WINDOW", 1, minimum=0)
+RAG_MAX_CONTEXT_TOKENS: int = _int_from_env("RAG_MAX_CONTEXT_TOKENS", 8192)
+RAG_RERANK_THRESHOLD: float | None = _optional_float_from_env(
+    "RAG_RERANK_THRESHOLD", minimum=0.0, maximum=1.0
+)
+RAG_FUSION_METHOD: Literal["dense", "equal_rrf", "weighted_rrf", "score"] = (
+    _choice_from_env(
+        "RAG_FUSION_METHOD",
+        "score",
+        ("dense", "equal_rrf", "weighted_rrf", "score"),
+    )
+)
+# score fusion: dense=.95, lexical=.05; lexical 内部正文/标题=.75/.25。
+# 这是当前跨 benchmark 的共同稳定配置，仍可通过环境变量做语料级消融。
+RAG_DENSE_WEIGHT: float = _float_from_env(
+    "RAG_DENSE_WEIGHT", 0.95, minimum=0.0, maximum=1.0
+)
+RAG_LEXICAL_BODY_WEIGHT: float = _float_from_env(
+    "RAG_LEXICAL_BODY_WEIGHT", 0.75, minimum=0.0, maximum=1.0
+)
+RAG_LEXICAL_GATE_ENABLED: bool = _bool_from_env(
+    "RAG_LEXICAL_GATE_ENABLED", True
+)
+# prior_weight 是融合排序先验的权重；其余权重交给 Reranker 分数。
+RAG_RERANKER_PRIOR_WEIGHT: float = _float_from_env(
+    "RAG_RERANKER_PRIOR_WEIGHT", 0.95, minimum=0.0, maximum=1.0
+)
+
+if RAG_RERANKER_ENABLED and RAG_RERANKER_BACKEND == "none":
+    raise ValueError(
+        "RAG_RERANKER_BACKEND cannot be 'none' when RAG_RERANKER_ENABLED=true"
+    )
+if RAG_EMBEDDING_BACKEND == "vllm" and not RAG_EMBEDDING_BASE_URL:
+    raise ValueError("RAG_EMBEDDING_BASE_URL is required for the vllm backend")
+if RAG_RERANKER_BACKEND == "vllm" and not RAG_RERANKER_BASE_URL:
+    raise ValueError("RAG_RERANKER_BASE_URL is required for the vllm backend")
+if RAG_FINAL_LIMIT > RAG_RERANK_LIMIT:
+    raise ValueError("RAG_FINAL_LIMIT cannot exceed RAG_RERANK_LIMIT")
+if RAG_RERANK_LIMIT > RAG_RRF_LIMIT:
+    raise ValueError("RAG_RERANK_LIMIT cannot exceed RAG_RRF_LIMIT")
 
 RAG_INDEX_DEPLOYMENT_MANIFEST_PATH: Path = _path_from_env(
     "RAG_INDEX_DEPLOYMENT_MANIFEST_PATH",
-    RAG_INDEX_DEPLOYMENT_ROOT
-    / "deployment_357bd9c84d8404fae42c2740/manifest.json",
+    RAG_INDEX_DEPLOYMENT_ROOT / "deployment_357bd9c84d8404fae42c2740/manifest.json",
 )

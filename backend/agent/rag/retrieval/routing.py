@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..indexes import IndexUnavailable
 from ..inference import InferenceUnavailable
@@ -20,6 +20,7 @@ from .contracts import (
     RetrievalConfig,
     RetrievalIndex,
 )
+from .query import QueryProcessor, QueryVariants, RuleBasedQueryProcessor
 
 
 @dataclass(frozen=True)
@@ -37,12 +38,19 @@ class RouteRetriever:
     index: RetrievalIndex
     embedding: EmbeddingProvider
     config: RetrievalConfig
+    query_processor: QueryProcessor = field(default_factory=RuleBasedQueryProcessor)
 
     def retrieve(self, query: str) -> RouteResult:
         """返回 Dense、正文 BM25、标题 BM25 排名及可观测降级原因。"""
 
         degraded: list[str] = []
         routes: dict[str, list[RankedItem]] = {}
+
+        try:
+            variants = self.query_processor.process(query)
+        except Exception as exc:  # query rewrite is deliberately fail-open
+            degraded.append(f"query_processor_fallback:{type(exc).__name__}")
+            variants = QueryVariants(query)
 
         try:
             embed_query = getattr(self.embedding, "embed_query", None)
@@ -52,17 +60,20 @@ class RouteRetriever:
             routes["dense"] = self.index.dense(
                 query_vector,
                 self.config.dense_limit,
+                variants.content_roles,
             )
         except (InferenceUnavailable, IndexUnavailable, IndexError) as exc:
             degraded.append(f"dense_unavailable:{type(exc).__name__}")
             routes["dense"] = []
 
         routes["bm25_body"] = self.index.bm25_body(
-            query,
+            variants.bm25_body_query,
             self.config.bm25_body_limit,
+            variants.content_roles,
         )
         routes["bm25_heading"] = self.index.bm25_heading(
-            query,
+            variants.bm25_heading_query,
             self.config.bm25_heading_limit,
+            variants.content_roles,
         )
         return RouteResult(routes, tuple(degraded))
