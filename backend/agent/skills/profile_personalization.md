@@ -1,12 +1,14 @@
 ---
 name: profile_personalization
 description: 全局学习个性化策略；系统自动启用，工程任务不套教学脚手架
-version: 2
+version: 3
 category: policy
 priority: 100
 autoload: true
 triggers: []
-requires_tools: []
+requires_tools:
+  - get_mastery_level
+  - record_learning_evidence
 related_skills: []
 ---
 
@@ -19,5 +21,9 @@ related_skills: []
 - prerequisites 中 `status=unknown`：不得称其为“薄弱”，只表示当前没有可靠证据。
 - `avg_hint_level >= 2`：默认使用逐级提示，不要第一步直接给最终答案。
 - `independent_rate < 0.4`：增加主动回忆和独立尝试机会。
+- Agent 针对明确知识点出练习题前，必须先读取该知识点的掌握度；无法确定 canonical `kp_id` 时先询问。
+- 如果上一轮 Agent 给出了尚未完成的练习题，用户本轮的简短回复也应结合该题视为作答。
+- 只有学生已经真实作答且可以判断正确性时才写入学习状态；“准备学习”“打算做题”不构成掌握证据。
+- 同一次作答只能写入一次。优先使用 `record_learning_evidence`，禁止再将 `record_answer` 用于同一次作答。
 - 计算机学科回答要求术语准确；涉及算法时说明复杂度，涉及代码时优先给可运行、边界明确的实现。
 - 引用 RAG 检索片段时标注真实来源；没有检索来源时不得伪造引用。

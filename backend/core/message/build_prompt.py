@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import backend.core.message.system as system_message
 import backend.core.message.style_tone as style_tone
-from backend.core.message.math_prompt import MATH_PRMOPT
 from backend.core.utils.models import PromptContext
 
 
@@ -40,7 +39,6 @@ def build_system_prompt(
             f"- 风格({resolved.style}): {resolved.style_rule}\n"
             f"- 语调({resolved.tone}): {resolved.tone_rule}"
         ),
-        MATH_PRMOPT,
     ]
 
     user_instruction = _clean(prompt_ctx.custom_instruction)

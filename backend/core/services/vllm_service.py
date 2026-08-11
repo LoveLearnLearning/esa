@@ -85,9 +85,13 @@ class LLMProvider:
             add_generation_prompt=True,
         )
 
-    def parse_output(self, raw_text: str) -> ParsedOutput:
+    def parse_output(
+        self,
+        raw_text: str,
+        tools: list[dict] | tuple[dict, ...] | None = None,
+    ) -> ParsedOutput:
         """解析千问 XML 协议的完整输出。"""
-        return parse_output(raw_text)
+        return parse_output(raw_text, tool_schemas=tools)
 
     def create_stream_parser(self) -> StreamOutputParser:
         """创建千问 XML 协议的流式解析器。"""

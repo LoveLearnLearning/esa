@@ -23,6 +23,15 @@ def test_new_pedagogy_skills_are_loadable():
     assert "conceptual" in body
     assert "prerequisite" in body
 
+    body = load_skill("adaptive_practice")
+    assert "【练习题｜知识点" in body
+    assert "record_learning_evidence" in body
+
+    body = load_skill("math_problem_solving")
+    assert "calculator" in body
+    assert "math_solver" in body
+    assert "bitwise_calculator" in body
+
 
 def test_profile_policy_is_actually_autoloaded():
     context = build_autoload_skills_context()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from collections.abc import AsyncIterator
 from dataclasses import replace
@@ -24,6 +25,7 @@ from backend.agent.tools.memory_tools import (
 from backend.agent.tools.skills import (
     build_autoload_skills_context,
     build_skills_context,
+    load_skill,
     validate_skill_contracts,
 )
 from backend.core.message.build_prompt import build_system_prompt
@@ -41,6 +43,15 @@ _UNSUPPORTED_TOOL_CALLS_PATTERN = re.compile(
     r"<[^<>]*tool_calls(?:\s[^<>]*)?>",
     re.IGNORECASE,
 )
+
+
+def serialize_tool_result(result: object) -> str:
+    """将 Tool observation 统一序列化为标准 JSON。
+
+    ``default=str`` 仅用于工具偶发返回 datetime/Path 等可展示但
+    不可直接 JSON 化的值，保证传给模型的 observation 始终是合法 JSON。
+    """
+    return json.dumps(result, ensure_ascii=False, default=str)
 
 
 def sanitize_qwen_history(history: list[dict]) -> list[dict]:
@@ -134,16 +145,24 @@ class Agent:
         if total_weeks is not None:
             set_current_total_weeks(total_weeks)
 
-        # 轻量确定性路由只给主 Agent 一个“候选策略”，不直接执行 Skill。
+        # 轻量确定性路由选中策略后按需加载 Skill 正文，
+        # 主 Agent 仍需结合用户当前消息决定具体执行。
         decision = PedagogyRouter.route(
             input,
             history=history,
             profile=prompt_ctx.user_profile_context,
         )
+        loaded_skill_body = (
+            load_skill(decision.skill_name)
+            if decision.skill_name is not None
+            else None
+        )
 
         prompt_ctx = replace(
             prompt_ctx,
-            pedagogy_context=decision.to_prompt_context(),
+            pedagogy_context=decision.to_prompt_context(
+                loaded_skill_body=loaded_skill_body,
+            ),
             autoload_skills_context=build_autoload_skills_context(),
         )
         skills_context = build_skills_context()
@@ -204,7 +223,10 @@ class Agent:
                 tr.schemas,
             )
 
-            parsed: ParsedOutput = self.llm_provider.parse_output(response)
+            parsed: ParsedOutput = self.llm_provider.parse_output(
+                response,
+                tr.schemas,
+            )
             tool_calls: list[ToolCall] = parsed.tool_calls
 
             if DEBUG_MODE:
@@ -249,7 +271,7 @@ class Agent:
                     tool_call.name,
                     tool_call.arguments,
                 )
-                result_text = str(result)
+                result_text = serialize_tool_result(result)
 
                 messages.append(
                     {
@@ -305,7 +327,10 @@ class Agent:
                 )
 
             response = stream_parser.raw_text
-            parsed = self.llm_provider.parse_output(response)
+            parsed = self.llm_provider.parse_output(
+                response,
+                tr.schemas,
+            )
             tool_calls = parsed.tool_calls
 
             if not tool_calls:
@@ -348,7 +373,7 @@ class Agent:
                     tool_call.name,
                     tool_call.arguments,
                 )
-                result_text = str(result)
+                result_text = serialize_tool_result(result)
 
                 tool_message = {
                     "role": "tool",

@@ -257,6 +257,8 @@ def get_mastery_report(course: str = "") -> dict[str, Any]:
             "description": (
                 "读取当前用户某个知识点的掌握度和练习统计；"
                 "当 Skill 需要针对单个知识点调节讲解深度时调用。"
+                "Agent 准备针对明确 kp_id 生成自适应练习题时，"
+                "应在出题前调用本工具。"
             ),
             "parameters": {
                 "type": "object",
@@ -426,7 +428,10 @@ def get_review_timing(
         "function": {
             "name": "record_answer",
             "description": (
-                "记录当前用户一次练习结果并更新知识点掌握度。"
+                "记录当前用户一次简化练习结果并更新知识点掌握度。"
+                "该工具为兼容用简化入口；需要记录提示、独立性、误区等证据时，"
+                "优先使用 record_learning_evidence。"
+                "同一次作答不得同时调用两个写入工具，否则会重复计数。"
                 "confidence 是这次答案作为掌握证据的可靠性权重，"
                 "不是学生主观自信；学生自评信心应记录到 record_learning_evidence。"
             ),

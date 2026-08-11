@@ -28,9 +28,10 @@ class SchedulePage extends StatefulWidget {
 }
 
 class _SchedulePageState extends State<SchedulePage> {
-  final ScrollController _desktopVerticalController = ScrollController();
   bool _requestedSchedule = false;
   bool _resolvedCalendarWeek = false;
+  // 周切换方向：1 = 切到下一周（新内容从右滑入），-1 = 上一周
+  int _weekSlideDirection = 1;
   bool _importing = false;
   int _week = 1;
 
@@ -44,10 +45,13 @@ class _SchedulePageState extends State<SchedulePage> {
     app.loadSchedule();
   }
 
-  @override
-  void dispose() {
-    _desktopVerticalController.dispose();
-    super.dispose();
+  void _changeWeek(int week, int totalWeeks) {
+    final clamped = week.clamp(1, totalWeeks);
+    if (clamped == _week) return;
+    setState(() {
+      _weekSlideDirection = clamped > _week ? 1 : -1;
+      _week = clamped;
+    });
   }
 
   @override
@@ -74,16 +78,47 @@ class _SchedulePageState extends State<SchedulePage> {
                 onHorizontalDragEnd: narrow
                     ? (details) {
                         final velocity = details.primaryVelocity ?? 0;
-                        if (velocity < -250 && _week < totalWeeks) {
-                          setState(() => _week++);
-                        } else if (velocity > 250 && _week > 1) {
-                          setState(() => _week--);
+                        if (velocity < -250) {
+                          _changeWeek(_week + 1, totalWeeks);
+                        } else if (velocity > 250) {
+                          _changeWeek(_week - 1, totalWeeks);
                         }
                       }
                     : null,
                 child: !app.scheduleLoaded
                     ? const Center(child: CircularProgressIndicator())
-                    : _weekSchedule(context, app, compactLayout: narrow),
+                    : AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 240),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, animation) {
+                          // 新周从切换方向一侧滑入，旧周向另一侧滑出并淡出
+                          final incoming =
+                              child.key == ValueKey<int>(_week);
+                          final begin = Offset(
+                            (incoming ? 0.08 : -0.08) * _weekSlideDirection,
+                            0,
+                          );
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween(
+                                begin: begin,
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: KeyedSubtree(
+                          key: ValueKey<int>(_week),
+                          child: _weekSchedule(
+                            context,
+                            app,
+                            compactLayout: narrow,
+                          ),
+                        ),
+                      ),
               ),
             ),
           ],
@@ -215,12 +250,14 @@ class _SchedulePageState extends State<SchedulePage> {
           IconButton(
             tooltip: '上一周',
             visualDensity: VisualDensity.compact,
-            onPressed: _week <= 1 ? null : () => setState(() => _week--),
+            onPressed: _week <= 1
+                ? null
+                : () => _changeWeek(_week - 1, totalWeeks),
             icon: const Icon(LucideIcons.chevronLeft, size: 18),
           ),
           PopupMenuButton<int>(
             tooltip: '选择教学周',
-            onSelected: (week) => setState(() => _week = week),
+            onSelected: (week) => _changeWeek(week, totalWeeks),
             itemBuilder: (_) => [
               for (var week = 1; week <= totalWeeks; week++)
                 PopupMenuItem(value: week, child: Text('第 $week 周')),
@@ -240,7 +277,7 @@ class _SchedulePageState extends State<SchedulePage> {
             visualDensity: VisualDensity.compact,
             onPressed: _week >= totalWeeks
                 ? null
-                : () => setState(() => _week++),
+                : () => _changeWeek(_week + 1, totalWeeks),
             icon: const Icon(LucideIcons.chevronRight, size: 18),
           ),
           IconButton(
@@ -284,9 +321,28 @@ class _SchedulePageState extends State<SchedulePage> {
     final headerHeight = compactLayout ? 38.0 : 46.0;
     final totalPeriods = app.scheduleSettings.totalPeriods;
     final totalHeight = headerHeight + periodHeight * totalPeriods;
-    final courses = app.scheduleCourses
-        .where((course) => course.occursInWeek(_week))
-        .toList();
+    final courses = <ScheduleCourse>[];
+    final otherWeeks = <ScheduleCourse>[];
+    for (final course in app.scheduleCourses) {
+      if (course.occursInWeek(_week)) {
+        courses.add(course);
+      } else if (course.startWeek > _week) {
+        // 只有还没开课的课程显示"非本周"占位；已结课的不再显示
+        otherWeeks.add(course);
+      }
+    }
+    // 非本周课程半透明显示，但不与本周课或已放置的其他非本周课叠格
+    bool cellOverlaps(ScheduleCourse a, ScheduleCourse b) =>
+        a.weekday == b.weekday &&
+        a.startPeriod <= b.endPeriod &&
+        b.startPeriod <= a.endPeriod;
+    final placed = List.of(courses);
+    final ghostCourses = <ScheduleCourse>[];
+    for (final course in otherWeeks) {
+      if (placed.any((item) => cellOverlaps(item, course))) continue;
+      placed.add(course);
+      ghostCourses.add(course);
+    }
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -302,12 +358,15 @@ class _SchedulePageState extends State<SchedulePage> {
             : 12.0;
         final cardWidth = constraints.maxWidth - horizontalMargin * 2;
 
-        return Scrollbar(
-          controller: _desktopVerticalController,
-          thumbVisibility: true,
-          child: SingleChildScrollView(
-            controller: _desktopVerticalController,
-            primary: false,
+        // 周切换动画期间 AnimatedSwitcher 会同时挂载新旧两棵子树，
+        // 滚动控制器必须由每棵子树自持，不能用共享的 State 字段
+        return _OwnScrollbarScrollView(
+          builder: (context, controller) => Scrollbar(
+            controller: controller,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: controller,
+              primary: false,
             padding: EdgeInsets.fromLTRB(
               horizontalMargin,
               compactLayout ? 10 : 24,
@@ -441,6 +500,30 @@ class _SchedulePageState extends State<SchedulePage> {
                               ultraCompact: ultraCompactTiles,
                             ),
                           ),
+                        for (final course in ghostCourses)
+                          Positioned(
+                            left:
+                                labelWidth +
+                                (course.weekday - 1) * dayWidth +
+                                tileInset,
+                            top:
+                                headerHeight +
+                                (course.startPeriod - 1) * periodHeight +
+                                tileInset,
+                            width: dayWidth - tileInset * 2,
+                            height:
+                                (course.endPeriod - course.startPeriod + 1) *
+                                    periodHeight -
+                                tileInset * 2,
+                            child: _courseTile(
+                              context,
+                              app,
+                              course,
+                              compact: compactTiles,
+                              ultraCompact: ultraCompactTiles,
+                              dimmed: true,
+                            ),
+                          ),
                       ],
                     ),
                   );
@@ -448,6 +531,7 @@ class _SchedulePageState extends State<SchedulePage> {
               ),
             ),
           ),
+        ),
         );
       },
     );
@@ -459,18 +543,21 @@ class _SchedulePageState extends State<SchedulePage> {
     ScheduleCourse course, {
     required bool compact,
     required bool ultraCompact,
+    bool dimmed = false,
   }) {
     final color = Color(course.colorValue);
-    return DecoratedBox(
+    final tile = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(EsaRadii.card),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.16),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        boxShadow: dimmed
+            ? const []
+            : [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.16),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
       ),
       child: Material(
         color: color.withValues(alpha: 0.2),
@@ -487,57 +574,84 @@ class _SchedulePageState extends State<SchedulePage> {
                   : 10,
             ),
             decoration: BoxDecoration(
-              border: Border.all(color: color.withValues(alpha: 0.6)),
+              border: Border.all(
+                color: color.withValues(alpha: 0.6),
+                style: dimmed ? BorderStyle.none : BorderStyle.solid,
+              ),
               borderRadius: BorderRadius.circular(EsaRadii.card),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  course.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.texts.titleMedium?.copyWith(
-                    fontSize: ultraCompact
-                        ? 8.5
-                        : compact
-                        ? 11.5
-                        : 12.5,
-                    height: ultraCompact ? 1.12 : null,
-                  ),
+            // 超窄课块也要完整展示信息：字体缩小、允许多行，
+            // 超出部分裁剪而不是报 overflow
+            child: ClipRect(
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (dimmed)
+                      Text(
+                        '非本周',
+                        maxLines: 1,
+                        style: context.texts.bodySmall?.copyWith(
+                          fontSize: ultraCompact
+                              ? 7
+                              : compact
+                              ? 8.5
+                              : 9.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    Text(
+                      course.name,
+                      maxLines: ultraCompact ? 4 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.texts.titleMedium?.copyWith(
+                        fontSize: ultraCompact
+                            ? 8.5
+                            : compact
+                            ? 11.5
+                            : 12.5,
+                        height: ultraCompact ? 1.12 : null,
+                      ),
+                    ),
+                    SizedBox(height: ultraCompact ? 1 : 3),
+                    Text(
+                      compact
+                          ? '${course.startPeriod}-${course.endPeriod} 节'
+                          : '${course.startPeriod}-${course.endPeriod} 节 · '
+                                '${app.scheduleSettings.courseTimeLabel(course.startPeriod, course.endPeriod)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.texts.bodySmall?.copyWith(
+                        fontSize: ultraCompact
+                            ? 7.5
+                            : compact
+                            ? 9.5
+                            : 10.5,
+                      ),
+                    ),
+                    if (course.location.isNotEmpty)
+                      Text(
+                        course.location,
+                        maxLines: ultraCompact ? 2 : 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.texts.bodySmall?.copyWith(
+                          fontSize: ultraCompact
+                              ? 7.5
+                              : compact
+                              ? 9.5
+                              : 10.5,
+                        ),
+                      ),
+                  ],
                 ),
-                SizedBox(height: ultraCompact ? 1 : 3),
-                if (!ultraCompact || course.endPeriod > course.startPeriod)
-                  Text(
-                    compact
-                        ? '${course.startPeriod}-${course.endPeriod}'
-                        : '${course.startPeriod}-${course.endPeriod} 节 · '
-                              '${app.scheduleSettings.courseTimeLabel(course.startPeriod, course.endPeriod)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.texts.bodySmall?.copyWith(
-                      fontSize: ultraCompact
-                          ? 7.5
-                          : compact
-                          ? 9.5
-                          : 10.5,
-                    ),
-                  ),
-                if (!ultraCompact && course.location.isNotEmpty)
-                  Text(
-                    course.location,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.texts.bodySmall?.copyWith(
-                      fontSize: compact ? 9.5 : 10.5,
-                    ),
-                  ),
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
+    return dimmed ? Opacity(opacity: 0.38, child: tile) : tile;
   }
 
   Future<void> _onTableMenuSelected(AppState app, String value) async {
@@ -592,35 +706,11 @@ class _SchedulePageState extends State<SchedulePage> {
   Future<String?> _promptTableName({
     required String title,
     String initial = '',
-  }) async {
-    final controller = TextEditingController(text: initial);
-    try {
-      return await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(title),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            maxLength: 40,
-            decoration: const InputDecoration(hintText: '课程表名称'),
-            onSubmitted: (value) => Navigator.pop(context, value.trim()),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text('确定'),
-            ),
-          ],
-        ),
-      );
-    } finally {
-      controller.dispose();
-    }
+  }) {
+    return showDialog<String>(
+      context: context,
+      builder: (context) => _TableNameDialog(title: title, initial: initial),
+    );
   }
 
   /// 返回 null 表示取消；(false, null) 导入当前课程表；(true, name) 导入新课程表
@@ -1567,6 +1657,83 @@ class _CourseEditorState extends State<_CourseEditor> {
               if (value != null) onEnd(value);
             },
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 自持 ScrollController 的滚动容器。周切换动画期间新旧两棵子树
+/// 同时存在，各自持有控制器才能同时挂 Scrollbar。
+class _OwnScrollbarScrollView extends StatefulWidget {
+  const _OwnScrollbarScrollView({required this.builder});
+
+  final Widget Function(BuildContext, ScrollController) builder;
+
+  @override
+  State<_OwnScrollbarScrollView> createState() =>
+      _OwnScrollbarScrollViewState();
+}
+
+class _OwnScrollbarScrollViewState extends State<_OwnScrollbarScrollView> {
+  final ScrollController _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _controller);
+}
+
+/// 课程表名称输入对话框。控制器由本组件持有，随组件生命周期在
+/// 关闭动画结束后才释放，避免"controller used after being disposed"。
+class _TableNameDialog extends StatefulWidget {
+  const _TableNameDialog({required this.title, required this.initial});
+
+  final String title;
+  final String initial;
+
+  @override
+  State<_TableNameDialog> createState() => _TableNameDialogState();
+}
+
+class _TableNameDialogState extends State<_TableNameDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initial);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLength: 40,
+        decoration: const InputDecoration(hintText: '课程表名称'),
+        onSubmitted: (value) => Navigator.pop(context, value.trim()),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _controller.text.trim()),
+          child: const Text('确定'),
         ),
       ],
     );

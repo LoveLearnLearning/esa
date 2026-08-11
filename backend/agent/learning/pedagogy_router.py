@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -22,7 +23,7 @@ class PedagogyDecision:
     prerequisite_first: bool = False
     learning_notes: tuple[str, ...] = ()
 
-    def to_prompt_context(self) -> str:
+    def to_prompt_context(self, loaded_skill_body: str | None = None) -> str:
         lines = [f"任务类型：{self.task_type}"]
         if self.task_type == "learning":
             if self.primary_kp_id:
@@ -42,6 +43,18 @@ class PedagogyDecision:
 
         if self.skill_name is None:
             lines.append("本轮没有强制推荐教学 Skill；按用户显式要求正常回答。")
+        elif loaded_skill_body:
+            lines.extend(
+                [
+                    f"已按需加载教学 Skill：{self.skill_name}",
+                    f"路由理由：{self.reason}",
+                    "该 Skill 由系统内部加载，无需再调用 load_skill；"
+                    "若它确实匹配用户当前任务，按下方正文执行。",
+                    "",
+                    f"## {self.skill_name}",
+                    loaded_skill_body,
+                ]
+            )
         else:
             lines.extend(
                 [
@@ -58,9 +71,9 @@ class PedagogyRouter:
     """
     确定性教学策略路由器。
 
-    第一版刻意不用第二个 LLM：它只做高置信度意图分流，低置信度时返回 None，
-    让主 Agent 继续依据 Skill 描述自行决定。这样能提高稳定性，又不会把系统
-    变成新的多 Agent 编排层。
+    刻意不使用第二个 LLM：它只做高置信度意图分流，低置信度时返回 None。
+    命中时由 Agent 按需加载对应 Skill 正文，但仍由主 Agent 结合用户当前消息
+    决定具体执行，不引入新的多 Agent 编排层。
     """
 
     _ENGINEERING_MARKERS = (
@@ -126,6 +139,77 @@ class PedagogyRouter:
         "检查我能不能讲清楚",
         "teach back",
     )
+
+    _PRACTICE_MARKERS = (
+        "出一道题",
+        "出一道",
+        "出个题",
+        "给我一道题",
+        "来一道题",
+        "考考我",
+        "开始练习",
+        "继续练习",
+        "练一道",
+        "做道题",
+    )
+
+    _PRACTICE_CANCEL_MARKERS = (
+        "取消练习",
+        "停止练习",
+        "不做了",
+        "换个话题",
+        "算了",
+    )
+
+    _PRACTICE_HEADER_RE = re.compile(
+        r"【练习题｜知识点[：:]\s*(?P<kp_id>[^】]+)】"
+    )
+
+    _MATH_TASK_MARKERS = (
+        "帮我算",
+        "算一下",
+        "计算一下",
+        "等于多少",
+        "结果是多少",
+        "求导",
+        "求积分",
+        "算积分",
+        "求极限",
+        "解方程",
+        "化简",
+        "因式分解",
+        "泰勒展开",
+        "组合数",
+        "排列数",
+        "位运算",
+        "按位",
+        "左移",
+        "右移",
+        "异或",
+        "补码",
+        "popcount",
+        "log2(",
+    )
+
+    @classmethod
+    def _pending_practice_kp_id(
+        cls,
+        history: list[dict] | None,
+    ) -> str | None:
+        """读取最近一条 Agent 回复中的待作答标记。
+
+        只检查最近的 assistant 消息：批改完成后的新 assistant
+        回复会自然终止旧题状态，避免把后续闲聊误当作答。
+        """
+        for message in reversed(history or []):
+            if message.get("role") != "assistant":
+                continue
+            content = message.get("content")
+            if not isinstance(content, str):
+                return None
+            match = cls._PRACTICE_HEADER_RE.search(content)
+            return match.group("kp_id").strip() if match else None
+        return None
 
     @staticmethod
     def _resolve_profile_policy(profile):
@@ -213,6 +297,8 @@ class PedagogyRouter:
             reason: str,
             confidence: float,
             task_type: str,
+            *,
+            resolved_kp_id: str | None = None,
         ) -> PedagogyDecision:
             return PedagogyDecision(
                 skill_name=skill_name,
@@ -220,7 +306,7 @@ class PedagogyRouter:
                 confidence=confidence,
                 task_type=task_type,
                 teaching_depth=teaching_depth,
-                primary_kp_id=primary_kp_id,
+                primary_kp_id=resolved_kp_id or primary_kp_id,
                 prerequisite_first=prerequisite_first,
                 learning_notes=learning_notes,
             )
@@ -243,6 +329,19 @@ class PedagogyRouter:
                     "learning",
                 )
 
+        pending_practice_kp_id = cls._pending_practice_kp_id(history)
+        cancelled_practice = any(
+            marker in text for marker in cls._PRACTICE_CANCEL_MARKERS
+        )
+        if pending_practice_kp_id is not None and not cancelled_practice:
+            return decision(
+                "adaptive_practice",
+                "用户正在回答上一轮由 Agent 发出的练习题",
+                1.0,
+                "learning",
+                resolved_kp_id=pending_practice_kp_id,
+            )
+
         # 明确工程任务不要套教育脚手架。
         has_engineering_marker = any(
             marker in lowered for marker in cls._ENGINEERING_MARKERS
@@ -260,6 +359,14 @@ class PedagogyRouter:
         if any(marker in lowered for marker in cls._TEACH_BACK_MARKERS):
             return decision(
                 "teach_back", "用户明确要求复述/理解验证", 0.98, "learning"
+            )
+
+        if any(marker in text for marker in cls._PRACTICE_MARKERS):
+            return decision(
+                "adaptive_practice",
+                "用户请求开始或继续一次自适应练习",
+                0.96,
+                "learning",
             )
 
         if any(marker in lowered for marker in cls._REVIEW_MARKERS):
@@ -296,6 +403,14 @@ class PedagogyRouter:
         ):
             return decision(
                 "study_plan", "用户请求制定学习/复习计划", 0.88, "learning"
+            )
+
+        if any(marker in lowered for marker in cls._MATH_TASK_MARKERS):
+            return decision(
+                "math_problem_solving",
+                "用户请求数值、符号或位运算任务",
+                0.94,
+                "learning",
             )
 
         if any(marker in lowered for marker in cls._CONCEPT_MARKERS):

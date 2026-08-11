@@ -4,6 +4,23 @@ from backend.core.utils.parser import StreamOutputParser, parse_output
 
 
 class ParseOutputTests(unittest.TestCase):
+    MATH_SOLVER_SCHEMA = {
+        "type": "function",
+        "function": {
+            "name": "math_solver",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expression": {"type": "string"},
+                    "lower": {"type": "string"},
+                    "upper": {"type": "string"},
+                    "point": {"type": "string"},
+                    "order": {"type": "integer"},
+                },
+            },
+        },
+    }
+
     def test_tool_arguments_support_json_values(self) -> None:
         parsed = parse_output(
             """</think>
@@ -39,6 +56,45 @@ class ParseOutputTests(unittest.TestCase):
             parsed.tool_calls[0].arguments,
             {"correct": True, "independent": False, "self_confidence": None},
         )
+
+    def test_tool_arguments_follow_declared_schema_types(self) -> None:
+        parsed = parse_output(
+            """</think>
+<tool_call>
+<function=math_solver>
+<parameter=expression>x ** 2</parameter>
+<parameter=lower>0</parameter>
+<parameter=upper>1</parameter>
+<parameter=point>null</parameter>
+<parameter=order>2</parameter>
+</function>
+</tool_call>""",
+            tool_schemas=[self.MATH_SOLVER_SCHEMA],
+        )
+
+        self.assertEqual(
+            parsed.tool_calls[0].arguments,
+            {
+                "expression": "x ** 2",
+                "lower": "0",
+                "upper": "1",
+                "point": "null",
+                "order": 2,
+            },
+        )
+
+    def test_invalid_schema_value_does_not_crash_parser(self) -> None:
+        parsed = parse_output(
+            """</think>
+<tool_call>
+<function=math_solver>
+<parameter=order>two</parameter>
+</function>
+</tool_call>""",
+            tool_schemas=[self.MATH_SOLVER_SCHEMA],
+        )
+
+        self.assertEqual(parsed.tool_calls[0].arguments, {"order": "two"})
 
 
 class StreamOutputParserTests(unittest.TestCase):

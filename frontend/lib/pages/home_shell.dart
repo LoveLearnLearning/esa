@@ -23,19 +23,76 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    // 与登录页同一断点：宽屏把页面切换按钮移到右侧竖排，窄屏保持底部导航
+    final wide = MediaQuery.sizeOf(context).width >= 880;
+    final pages = IndexedStack(
+      index: _index,
+      children: [
+        const ChatPage(),
+        const SchedulePage(),
+        KnowledgeMapPage(
+          onOpenChat: () => _select(0),
+          onOpenSchedule: () => _select(1),
+        ),
+      ],
+    );
+    if (wide) {
+      return Scaffold(
+        resizeToAvoidBottomInset: false,
+        body: Row(
+          children: [
+            Expanded(child: pages),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: context.scheme.surface,
+                border: Border(left: BorderSide(color: context.n.divider)),
+              ),
+              child: SafeArea(
+                child: NavigationRail(
+                  selectedIndex: _index,
+                  onDestinationSelected: _select,
+                  backgroundColor: Colors.transparent,
+                  indicatorColor: context.scheme.primary.withValues(
+                    alpha: 0.16,
+                  ),
+                  labelType: NavigationRailLabelType.all,
+                  minWidth: 76,
+                  destinations: const [
+                    NavigationRailDestination(
+                      icon: Icon(LucideIcons.messageCircle),
+                      selectedIcon: Icon(
+                        LucideIcons.messageCircle,
+                        color: Color(0xFF2563EB),
+                      ),
+                      label: Text('学习助手'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(LucideIcons.calendarDays),
+                      selectedIcon: Icon(
+                        LucideIcons.calendarDays,
+                        color: Color(0xFF2563EB),
+                      ),
+                      label: Text('课表'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(LucideIcons.gitBranch),
+                      selectedIcon: Icon(
+                        LucideIcons.gitBranch,
+                        color: Color(0xFF2563EB),
+                      ),
+                      label: Text('知识地图'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      body: IndexedStack(
-        index: _index,
-        children: [
-          const ChatPage(),
-          const SchedulePage(),
-          KnowledgeMapPage(
-            onOpenChat: () => _select(0),
-            onOpenSchedule: () => _select(1),
-          ),
-        ],
-      ),
+      body: pages,
       bottomNavigationBar: DecoratedBox(
         decoration: BoxDecoration(
           color: context.scheme.surface,

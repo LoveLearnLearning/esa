@@ -62,3 +62,17 @@ def test_build_prompt_reads_split_prompt_modules_at_runtime(monkeypatch):
 
     assert "SYSTEM_SOURCE_SENTINEL" in prompt
     assert "STYLE_SOURCE_SENTINEL" in prompt
+
+
+def test_math_workflow_is_not_eagerly_injected():
+    prompt = build_system_prompt(
+        user_name="alice",
+        skills_context=(
+            "- `math_problem_solving`：数值计算、符号运算或位运算时使用"
+        ),
+        prompt_ctx=PromptContext(),
+    )
+
+    assert "math_problem_solving" in prompt
+    assert "# 数学问题处理 Skill" not in prompt
+    assert "## 工具路由" not in prompt

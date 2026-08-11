@@ -144,6 +144,30 @@ void main() {
     expect(restored.scheduleSettings.totalPeriods, 10);
   });
 
+  testWidgets('wide layout moves page navigation to a right-side rail', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final state = createState();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+    // 导航栏在屏幕右侧
+    final railRect = tester.getRect(find.byType(NavigationRail));
+    expect(railRect.center.dx, greaterThan(1280 / 2));
+
+    await tester.tap(find.text('课表'));
+    await tester.pumpAndSettle();
+    expect(find.text('添加课程'), findsOneWidget);
+  });
+
   testWidgets('narrow timetable keeps the complete seven-day grid visible', (
     tester,
   ) async {

@@ -4,6 +4,11 @@ import json
 import re
 
 from backend.core.utils.models import ParsedOutput, ToolCall
+from backend.core.utils.tool_arguments import (
+    declared_schema_type,
+    normalize_tool_arguments,
+    schemas_by_name,
+)
 
 
 def _try_cast(value: str):
@@ -26,8 +31,12 @@ def _try_cast(value: str):
         return value
 
 
-def parse_output(raw_text: str) -> ParsedOutput:
+def parse_output(
+    raw_text: str,
+    tool_schemas: list[dict] | tuple[dict, ...] | None = None,
+) -> ParsedOutput:
     result = ParsedOutput()
+    schema_lookup = schemas_by_name(tool_schemas)
 
     # 提取 reasoning
     think_match = re.search(r"(?:<think>)?(.*?)</think>", raw_text, re.DOTALL)
@@ -56,7 +65,29 @@ def parse_output(raw_text: str) -> ParsedOutput:
             block,
             re.DOTALL,
         )
-        args = {k: _try_cast(v) for k, v in param_matches}
+        schema = schema_lookup.get(func_name)
+        properties = (
+            schema.get("function", {})
+            .get("parameters", {})
+            .get("properties", {})
+            if schema is not None
+            else {}
+        )
+        args = {
+            key: (
+                raw_value.strip()
+                if declared_schema_type(properties.get(key, {})) == "string"
+                else _try_cast(raw_value)
+            )
+            for key, raw_value in param_matches
+        }
+        if schema is not None:
+            try:
+                args = normalize_tool_arguments(schema, args)
+            except ValueError:
+                # 解析层只负责尽可能恢复 Schema 类型。非法值交给
+                # ToolRegistry 的执行边界处理，避免一次坏参数把整轮请求变成 500。
+                pass
 
         result.tool_calls.append(ToolCall(name=func_name, arguments=args))
 

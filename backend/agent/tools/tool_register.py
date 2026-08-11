@@ -4,6 +4,8 @@
 from collections.abc import Callable
 from typing import Any, TypeVar
 
+from backend.core.utils.tool_arguments import normalize_tool_arguments
+
 ToolFn = Callable[
     ...,
     Any,
@@ -83,32 +85,5 @@ class ToolRegistry:
     def _normalize_arguments(
         schema: dict[str, Any], arguments: dict[str, Any]
     ) -> dict[str, Any]:
-        """按工具 schema 归一化模型偶发的字符串布尔值。
-
-        模型通常输出 JSON ``true/false``，但也可能输出
-        ``True/False`` 或带引号的 ``"True"``。该边界是调用工具前
-        最后的类型保护，避免字符串流入 SQLite 层后触发 ``int("True")``。
-        """
-        properties = (
-            schema.get("function", {}).get("parameters", {}).get("properties", {})
-        )
-        normalized = dict(arguments)
-        for key, value in arguments.items():
-            specification = properties.get(key, {})
-            if specification.get("type") != "boolean" or value is None:
-                continue
-            if isinstance(value, bool):
-                continue
-            if isinstance(value, int) and value in (0, 1):
-                normalized[key] = bool(value)
-                continue
-            if isinstance(value, str):
-                candidate = value.strip().casefold()
-                if candidate in {"true", "1"}:
-                    normalized[key] = True
-                    continue
-                if candidate in {"false", "0"}:
-                    normalized[key] = False
-                    continue
-            raise ValueError(f"参数 {key!r} 必须是布尔值")
-        return normalized
+        """按工具 Schema 归一全部参数类型，作为执行前最后的边界保护。"""
+        return normalize_tool_arguments(schema, arguments)
