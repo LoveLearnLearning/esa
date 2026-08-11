@@ -24,6 +24,7 @@ class TransformersEmbeddingProvider:
     """延迟加载的 Transformers Qwen3 Embedding 后端。"""
 
     model_name: str = "Qwen/Qwen3-Embedding-4B"
+    load_path: str | None = None
     device: str = "cuda"
     dimension: int = 2560
     max_length: int = 8192
@@ -74,12 +75,13 @@ class TransformersEmbeddingProvider:
                 "Transformers embedding dependencies are not installed"
             ) from exc
         self._torch = torch
+        source = self.load_path or self.model_name
         self._tokenizer = AutoTokenizer.from_pretrained(
-            self.model_name,
+            source,
             padding_side="left",
         )
         self._model = (
-            AutoModel.from_pretrained(self.model_name, torch_dtype="auto")
+            AutoModel.from_pretrained(source, torch_dtype="auto")
             .to(self.device)
             .eval()
         )
@@ -134,6 +136,7 @@ class TransformersReranker:
     """按 Qwen3 官方 yes/no token 概率执行重排。"""
 
     model_name: str = "Qwen/Qwen3-Reranker-4B"
+    load_path: str | None = None
     device: str = "cuda"
     max_length: int = 8192
     instruction: str = (
@@ -180,13 +183,14 @@ class TransformersReranker:
                 "Transformers reranker dependencies are not installed"
             ) from exc
         self._torch = torch
+        source = self.load_path or self.model_name
         self._tokenizer = AutoTokenizer.from_pretrained(
-            self.model_name,
+            source,
             padding_side="left",
         )
         self._model = (
             AutoModelForCausalLM.from_pretrained(
-                self.model_name,
+                source,
                 torch_dtype="auto",
             )
             .to(self.device)

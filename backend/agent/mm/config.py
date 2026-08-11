@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,11 +41,16 @@ class MMConfig:
     vlm_max_concurrency: int
     embedding_model: str
     embedding_device: str
+    enabled: bool = False
+    vlm_api_key: str | None = None
 
     @classmethod
     def from_env(cls) -> "MMConfig":
         root = workspace_root()
         revision = os.environ.get("MM_VLM_MODEL_REVISION")
+        enabled = os.environ.get("MM_ENABLED", "false").strip().lower()
+        if enabled not in {"1", "true", "yes", "on", "0", "false", "no", "off"}:
+            raise ValueError("MM_ENABLED must be a boolean")
         return cls(
             artifact_root=Path(
                 os.environ.get("MM_ARTIFACT_ROOT", root / "runtime/mm")
@@ -76,5 +82,17 @@ class MMConfig:
             embedding_device=os.environ.get(
                 "MM_EMBEDDING_DEVICE", app_config.RAG_EMBEDDING_DEVICE
             ),
+            enabled=enabled in {"1", "true", "yes", "on"},
+            vlm_api_key=os.environ.get("MM_VLM_API_KEY") or None,
         )
 
+    def validate_startup(self) -> None:
+        """Validate external executables and local paths when MM is enabled."""
+
+        if not self.enabled:
+            return
+        command = str(self.mineru_command)
+        if not self.mineru_command.is_file() and shutil.which(command) is None:
+            raise RuntimeError(f"MM mineru command is unavailable: {command}")
+        if self.mineru_command.is_file() and not os.access(self.mineru_command, os.X_OK):
+            raise RuntimeError(f"MM mineru command is not executable: {command}")

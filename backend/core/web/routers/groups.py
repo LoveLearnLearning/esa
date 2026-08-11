@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from backend.core.stores.group_store import GroupStore
 from backend.core.utils.models import SessionPrincipal
@@ -116,7 +116,12 @@ def update_group(
     return GroupOut(**updated)
 
 
-@router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{group_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 def delete_group(
     group_id: str,
     request: Request,

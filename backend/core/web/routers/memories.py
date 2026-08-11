@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from backend.agent.tools.memory_tools import core_memory
 from backend.core.stores.user_store import UserStore
@@ -59,7 +59,12 @@ def upsert_memory(
     return memory
 
 
-@router.delete("/{memory_key}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{memory_key}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 def delete_memory(
     memory_key: str,
     request: Request,

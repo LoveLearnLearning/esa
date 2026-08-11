@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
 from backend.agent.learning.knowledge_map_service import KnowledgeMapService
@@ -235,7 +235,12 @@ def bind_learning_course(
     }
 
 
-@router.delete("/courses/{course_name}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/courses/{course_name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 def delete_learning_course(
     course_name: str, request: Request, session: CurrentSession
 ) -> None:

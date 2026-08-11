@@ -38,6 +38,10 @@ requires_real_fixture = pytest.mark.skipif(
     not (FIXTURE / "raw").is_dir() or not (FIXTURE / "assets" / "source.pdf").is_file(),
     reason="checkout does not include the external MinerU fixture",
 )
+requires_multiformat_fixture = pytest.mark.skipif(
+    not MULTIFORMAT_SOURCES.is_dir() or not MULTIFORMAT_OUTPUTS.is_dir(),
+    reason="external multiformat MinerU regression data is unavailable",
+)
 
 
 def test_discover_documents_is_sorted_case_insensitive_and_format_bounded(
@@ -78,6 +82,7 @@ def test_source_metadata_only_uses_pdf_reader_for_pdf(tmp_path: Path):
     assert source_metadata(image).media_type == "image/png"
 
 
+@requires_multiformat_fixture
 def test_pdf_source_metadata_preserves_page_count_and_encryption_behavior():
     pytest.importorskip("pypdf")
     metadata = source_metadata(MULTIFORMAT_SOURCES / "pdf_text.pdf")
@@ -184,6 +189,7 @@ def test_resume_does_not_overwrite_verified_success(tmp_path: Path):
     assert restored == expected
 
 
+@requires_multiformat_fixture
 @pytest.mark.parametrize(
     ("name", "filename", "media_type"),
     [
@@ -245,6 +251,7 @@ def test_office_sources_complete_without_inventing_page_semantics(
     assert list((mineru_run / directory).rglob("*_content_list.json"))
 
 
+@requires_multiformat_fixture
 @pytest.mark.parametrize(
     ("name", "filename", "media_type"),
     [

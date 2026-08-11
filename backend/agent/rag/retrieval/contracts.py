@@ -27,7 +27,7 @@ class ContextLevel(str, Enum):
 
 @dataclass(frozen=True)
 class RetrievalConfig:
-    """候选数量是待评测参数；默认值只作为第一阶段可运行基线。"""
+    """Frozen production baseline; experiments must override fields explicitly."""
 
     dense_limit: int = 20
     bm25_body_limit: int = 20
@@ -40,7 +40,7 @@ class RetrievalConfig:
     section_window: int = 1
     max_context_tokens: int = 8192
     rerank_threshold: float | None = None
-    fusion_method: Literal["dense", "equal_rrf", "weighted_rrf", "score"] = "score"
+    fusion_method: Literal["dense", "equal_rrf", "weighted_rrf", "score"] = "dense"
     dense_weight: float = 1.0
     lexical_body_weight: float = 0.75
     lexical_gate_enabled: bool = True

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..retrieval.calibration import CosineScoreCalibrator, PercentileScoreCalibrator
+from ..paths import workspace_root
 from ..retrieval.contracts import RankedItem
 from ..retrieval.fusion import score_level_weighted_fusion
 from ..retrieval.reranking import aggregate_chunk_scores
@@ -24,13 +25,10 @@ from .qwen_ablation import (
 )
 
 DATASETS = ("scifact", "xor-tydi", "m3docvqa")
-DEFAULT_DATA_ROOT = Path("/home/karatani/esa/artifacts/rag/benchmarks/datasets")
-DEFAULT_FUSION_ROOT = Path(
-    "/home/karatani/esa/artifacts/rag/benchmarks/weighted-fusion-20260811"
-)
-DEFAULT_OUTPUT_ROOT = Path(
-    "/home/karatani/esa/artifacts/rag/benchmarks/reranker-final-20260811"
-)
+_BENCHMARK_ROOT = workspace_root() / "artifacts/rag/benchmarks"
+DEFAULT_DATA_ROOT = _BENCHMARK_ROOT / "datasets"
+DEFAULT_FUSION_ROOT = _BENCHMARK_ROOT / "weighted-fusion-20260811"
+DEFAULT_OUTPUT_ROOT = _BENCHMARK_ROOT / "reranker-final-20260811"
 
 
 def _route_items(row: dict[str, Any], route: str) -> list[RankedItem]:

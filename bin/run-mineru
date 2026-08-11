@@ -1,3 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-exec /home/karatani/anaconda3/envs/esa-mineru/bin/mineru "$@"
+mineru_bin="${MINERU_BIN:-mineru}"
+if ! command -v "$mineru_bin" >/dev/null 2>&1; then
+    echo "ERROR: MinerU executable not found: $mineru_bin (set MINERU_BIN)" >&2
+    exit 127
+fi
+exec "$mineru_bin" "$@"

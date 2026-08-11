@@ -213,7 +213,7 @@ python -m backend.agent.rag.cli.index build \
   --qdrant-url http://127.0.0.1:6333 \
   --collection rag_qwen3_embedding_4b_v2 \
   --embedding-backend transformers \
-  --embedding-model /home/qwq/models/Qwen3-Embedding-4B \
+  --embedding-model "${RAG_EMBEDDING_MODEL_PATH:-Qwen/Qwen3-Embedding-4B}" \
   --embedding-dimension 2560
 python -m backend.agent.rag.cli.index verify \
   --deployment-manifest artifacts/rag/indexes/<deployment_id>/manifest.json
@@ -221,15 +221,16 @@ python -m backend.agent.rag.cli.index query \
   --deployment-manifest artifacts/rag/indexes/<deployment_id>/manifest.json \
   --query "什么是黑盒测试？" \
   --reranker-backend transformers \
-  --reranker-model /home/qwq/models/Qwen3-Reranker-4B
+  --reranker-model "${RAG_RERANKER_MODEL_PATH:-Qwen/Qwen3-Reranker-4B}"
 python -m pytest backend/agent/DocIR/tests backend/agent/rag/chunk/tests backend/agent/rag/tests
 ```
 
-`--reranker-backend` 默认值由 `config.py` 决定，当前正式配置为 `transformers`；
+`--reranker-backend` 默认值由 `backend/core/utils/config.py` 决定，当前正式配置为
+`none`；
 临时设置为 `none` 可独立验证三路召回与 RRF，设置为 `transformers` 或 `vllm`
 则会对 RRF 候选执行真实重排。Reranker 属于查询期配置，不改变已经持久化的索引代次。
 
-ESA 部署默认值集中在 `config.py`，包括 Collection manifest、Qdrant 地址、
+ESA 部署默认值集中在 `backend/core/utils/config.py`，包括 Collection manifest、Qdrant 地址、
 Embedding/Reranker 后端及模型、超时、批大小和检索候选数量。CLI 参数仍可在单次
 构建或查询时覆盖这些默认值；`QDRANT_API_KEY` 与 `VLLM_API_KEY` 只从环境变量读取。
 

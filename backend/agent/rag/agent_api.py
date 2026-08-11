@@ -18,6 +18,44 @@ from .retrieval.service import RetrievalService
 
 _service: RetrievalService | None = None
 
+# B1/B2 v1: these tuples are the frozen JSON surface. Additive or breaking
+# changes require a new contract version and fixture migration.
+B1_CONTRACT_VERSION = "get_knowledge_base_stats.v1"
+B1_TOP_LEVEL_KEYS = (
+    "collection_id",
+    "document_count",
+    "total_chunks",
+    "embedding_model",
+    "reranker_model",
+    "index_backend",
+    "config",
+)
+B2_CONTRACT_VERSION = "retrieve_knowledge.v1"
+B2_TOP_LEVEL_KEYS = (
+    "query",
+    "result_count",
+    "results",
+    "sources",
+    "context_text",
+    "degraded",
+    "rankings",
+)
+B2_RESULT_KEYS = (
+    "content",
+    "score",
+    "score_type",
+    "rank",
+    "source",
+    "section",
+    "page",
+    "location",
+    "chunk_id",
+    "rrf_score",
+    "rerank_score",
+    "context_chunk_ids",
+    "evidence",
+)
+
 
 def configure_retrieval_service(service: RetrievalService) -> None:
     """注入由 ESA 生命周期创建并持有的检索服务。"""

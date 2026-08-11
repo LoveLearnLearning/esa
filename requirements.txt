@@ -1,5 +1,5 @@
 # Web
-fastapi
+fastapi==0.135.3
 uvicorn[standard]
 pydantic>=2,<3
 python-multipart

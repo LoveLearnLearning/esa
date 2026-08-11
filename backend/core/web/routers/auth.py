@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from backend.core.services.auth_service import AuthService
 from backend.core.stores.session_store import SessionStore
@@ -66,7 +66,12 @@ def login(body: LoginRequest, request: Request) -> LoginResponse:
     )
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 async def logout(request: Request, session: CurrentSession) -> None:
     session_store: SessionStore = request.app.state.session_store
     session_store.revoke(session.session_id)
@@ -85,6 +90,8 @@ async def logout(request: Request, session: CurrentSession) -> None:
 @router.post(
     "/change-password",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
 )
 def change_password(
     body: ChangePasswordRequest,

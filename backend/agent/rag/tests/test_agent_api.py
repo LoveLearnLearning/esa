@@ -18,6 +18,9 @@ from typing import cast
 import pytest
 
 from backend.agent.rag.agent_api import (
+    B1_TOP_LEVEL_KEYS,
+    B2_RESULT_KEYS,
+    B2_TOP_LEVEL_KEYS,
     configure_retrieval_service,
     get_retrieval_service,
     knowledge_base_stats,
@@ -122,10 +125,12 @@ def test_retrieve_knowledge_preserves_old_shape_and_adds_evidence() -> None:
 
     payload = retrieve_knowledge_payload("什么是测试？", top_k=1)
 
+    assert tuple(payload) == B2_TOP_LEVEL_KEYS
     assert payload["result_count"] == 1
     assert payload["context_text"] == "测试上下文"
     assert payload["sources"] == ["【来源 1】测试文档.pdf · 第一章 · 第1页"]
     result = payload["results"][0]
+    assert tuple(result) == B2_RESULT_KEYS
     assert result["source"] == "测试文档.pdf"
     assert result["score_type"] == "reranker"
     assert result["evidence"][0]["element_id"] == "element_1"
@@ -174,6 +179,26 @@ def test_knowledge_base_stats_uses_injected_service() -> None:
 
     stats = knowledge_base_stats()
 
+    assert tuple(stats) == B1_TOP_LEVEL_KEYS
+    assert tuple(stats["config"]) == (
+        "dense_limit",
+        "bm25_body_limit",
+        "bm25_heading_limit",
+        "rrf_limit",
+        "rerank_limit",
+        "reranker_batch_size",
+        "final_limit",
+        "rrf_k",
+        "section_window",
+        "max_context_tokens",
+        "rerank_threshold",
+        "fusion_method",
+        "dense_weight",
+        "lexical_body_weight",
+        "lexical_gate_enabled",
+        "reranker_enabled",
+        "reranker_prior_weight",
+    )
     assert stats["collection_id"] == "collection_test"
     assert stats["total_chunks"] == 1
     assert stats["embedding_model"] == "embedding-test"

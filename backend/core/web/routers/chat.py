@@ -8,7 +8,7 @@ import sqlite3
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from backend.agent.agent import Agent
@@ -286,7 +286,12 @@ def create_conversation(
     )
 
 
-@router.patch("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.patch(
+    "/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 def update_conversation(
     conversation_id: str,
     body: ConversationPatchRequest,
@@ -319,7 +324,12 @@ def update_conversation(
         chat_store.set_conversation_group(conversation_id, updates["group_id"])
 
 
-@router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 def delete_conversation(
     conversation_id: str,
     request: Request,

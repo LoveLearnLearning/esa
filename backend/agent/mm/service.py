@@ -82,6 +82,7 @@ class MultimodalIngestionService:
             base_url=self.config.vlm_base_url,
             model_name=self.config.vlm_model,
             model_revision=self.config.vlm_model_revision,
+            api_key=self.config.vlm_api_key,
             timeout=self.config.vlm_timeout_seconds,
             attempts=self.config.vlm_attempts,
         )

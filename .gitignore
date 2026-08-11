@@ -163,12 +163,15 @@ run.sh
 gpu_proxy.sh
 artifacts
 runtime
-backend/agent/DocIR/mineru_adapter_samples
+# DocIR corpora and generated MinerU regression data stay local. Tests that
+# require them must skip clearly when they are unavailable.
 backend/agent/DocIR/CS_Book_mineru
 backend/agent/DocIR/CS_Book
-backend/agent/DocIR/tests
-backend/agent/rag/tests
-backend/agent/mm/tests
+/backend/agent/DocIR/mineru_adapter_samples/
+/backend/agent/DocIR/tests/fixtures/mineru_adapter/outputs/
+/backend/agent/DocIR/tests/adapters/mineru/multiformat_fixture_baseline.json
+/backend/agent/DocIR/tests/adapters/mineru/multiformat_schema_census.json
+/backend/agent/DocIR/tests/adapters/mineru/pdf_regression_baseline.json
 
 frpc.toml
 frpc.ini

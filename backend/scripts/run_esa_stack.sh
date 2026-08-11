@@ -9,18 +9,31 @@ if type module >/dev/null 2>&1; then
     module load cuda/13.0 || true
 fi
 
-source /persist_data/apps/miniconda3/etc/profile.d/conda.sh
-conda activate /persist_data/home/chenxuzhao/.conda/envs~/esa
+if [[ -n "${ESA_CONDA_SH:-}" ]]; then
+    source "$ESA_CONDA_SH"
+fi
+if [[ -n "${ESA_CONDA_ENV:-}" ]]; then
+    if ! type conda >/dev/null 2>&1; then
+        echo "ERROR: ESA_CONDA_ENV is set but conda is unavailable; set ESA_CONDA_SH." >&2
+        exit 1
+    fi
+    conda activate "$ESA_CONDA_ENV"
+fi
 
 export PYTHONNOUSERSITE=1
 export PYTHONUNBUFFERED=1
 unset PYTHONPATH
 
-export CUDA_HOME=/persist_data/apps/cuda-13.0
-export CUDA_PATH="$CUDA_HOME"
-export CUDACXX="$CUDA_HOME/bin/nvcc"
-export PATH="$CUDA_HOME/bin:$CONDA_PREFIX/bin:$PATH"
-export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$CONDA_PREFIX/lib/python3.10/site-packages/torch/lib:$CONDA_PREFIX/lib/python3.10/site-packages/nvidia/cu13/cccl/lib:$CONDA_PREFIX/lib/python3.10/site-packages/nvidia/cu13/lib:$CONDA_PREFIX/lib/python3.10/site-packages/nvidia/cudnn/lib:$CONDA_PREFIX/lib/python3.10/site-packages/nvidia/cusparselt/lib:$CONDA_PREFIX/lib/python3.10/site-packages/nvidia/nccl/lib:$CONDA_PREFIX/lib/python3.10/site-packages/nvidia/nvshmem/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+if [[ -n "${ESA_CUDA_HOME:-}" ]]; then
+    export CUDA_HOME="$ESA_CUDA_HOME"
+    export CUDA_PATH="$CUDA_HOME"
+    export CUDACXX="$CUDA_HOME/bin/nvcc"
+    export PATH="$CUDA_HOME/bin:$PATH"
+fi
+if [[ -n "${CONDA_PREFIX:-}" ]]; then
+    export PATH="$CONDA_PREFIX/bin:$PATH"
+    export LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
 export TORCH_CUDA_ARCH_LIST='8.0'
 export CMAKE_CUDA_ARCHITECTURES='80'
 export VLLM_TARGET_DEVICE='cuda'

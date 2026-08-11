@@ -14,12 +14,14 @@ if TYPE_CHECKING:
     from vllm.config.model import ModelDType
     from vllm.model_executor.layers.quantization import QuantizationMethods
 
-DEBUG_MODE: bool = True
+DEBUG_MODE: bool = os.environ.get("ESA_DEBUG", "false").strip().lower() in {
+    "1", "true", "yes", "on"
+}
 
-SEARXNG_BASE_URL = "http://115.29.197.244:8888"
+SEARXNG_BASE_URL = os.environ.get("SEARXNG_BASE_URL", "http://127.0.0.1:8888")
 
 # model
-MODEL_PATH: str = "/remote_dir/home/chenxuzhao/models/Qwen3.5-122B-A10B"
+MODEL_PATH: str = os.environ.get("ESA_MODEL_PATH", "Qwen/Qwen3.5-122B-A10B")
 MODEL_DTYPE: ModelDType = "bfloat16"
 MODEL_KV_CACHE_DTYPE: CacheDType = "auto"
 MODEL_GPU_MEMORY_UTILIZATION: float = 0.95
@@ -31,7 +33,9 @@ MODEL_TENSOR_PARALLEL_SIZE: int = 4
 
 # Auxiliary model: dedicated to document parsing and offline context compression.
 # It is served by the local vLLM sidecar and is never exposed publicly.
-AUXILIARY_MODEL_PATH: str = "/remote_dir/home/chenxuzhao/models/Qwen3.5-9B"
+AUXILIARY_MODEL_PATH: str = os.environ.get(
+    "ESA_AUXILIARY_MODEL_PATH", "Qwen/Qwen3.5-9B"
+)
 AUXILIARY_MODEL_NAME: str = "esa-qwen3.5-9b"
 AUXILIARY_MODEL_BASE_URL: str = "http://127.0.0.1:51025/v1"
 AUXILIARY_MODEL_PORT: int = 51025
@@ -156,10 +160,13 @@ def _choice_from_env(
 
 
 # collection and deployment
+RAG_ENABLED: bool = _bool_from_env("RAG_ENABLED", False)
+RAG_COLLECTION_ID = "collection_e55166f798ef1c361c72de9a"
+RAG_DEPLOYMENT_ID = "deployment_357bd9c84d8404fae42c2740"
 RAG_COLLECTION_MANIFEST_PATH: Path = _path_from_env(
     "RAG_COLLECTION_MANIFEST_PATH",
     RAG_WORKSPACE_ROOT
-    / "artifacts/chunk/collections/collection_e55166f798ef1c361c72de9a/manifest.json",
+    / f"artifacts/chunk/collections/{RAG_COLLECTION_ID}/manifest.json",
 )
 RAG_INDEX_DEPLOYMENT_ROOT: Path = _path_from_env(
     "RAG_INDEX_DEPLOYMENT_ROOT", RAG_WORKSPACE_ROOT / "artifacts/rag/indexes"
@@ -187,7 +194,7 @@ RAG_EMBEDDING_BACKEND: EmbeddingBackend = _choice_from_env(
     ("reference", "transformers", "vllm"),
 )
 RAG_EMBEDDING_MODEL_PATH: str = _str_from_env(
-    "RAG_EMBEDDING_MODEL_PATH", "/home/karatani/models/Qwen3-Embedding-4B"
+    "RAG_EMBEDDING_MODEL_PATH", "Qwen/Qwen3-Embedding-4B"
 )
 RAG_EMBEDDING_BASE_URL: str | None = _optional_str_from_env(
     "RAG_EMBEDDING_BASE_URL"
@@ -209,7 +216,7 @@ RAG_RERANKER_BACKEND: RerankerBackend = _choice_from_env(
     ("none", "transformers", "vllm"),
 )
 RAG_RERANKER_MODEL_PATH: str = _str_from_env(
-    "RAG_RERANKER_MODEL_PATH", "/home/karatani/models/Qwen3-Reranker-4B"
+    "RAG_RERANKER_MODEL_PATH", "Qwen/Qwen3-Reranker-4B"
 )
 RAG_RERANKER_BASE_URL: str | None = _optional_str_from_env(
     "RAG_RERANKER_BASE_URL"
@@ -237,14 +244,13 @@ RAG_RERANK_THRESHOLD: float | None = _optional_float_from_env(
 RAG_FUSION_METHOD: Literal["dense", "equal_rrf", "weighted_rrf", "score"] = (
     _choice_from_env(
         "RAG_FUSION_METHOD",
-        "score",
+        "dense",
         ("dense", "equal_rrf", "weighted_rrf", "score"),
     )
 )
-# score fusion: dense=.95, lexical=.05; lexical 内部正文/标题=.75/.25。
-# 这是当前跨 benchmark 的共同稳定配置，仍可通过环境变量做语料级消融。
+# 正式部署冻结为 dense-only；实验配置仍可通过环境变量显式覆盖。
 RAG_DENSE_WEIGHT: float = _float_from_env(
-    "RAG_DENSE_WEIGHT", 0.95, minimum=0.0, maximum=1.0
+    "RAG_DENSE_WEIGHT", 1.0, minimum=0.0, maximum=1.0
 )
 RAG_LEXICAL_BODY_WEIGHT: float = _float_from_env(
     "RAG_LEXICAL_BODY_WEIGHT", 0.75, minimum=0.0, maximum=1.0
@@ -254,7 +260,7 @@ RAG_LEXICAL_GATE_ENABLED: bool = _bool_from_env(
 )
 # prior_weight 是融合排序先验的权重；其余权重交给 Reranker 分数。
 RAG_RERANKER_PRIOR_WEIGHT: float = _float_from_env(
-    "RAG_RERANKER_PRIOR_WEIGHT", 0.95, minimum=0.0, maximum=1.0
+    "RAG_RERANKER_PRIOR_WEIGHT", 0.90, minimum=0.0, maximum=1.0
 )
 
 if RAG_RERANKER_ENABLED and RAG_RERANKER_BACKEND == "none":
@@ -272,5 +278,30 @@ if RAG_RERANK_LIMIT > RAG_RRF_LIMIT:
 
 RAG_INDEX_DEPLOYMENT_MANIFEST_PATH: Path = _path_from_env(
     "RAG_INDEX_DEPLOYMENT_MANIFEST_PATH",
-    RAG_INDEX_DEPLOYMENT_ROOT / "deployment_357bd9c84d8404fae42c2740/manifest.json",
+    RAG_INDEX_DEPLOYMENT_ROOT / RAG_DEPLOYMENT_ID / "manifest.json",
 )
+
+
+def validate_startup_config() -> None:
+    """Fail early for enabled optional subsystems and local model paths."""
+
+    for name, value in (
+        ("ESA_MODEL_PATH", MODEL_PATH),
+        ("ESA_AUXILIARY_MODEL_PATH", AUXILIARY_MODEL_PATH),
+    ):
+        candidate = Path(value).expanduser()
+        if candidate.is_absolute() and not candidate.exists():
+            raise RuntimeError(f"{name} points to a missing local path: {candidate}")
+    if not RAG_ENABLED:
+        return
+    missing = [
+        path
+        for path in (
+            RAG_COLLECTION_MANIFEST_PATH,
+            RAG_INDEX_DEPLOYMENT_MANIFEST_PATH,
+        )
+        if not path.is_file()
+    ]
+    if missing:
+        values = ", ".join(str(path) for path in missing)
+        raise RuntimeError(f"RAG_ENABLED=true but manifest files are missing: {values}")

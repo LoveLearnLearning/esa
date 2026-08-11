@@ -14,6 +14,7 @@ from .enrichment import EnrichmentResult, enrich_visual_assets
 from .providers import OpenAICompatibleVisionProvider, TransformersTokenCounter
 from .render import render_document_markdown
 from .service import MultimodalIngestionService
+from .session import MultimodalSessionService
 
 __all__ = [
     "AttachmentMode",
@@ -21,6 +22,7 @@ __all__ = [
     "EnrichmentResult",
     "MMConfig",
     "MultimodalIngestionService",
+    "MultimodalSessionService",
     "OpenAICompatibleVisionProvider",
     "ParsedAttachment",
     "PreparedAttachment",
@@ -31,4 +33,3 @@ __all__ = [
     "enrich_visual_assets",
     "render_document_markdown",
 ]
-

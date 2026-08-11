@@ -9,6 +9,7 @@ from fastapi import (
     Form,
     HTTPException,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -182,7 +183,12 @@ def activate_schedule_table(
     }
 
 
-@router.delete("/tables/{table_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/tables/{table_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 def delete_schedule_table(
     table_id: str, request: Request, session: CurrentSession
 ) -> None:
@@ -214,7 +220,12 @@ def save_schedule_course(
     return course
 
 
-@router.delete("/courses/{course_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/courses/{course_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 def delete_schedule_course(
     course_id: str, request: Request, session: CurrentSession
 ) -> None:

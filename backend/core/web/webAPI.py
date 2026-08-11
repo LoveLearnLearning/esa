@@ -12,6 +12,8 @@ from backend.agent.memories.kg_loader import ensure_knowledge_graph_seeded
 from backend.agent.memories.kp_resolver import KnowledgePointResolver
 from backend.agent.memories.paths import USER_DB_PATH
 from backend.agent.memories.profile_builder import ProfileBuilder
+from backend.agent.mm import MMConfig, MultimodalIngestionService, MultimodalSessionService
+from backend.agent.rag.lifecycle import RAGApplicationLifecycle
 from backend.agent.tools.learning_tools import evidence_store
 from backend.agent.tools.mastery_tools import kg_store, mastery_store
 from backend.core.services.auth_service import AuthService
@@ -51,6 +53,7 @@ from backend.core.utils.config import (
     MODEL_PATH,
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
+    validate_startup_config,
 )
 from backend.core.web.routers import (
     auth,
@@ -69,6 +72,9 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_startup_config()
+    mm_config = MMConfig.from_env()
+    mm_config.validate_startup()
     # 先让各 Store 补齐老库的新增列，再由版本迁移原子重建外键表。
     app.state.user_store = UserStore(DB_PATH)
     app.state.group_store = GroupStore(DB_PATH)
@@ -137,9 +143,19 @@ async def lifespan(app: FastAPI):
         enabled=CONVERSATION_COMPRESSION_ENABLED,
     )
     app.state.conversation_compression_service.start()
+    app.state.rag_lifecycle = RAGApplicationLifecycle()
+    app.state.rag_service = app.state.rag_lifecycle.start()
+    app.state.mm_sessions = (
+        MultimodalSessionService(MultimodalIngestionService(mm_config))
+        if mm_config.enabled
+        else None
+    )
     try:
         yield
     finally:
+        if app.state.mm_sessions is not None:
+            await app.state.mm_sessions.close()
+        app.state.rag_lifecycle.close()
         await app.state.conversation_compression_service.stop()
         await app.state.auxiliary_llm_client.close()
         app.state.agent.llm_provider.engine.shutdown()

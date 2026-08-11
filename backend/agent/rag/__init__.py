@@ -32,6 +32,7 @@ from .inference import (
     VLLMEmbeddingProvider,
     VLLMReranker,
 )
+from .lifecycle import RAGApplicationLifecycle
 from .retrieval.context import ContextBuilder, EvidenceAssembler
 from .retrieval.contracts import ContextLevel, RetrievalConfig, SearchResponse
 from .retrieval.reranking import CandidateReranker, CandidateSelection
@@ -65,6 +66,7 @@ __all__ = [
     "LexicalOverlapReranker",
     "LoadedChunkCollection",
     "QdrantIndex",
+    "RAGApplicationLifecycle",
     "GlossaryQueryExpansion",
     "NullQueryTranslator",
     "QueryExpander",

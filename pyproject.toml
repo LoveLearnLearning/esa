@@ -4,6 +4,7 @@ testpaths = [
     "backend/agent/DocIR/tests",
     "backend/agent/rag/tests",
     "backend/agent/rag/chunk/tests",
+    "backend/agent/mm/tests",
 ]
 addopts = "-ra --strict-markers --tb=short -p no:cacheprovider"
 

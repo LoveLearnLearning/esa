@@ -13,10 +13,11 @@ import gc
 import hashlib
 import json
 import math
+import os
 import statistics
 import time
 from collections import Counter, defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from typing import Any
 import numpy as np
 
 from ..indexes.reference import reference_tokens
+from ..paths import workspace_root
 from ..retrieval.query import RuleBasedQueryProcessor
 from .external_benchmarks import (
     BenchmarkCase,
@@ -37,12 +39,15 @@ from .external_benchmarks import (
 
 DATASETS = ("scifact", "xor-tydi", "m3docvqa")
 PIPELINES = ("bm25", "qwen_dense", "hybrid_rrf", "hybrid_qwen_reranker")
-EMBEDDING_MODEL = Path("/home/karatani/models/Qwen3-Embedding-4B")
-RERANKER_MODEL = Path("/home/karatani/models/Qwen3-Reranker-4B")
-DEFAULT_DATA_ROOT = Path("/home/karatani/esa/artifacts/rag/benchmarks/datasets")
-DEFAULT_OUTPUT_ROOT = Path(
-    "/home/karatani/esa/artifacts/rag/benchmarks/qwen-ablation-20260809"
+EMBEDDING_MODEL = Path(
+    os.environ.get("RAG_EMBEDDING_MODEL_PATH", "Qwen/Qwen3-Embedding-4B")
 )
+RERANKER_MODEL = Path(
+    os.environ.get("RAG_RERANKER_MODEL_PATH", "Qwen/Qwen3-Reranker-4B")
+)
+_BENCHMARK_ROOT = workspace_root() / "artifacts/rag/benchmarks"
+DEFAULT_DATA_ROOT = _BENCHMARK_ROOT / "datasets"
+DEFAULT_OUTPUT_ROOT = _BENCHMARK_ROOT / "qwen-ablation-20260809"
 QUERY_INSTRUCTION = (
     "Given a web search query, retrieve relevant passages that answer the query"
 )

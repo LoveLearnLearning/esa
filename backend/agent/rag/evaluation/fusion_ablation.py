@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 
 from ..indexes.reference import reference_tokens
+from ..paths import workspace_root
 from ..retrieval.calibration import (
     CosineScoreCalibrator,
     IdentityScoreCalibrator,
@@ -35,13 +36,10 @@ from ..retrieval.fusion import (
 from .external_benchmarks import BenchmarkCase, build_benchmark_collection
 from .qwen_ablation import _load_dataset, _metrics, _read_jsonl, _selected_cases
 
-DEFAULT_DATA_ROOT = Path("/home/karatani/esa/artifacts/rag/benchmarks/datasets")
-DEFAULT_INPUT_ROOT = Path(
-    "/home/karatani/esa/artifacts/rag/benchmarks/qwen-ablation-20260809"
-)
-DEFAULT_OUTPUT_ROOT = Path(
-    "/home/karatani/esa/artifacts/rag/benchmarks/weighted-fusion-20260811"
-)
+_BENCHMARK_ROOT = workspace_root() / "artifacts/rag/benchmarks"
+DEFAULT_DATA_ROOT = _BENCHMARK_ROOT / "datasets"
+DEFAULT_INPUT_ROOT = _BENCHMARK_ROOT / "qwen-ablation-20260809"
+DEFAULT_OUTPUT_ROOT = _BENCHMARK_ROOT / "weighted-fusion-20260811"
 DATASETS = ("scifact", "xor-tydi", "m3docvqa")
 
 
