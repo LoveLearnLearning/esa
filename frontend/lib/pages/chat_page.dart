@@ -5,7 +5,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../models/models.dart';
 import '../models/task_mode.dart';
@@ -156,6 +156,7 @@ class _ChatPageState extends State<ChatPage> {
 
     return Scaffold(
       key: _scaffoldKey,
+      resizeToAvoidBottomInset: false,
       drawerEdgeDragWidth: 24,
       drawer: const HistoryDrawer(),
       body: SafeArea(

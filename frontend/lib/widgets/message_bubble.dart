@@ -3,7 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';

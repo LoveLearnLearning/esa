@@ -2,7 +2,7 @@
 // 资料区 + 统计三宫格 + 字段 + 设置区 + 底部 退出登录 / 保存
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
