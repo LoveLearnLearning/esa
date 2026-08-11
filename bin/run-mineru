@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+exec /home/karatani/anaconda3/envs/esa-mineru/bin/mineru "$@"
