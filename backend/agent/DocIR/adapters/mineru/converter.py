@@ -2,11 +2,11 @@
 
 """
 
-这个文件干什么：MinerU 3.4.x middle + content_list_v2 → DocIR V0.2。
+这个文件干什么：MinerU 3.4.x middle + content_list_v2 → DocIR。
 
 直白点说就是：把 MinerU 的原始 JSON 和资源文件整理成项目内部统一使用的 DocIR 文档。
 
-MinerU 3.4.x middle + content_list_v2 → DocIR V0.2。
+MinerU 3.4.x middle + content_list_v2 → DocIR。
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ from ...core.document import (
 from ...core.elements import (
     CodeElement,
     ElementBase,
+    ElementProvenance,
     FigureElement,
     FormulaElement,
     HeadingElement,
@@ -44,7 +45,7 @@ from ...core.elements import (
     UnknownElement,
 )
 from ...core.enums import AssetKind, ElementRole, Severity, TextOrigin, ValidationStatus
-from ...core.geometry import Region, SourceGeometry, normalize_bbox
+from ...core.geometry import Locator, SourceGeometry, normalize_bbox
 from ...core.text import TextContent, TextLayer
 from .alignment import (
     AlignedBlock,
@@ -149,6 +150,8 @@ def _role(aligned: AlignedBlock) -> ElementRole:
     source_type = _v2_type(aligned.v2) or aligned.middle.type
     if source_type in {"page_header", "header"}:
         return ElementRole.HEADER
+    if source_type == "page_footer":
+        return ElementRole.FOOTER
     if source_type == "page_number":
         return ElementRole.PAGE_NUMBER
     if aligned.discarded:
@@ -164,6 +167,11 @@ def _semantic_text(aligned: AlignedBlock) -> str:
     extracted = extract_text(item) if item else _block_text(block)
     if source_type == "table" and not extracted and isinstance(content.get("html"), str):
         return _html_text(content["html"])
+    if source_type == "chart":
+        caption = extract_text(content.get("chart_caption"))
+        structured = content.get("content")
+        structured_text = _html_text(structured) if isinstance(structured, str) else ""
+        return "\n".join(part for part in (caption, structured_text, extracted) if part).strip()
     if source_type in {"equation_interline", "interline_equation"}:
         math = content.get("math_content")
         if isinstance(math, str) and math.strip():
@@ -193,7 +201,7 @@ def _visual_asset_path(source_path: str, sha256: str) -> str:
 
 
 def _is_merged_table_continuation(block: RawMiddleBlock, item: dict[str, Any] | None) -> bool:
-    """识别 MinerU ``merge_table`` 已并入前表的跨页续表块。"""
+    """识别 MinerU 标出的跨页续表占位；不在这里猜测它属于哪张表。"""
     if (_v2_type(item) or block.type) != "table":
         return False
     html = _content(item).get("html")
@@ -215,7 +223,7 @@ def convert_bundle(
     bundle: MinerUBundle,
     source_file: Path,
     *,
-    source_page_count: int,
+    source_page_count: int | None = None,
     strict: bool = False,
     max_bbox_delta: float = 5.0,
 ) -> Document:
@@ -241,7 +249,7 @@ class _ConversionState:
         default_factory=lambda: {"section_root": (None, None)}
     )
     current_section: str = "section_root"
-    last_table_index: int | None = None
+    active_sections_by_level: dict[int, str] = field(default_factory=dict)
     visual_assets: dict[str, str] = field(default_factory=dict)
 
 
@@ -253,7 +261,7 @@ class _MinerUConverter:
         *,
         bundle: MinerUBundle,
         source_file: Path,
-        source_page_count: int,
+        source_page_count: int | None,
         strict: bool,
         max_bbox_delta: float,
     ) -> None:
@@ -280,14 +288,15 @@ class _MinerUConverter:
         return {
             "strict": self.strict,
             "source_page_count": self.source_page_count,
-            "alignment": "page_bbox_type_text_v1",
+            "alignment": "optional_geometry_type_text",
             "max_bbox_delta": self.max_bbox_delta,
             "include_discarded_blocks": True,
-            "merge_cross_page_table_continuations": True,
+            "section_hierarchy": "mineru_explicit_heading_level",
+            "table_continuations": "preserve_without_inferred_target",
             "unverified_text_origin": TextOrigin.NATIVE_OR_OCR_UNVERIFIED.value,
         }
 
-    def _register_source_assets(self) -> tuple[Asset, tuple[str, ...]]:
+    def _register_source_assets(self) -> tuple[Asset, dict[str, str]]:
         original = Asset(
             asset_id="asset_original",
             kind=AssetKind.ORIGINAL,
@@ -297,12 +306,18 @@ class _MinerUConverter:
             sha256=self.source_hash,
         )
         self.state.assets.append(original)
-        raw_ids: list[str] = []
-        for path in (self.bundle.middle_path, self.bundle.content_v2_path, self.bundle.model_path):
+        raw_ids: dict[str, str] = {}
+        raw_paths = {
+            "middle": self.bundle.middle_path,
+            "content_list_v2": self.bundle.content_v2_path,
+            "content_list": self.bundle.content_list_path,
+            "model": self.bundle.model_path,
+        }
+        for artifact_name, path in raw_paths.items():
             if path is None:
                 continue
             asset_id = _stable("asset", path.name)
-            raw_ids.append(asset_id)
+            raw_ids[artifact_name] = asset_id
             self.state.assets.append(
                 Asset(
                     asset_id=asset_id,
@@ -313,7 +328,7 @@ class _MinerUConverter:
                     sha256=file_sha256(path),
                 )
             )
-        return original, tuple(raw_ids)
+        return original, raw_ids
 
     def _validate_page_sets(self) -> None:
         if not self.bundle.middle.pdf_info:
@@ -325,19 +340,24 @@ class _MinerUConverter:
             )
 
     def _convert_page(self, page_position: int, raw_page: RawMiddlePage) -> None:
-        if raw_page.page_size is None or len(raw_page.page_size) != 2:
-            raise ValueError("当前 DocIR conversion 需要 middle page_size(width/height)")
-        width, height = map(float, raw_page.page_size)
-        page_id = f"page_{raw_page.page_idx:06d}"
-        self.state.pages.append(
-            Page(
-                page_id=page_id,
-                page_index=raw_page.page_idx,
-                display_page_no=raw_page.page_idx + 1,
-                width=width,
-                height=height,
+        page_id: str | None = None
+        width: float | None = None
+        height: float | None = None
+        if raw_page.page_size is not None:
+            if len(raw_page.page_size) != 2:
+                raise ValueError("middle page_size 必须是 width/height 二元组")
+            width, height = map(float, raw_page.page_size)
+            page_id = f"page_{raw_page.page_idx:06d}"
+            self.state.pages.append(
+                Page(
+                    page_id=page_id,
+                    page_index=raw_page.page_idx,
+                    display_page_no=raw_page.page_idx + 1,
+                    width=width,
+                    height=height,
+                    unit="mineru_middle",
+                )
             )
-        )
         v2_items = self._v2_page_items(page_position)
         for aligned in align_page(
             raw_page,
@@ -345,7 +365,14 @@ class _MinerUConverter:
             strict=self.strict,
             max_bbox_delta=self.max_bbox_delta,
         ):
-            self._convert_block(aligned, raw_page.page_idx, page_id, width, height)
+            self._convert_block(
+                aligned,
+                page_position,
+                raw_page.page_idx,
+                page_id,
+                width,
+                height,
+            )
 
     def _v2_page_items(self, page_position: int) -> list[Any]:
         if page_position >= len(self.bundle.content_v2):
@@ -356,17 +383,28 @@ class _MinerUConverter:
     def _convert_block(
         self,
         aligned: AlignedBlock,
+        group_index: int,
         page_index: int,
-        page_id: str,
-        width: float,
-        height: float,
+        page_id: str | None,
+        width: float | None,
+        height: float | None,
     ) -> None:
         block = aligned.middle
         element_id = _stable("element", self.source_hash, page_index, block.index, block.type, block.bbox)
-        region = self._make_region(element_id, page_id, block, width, height)
+        locator = self._make_locator(
+            element_id,
+            page_id,
+            page_index,
+            block,
+            width,
+            height,
+        )
+        provenance = self._provenance(aligned, group_index)
         issue_ids = self._alignment_issue_ids(aligned, element_id, page_index)
-        if self._merge_table_continuation(aligned, element_id, region, issue_ids, page_index):
-            return
+        if _is_merged_table_continuation(aligned.middle, aligned.v2):
+            issue_ids.append(
+                self._record_unresolved_table_continuation(element_id, page_index)
+            )
 
         text_value = _semantic_text(aligned)
         text = _text_content(element_id, text_value, block.score)
@@ -378,33 +416,51 @@ class _MinerUConverter:
             source_type,
             _content(aligned.v2),
             element_id,
-            page_id,
-            region.region_id,
+            locator.locator_id,
             issue_ids,
         )
         element = self._create_element(
             aligned,
             element_id,
-            region,
+            locator,
+            provenance,
             text,
             source_type,
             visual_asset_id,
             issue_ids,
         )
-        self._register_element(element, text_value, block.score, page_id, region.region_id)
+        self._register_element(
+            element,
+            text_value,
+            block.score,
+            page_id,
+            locator.locator_id,
+        )
 
-    def _make_region(
+    def _make_locator(
         self,
         element_id: str,
-        page_id: str,
+        page_id: str | None,
+        group_index: int,
         block: RawMiddleBlock,
-        width: float,
-        height: float,
-    ) -> Region:
-        if block.bbox is None:
-            raise ValueError("当前 DocIR conversion 需要 middle block bbox")
-        return Region(
-            region_id=_stable("region", element_id, int(page_id.removeprefix("page_"))),
+        width: float | None,
+        height: float | None,
+    ) -> Locator:
+        if page_id is None:
+            return Locator(
+                locator_id=_stable("locator", element_id, "group", group_index),
+                kind="group",
+                container_id=f"group_{group_index:06d}",
+                container_index=group_index,
+                metadata={"source_format": self.source_file.suffix.lower().lstrip(".")},
+            )
+        if block.bbox is None or width is None or height is None:
+            raise ValueError("spatial page block 的 geometry 不完整")
+        return Locator(
+            locator_id=_stable("locator", element_id, "page", group_index),
+            kind="page",
+            container_id=page_id,
+            container_index=group_index,
             page_id=page_id,
             bbox=normalize_bbox(block.bbox, width, height),
             source_geometry=SourceGeometry(
@@ -414,6 +470,31 @@ class _MinerUConverter:
                 page_height=height,
             ),
         )
+
+    def _provenance(
+        self,
+        aligned: AlignedBlock,
+        group_index: int,
+    ) -> tuple[ElementProvenance, ...]:
+        output = [
+            ElementProvenance(
+                artifact_id=self.raw_asset_ids["middle"],
+                json_path=f"$.pdf_info[{group_index}]",
+                group_index=group_index,
+                block_index=aligned.middle.index,
+                source_anchor=("discarded_blocks" if aligned.discarded else "para_blocks"),
+            )
+        ]
+        if aligned.v2_index is not None:
+            output.append(
+                ElementProvenance(
+                    artifact_id=self.raw_asset_ids["content_list_v2"],
+                    json_path=f"$[{group_index}][{aligned.v2_index}]",
+                    group_index=group_index,
+                    block_index=aligned.v2_index,
+                )
+            )
+        return tuple(output)
 
     def _alignment_issue_ids(self, aligned: AlignedBlock, element_id: str, page_index: int) -> list[str]:
         mismatched = (
@@ -438,34 +519,24 @@ class _MinerUConverter:
             raise AlignmentError(issue.message)
         return [issue.issue_id]
 
-    def _merge_table_continuation(
+    def _record_unresolved_table_continuation(
         self,
-        aligned: AlignedBlock,
         element_id: str,
-        region: Region,
-        issue_ids: list[str],
         page_index: int,
-    ) -> bool:
-        if not _is_merged_table_continuation(aligned.middle, aligned.v2):
-            return False
-        owner_index = self.state.last_table_index
-        if owner_index is not None and isinstance(self.state.elements[owner_index], TableElement):
-            owner = self.state.elements[owner_index]
-            self.state.elements[owner_index] = owner.model_copy(update={"regions": owner.regions + (region,)})
-            return True
-
+    ) -> str:
+        """保留续表事实，但 MinerU 未给目标 ID 时不连接到“上一张表”。"""
         issue = QualityIssue(
-            issue_id=_stable("issue", "orphan_table_continuation", element_id),
-            code="orphan_table_continuation",
-            severity=Severity.ERROR if self.strict else Severity.WARNING,
-            message=f"page {page_index}: 跨页续表没有可合并的前置主表",
+            issue_id=_stable("issue", "table_continuation_target_unavailable", element_id),
+            code="table_continuation_target_unavailable",
+            severity=Severity.WARNING,
+            message=(
+                f"page {page_index}: MinerU 标出了跨页续表占位，但没有提供目标表 ID；"
+                "DocIR 保留独立元素和 provenance，不推断 owner"
+            ),
             object_id=element_id,
         )
         self.state.issues.append(issue)
-        issue_ids.append(issue.issue_id)
-        if self.strict:
-            raise ValueError(issue.message)
-        return False
+        return issue.issue_id
 
     def _record_text_origin_issue(self, element_id: str) -> str:
         issue = QualityIssue(
@@ -486,8 +557,7 @@ class _MinerUConverter:
         source_type: str,
         content: dict[str, Any],
         element_id: str,
-        page_id: str,
-        region_id: str,
+        locator_id: str,
         issue_ids: list[str],
     ) -> str | None:
         visual_path = _visual_path(content)
@@ -520,8 +590,7 @@ class _MinerUConverter:
                 media_type=mimetypes.guess_type(physical.name)[0] or "application/octet-stream",
                 byte_size=physical.stat().st_size,
                 sha256=visual_hash,
-                page_id=page_id,
-                region_id=region_id,
+                locator_ids=(locator_id,),
             )
         )
         return asset_id
@@ -530,7 +599,8 @@ class _MinerUConverter:
         self,
         aligned: AlignedBlock,
         element_id: str,
-        region: Region,
+        locator: Locator,
+        provenance: tuple[ElementProvenance, ...],
         text: TextContent | None,
         source_type: str,
         visual_asset_id: str | None,
@@ -539,21 +609,24 @@ class _MinerUConverter:
         content = _content(aligned.v2)
         role = _role(aligned)
         section_id = "section_root" if role != ElementRole.BODY else self.state.current_section
+        heading_level: int | None = None
         if source_type == "title":
-            section_id = self._start_section(element_id)
+            heading_level = self._explicit_heading_level(aligned, element_id, issue_ids)
+            if heading_level is not None:
+                section_id = self._start_section(element_id, heading_level)
         common: dict[str, Any] = {
             "element_id": element_id,
             "document_order": len(self.state.elements),
             "role": role,
             "section_id": section_id,
-            "regions": (region,),
+            "locators": (locator,),
+            "provenance": provenance,
             "text": text,
             "quality_issue_ids": tuple(issue_ids),
             "source_type": source_type,
         }
         if source_type == "title":
-            level = content.get("level") if isinstance(content.get("level"), int) else aligned.middle.level
-            return HeadingElement(**common, level=max(1, min(6, level or 1)))
+            return HeadingElement(**common, level=heading_level)
         if source_type in {
             "text",
             "paragraph",
@@ -561,6 +634,7 @@ class _MinerUConverter:
             "ref_text",
             "page_header",
             "header",
+            "page_footer",
             "page_number",
             "page_footnote",
             "page_aside_text",
@@ -573,7 +647,16 @@ class _MinerUConverter:
             return ListElement(**common, ordered=ordered, items=_list_items(content))
         if source_type == "table":
             html = content.get("html")
-            return TableElement(**common, html=html if isinstance(html, str) else None, asset_id=visual_asset_id)
+            return TableElement(
+                **common,
+                html=html if isinstance(html, str) else None,
+                asset_id=visual_asset_id,
+                metadata={
+                    key: value
+                    for key in ("table_type", "table_nest_level")
+                    if (value := content.get(key)) is not None
+                },
+            )
         if source_type in {"equation_interline", "interline_equation"}:
             latex = content.get("math_content")
             return FormulaElement(
@@ -582,16 +665,105 @@ class _MinerUConverter:
                 asset_id=visual_asset_id,
             )
         if source_type in {"image", "chart"}:
-            return FigureElement(**common, asset_id=visual_asset_id)
+            structured = content.get("content") if source_type == "chart" else None
+            return FigureElement(
+                **common,
+                asset_id=visual_asset_id,
+                structured_content=(
+                    structured if isinstance(structured, str) and structured.strip() else None
+                ),
+            )
         if source_type in {"code", "algorithm"}:
             language = content.get("code_language")
             return CodeElement(**common, language=language if isinstance(language, str) and language else None)
         return self._unknown_element(aligned, common, source_type, issue_ids)
 
-    def _start_section(self, title_element_id: str) -> str:
+    def _explicit_heading_level(
+        self,
+        aligned: AlignedBlock,
+        element_id: str,
+        issue_ids: list[str],
+    ) -> int | None:
+        """只接受 MinerU 明确且一致的 level，不从文字或版面补全。"""
+
+        raw_v2_level = _content(aligned.v2).get("level")
+        raw_middle_level = aligned.middle.level
+        supplied = [
+            value
+            for value in (raw_v2_level, raw_middle_level)
+            if value is not None
+        ]
+        valid = [
+            value
+            for value in supplied
+            if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 6
+        ]
+        if not supplied:
+            issue_ids.append(
+                self._record_heading_level_issue(
+                    element_id,
+                    "heading_level_missing",
+                    "MinerU 未提供标题 level；DocIR 保留 heading，但不创建推断章节",
+                )
+            )
+            return None
+        if len(valid) != len(supplied):
+            issue_ids.append(
+                self._record_heading_level_issue(
+                    element_id,
+                    "heading_level_invalid",
+                    f"MinerU 标题 level 非法: middle={raw_middle_level!r}, v2={raw_v2_level!r}",
+                )
+            )
+            return None
+        if len(set(valid)) != 1:
+            issue_ids.append(
+                self._record_heading_level_issue(
+                    element_id,
+                    "heading_level_conflict",
+                    f"MinerU 两份产物的标题 level 冲突: middle={raw_middle_level}, v2={raw_v2_level}",
+                )
+            )
+            return None
+        return valid[0]
+
+    def _record_heading_level_issue(
+        self,
+        element_id: str,
+        code: str,
+        message: str,
+    ) -> str:
+        issue = QualityIssue(
+            issue_id=_stable("issue", code, element_id),
+            code=code,
+            severity=Severity.WARNING,
+            message=message,
+            object_id=element_id,
+        )
+        self.state.issues.append(issue)
+        return issue.issue_id
+
+    def _start_section(self, title_element_id: str, level: int) -> str:
+        """按 MinerU 的显式 heading level 维护文档顺序中的章节栈。"""
+
         section_id = _stable("section", title_element_id)
-        self.state.sections_meta[section_id] = ("section_root", title_element_id)
+        parent_level = max(
+            (candidate for candidate in self.state.active_sections_by_level if candidate < level),
+            default=None,
+        )
+        parent_section_id = (
+            self.state.active_sections_by_level[parent_level]
+            if parent_level is not None
+            else "section_root"
+        )
+        self.state.sections_meta[section_id] = (parent_section_id, title_element_id)
         self.state.section_elements[section_id] = []
+        self.state.active_sections_by_level = {
+            candidate: active_section
+            for candidate, active_section in self.state.active_sections_by_level.items()
+            if candidate < level
+        }
+        self.state.active_sections_by_level[level] = section_id
         self.state.current_section = section_id
         return section_id
 
@@ -622,20 +794,23 @@ class _MinerUConverter:
         element: ElementBase,
         text_value: str,
         confidence: float | None,
-        page_id: str,
-        region_id: str,
+        page_id: str | None,
+        locator_id: str,
     ) -> None:
         self.state.elements.append(element)
-        if isinstance(element, TableElement):
-            self.state.last_table_index = len(self.state.elements) - 1
         section_id = element.section_id or "section_root"
         self.state.section_elements.setdefault(section_id, []).append(element.element_id)
-        if element.role == ElementRole.PAGE_NUMBER and text_value and page_id not in self.state.printed_pages:
+        if (
+            page_id is not None
+            and element.role == ElementRole.PAGE_NUMBER
+            and text_value
+            and page_id not in self.state.printed_pages
+        ):
             self.state.printed_pages[page_id] = PrintedPageNumber(
                 text=text_value,
                 origin=TextOrigin.NATIVE_OR_OCR_UNVERIFIED,
                 confidence=confidence,
-                region_id=region_id,
+                locator_id=locator_id,
             )
 
     def _build_document(self) -> Document:
@@ -653,6 +828,7 @@ class _MinerUConverter:
             for section_id, metadata in self.state.sections_meta.items()
         )
         page_indexes = [page.page_index for page in pages]
+        group_indexes = [page.page_idx for page in self.bundle.middle.pdf_info]
         validation_status = (
             ValidationStatus.PASSED_WITH_WARNINGS if self.state.issues else ValidationStatus.PASSED
         )
@@ -674,18 +850,22 @@ class _MinerUConverter:
                     self.bundle.middle.version_name,
                     self.bundle.middle.backend,
                     self.config_hash,
-                    min(page_indexes),
-                    max(page_indexes),
+                    min(group_indexes),
+                    max(group_indexes),
                 ),
                 parser_name="MinerU",
                 parser_version=self.bundle.middle.version_name or "unknown",
                 backend=self.bundle.middle.backend,
-                page_range=PageRange(start=min(page_indexes), end=max(page_indexes)),
+                page_range=(
+                    PageRange(start=min(page_indexes), end=max(page_indexes))
+                    if page_indexes
+                    else None
+                ),
                 config=self.config,
                 config_sha256=self.config_hash,
-                raw_artifact_ids=self.raw_asset_ids,
+                raw_artifact_ids=tuple(self.raw_asset_ids.values()),
             ),
-            source_page_count=self.source_page_count,
+            source_page_count=self.source_page_count if pages else None,
             parsed_page_count=len(pages),
             pages=pages,
             sections=sections,

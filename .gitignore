@@ -82,3 +82,11 @@ run.sh
 gpu_proxy.sh
 
 frontend-web.tar.gz
+
+artifacts
+runtime
+backend/agent/DocIR/mineru_adapter_samples
+backend/agent/DocIR/CS_Book_mineru
+backend/agent/DocIR/CS_Book
+backend/agent/DocIR/tests
+backend/agent/rag/tests

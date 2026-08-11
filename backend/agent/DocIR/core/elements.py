@@ -2,22 +2,32 @@
 
 """
 
-这个文件干什么：DocIR V0.2 判别联合内容元素。
+这个文件干什么：DocIR 判别联合内容元素。
 
 直白点说就是：定义标题、段落、列表、表格、公式、图片和代码等不同内容块长什么样。
 
-DocIR V0.2 判别联合内容元素。
+DocIR 判别联合内容元素。
 """
 
 from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-from pydantic import Field, model_validator
+from pydantic import Field, JsonValue
 
 from .enums import ElementRole
-from .geometry import Region, StrictModel
+from .geometry import Locator, StrictModel
 from .text import TextContent
+
+
+class ElementProvenance(StrictModel):
+    """Element 到 parser 原始产物中位置的轻量可回查锚点。"""
+
+    artifact_id: str = Field(min_length=1)
+    json_path: str | None = None
+    group_index: int | None = Field(default=None, ge=0)
+    block_index: int | None = Field(default=None, ge=0)
+    source_anchor: str | None = None
 
 
 class ElementBase(StrictModel):
@@ -25,24 +35,24 @@ class ElementBase(StrictModel):
     document_order: int = Field(ge=0)
     role: ElementRole = ElementRole.BODY
     section_id: str | None = None
-    regions: tuple[Region, ...]
+    locators: tuple[Locator, ...] = ()
+    provenance: tuple[ElementProvenance, ...] = ()
     text: TextContent | None = None
     parent_element_id: str | None = None
     caption_element_ids: tuple[str, ...] = ()
     footnote_element_ids: tuple[str, ...] = ()
     quality_issue_ids: tuple[str, ...] = ()
     source_type: str | None = None
-
-    @model_validator(mode="after")
-    def needs_region(self) -> "ElementBase":
-        if not self.regions:
-            raise ValueError("element 至少需要一个 Region")
-        return self
+    metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    enrichment_revision_id: str | None = None
+    related_asset_ids: tuple[str, ...] = ()
 
 
 class HeadingElement(ElementBase):
     kind: Literal["heading"] = "heading"
-    level: int = Field(ge=1, le=6)
+    # Parser 没有明确给出标题级别时保持 None；DocIR 不根据字号、编号或
+    # 相邻标题猜测层级。
+    level: int | None = Field(default=None, ge=1, le=6)
 
 
 class ParagraphElement(ElementBase):
@@ -70,6 +80,7 @@ class FormulaElement(ElementBase):
 class FigureElement(ElementBase):
     kind: Literal["figure"] = "figure"
     asset_id: str | None = None
+    structured_content: str | None = None
 
 
 class CodeElement(ElementBase):

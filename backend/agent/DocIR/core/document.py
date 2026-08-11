@@ -1,11 +1,11 @@
 # backend/agent/DocIR/core/document.py
 
 """
-这个文件干什么：DocIR V0.2 顶层快照与跨对象不变量。
+这个文件干什么：DocIR 顶层快照与跨对象不变量。
 
 直白点说就是：规定一整份 DocIR 文档由哪些对象组成，并检查页码、元素、章节和资源之间是否互相对得上。
 
-DocIR V0.2 顶层快照与跨对象不变量。
+DocIR 顶层快照与跨对象不变量。
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ class ParseRevision(StrictModel):
     backend: str | None = None
     method: str | None = None
     language_hints: tuple[str, ...] = ()
-    page_range: PageRange
+    page_range: PageRange | None = None
     config: dict[str, JsonValue] = Field(default_factory=dict)
     config_sha256: str
     models: tuple[ModelReference, ...] = ()
@@ -88,34 +88,55 @@ class ParseRevision(StrictModel):
         return value
 
 
+class EnrichmentRevision(StrictModel):
+    """一次可审计的模型派生内容生成记录。"""
+
+    enrichment_revision_id: str
+    kind: Literal["vlm_description"] = "vlm_description"
+    provider: str
+    model_name: str
+    model_revision: str | None = None
+    prompt_sha256: str
+    asset_sha256s: tuple[str, ...] = ()
+
+    @field_validator("prompt_sha256")
+    @classmethod
+    def prompt_hash(cls, value: str) -> str:
+        if not SHA256.fullmatch(value):
+            raise ValueError("prompt_sha256 格式错误")
+        return value
+
+    @field_validator("asset_sha256s")
+    @classmethod
+    def asset_hashes(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not SHA256.fullmatch(value) for value in values):
+            raise ValueError("asset_sha256s 包含无效 SHA-256")
+        if len(values) != len(set(values)):
+            raise ValueError("asset_sha256s 不能重复")
+        return values
+
+
 class PrintedPageNumber(StrictModel):
     text: str
     origin: TextOrigin
     confidence: float | None = Field(default=None, ge=0, le=1)
-    region_id: str | None = None
+    locator_id: str | None = None
 
 
 class Page(StrictModel):
     page_id: str
     page_index: int = Field(ge=0)
-    display_page_no: int = Field(ge=1)
+    display_page_no: int | None = Field(default=None, ge=1)
     page_label: str | None = None
     printed_page: PrintedPageNumber | None = None
     width: float = Field(gt=0)
     height: float = Field(gt=0)
-    unit: Literal["pt"] = "pt"
+    unit: str | None = None
     rotation_degrees: Literal[0, 90, 180, 270] = 0
     crop_box: NormalizedBox | None = None
     page_image_asset_id: str | None = None
     transforms: tuple[CoordinateTransform, ...] = ()
     quality_issue_ids: tuple[str, ...] = ()
-
-    @model_validator(mode="after")
-    def display_number(self) -> "Page":
-        if self.display_page_no != self.page_index + 1:
-            raise ValueError("display_page_no 必须等于 page_index + 1")
-        return self
-
 
 class Section(StrictModel):
     section_id: str
@@ -131,8 +152,7 @@ class Asset(StrictModel):
     media_type: str
     byte_size: int = Field(ge=0)
     sha256: str
-    page_id: str | None = None
-    region_id: str | None = None
+    locator_ids: tuple[str, ...] = ()
     quality_issue_ids: tuple[str, ...] = ()
 
     @field_validator("path")
@@ -170,7 +190,7 @@ class _DocumentIndex:
 
     page_ids: frozenset[str]
     element_by_id: dict[str, ElementBase]
-    region_ids: frozenset[str]
+    locator_ids: frozenset[str]
     asset_ids: frozenset[str]
     section_by_id: dict[str, Section]
     issue_ids: frozenset[str]
@@ -178,16 +198,16 @@ class _DocumentIndex:
 
 class Document(StrictModel):
     schema_name: Literal["docir"] = "docir"
-    schema_version: Literal["0.2"] = "0.2"
     document_id: str
     created_at: datetime
     source: SourceVersion
     parse_revision: ParseRevision
+    enrichment_revisions: tuple[EnrichmentRevision, ...] = ()
     title: str | None = None
     languages: tuple[str, ...] = ()
-    source_page_count: int = Field(ge=1)
-    parsed_page_count: int = Field(ge=1)
-    pages: tuple[Page, ...]
+    source_page_count: int | None = Field(default=None, ge=1)
+    parsed_page_count: int = Field(default=0, ge=0)
+    pages: tuple[Page, ...] = ()
     sections: tuple[Section, ...] = ()
     elements: tuple[Element, ...]
     assets: tuple[Asset, ...]
@@ -216,7 +236,9 @@ def _build_document_index(document: Document) -> _DocumentIndex:
     return _DocumentIndex(
         page_ids=frozenset(page.page_id for page in document.pages),
         element_by_id=elements,
-        region_ids=frozenset(region.region_id for element in document.elements for region in element.regions),
+        locator_ids=frozenset(
+            locator.locator_id for element in document.elements for locator in element.locators
+        ),
         asset_ids=frozenset(asset.asset_id for asset in document.assets),
         section_by_id={section.section_id: section for section in document.sections},
         issue_ids=frozenset(issue.issue_id for issue in document.quality_issues),
@@ -226,7 +248,7 @@ def _build_document_index(document: Document) -> _DocumentIndex:
 def _validate_page_invariants(document: Document, index: _DocumentIndex) -> None:
     if document.parsed_page_count != len(document.pages):
         raise ValueError("parsed_page_count 必须等于 pages 的数量")
-    if document.source_page_count < document.parsed_page_count:
+    if document.source_page_count is not None and document.source_page_count < document.parsed_page_count:
         raise ValueError("source_page_count 不能小于 parsed_page_count")
 
     page_ids = [page.page_id for page in document.pages]
@@ -235,10 +257,15 @@ def _validate_page_invariants(document: Document, index: _DocumentIndex) -> None
     _require_unique(page_indexes, "page_index 不能重复")
     if page_indexes != sorted(page_indexes):
         raise ValueError("pages 必须按原始 page_index 严格递增")
-    if any(page_index >= document.source_page_count for page_index in page_indexes):
+    if document.source_page_count is not None and any(
+        page_index >= document.source_page_count for page_index in page_indexes
+    ):
         raise ValueError("page_index 超出 source_page_count")
     page_range = document.parse_revision.page_range
-    if any(page_index < page_range.start or page_index > page_range.end for page_index in page_indexes):
+    if page_range is not None and any(
+        page_index < page_range.start or page_index > page_range.end
+        for page_index in page_indexes
+    ):
         raise ValueError("page_index 超出 parse_revision.page_range")
 
 
@@ -249,10 +276,30 @@ def _validate_element_invariants(document: Document, index: _DocumentIndex) -> N
     if orders != list(range(len(orders))):
         raise ValueError("document_order 必须从 0 连续递增")
 
-    region_ids = [region.region_id for element in document.elements for region in element.regions]
-    _require_unique(region_ids, "region_id 不能重复")
-    if any(region.page_id not in index.page_ids for element in document.elements for region in element.regions):
-        raise ValueError("Region.page_id 引用了不存在的页面")
+    locator_ids = [
+        locator.locator_id for element in document.elements for locator in element.locators
+    ]
+    _require_unique(locator_ids, "locator_id 不能重复")
+    enrichment_ids = [
+        revision.enrichment_revision_id for revision in document.enrichment_revisions
+    ]
+    _require_unique(enrichment_ids, "enrichment_revision_id 不能重复")
+    enrichment_id_set = set(enrichment_ids)
+    if any(
+        element.enrichment_revision_id is not None
+        and element.enrichment_revision_id not in enrichment_id_set
+        for element in document.elements
+    ):
+        raise ValueError("Element.enrichment_revision_id 引用了不存在的 enrichment")
+    if any(
+        locator.page_id is not None and locator.page_id not in index.page_ids
+        for element in document.elements
+        for locator in element.locators
+    ):
+        raise ValueError("Locator.page_id 引用了不存在的页面")
+    for element in document.elements:
+        if any(item.artifact_id not in index.asset_ids for item in element.provenance):
+            raise ValueError(f"Element.provenance 引用了不存在的资产: {element.element_id}")
 
 
 def _validate_asset_invariants(document: Document, index: _DocumentIndex) -> None:
@@ -266,16 +313,23 @@ def _validate_asset_invariants(document: Document, index: _DocumentIndex) -> Non
         raise ValueError("source.original_asset_id 必须引用 original 类型资产")
     if any(asset_id not in index.asset_ids for asset_id in document.parse_revision.raw_artifact_ids):
         raise ValueError("parse_revision.raw_artifact_ids 引用了不存在的资产")
-    if any(asset.page_id is not None and asset.page_id not in index.page_ids for asset in document.assets):
-        raise ValueError("Asset.page_id 引用了不存在的页面")
-    if any(asset.region_id is not None and asset.region_id not in index.region_ids for asset in document.assets):
-        raise ValueError("Asset.region_id 引用了不存在的区域")
+    if any(
+        locator_id not in index.locator_ids
+        for asset in document.assets
+        for locator_id in asset.locator_ids
+    ):
+        raise ValueError("Asset.locator_ids 引用了不存在的定位")
 
     for element in document.elements:
         linked_asset_ids: tuple[str | None, ...] = ()
         if hasattr(element, "asset_id"):
             linked_asset_ids = (element.asset_id,)
-        if any(asset_id is not None and asset_id not in index.asset_ids for asset_id in linked_asset_ids):
+        related = element.related_asset_ids
+        _require_unique(list(related), f"Element.related_asset_ids 不能重复: {element.element_id}")
+        if any(
+            asset_id is not None and asset_id not in index.asset_ids
+            for asset_id in (*linked_asset_ids, *related)
+        ):
             raise ValueError(f"Element.asset_id 引用了不存在的资产: {element.element_id}")
 
 

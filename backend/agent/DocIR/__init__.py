@@ -2,11 +2,11 @@
 
 """
 
-这个文件干什么：DocIR 的正式公共入口；当前唯一线格式为 schema_version 0.2。
+这个文件干什么：当前唯一 DocIR contract 的正式公共入口。
 
-直白点说就是：其他代码要使用 DocIR 数据模型时从这里统一导入，并明确当前只认 V0.2 格式。
+直白点说就是：其他代码要使用 DocIR 数据模型时从这里统一导入。
 
-DocIR 的正式公共入口；当前唯一线格式为 schema_version 0.2。
+当前唯一 DocIR contract 的正式公共入口。
 """
 
 from .core import (
@@ -15,8 +15,10 @@ from .core import (
     CodeElement,
     CoordinateTransform,
     Document,
+    EnrichmentRevision,
     Element,
     ElementBase,
+    ElementProvenance,
     ElementRole,
     FigureElement,
     FormulaElement,
@@ -32,7 +34,7 @@ from .core import (
     Point,
     PrintedPageNumber,
     QualityIssue,
-    Region,
+    Locator,
     Section,
     Severity,
     SourceGeometry,
@@ -55,8 +57,10 @@ __all__ = [
     "CodeElement",
     "CoordinateTransform",
     "Document",
+    "EnrichmentRevision",
     "Element",
     "ElementBase",
+    "ElementProvenance",
     "ElementRole",
     "FigureElement",
     "FormulaElement",
@@ -72,7 +76,7 @@ __all__ = [
     "Point",
     "PrintedPageNumber",
     "QualityIssue",
-    "Region",
+    "Locator",
     "Section",
     "Severity",
     "SourceGeometry",
