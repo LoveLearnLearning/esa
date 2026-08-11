@@ -35,6 +35,18 @@ from .inference import (
 from .retrieval.context import ContextBuilder, EvidenceAssembler
 from .retrieval.contracts import ContextLevel, RetrievalConfig, SearchResponse
 from .retrieval.reranking import CandidateReranker, CandidateSelection
+from .retrieval.query import (
+    GlossaryQueryExpansion,
+    NullQueryTranslator,
+    QueryExpander,
+    QueryIntent,
+    QueryProcessor,
+    QueryTranslator,
+    QueryVariants,
+    RuleBasedQueryIntent,
+    RuleBasedQueryProcessor,
+    StaticQueryTranslator,
+)
 from .retrieval.routing import RouteResult, RouteRetriever
 from .retrieval.service import RetrievalService
 
@@ -53,13 +65,23 @@ __all__ = [
     "LexicalOverlapReranker",
     "LoadedChunkCollection",
     "QdrantIndex",
+    "GlossaryQueryExpansion",
+    "NullQueryTranslator",
+    "QueryExpander",
+    "QueryIntent",
+    "QueryProcessor",
+    "QueryTranslator",
+    "QueryVariants",
     "ReferenceIndex",
     "RetrievalConfig",
     "RetrievalMetrics",
     "RetrievalService",
     "RouteResult",
     "RouteRetriever",
+    "RuleBasedQueryProcessor",
+    "RuleBasedQueryIntent",
     "SearchResponse",
+    "StaticQueryTranslator",
     "SentenceTransformersEmbeddingProvider",
     "SentenceTransformersReranker",
     "TransformersEmbeddingProvider",

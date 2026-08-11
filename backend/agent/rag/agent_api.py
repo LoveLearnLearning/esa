@@ -115,6 +115,14 @@ def _result_payload(hit: SearchHit, rank: int) -> dict[str, Any]:
     """把一个正式 SearchHit 转换为 Agent 工具结果。"""
 
     primary = hit.evidence[0]
+    locator = primary.locators[0] if primary.locators else None
+    page = (
+        int(locator["container_index"]) + 1
+        if locator
+        and locator.get("kind") == "page"
+        and isinstance(locator.get("container_index"), int)
+        else None
+    )
     return {
         "content": hit.context_text,
         "score": hit.rerank_score if hit.rerank_score is not None else hit.rrf_score,
@@ -122,7 +130,8 @@ def _result_payload(hit: SearchHit, rank: int) -> dict[str, Any]:
         "rank": rank,
         "source": primary.document_name,
         "section": " / ".join(primary.section_path) or None,
-        "page": primary.page_indexes[0] + 1 if primary.page_indexes else None,
+        "page": page,
+        "location": dict(locator) if locator else None,
         "chunk_id": hit.chunk_id,
         "rrf_score": hit.rrf_score,
         "rerank_score": hit.rerank_score,
@@ -141,5 +150,26 @@ def _source_label(hit: SearchHit, rank: int) -> str:
 
     primary = hit.evidence[0]
     section = " / ".join(primary.section_path) or "未知章节"
-    pages = ", ".join(str(index + 1) for index in primary.page_indexes) or "未知"
-    return f"【来源 {rank}】{primary.document_name} · {section} · 第{pages}页"
+    locations = tuple(_locator_label(locator) for locator in primary.locators)
+    location = "、".join(dict.fromkeys(label for label in locations if label))
+    suffix = f" · {location}" if location else ""
+    return f"【来源 {rank}】{primary.document_name} · {section}{suffix}"
+
+
+def _locator_label(locator: Any) -> str:
+    """把可选 Locator 转成保守的来源描述，不臆测 parser group 语义。"""
+
+    if not isinstance(locator, dict):
+        return ""
+    label = locator.get("label")
+    if isinstance(label, str) and label.strip():
+        return label.strip()
+    index = locator.get("container_index")
+    if locator.get("kind") == "page" and isinstance(index, int):
+        return f"第{index + 1}页"
+    if locator.get("kind") == "group" and isinstance(index, int):
+        metadata = locator.get("metadata")
+        source_format = metadata.get("source_format") if isinstance(metadata, dict) else None
+        prefix = str(source_format).upper() if source_format else "文档"
+        return f"{prefix} 解析组 {index + 1}"
+    return str(locator.get("container_id") or "")

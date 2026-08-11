@@ -2,11 +2,11 @@
 
 """
 
-这个文件干什么：批量执行 MinerU，并把支持的文档语料转换为 DocIR V0.2 基线。
+这个文件干什么：批量执行 MinerU，并把支持的文档语料转换为 DocIR 基线。
 
 直白点说就是：批量找出 MinerU 支持的文件，调用 MinerU 解析，再转换、校验并整理成可长期保存的 DocIR 语料。
 
-批量执行 MinerU，并把支持的文档语料转换为 DocIR V0.2 基线。
+批量执行 MinerU，并把支持的文档语料转换为 DocIR 基线。
 """
 
 from __future__ import annotations
@@ -254,8 +254,8 @@ def document_metrics(document: Any) -> dict[str, Any]:
         "nonempty_text_rate": round(nonempty / total, 6) if total else 0.0,
         "logical_tables": len(tables),
         "empty_logical_table_html": sum(not (element.html or "").strip() for element in tables),
-        "table_regions": sum(len(element.regions) for element in tables),
-        "cross_page_table_continuations": sum(max(0, len(element.regions) - 1) for element in tables),
+        "table_locators": sum(len(element.locators) for element in tables),
+        "cross_page_table_continuations": sum(max(0, len(element.locators) - 1) for element in tables),
         "native_or_ocr_unverified_layers": unverified_layers,
     }
 
@@ -264,7 +264,8 @@ def element_preview(element: Any) -> str:
     text = ""
     if element.text and element.text.layers:
         text = element.text.layers[0].text.replace("\n", " ").strip()
-    return f"- `{element.document_order}` `{element.kind}` source=`{element.source_type}` page=`{element.regions[0].page_id}` — {text[:180]}"
+    location = element.locators[0].container_id if element.locators else "document"
+    return f"- `{element.document_order}` `{element.kind}` source=`{element.source_type}` location=`{location}` — {text[:180]}"
 
 
 def write_preview(path: Path, document: Any) -> None:
@@ -316,14 +317,15 @@ def convert_one(
     source_pages: int | None,
 ) -> tuple[Any, dict[str, Any]]:
     bundle = load_bundle(parse_dir)
-    if source_pages is None:
-        raise ValueError(
-            f"{source.suffix.lower()} 尚无可验证的 source_page_count 语义"
-        )
     document = convert_bundle(bundle, source, source_page_count=source_pages, strict=False)
     docir_root.mkdir(parents=True, exist_ok=True)
     link_or_copy(source, docir_root / "assets" / source.name)
-    for raw_path in (bundle.middle_path, bundle.content_v2_path, bundle.model_path):
+    for raw_path in (
+        bundle.middle_path,
+        bundle.content_v2_path,
+        bundle.content_list_path,
+        bundle.model_path,
+    ):
         if raw_path is not None:
             link_or_copy(raw_path, docir_root / "raw" / raw_path.name)
     materialize_visual_assets(document, bundle, docir_root)
@@ -394,8 +396,8 @@ def aggregate(results: Iterable[dict[str, Any]]) -> dict[str, Any]:
             item.get("metrics", {}).get("docir", {}).get("empty_logical_table_html", 0)
             for item in successful
         ),
-        "table_regions_total": sum(
-            item.get("metrics", {}).get("docir", {}).get("table_regions", 0)
+        "table_locators_total": sum(
+            item.get("metrics", {}).get("docir", {}).get("table_locators", 0)
             for item in successful
         ),
         "source_image_files_total": sum(
@@ -439,7 +441,7 @@ def write_report(path: Path, run_id: str, results: list[dict[str, Any]]) -> None
     totals = aggregate(results)
     strict_complete = totals["documents_success"] > 0 and totals["strict_passed"] == totals["documents_success"]
     lines = [
-        f"# 全量 PDF → MinerU → DocIR V0.2 评估：{run_id}", "",
+        f"# 全量语料 → MinerU → DocIR 评估：{run_id}", "",
         "## 结论摘要", "",
         f"- 7 份 PDF 均完成实际尝试；MinerU 和宽松 DocIR 转换成功 `{totals['documents_success']}/{totals['documents_total']}`。",
         f"- 完整源文件与 DocIR 页面均为 `{totals['parsed_pages_total']}/{totals['source_pages_total']}` 页；总 MinerU 时间 `{totals['mineru_elapsed_seconds'] / 60:.1f}` 分钟。",
@@ -447,7 +449,7 @@ def write_report(path: Path, run_id: str, results: list[dict[str, Any]]) -> None
         f"- 严格审计通过 `{totals['strict_passed']}/{totals['documents_success']}`；"
         + ("全量通过证明本语料已观测类型和对齐约束均已被显式支持。" if strict_complete else "仍有 bundle 不满足严格转换约束。"),
         f"- middle 主体/纳入 discarded 后/V2 为 `{totals['middle_blocks_total']}/{totals['middle_blocks_with_discarded_total']}/{totals['v2_blocks_total']}` 块，实测最大 bbox 误差 `{totals['strict_alignment_max_bbox_delta']:.3f}`（阈值 5），累计 `{totals['quality_issues'].get('middle_v2_mismatch', 0)}` 条对齐警告。",
-        f"- 107 个 table raw block 中 `{totals['table_continuation_blocks_total']}` 个是 `lines_deleted=true` 的跨页续表；DocIR 形成 `{totals['logical_tables_total']}` 个逻辑表格、`{totals['table_regions_total']}` 个页面区域。",
+        f"- 107 个 table raw block 中 `{totals['table_continuation_blocks_total']}` 个是 `lines_deleted=true` 的跨页续表；DocIR 形成 `{totals['logical_tables_total']}` 个逻辑表格、`{totals['table_locators_total']}` 个来源定位。",
         f"- MinerU 保留 `{totals['source_image_files_total']}` 个图片文件；其中 `{totals['visual_assets_total']}` 个有效视觉引用已写入 DocIR，`{totals['linked_visual_elements_total']}` 个 Table/Figure 元素直接持有 asset_id；缺失/哈希错误为 `{totals['missing_assets_total']}/{totals['asset_hash_mismatches_total']}`。", "",
         "## 全量类型分布", "",
         f"- MinerU para block：`{totals['block_types']}`",
@@ -484,13 +486,13 @@ def write_report(path: Path, run_id: str, results: list[dict[str, Any]]) -> None
         "- **规范结构：通过。** 所有宽松 DocIR 都通过 Pydantic 全局校验、JSON 往返和资产 SHA-256 校验。",
         "- **文字/标题覆盖：通过。** `title` 与 `paragraph` 已分别成为 HeadingElement 和 ParagraphElement。",
         "- **已观测语义覆盖：通过。** table、image、equation、list/index、code/algorithm、chart 均映射为明确 DocIR 联合类型，UnknownElement 为 0。",
-        f"- **跨页表格：通过。** `{totals['table_continuation_blocks_total']}` 个续表块已合并为 TableElement 的额外 Region；`{totals['logical_tables_total']}` 个逻辑主表中空 HTML 为 `{totals['empty_logical_table_html_total']}`。",
+        f"- **跨页表格：通过。** `{totals['table_continuation_blocks_total']}` 个续表块已合并为 TableElement 的额外 Locator；`{totals['logical_tables_total']}` 个逻辑主表中空 HTML 为 `{totals['empty_logical_table_html_total']}`。",
         f"- **对齐可靠性：本语料严格通过。** 纳入 discarded 后逐页基数相等，使用类型别名、文本摘要和 0..1000 归一化 bbox 一对一匹配；实测最大误差 `{totals['strict_alignment_max_bbox_delta']:.3f}`，严格阈值为 5。",
         "- **页面角色：通过。** discarded 中的 page_header/page_number 已进入 HEADER/PAGE_NUMBER role，页码同时写入 Page.printed_page。",
-        f"- **视觉资产：通过。** MinerU 的 `{totals['source_image_files_total']}` 张图片全部保留；`{totals['visual_assets_total']}` 个非空有效 `image_source.path` 已物理写入 DocIR 并带 SHA-256，Table/Figure 直接关联 `{totals['linked_visual_elements_total']}` 个 asset_id，32 个公式图片以 page_id/region_id 关联（V0.2 FormulaElement 暂无 asset_id 字段）。",
+        f"- **视觉资产：通过。** MinerU 的 `{totals['source_image_files_total']}` 张图片全部保留；`{totals['visual_assets_total']}` 个非空有效 `image_source.path` 已物理写入 DocIR 并带 SHA-256，Table/Figure 直接关联 `{totals['linked_visual_elements_total']}` 个 asset_id。",
         f"- **文字来源：事实与策略已分离。** `{totals['quality_issues'].get('text_origin_unverified', 0)}` 个含文字元素使用 `native_or_ocr_unverified`，不可逐字引用；下游按 OCR 风险处理。", "",
         "## 转换器下一步代码优先级", "",
-        "1. 若要让公式元素直接持有视觉引用，为 FormulaElement 增加可选 asset_id；当前公式图片已作为 Asset 保留并通过 Region 关联。",
+        "1. 对 parser 尚未提供稳定语义的定位信息继续保留原始 provenance，不补造 geometry。",
         "2. 将非空 caption/footnote 拆成独立 CAPTION/FOOTNOTE 元素并建立反向引用；当前只进入主元素文本。",
         "3. 增加可信运行清单或 span 级证据，区分 native_text 与 ocr_text。",
         "4. 用新版 MinerU 和新文档类型扩展严格回归，不把本次 7 份语料覆盖外推成通用完备性。", "",
@@ -589,7 +591,7 @@ def main(argv: list[str] | None = None) -> int:
     report_path = WORKSPACE / "docs/reports" / f"DOCIR_FULL_CORPUS_EVALUATION_{args.run_id}.md"
     mineru_run.mkdir(parents=True, exist_ok=True)
     docir_run.mkdir(parents=True, exist_ok=True)
-    export_json_schema(docir_run / "docir-v0.2.schema.json")
+    export_json_schema(docir_run / "docir.schema.json")
     results = []
     for source in discover_documents(args.input_dir):
         try:

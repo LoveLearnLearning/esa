@@ -21,6 +21,8 @@ from backend.agent.DocIR.core.enums import TextOrigin
 from backend.agent.DocIR.core.text import TextLayer
 
 from .models import ChunkConfig, ChunkEvidence, canonical_sha256
+from .cleaning import RetrievalCleaner, RetrievalText
+from .models import ContentRole
 from .table import table_text_groups
 from .text import split_text_spans
 
@@ -35,6 +37,8 @@ class Fragment:
     section_path: tuple[str, ...]
     text: str
     evidence: ChunkEvidence
+    content_role: ContentRole
+    retrieval_enabled: bool
     whole_element: bool
     table: bool = False
 
@@ -52,6 +56,19 @@ class Draft:
         """返回用于 BM25 正文和上下文的组合文本。"""
 
         return "\n\n".join(item.text for item in self.fragments)
+
+    @property
+    def content_role(self) -> ContentRole:
+        """返回草稿统一的检索角色。"""
+
+        roles = {item.content_role for item in self.fragments}
+        if len(roles) != 1:
+            raise ValueError("一个 Draft 不能混合多个 content role")
+        return next(iter(roles))
+
+    @property
+    def retrieval_enabled(self) -> bool:
+        return all(item.retrieval_enabled for item in self.fragments)
 
 
 def primary_text_layer(element: ElementBase) -> TextLayer | None:
@@ -75,14 +92,7 @@ class ElementFragmentFactory:
 
     document: Document
     config: ChunkConfig
-    _page_indexes: dict[str, int] = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "_page_indexes",
-            {page.page_id: page.page_index for page in self.document.pages},
-        )
+    cleaner: RetrievalCleaner = field(default_factory=RetrievalCleaner)
 
     def build(
         self,
@@ -143,26 +153,72 @@ class ElementFragmentFactory:
     ) -> list[Fragment]:
         """切分文本并为每个跨度生成一条证据。"""
 
-        spans = split_text_spans(source, self.config.max_chars)
-        return [
-            Fragment(
-                element_id=element.element_id,
-                kind=element.kind,
-                section_id=section_id,
-                section_path=section_path,
-                text=text,
-                evidence=self._evidence(
-                    element,
-                    text,
-                    derivation,
-                    start=start if keep_offsets else None,
-                    end=end if keep_offsets else None,
-                    sequence=index,
-                ),
-                whole_element=len(spans) == 1,
+        spans = split_text_spans(
+            source,
+            self.config.max_chars,
+            min_chars=self.config.min_chars,
+            overlap_sentences=self.config.fragment_overlap_sentences,
+        )
+        fitted: list[tuple[str, int, int, RetrievalText]] = []
+        for raw_text, start, end in spans:
+            pending = [(raw_text, start, end)]
+            while pending:
+                candidate, candidate_start, candidate_end = pending.pop(0)
+                cleaned = self.cleaner.clean(element, candidate, section_path)
+                if len(cleaned.normalized_text) <= self.config.max_chars:
+                    fitted.append(
+                        (candidate, candidate_start, candidate_end, cleaned)
+                    )
+                    continue
+                split_limit = max(
+                    1,
+                    min(
+                        len(candidate) - 1,
+                        len(candidate)
+                        * self.config.max_chars
+                        // len(cleaned.normalized_text),
+                    ),
+                )
+                subdivisions = split_text_spans(
+                    candidate,
+                    split_limit,
+                    min_chars=min(self.config.min_chars, split_limit),
+                )
+                if len(subdivisions) < 2:
+                    raise ValueError("规范化后的文本无法切入 max_chars")
+                pending[0:0] = [
+                    (
+                        value,
+                        candidate_start + relative_start,
+                        candidate_start + relative_end,
+                    )
+                    for value, relative_start, relative_end in subdivisions
+                ]
+        output: list[Fragment] = []
+        for index, (raw_text, start, end, cleaned) in enumerate(fitted):
+            if not cleaned.normalized_text:
+                continue
+            output.append(
+                Fragment(
+                    element_id=element.element_id,
+                    kind=element.kind,
+                    section_id=section_id,
+                    section_path=section_path,
+                    text=cleaned.normalized_text,
+                    evidence=self._evidence(
+                        element,
+                        raw_text,
+                        derivation,
+                        start=start if keep_offsets else None,
+                        end=end if keep_offsets else None,
+                        sequence=index,
+                    ),
+                    content_role=cleaned.content_role,
+                    retrieval_enabled=cleaned.retrieval_enabled,
+                    whole_element=len(fitted) == 1,
+                )
             )
-            for index, (text, start, end) in enumerate(spans)
-        ]
+        return output
 
     def _table_fragments(
         self,
@@ -189,7 +245,12 @@ class ElementFragmentFactory:
         layer = primary_text_layer(element)
         if not layer or not layer.text.strip():
             return []
-        spans = split_text_spans(layer.text, self.config.max_chars)
+        spans = split_text_spans(
+            layer.text,
+            self.config.max_chars,
+            min_chars=self.config.min_chars,
+            overlap_sentences=self.config.fragment_overlap_sentences,
+        )
         return [
             self._table_fragment(
                 element,
@@ -220,12 +281,14 @@ class ElementFragmentFactory:
     ) -> Fragment:
         """构造一个表格片段及对应证据。"""
 
+        cleaned = self.cleaner.clean(element, text, section_path)
+
         return Fragment(
             element_id=element.element_id,
             kind=element.kind,
             section_id=section_id,
             section_path=section_path,
-            text=text,
+            text=cleaned.normalized_text,
             evidence=self._evidence(
                 element,
                 text,
@@ -234,6 +297,8 @@ class ElementFragmentFactory:
                 end=end,
                 sequence=sequence,
             ),
+            content_role=ContentRole.TABLE,
+            retrieval_enabled=True,
             whole_element=whole_element,
             table=True,
         )
@@ -257,7 +322,6 @@ class ElementFragmentFactory:
         """把片段映射为不可变、可回查的证据。"""
 
         layer = primary_text_layer(element)
-        region_ids, page_ids, page_indexes = self._location(element)
         origin = layer.origin if layer else TextOrigin.PARSER_DERIVED
         quality = list(element.quality_issue_ids)
         if origin == TextOrigin.NATIVE_OR_OCR_UNVERIFIED:
@@ -278,44 +342,27 @@ class ElementFragmentFactory:
             text=text,
             text_origin=origin,
             quote_eligible=bool(
-                layer
-                and layer.quote_eligible
-                and derivation == "primary_text_span"
+                layer and layer.quote_eligible and derivation == "primary_text_span"
             ),
             derivation=derivation,
-            region_ids=region_ids,
-            page_ids=page_ids,
-            page_indexes=page_indexes,
+            locators=element.locators,
             asset_ids=self._assets(element),
             quality_issue_ids=tuple(dict.fromkeys(quality)),
         )
 
-    def _location(
-        self,
-        element: ElementBase,
-    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[int, ...]]:
-        """返回 Element 的 Region、Page 与页序号。"""
-
-        region_ids = tuple(region.region_id for region in element.regions)
-        page_ids = tuple(dict.fromkeys(region.page_id for region in element.regions))
-        return (
-            region_ids,
-            page_ids,
-            tuple(self._page_indexes[page_id] for page_id in page_ids),
-        )
-
     def _assets(self, element: ElementBase) -> tuple[str, ...]:
-        """收集 Element 直接或通过 Region 引用的资产。"""
+        """收集 Element 直接或通过 Locator 引用的资产。"""
 
-        region_ids = {region.region_id for region in element.regions}
+        locator_ids = {locator.locator_id for locator in element.locators}
         direct = getattr(element, "asset_id", None)
         values = [
             asset.asset_id
             for asset in self.document.assets
-            if asset.region_id in region_ids
+            if locator_ids.intersection(asset.locator_ids)
         ]
         if direct:
             values.insert(0, direct)
+        values[0:0] = element.related_asset_ids
         return tuple(dict.fromkeys(values))
 
 

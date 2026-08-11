@@ -115,7 +115,7 @@ SearchResponse
 │       ├── text_origin / quote_eligible / derivation
 │       ├── document_id / source_version_id / parse_revision_id
 │       ├── section_path[]
-│       ├── page_ids[] / page_indexes[] / region_ids[]
+│       ├── locators[]        # 可选；page、group 或其他来源定位
 │       ├── asset_ids[]
 │       └── quality_issue_ids[]
 └── trace

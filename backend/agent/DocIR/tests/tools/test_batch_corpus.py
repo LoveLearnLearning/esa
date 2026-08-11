@@ -204,7 +204,7 @@ def test_resume_does_not_overwrite_verified_success(tmp_path: Path):
         ),
     ],
 )
-def test_office_sources_load_raw_then_stop_at_source_page_semantics(
+def test_office_sources_complete_without_inventing_page_semantics(
     tmp_path: Path,
     name: str,
     filename: str,
@@ -225,12 +225,21 @@ def test_office_sources_load_raw_then_stop_at_source_page_semantics(
         resume=False,
     )
 
-    assert result["status"] == "conversion_failed"
+    assert result["status"] == "success"
     assert result["media_type"] == media_type
     assert result["source_pages"] is None
     assert result["encrypted"] is None
-    assert "ValueError" in result["error"]
-    assert "source_page_count" in result["error"]
+    document = load_document(docir_run / directory / "document.json")
+    assert document.pages == ()
+    assert document.source_page_count is None
+    assert document.elements
+    assert all(
+        locator.kind == "group"
+        and locator.page_id is None
+        and locator.bbox is None
+        for element in document.elements
+        for locator in element.locators
+    )
     assert result["removed_mineru_files"] == []
     assert list((mineru_run / directory).rglob(f"*_origin{source.suffix}"))
     assert list((mineru_run / directory).rglob("*_content_list.json"))
