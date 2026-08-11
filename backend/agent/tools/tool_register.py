@@ -4,6 +4,8 @@
 from collections.abc import Callable
 from typing import Any, TypeVar
 
+from backend.core.utils.tool_arguments import normalize_tool_arguments
+
 ToolFn = Callable[
     ...,
     Any,
@@ -72,9 +74,16 @@ class ToolRegistry:
 
         if name not in self.registered_tools:
             return f"[Error]: unknown tool {name!r}"
-        _, fn = self.registered_tools[name]
+        schema, fn = self.registered_tools[name]
 
         try:
-            return fn(**arguments)
+            return fn(**self._normalize_arguments(schema, arguments))
         except (ValueError, TypeError, RuntimeError) as e:
             return f"[Error]: {e}"
+
+    @staticmethod
+    def _normalize_arguments(
+        schema: dict[str, Any], arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        """按工具 Schema 归一全部参数类型，作为执行前最后的边界保护。"""
+        return normalize_tool_arguments(schema, arguments)

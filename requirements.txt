@@ -2,22 +2,28 @@
 fastapi
 uvicorn[standard]
 pydantic>=2,<3
+python-multipart
 
 # Authentication
 bcrypt
 
 # Model inference
-# torch
-# transformers
-# vllm==0.24.0
+torch
+transformers
+vllm==0.24.0
+bitsandbytes
 
 # Agent tools
 sympy
 httpx
+requests
 
 # RAG
 sentence-transformers
 pypdf
+pillow
+pillow-heif
+pypdfium2==5.5.0
 
 # KHG
 pyyaml

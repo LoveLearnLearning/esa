@@ -1,23 +1,57 @@
 # backend/core/web/webAPI.py
 
 from contextlib import asynccontextmanager
-from pathlib import Path
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
 from backend.agent.agent import Agent
+from backend.agent.memories.kg_loader import ensure_knowledge_graph_seeded
+from backend.agent.memories.kp_resolver import KnowledgePointResolver
+from backend.agent.memories.paths import USER_DB_PATH
 from backend.agent.memories.profile_builder import ProfileBuilder
+from backend.agent.tools.learning_tools import evidence_store
 from backend.agent.tools.mastery_tools import kg_store, mastery_store
 from backend.core.services.auth_service import AuthService
+from backend.core.services.auxiliary_llm_service import AuxiliaryLLMClient
+from backend.core.services.conversation_compression_service import (
+    ConversationCompressionService,
+)
 from backend.core.stores.chat_store import ChatStore
+from backend.core.stores.conversation_summary_store import ConversationSummaryStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.migrations import run_migrations
 from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.session_store import SessionStore
+from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_store import UserStore
-from backend.core.utils import config
+from backend.core.stores.user_course_store import UserCourseStore
+from backend.core.stores.user_presence_store import UserPresenceStore
+from backend.core.utils.config import (
+    AGENT_LOOP_TIME,
+    AUXILIARY_MODEL_BASE_URL,
+    AUXILIARY_MODEL_NAME,
+    AUXILIARY_MODEL_REQUEST_TIMEOUT,
+    CONVERSATION_COMPRESSION_ENABLED,
+    CONVERSATION_COMPRESSION_KEEP_RECENT_MESSAGES,
+    CONVERSATION_COMPRESSION_MAX_INPUT_CHARS,
+    CONVERSATION_COMPRESSION_MAX_OUTPUT_TOKENS,
+    CONVERSATION_COMPRESSION_MIN_MESSAGES,
+    CONVERSATION_COMPRESSION_MIN_NEW_MESSAGES,
+    CONVERSATION_COMPRESSION_SCAN_INTERVAL,
+    CONVERSATION_OFFLINE_AFTER_SECONDS,
+    MODEL_DTYPE,
+    MODEL_GPU_MEMORY_UTILIZATION,
+    MODEL_KV_CACHE_DTYPE,
+    MODEL_MAX_MODEL_LENGTH,
+    MODEL_MAX_NUM_SEQS,
+    MODEL_MAX_OUTPUT_TOKENS,
+    MODEL_PATH,
+    MODEL_QUANTIZATION,
+    MODEL_TENSOR_PARALLEL_SIZE,
+)
 from backend.core.web.routers import (
     auth,
     chat,
@@ -25,59 +59,89 @@ from backend.core.web.routers import (
     learning,
     memories,
     preferences,
+    schedule,
 )
-from backend.agent.rag.agent_api import (
-    configure_retrieval_service,
-    reset_retrieval_service,
-)
-from backend.agent.rag.runtime import create_retrieval_service
+from backend.core.web.concurrency import ConversationTurnCoordinator
 
-
-DB_PATH = Path(__file__).resolve().parent.parent / "stores" / "data" / "user.db"
+DB_PATH = USER_DB_PATH
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 执行数据库迁移 (幂等 未应用的版本按序执行)
-    run_migrations(DB_PATH)
-
+    # 先让各 Store 补齐老库的新增列，再由版本迁移原子重建外键表。
     app.state.user_store = UserStore(DB_PATH)
-    app.state.session_store = SessionStore(DB_PATH)
-
-    # ChatStore 必须先执行：它负责为旧 conversations 表迁移 group_id 列。
-    app.state.chat_store = ChatStore(DB_PATH)
     app.state.group_store = GroupStore(DB_PATH)
+    app.state.chat_store = ChatStore(DB_PATH)
+    app.state.session_store = SessionStore(DB_PATH)
+    app.state.profile_store = ProfileStore(DB_PATH)
 
+    run_migrations(DB_PATH)
+    app.state.user_course_store = UserCourseStore(DB_PATH)
+    app.state.schedule_store = ScheduleStore(DB_PATH)
+    app.state.user_presence_store = UserPresenceStore(DB_PATH)
+    app.state.conversation_summary_store = ConversationSummaryStore(DB_PATH)
+    app.state.conversation_turn_coordinator = ConversationTurnCoordinator(DB_PATH)
+    app.state.auxiliary_llm_client = AuxiliaryLLMClient(
+        base_url=AUXILIARY_MODEL_BASE_URL,
+        model=AUXILIARY_MODEL_NAME,
+        timeout=AUXILIARY_MODEL_REQUEST_TIMEOUT,
+    )
+    if not await app.state.auxiliary_llm_client.is_ready():
+        logger.warning(
+            "辅助 Qwen 服务尚未就绪，课表解析与离线上下文压缩将暂时不可用"
+        )
+
+    synced_points, synced_edges = ensure_knowledge_graph_seeded(kg_store)
+    if kg_store.count_points() <= 0:
+        raise RuntimeError("Knowledge Graph 初始化失败：未从 YAML 加载任何知识点")
+    logger.info(
+        "Knowledge Graph 已同步：points=%s, edges=%s",
+        synced_points,
+        synced_edges,
+    )
+    app.state.kp_resolver = KnowledgePointResolver(kg_store)
     app.state.auth = AuthService(
         app.state.user_store,
         app.state.session_store,
     )
     app.state.agent = Agent(
-        loop_times=config.AGENT_LOOP_TIME,
-        model_path=config.MODEL_PATH,
-        dtype=config.MODEL_DTYPE,
-        kv_cache_dtype=config.MODEL_KV_CACHE_DTYPE,
-        gpu_memory_utilization=config.MODEL_GPU_MEMORY_UTILIZATION,
-        max_model_len=config.MODEL_MAX_MODEL_LENGTH,
-        max_num_seqs=config.MODEL_MAX_NUM_SEQS,
-        quantization=config.MODEL_QUANTIZATION,
-        tensor_parallel_size=config.MODEL_TENSOR_PARALLEL_SIZE,
+        loop_times=AGENT_LOOP_TIME,
+        model_path=MODEL_PATH,
+        dtype=MODEL_DTYPE,
+        kv_cache_dtype=MODEL_KV_CACHE_DTYPE,
+        gpu_memory_utilization=MODEL_GPU_MEMORY_UTILIZATION,
+        max_model_len=MODEL_MAX_MODEL_LENGTH,
+        max_output_tokens=MODEL_MAX_OUTPUT_TOKENS,
+        max_num_seqs=MODEL_MAX_NUM_SEQS,
+        quantization=MODEL_QUANTIZATION,
+        tensor_parallel_size=MODEL_TENSOR_PARALLEL_SIZE,
     )
-    app.state.profile_store = ProfileStore(DB_PATH)
     app.state.profile_builder = ProfileBuilder(
         user_store=app.state.user_store,
         mastery_store=mastery_store,
         kg_store=kg_store,
         profile_store=app.state.profile_store,
+        evidence_store=evidence_store,
     )
-    app.state.rag_service = create_retrieval_service(
-        config.RAG_INDEX_DEPLOYMENT_MANIFEST_PATH
+    app.state.conversation_compression_service = ConversationCompressionService(
+        llm_client=app.state.auxiliary_llm_client,
+        summary_store=app.state.conversation_summary_store,
+        offline_after_seconds=CONVERSATION_OFFLINE_AFTER_SECONDS,
+        scan_interval_seconds=CONVERSATION_COMPRESSION_SCAN_INTERVAL,
+        min_messages=CONVERSATION_COMPRESSION_MIN_MESSAGES,
+        min_new_messages=CONVERSATION_COMPRESSION_MIN_NEW_MESSAGES,
+        keep_recent_messages=CONVERSATION_COMPRESSION_KEEP_RECENT_MESSAGES,
+        max_input_chars=CONVERSATION_COMPRESSION_MAX_INPUT_CHARS,
+        max_output_tokens=CONVERSATION_COMPRESSION_MAX_OUTPUT_TOKENS,
+        enabled=CONVERSATION_COMPRESSION_ENABLED,
     )
-    configure_retrieval_service(app.state.rag_service)
+    app.state.conversation_compression_service.start()
     try:
         yield
     finally:
-        reset_retrieval_service()
+        await app.state.conversation_compression_service.stop()
+        await app.state.auxiliary_llm_client.close()
         app.state.agent.llm_provider.engine.shutdown()
 
 
@@ -97,6 +161,7 @@ app.include_router(preferences.router)
 app.include_router(preferences.profile_router)
 app.include_router(preferences.memory_settings_router)
 app.include_router(learning.router)
+app.include_router(schedule.router)
 app.include_router(memories.router)
 
 

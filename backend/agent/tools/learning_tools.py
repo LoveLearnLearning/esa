@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from backend.agent.learning.evidence_store import LearningEvidenceStore
+from backend.agent.learning.learning_state_service import LearningStateService
+from backend.agent.memories.paths import LEARNING_EVIDENCE_DB_PATH
+from backend.agent.tools.mastery_tools import kg_store, mastery_store
 from backend.agent.tools.memory_tools import (
     get_current_user,
     memory_read_allowed,
@@ -13,10 +15,13 @@ from backend.agent.tools.memory_tools import (
 )
 from backend.agent.tools.tools import tr
 
-MEMORIES_DIR = Path(__file__).resolve().parent.parent / "memories"
-
 evidence_store = LearningEvidenceStore(
-    database_path=MEMORIES_DIR / "data" / "learning_evidence.db",
+    database_path=LEARNING_EVIDENCE_DB_PATH,
+)
+learning_state_service = LearningStateService(
+    kg_store=kg_store,
+    mastery_store=mastery_store,
+    evidence_store=evidence_store,
 )
 
 
@@ -28,7 +33,10 @@ evidence_store = LearningEvidenceStore(
             "description": (
                 "记录一次学习过程证据，例如是否独立完成、使用几级提示、"
                 "自评信心、解释能力、迁移能力和错误类型。"
+                "这是 Agent 批改练习或作业时的首选统一写入入口，"
+                "会同时更新 Learning Evidence 和掌握度。"
                 "只有在学生已经实际作答/复述/尝试后才调用，不得凭空生成证据。"
+                "同一次作答不得再调用 record_answer。"
             ),
             "parameters": {
                 "type": "object",
@@ -153,7 +161,7 @@ def record_learning_evidence(
             "reason": "当前会话为 no_write/isolated 模式，禁止写入学习证据",
         }
 
-    evidence = evidence_store.record(
+    result = learning_state_service.record_event(
         user_name=user_name,
         kp_id=kp_id,
         activity_type=activity_type,
@@ -169,7 +177,7 @@ def record_learning_evidence(
         error_type=error_type,
         misconception=misconception,
     )
-    return {"saved": True, "evidence": evidence}
+    return {"saved": True, **result}
 
 
 @tr.register(

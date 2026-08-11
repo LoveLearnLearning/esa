@@ -2,7 +2,7 @@
 // 对应后端返回的 role == "tool" 的消息 name 为工具名 content 为结果
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';

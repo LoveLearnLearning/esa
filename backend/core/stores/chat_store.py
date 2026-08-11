@@ -30,7 +30,9 @@ class ChatStore(BaseSQLiteStore):
                     title TEXT NOT NULL,
                     group_id TEXT,
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE SET NULL
                 )
                 """
             )
@@ -43,7 +45,21 @@ class ChatStore(BaseSQLiteStore):
                     content TEXT NOT NULL,
                     name TEXT,
                     is_visible INTEGER NOT NULL DEFAULT 1,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(conversation_id)
+                        REFERENCES conversations(conversation_id) ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversation_turn_leases (
+                    conversation_id TEXT PRIMARY KEY,
+                    owner_token TEXT NOT NULL,
+                    acquired_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    FOREIGN KEY(conversation_id)
+                        REFERENCES conversations(conversation_id) ON DELETE CASCADE
                 )
                 """
             )
@@ -87,6 +103,50 @@ class ChatStore(BaseSQLiteStore):
                 """
                 CREATE INDEX IF NOT EXISTS idx_conversations_group
                 ON conversations (user_id, group_id, updated_at)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_turn_leases_expires
+                ON conversation_turn_leases (expires_at)
+                """
+            )
+            connection.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS conversations_group_owner_insert
+                BEFORE INSERT ON conversations
+                FOR EACH ROW
+                WHEN NEW.group_id IS NOT NULL
+                 AND NOT EXISTS (
+                     SELECT 1 FROM groups
+                     WHERE group_id = NEW.group_id
+                       AND user_id = NEW.user_id
+                 )
+                BEGIN
+                    SELECT RAISE(
+                        ABORT,
+                        'conversation group must belong to its user'
+                    );
+                END
+                """
+            )
+            connection.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS conversations_group_owner_update
+                BEFORE UPDATE OF group_id, user_id ON conversations
+                FOR EACH ROW
+                WHEN NEW.group_id IS NOT NULL
+                 AND NOT EXISTS (
+                     SELECT 1 FROM groups
+                     WHERE group_id = NEW.group_id
+                       AND user_id = NEW.user_id
+                 )
+                BEGIN
+                    SELECT RAISE(
+                        ABORT,
+                        'conversation group must belong to its user'
+                    );
+                END
                 """
             )
 
@@ -394,6 +454,32 @@ class ChatStore(BaseSQLiteStore):
         Returns:
             list[dict]              => 追加前的完整模型历史 (与 get_model_messages 同格式)
         """
+        _, history = self._get_model_context_and_append(
+            conversation_id,
+            messages,
+            use_summary=False,
+        )
+        return history
+
+    def get_compressed_model_history_and_append(
+        self,
+        conversation_id: str,
+        messages: list[dict],
+    ) -> tuple[str | None, list[dict]]:
+        """Return the persisted summary plus raw messages after its boundary."""
+        return self._get_model_context_and_append(
+            conversation_id,
+            messages,
+            use_summary=True,
+        )
+
+    def _get_model_context_and_append(
+        self,
+        conversation_id: str,
+        messages: list[dict],
+        *,
+        use_summary: bool,
+    ) -> tuple[str | None, list[dict]]:
         if not messages:
             raise ValueError("messages 不能为空")
 
@@ -410,14 +496,31 @@ class ChatStore(BaseSQLiteStore):
             if exists is None:
                 raise ValueError("对话不存在")
 
+            summary: str | None = None
+            summarized_through_message_id = 0
+            if use_summary:
+                summary_row = connection.execute(
+                    """
+                    SELECT summary, summarized_through_message_id
+                    FROM conversation_summaries
+                    WHERE conversation_id = ?
+                    """,
+                    (conversation_id,),
+                ).fetchone()
+                if summary_row is not None:
+                    summary = str(summary_row["summary"])
+                    summarized_through_message_id = int(
+                        summary_row["summarized_through_message_id"]
+                    )
+
             rows = connection.execute(
                 """
                 SELECT role, content, name
                 FROM messages
-                WHERE conversation_id = ?
+                WHERE conversation_id = ? AND id > ?
                 ORDER BY id ASC
                 """,
-                (conversation_id,),
+                (conversation_id, summarized_through_message_id),
             ).fetchall()
 
             history: list[dict] = []
@@ -470,4 +573,4 @@ class ChatStore(BaseSQLiteStore):
         finally:
             connection.close()
 
-        return history
+        return summary, history

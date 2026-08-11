@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from pathlib import Path
@@ -23,6 +25,7 @@ from backend.agent.tools.memory_tools import (
 from backend.agent.tools.skills import (
     build_autoload_skills_context,
     build_skills_context,
+    load_skill,
     validate_skill_contracts,
 )
 from backend.core.message.build_prompt import build_system_prompt
@@ -34,6 +37,52 @@ from backend.core.utils.models import (
     ToolCall,
     UserRecord,
 )
+
+
+_UNSUPPORTED_TOOL_CALLS_PATTERN = re.compile(
+    r"<[^<>]*tool_calls(?:\s[^<>]*)?>",
+    re.IGNORECASE,
+)
+
+
+def serialize_tool_result(result: object) -> str:
+    """将 Tool observation 统一序列化为标准 JSON。
+
+    ``default=str`` 仅用于工具偶发返回 datetime/Path 等可展示但
+    不可直接 JSON 化的值，保证传给模型的 observation 始终是合法 JSON。
+    """
+    return json.dumps(result, ensure_ascii=False, default=str)
+
+
+def sanitize_qwen_history(history: list[dict]) -> list[dict]:
+    """移除不属于 Qwen XML 协议的旧工具调用轮次。
+
+    Qwen 使用单数 ``<tool_call>``。旧会话中可能残留复数
+    ``<...tool_calls>`` 协议；把它重新放进 prompt 会诱导 Qwen 模仿旧格式。
+    删除旧 assistant 调用时，也删除紧随其后的 tool 结果，避免孤立消息。
+    """
+    sanitized: list[dict] = []
+    skip_following_tools = False
+
+    for message in history:
+        role = message.get("role")
+        content = message.get("content", "")
+
+        if role == "assistant":
+            skip_following_tools = isinstance(content, str) and bool(
+                _UNSUPPORTED_TOOL_CALLS_PATTERN.search(content)
+            )
+            if skip_following_tools:
+                continue
+        elif role == "tool":
+            if skip_following_tools:
+                continue
+        else:
+            skip_following_tools = False
+
+        sanitized.append(message)
+
+    return sanitized
 
 
 def build_user_profile_context(
@@ -53,9 +102,9 @@ class Agent:
         kv_cache_dtype: CacheDType = "auto",
         gpu_memory_utilization: float = 0.95,
         max_model_len: int = 32768,
+        max_output_tokens: int = 8192,
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
-        model_adapter: str = "auto",
     ) -> None:
         # 在加载昂贵的 vLLM 模型之前 fail-fast，避免 Skill/Tool 漂移带病启动。
         skill_errors = validate_skill_contracts()
@@ -74,9 +123,9 @@ class Agent:
             kv_cache_dtype=kv_cache_dtype,
             gpu_memory_utilization=gpu_memory_utilization,
             max_model_len=max_model_len,
+            max_output_tokens=max_output_tokens,
             max_num_seqs=max_num_seqs,
             tensor_parallel_size=tensor_parallel_size,
-            model_adapter=model_adapter,
         )
 
     def _prepare_run(
@@ -88,6 +137,7 @@ class Agent:
         total_weeks: int | None = None,
     ) -> tuple[list[dict], list[dict]]:
         prompt_ctx = prompt_ctx or PromptContext()
+        history = sanitize_qwen_history(history or [])
 
         set_current_user(user_name)
         set_current_conversation_mode(prompt_ctx.conversation_mode)
@@ -95,16 +145,24 @@ class Agent:
         if total_weeks is not None:
             set_current_total_weeks(total_weeks)
 
-        # 轻量确定性路由只给主 Agent 一个“候选策略”，不直接执行 Skill。
+        # 轻量确定性路由选中策略后按需加载 Skill 正文，
+        # 主 Agent 仍需结合用户当前消息决定具体执行。
         decision = PedagogyRouter.route(
             input,
-            history=history or [],
+            history=history,
             profile=prompt_ctx.user_profile_context,
+        )
+        loaded_skill_body = (
+            load_skill(decision.skill_name)
+            if decision.skill_name is not None
+            else None
         )
 
         prompt_ctx = replace(
             prompt_ctx,
-            pedagogy_context=decision.to_prompt_context(),
+            pedagogy_context=decision.to_prompt_context(
+                loaded_skill_body=loaded_skill_body,
+            ),
             autoload_skills_context=build_autoload_skills_context(),
         )
         skills_context = build_skills_context()
@@ -125,7 +183,7 @@ class Agent:
                 "role": "system",
                 "content": system_prompt,
             },
-            *(history or []),
+            *history,
             user_message,
         ]
 
@@ -165,7 +223,10 @@ class Agent:
                 tr.schemas,
             )
 
-            parsed: ParsedOutput = self.llm_provider.parse_output(response)
+            parsed: ParsedOutput = self.llm_provider.parse_output(
+                response,
+                tr.schemas,
+            )
             tool_calls: list[ToolCall] = parsed.tool_calls
 
             if DEBUG_MODE:
@@ -210,7 +271,7 @@ class Agent:
                     tool_call.name,
                     tool_call.arguments,
                 )
-                result_text = str(result)
+                result_text = serialize_tool_result(result)
 
                 messages.append(
                     {
@@ -266,7 +327,10 @@ class Agent:
                 )
 
             response = stream_parser.raw_text
-            parsed = self.llm_provider.parse_output(response)
+            parsed = self.llm_provider.parse_output(
+                response,
+                tr.schemas,
+            )
             tool_calls = parsed.tool_calls
 
             if not tool_calls:
@@ -309,7 +373,7 @@ class Agent:
                     tool_call.name,
                     tool_call.arguments,
                 )
-                result_text = str(result)
+                result_text = serialize_tool_result(result)
 
                 tool_message = {
                     "role": "tool",

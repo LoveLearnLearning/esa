@@ -7,11 +7,11 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-from pathlib import Path
 from typing import Any
 
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 from backend.agent.memories.mastery_store import MasteryStore
+from backend.agent.memories.paths import KNOWLEDGE_GRAPH_DB_PATH, MASTERY_DB_PATH
 from backend.agent.tools.memory_tools import (
     get_current_user,
     memory_read_allowed,
@@ -20,7 +20,6 @@ from backend.agent.tools.memory_tools import (
 from backend.agent.tools.tools import tr
 from backend.core.utils.models import UserRecord
 
-MEMORIES_DIR = Path(__file__).resolve().parent.parent / "memories"
 
 class EsaMasteryStore(MasteryStore):
     """ESA 运行时 MasteryStore：收紧前置知识点语义。"""
@@ -43,16 +42,15 @@ class EsaMasteryStore(MasteryStore):
         return [
             item
             for item in items
-            if int(item.get("depth", 0)) > 0
-            and item.get("kp_id") != kp_id
+            if int(item.get("depth", 0)) > 0 and item.get("kp_id") != kp_id
         ]
 
 
 kg_store = KnowledgeGraphStore(
-    database_path=MEMORIES_DIR / "data" / "knowledge_graph.db",
+    database_path=KNOWLEDGE_GRAPH_DB_PATH,
 )
 mastery_store = EsaMasteryStore(
-    database_path=MEMORIES_DIR / "data" / "mastery.db",
+    database_path=MASTERY_DB_PATH,
 )
 
 current_total_weeks: ContextVar[int | None] = ContextVar(
@@ -82,10 +80,13 @@ def _build_reasons(
 ) -> list[str]:
     reasons: list[str] = []
 
-    mastery = float(point.get("mastery_level", 50.0))
+    raw_mastery = point.get("mastery_level")
+    mastery = None if raw_mastery is None else float(raw_mastery)
     weight = float(point.get("weight", 0.0))
 
-    if mastery < 50.0:
+    if mastery is None:
+        reasons.append("尚无学习证据")
+    elif mastery < 50.0:
         reasons.append(f"掌握度低(mastery={mastery:.1f})")
 
     if weight >= 0.7:
@@ -256,6 +257,8 @@ def get_mastery_report(course: str = "") -> dict[str, Any]:
             "description": (
                 "读取当前用户某个知识点的掌握度和练习统计；"
                 "当 Skill 需要针对单个知识点调节讲解深度时调用。"
+                "Agent 准备针对明确 kp_id 生成自适应练习题时，"
+                "应在出题前调用本工具。"
             ),
             "parameters": {
                 "type": "object",
@@ -285,7 +288,10 @@ def get_mastery_level(kp_id: str) -> dict[str, Any]:
             "allowed": True,
             "user_name": user_name,
             "kp_id": kp_id,
-            "mastery_level": mastery_store.DEFAULT_MASTERY,
+            "mastery_level": None,
+            "status": "unseen",
+            "retention": None,
+            "evidence_confidence": 0.0,
             "practice_count": 0,
             "correct_count": 0,
             "has_record": False,
@@ -422,7 +428,10 @@ def get_review_timing(
         "function": {
             "name": "record_answer",
             "description": (
-                "记录当前用户一次练习结果并更新知识点掌握度。"
+                "记录当前用户一次简化练习结果并更新知识点掌握度。"
+                "该工具为兼容用简化入口；需要记录提示、独立性、误区等证据时，"
+                "优先使用 record_learning_evidence。"
+                "同一次作答不得同时调用两个写入工具，否则会重复计数。"
                 "confidence 是这次答案作为掌握证据的可靠性权重，"
                 "不是学生主观自信；学生自评信心应记录到 record_learning_evidence。"
             ),
@@ -467,10 +476,14 @@ def record_answer(
             "reason": "当前会话为 no_write/isolated 模式，禁止记录练习结果",
         }
 
-    result = mastery_store.record_answer(
+    # 本地导入避免工具模块初始化时的循环依赖。
+    from backend.agent.tools.learning_tools import learning_state_service
+
+    result = learning_state_service.record_event(
         user_name=user_name,
         kp_id=kp_id,
+        activity_type="practice",
         correct=correct,
-        confidence=confidence,
+        evidence_reliability=confidence,
     )
     return {"saved": True, **result}

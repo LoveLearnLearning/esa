@@ -37,7 +37,7 @@ CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 VALID_CONVERSATION_MODES = {"normal", "no_write", "isolated"}
 
 
-def _snapshot_to_view(snap_dict: dict) -> ProfileViewOut:
+def _snapshot_to_view(snap_dict: dict, *, user) -> ProfileViewOut:
     """将 ProfileSnapshot.to_dict() 结果映射为 ProfileViewOut
 
     各分节 list[dict] 逐项转为 ProfileFieldOut 仅保留 field/value/origin/confidence 四字段
@@ -55,6 +55,11 @@ def _snapshot_to_view(snap_dict: dict) -> ProfileViewOut:
         ]
 
     return ProfileViewOut(
+        major=user.major,
+        grade=user.grade,
+        current_week=user.current_week,
+        total_weeks=user.total_weeks,
+        profile_enabled=user.profile_enabled,
         explicit=to_fields(snap_dict.get("explicit_context", [])),
         preferences=to_fields(snap_dict.get("response_preferences", [])),
         goals=to_fields(snap_dict.get("active_goals", [])),
@@ -83,7 +88,7 @@ def _build_profile_view(request: Request, session: SessionPrincipal) -> ProfileV
         current_message="",  # 仅查看无聊天上下文
     )
     snapshot = profile_builder.build(query)
-    return _snapshot_to_view(snapshot.to_dict())
+    return _snapshot_to_view(snapshot.to_dict(), user=user)
 
 
 @router.get("")

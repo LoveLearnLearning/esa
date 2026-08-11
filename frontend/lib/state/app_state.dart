@@ -4,9 +4,12 @@
 
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' show ClientException;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
@@ -22,6 +25,8 @@ class AppState extends ChangeNotifier {
   static const _rememberUserIdKey = 'esa.remember.user_id';
   static const _rememberUsernameKey = 'esa.remember.username';
   static const _rememberExpiresAtKey = 'esa.remember.expires_at';
+  static const _scheduleStoragePrefix = 'esa.schedule.';
+  static const _scheduleSettingsStoragePrefix = 'esa.schedule.settings.';
 
   // ---- 本地设置(不落后端) ----
   ThemeMode themeMode = ThemeMode.dark;
@@ -38,10 +43,16 @@ class AppState extends ChangeNotifier {
   final Map<String, List<ChatMessage>> _messages = {};
   final Set<String> _pinned = {}; // 本地置顶集合
   String? activeId;
+  Future<void>? _conversationCreation;
 
   bool busy = false; // 正在发消息
   bool loadingConversations = false;
   bool loadingMessages = false;
+  final List<ScheduleCourse> scheduleCourses = [];
+  final List<ScheduleTable> scheduleTables = [];
+  String activeScheduleTableId = '';
+  ScheduleSettings scheduleSettings = const ScheduleSettings();
+  bool scheduleLoaded = false;
 
   String get username => api.username ?? '';
   bool get isLoggedIn => api.isLoggedIn;
@@ -209,11 +220,248 @@ class AppState extends ChangeNotifier {
     conversations.clear();
     _messages.clear();
     _pinned.clear();
+    scheduleCourses.clear();
+    scheduleTables.clear();
+    activeScheduleTableId = '';
+    scheduleSettings = const ScheduleSettings();
+    scheduleLoaded = false;
     activeId = null;
     busy = false;
     preferences = const UserPreferences();
     userProfile = const UserProfile();
     notifyListeners();
+  }
+
+  // ============ 服务端课表（SharedPreferences 仅作离线缓存/旧数据迁移） ============
+  String get _scheduleStorageKey =>
+      '$_scheduleStoragePrefix${api.userId ?? api.username ?? 'guest'}';
+
+  String get _scheduleSettingsStorageKey =>
+      '$_scheduleSettingsStoragePrefix${api.userId ?? api.username ?? 'guest'}';
+
+  Future<void> loadSchedule({bool force = false}) async {
+    if (scheduleLoaded && !force) return;
+    scheduleLoaded = false;
+    try {
+      final snapshot = await api.getSchedule();
+      var serverCourses = snapshot.courses;
+      var serverSettings = snapshot.settings;
+      final localPreferences = await _getLocalPreferences();
+      // 旧版本地缓存只在"用户仅有一张空课表"时迁移上传；
+      // 多张课程表说明服务端数据已是权威，切到空的新表时绝不能回灌缓存
+      if (serverCourses.isEmpty &&
+          snapshot.tables.length <= 1 &&
+          localPreferences != null) {
+        final rawCourses = localPreferences.getString(_scheduleStorageKey);
+        if (rawCourses != null && rawCourses.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(rawCourses);
+            if (decoded is List) {
+              final legacyCourses = decoded
+                  .whereType<Map>()
+                  .map(
+                    (item) => ScheduleCourse.fromJson(
+                      Map<String, dynamic>.from(item),
+                    ),
+                  )
+                  .toList();
+              final migrated = <ScheduleCourse>[];
+              for (final course in legacyCourses) {
+                migrated.add(await api.saveScheduleCourse(course));
+              }
+              serverCourses = migrated;
+            }
+          } on FormatException {
+            // 损坏的旧缓存不迁移。
+          }
+        }
+        final rawSettings = localPreferences.getString(
+          _scheduleSettingsStorageKey,
+        );
+        if (rawSettings != null && rawSettings.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(rawSettings);
+            if (decoded is Map) {
+              serverSettings = await api.saveScheduleSettings(
+                ScheduleSettings.fromJson(Map<String, dynamic>.from(decoded)),
+              );
+            }
+          } on FormatException {
+            // 损坏的旧缓存不迁移。
+          }
+        }
+      }
+      scheduleCourses
+        ..clear()
+        ..addAll(serverCourses);
+      scheduleTables
+        ..clear()
+        ..addAll(snapshot.tables);
+      activeScheduleTableId = snapshot.activeTableId;
+      scheduleSettings = serverSettings;
+      scheduleLoaded = true;
+      _sortSchedule();
+      await _persistSchedule();
+      notifyListeners();
+      return;
+    } on ApiException catch (error) {
+      if (_handled401(error)) return;
+      // 网络暂时不可用时读旧缓存，恢复联网后的写操作仍以服务端为准。
+    } on ClientException {
+      // 同上，保留离线只读回退。
+    }
+    final localPreferences = await _getLocalPreferences();
+    if (localPreferences == null) {
+      scheduleLoaded = true;
+      notifyListeners();
+      return;
+    }
+    final raw = localPreferences.getString(_scheduleStorageKey);
+    final rawSettings = localPreferences.getString(_scheduleSettingsStorageKey);
+    scheduleCourses.clear();
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          scheduleCourses.addAll(
+            decoded.whereType<Map>().map(
+              (item) =>
+                  ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
+            ),
+          );
+        }
+      } on FormatException {
+        // 本地缓存损坏时显示空课表，不影响主功能。
+      }
+    }
+    scheduleSettings = const ScheduleSettings();
+    if (rawSettings != null && rawSettings.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawSettings);
+        if (decoded is Map) {
+          scheduleSettings = ScheduleSettings.fromJson(
+            Map<String, dynamic>.from(decoded),
+          );
+        }
+      } on FormatException {
+        // 设置缓存损坏时使用默认作息。
+      }
+    }
+    _sortSchedule();
+    scheduleLoaded = true;
+    notifyListeners();
+  }
+
+  Future<void> saveScheduleCourse(ScheduleCourse course) async {
+    final saved = await api.saveScheduleCourse(course);
+    final index = scheduleCourses.indexWhere((item) => item.id == saved.id);
+    if (index < 0) {
+      scheduleCourses.add(saved);
+    } else {
+      scheduleCourses[index] = saved;
+    }
+    _sortSchedule();
+    scheduleLoaded = true;
+    notifyListeners();
+    await _persistSchedule();
+  }
+
+  Future<void> deleteScheduleCourse(String courseId) async {
+    await api.deleteScheduleCourse(courseId);
+    scheduleCourses.removeWhere((course) => course.id == courseId);
+    scheduleLoaded = true;
+    notifyListeners();
+    await _persistSchedule();
+  }
+
+  Future<void> saveScheduleSettings(ScheduleSettings settings) async {
+    scheduleSettings = await api.saveScheduleSettings(settings);
+    scheduleLoaded = true;
+    notifyListeners();
+    final localPreferences = await _getLocalPreferences();
+    if (localPreferences == null) return;
+    await localPreferences.setString(
+      _scheduleSettingsStorageKey,
+      jsonEncode(scheduleSettings.toJson()),
+    );
+  }
+
+  void _applyScheduleSnapshot(ScheduleSnapshot snapshot) {
+    scheduleCourses
+      ..clear()
+      ..addAll(snapshot.courses);
+    scheduleTables
+      ..clear()
+      ..addAll(snapshot.tables);
+    activeScheduleTableId = snapshot.activeTableId;
+    scheduleSettings = snapshot.settings;
+    scheduleLoaded = true;
+    _sortSchedule();
+    notifyListeners();
+  }
+
+  ScheduleTable? get activeScheduleTable {
+    for (final table in scheduleTables) {
+      if (table.id == activeScheduleTableId) return table;
+    }
+    return null;
+  }
+
+  Future<void> switchScheduleTable(String tableId) async {
+    if (tableId == activeScheduleTableId) return;
+    final snapshot = await api.activateScheduleTable(tableId);
+    _applyScheduleSnapshot(snapshot);
+    await _persistSchedule();
+  }
+
+  Future<void> createScheduleTable(String name) async {
+    await api.createScheduleTable(name);
+    await loadSchedule(force: true);
+  }
+
+  Future<void> renameScheduleTable(String tableId, String name) async {
+    final renamed = await api.renameScheduleTable(tableId, name);
+    final index = scheduleTables.indexWhere((table) => table.id == tableId);
+    if (index >= 0) scheduleTables[index] = renamed;
+    notifyListeners();
+  }
+
+  Future<void> deleteScheduleTable(String tableId) async {
+    await api.deleteScheduleTable(tableId);
+    await loadSchedule(force: true);
+  }
+
+  Future<ScheduleImportResult> importScheduleFile({
+    required String filename,
+    required Uint8List bytes,
+    bool toNewTable = false,
+    String? newTableName,
+  }) async {
+    final result = await api.importScheduleFile(
+      filename: filename,
+      bytes: bytes,
+      toNewTable: toNewTable,
+      newTableName: newTableName,
+    );
+    // 导入可能新建并切换课程表，直接以服务端快照为准
+    await loadSchedule(force: true);
+    return result;
+  }
+
+  void _sortSchedule() {
+    scheduleCourses.sort((a, b) {
+      final day = a.weekday.compareTo(b.weekday);
+      return day != 0 ? day : a.startPeriod.compareTo(b.startPeriod);
+    });
+  }
+
+  Future<void> _persistSchedule() async {
+    final localPreferences = await _getLocalPreferences();
+    if (localPreferences == null) return;
+    await localPreferences.setString(
+      _scheduleStorageKey,
+      jsonEncode(scheduleCourses.map((course) => course.toJson()).toList()),
+    );
   }
 
   /// 统一处理 401 会话失效 直接回登录页
@@ -268,7 +516,38 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  bool get _activeConversationIsEmpty {
+    final id = activeId;
+    return id == null ||
+        (_messages.containsKey(id) && (_messages[id]?.isEmpty ?? true));
+  }
+
   Future<void> newConversation() async {
+    if (_activeConversationIsEmpty) return;
+    // 先立即切换到空白页，避免网络延迟期间还看到旧对话。
+    activeId = null;
+    notifyListeners();
+    await _createConversation();
+  }
+
+  Future<void> _createConversation() async {
+    final pending = _conversationCreation;
+    if (pending != null) {
+      await pending;
+      return;
+    }
+    final operation = _createConversationImpl();
+    _conversationCreation = operation;
+    try {
+      await operation;
+    } finally {
+      if (identical(_conversationCreation, operation)) {
+        _conversationCreation = null;
+      }
+    }
+  }
+
+  Future<void> _createConversationImpl() async {
     try {
       final conv = await api.createConversation();
       conversations.insert(0, conv);
@@ -336,7 +615,7 @@ class AppState extends ChangeNotifier {
 
     // 没有活动对话时先建一个
     if (activeId == null) {
-      await newConversation();
+      await _createConversation();
       if (activeId == null) return; // 建失败
     }
     final id = activeId!;
@@ -367,17 +646,41 @@ class AppState extends ChangeNotifier {
         placeholder.typing = false;
       }
       if (_handled401(e)) return;
-      final detail = e is ApiException ? e.detail : '无法连接服务器 请检查后端是否启动';
-      list.add(
-        ChatMessage(
-          id: DateTime.now().microsecondsSinceEpoch.toString(),
-          role: MessageRole.assistant,
-          text: '（出错了：$detail）',
-        ),
-      );
+      // 手机浏览器切后台/锁屏/断网会掐断 SSE，但后端通常已完成生成并
+      // 落库；先尝试用服务端持久化结果覆盖本地，只有拉不到时才报错
+      final recovered = await _recoverInterruptedReply(id, list);
+      if (!recovered) {
+        final detail = e is ApiException ? e.detail : '无法连接服务器 请检查后端是否启动';
+        list.add(
+          ChatMessage(
+            id: DateTime.now().microsecondsSinceEpoch.toString(),
+            role: MessageRole.assistant,
+            text: '（出错了：$detail）',
+          ),
+        );
+      }
     } finally {
       busy = false;
       notifyListeners();
+    }
+  }
+
+  /// SSE 中断后从服务端拉取持久化消息，就地覆盖当前列表。
+  /// 拉到以助手回复结尾的完整历史返回 true。
+  Future<bool> _recoverInterruptedReply(
+    String id,
+    List<ChatMessage> list,
+  ) async {
+    try {
+      final msgs = await api.getMessages(id);
+      if (msgs.isEmpty || msgs.last.isUser) return false;
+      list
+        ..clear()
+        ..addAll(msgs);
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -409,11 +712,24 @@ class AppState extends ChangeNotifier {
     void ensureTypewriter() {
       queueDrained ??= Completer<void>();
       typewriterTimer ??= Timer.periodic(EsaMotion.streamTick, (_) {
+        // 手机浏览器后台会把定时器节流到秒级，回前台时队列可能积压了
+        // 几千字符；按积压量批量出队，积压过大时直接整段刷出，
+        // 避免以每 tick 一个字符的速度补播几十秒
+        String takeFrom(Queue<String> queue) {
+          var take = queue.length > 600 ? queue.length : queue.length ~/ 20;
+          if (take < 1) take = 1;
+          final buffer = StringBuffer();
+          while (take-- > 0 && queue.isNotEmpty) {
+            buffer.write(queue.removeFirst());
+          }
+          return buffer.toString();
+        }
+
         if (reasoningQueue.isNotEmpty) {
-          assistant.reasoning += reasoningQueue.removeFirst();
+          assistant.reasoning += takeFrom(reasoningQueue);
           assistant.notifyListeners();
         } else if (contentQueue.isNotEmpty) {
-          assistant.text += contentQueue.removeFirst();
+          assistant.text += takeFrom(contentQueue);
           assistant.notifyListeners();
         }
         completeDrainIfReady();
@@ -438,7 +754,18 @@ class AppState extends ChangeNotifier {
     }
 
     try {
-      await for (final event in api.streamMessage(conversationId, input)) {
+      // 手机浏览器锁屏/切网时 fetch 流可能既不报错也不再有数据；相邻
+      // 事件间隔超过 120 秒视为挂死，结束流走中断恢复。只在 Web 上
+      // 启用：原生平台连接中断会正常抛错，而且 Stream.timeout 的假
+      // 定时器会挂死 FakeAsync 测试环境。
+      var events = api.streamMessage(conversationId, input);
+      if (kIsWeb) {
+        events = events.timeout(
+          const Duration(seconds: 120),
+          onTimeout: (sink) => sink.close(),
+        );
+      }
+      await for (final event in events) {
         switch (event.event) {
           case 'start':
             break;

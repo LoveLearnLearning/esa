@@ -1,3 +1,5 @@
+# backend/core/message/style_tone.py
+
 """输出风格与语调规则的唯一来源。"""
 
 from __future__ import annotations

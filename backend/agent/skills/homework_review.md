@@ -1,7 +1,7 @@
 ---
 name: homework_review
 description: 用户提交作业、题目答案或代码作答并要求批改时使用
-version: 2
+version: 3
 category: pedagogy
 priority: 95
 autoload: false
@@ -9,7 +9,6 @@ triggers:
   - homework_review
   - submitted_attempt
 requires_tools:
-  - record_answer
   - record_learning_evidence
   - get_weak_prerequisites
 related_skills:
@@ -45,24 +44,20 @@ related_skills:
 - 学生明确要求完整答案或标准解：可以直接给，但说明关键错误原因。
 - 对概念型错误，优先指出概念边界；对前置知识不足，优先补前置。
 
-## 4. 更新掌握度
+## 4. 更新掌握度与 Learning Evidence
 
-只有学生确实提交了自己的作答时才调用：
+只有学生确实提交了自己的作答，且已经能够可靠判断时，才调用一次：
 
-`record_answer(kp_id, correct, confidence)`
+`record_learning_evidence(kp_id, activity_type="homework", ...)`
 
-这里的 `confidence` 是**这次答案作为掌握证据的可靠性**，不是学生主观自信。
-
-建议：
+`evidence_reliability` 是**这次答案作为掌握证据的可靠性**，不是学生主观自信。建议：
 
 - 编程/证明/开放题且作答过程完整：`0.9-1.0`
 - 填空/简答：`0.8-1.0`
 - 选择题：`0.5-0.8`
 - 存在明显猜测、答案来源不明：进一步降低
 
-## 5. 记录 Learning Evidence
-
-再调用 `record_learning_evidence`，只填写有真实依据的字段：
+只填写有真实依据的字段：
 
 - `correct`
 - `hint_level`：实际用到的最高提示等级
@@ -72,7 +67,9 @@ related_skills:
 - `misconception`
 - `self_confidence`：**只有学生明确说了自己的把握时才能记录，禁止猜测**
 
-## 6. 前置追溯
+同一次作答禁止再调用 `record_answer`，否则会把同一条学习证据重复计入掌握度。
+
+## 5. 前置追溯
 
 当错误属于 `conceptual` / `prerequisite`，或错误反复出现时：
 

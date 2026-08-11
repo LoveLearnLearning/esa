@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime
 from enum import Enum
+from typing import Protocol
+
+
+class _TokenEncoding(Protocol):
+    def encode(self, text: str) -> list[int]: ...
+
+
+_TIKTOKEN_ENCODING: _TokenEncoding | None
 
 try:  # pragma: no cover - 可选依赖
     from tiktoken import get_encoding as _get_encoding
@@ -48,7 +56,7 @@ class ProfileField:
     value: object
     origin: ProfileOrigin
     confidence: float = 1.0
-    source_memory_ids: list[str] = field(default_factory=list)
+    source_memory_ids: list[str] = dataclass_field(default_factory=list)
     last_confirmed_at: datetime | None = None
 
     def to_dict(self) -> dict:
@@ -76,15 +84,15 @@ class ProfileSnapshot:
 
     user_id: str
     profile_version: int
-    explicit_context: list[ProfileField] = field(default_factory=list)
-    response_preferences: list[ProfileField] = field(default_factory=list)
-    active_goals: list[ProfileField] = field(default_factory=list)
-    active_projects: list[ProfileField] = field(default_factory=list)
-    relevant_learning_state: list[ProfileField] = field(default_factory=list)
-    relevant_constraints: list[ProfileField] = field(default_factory=list)
-    inferred_patterns: list[ProfileField] = field(default_factory=list)
-    source_memory_ids: list[str] = field(default_factory=list)
-    generated_at: datetime = field(default_factory=datetime.now)
+    explicit_context: list[ProfileField] = dataclass_field(default_factory=list)
+    response_preferences: list[ProfileField] = dataclass_field(default_factory=list)
+    active_goals: list[ProfileField] = dataclass_field(default_factory=list)
+    active_projects: list[ProfileField] = dataclass_field(default_factory=list)
+    relevant_learning_state: list[ProfileField] = dataclass_field(default_factory=list)
+    relevant_constraints: list[ProfileField] = dataclass_field(default_factory=list)
+    inferred_patterns: list[ProfileField] = dataclass_field(default_factory=list)
+    source_memory_ids: list[str] = dataclass_field(default_factory=list)
+    generated_at: datetime = dataclass_field(default_factory=datetime.now)
 
     def to_dict(self) -> dict:
         return {
@@ -167,7 +175,8 @@ class ProfileQuery:
     conversation_id: str | None = None
     group_id: str | None = None
     current_message: str = ""
-    recent_messages: list[dict] = field(default_factory=list)
+    recent_messages: list[dict] = dataclass_field(default_factory=list)
+    resolved_kp_ids: list[str] = dataclass_field(default_factory=list)
     group_style: str | None = None
     group_tone: str | None = None
     group_custom_instruction: str = ""

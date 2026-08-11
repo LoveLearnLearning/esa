@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from backend.core.services.auth_service import AuthService
 from backend.core.stores.session_store import SessionStore
+from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
 from backend.core.web.deps import get_current_session
@@ -53,6 +54,10 @@ def login(body: LoginRequest, request: Request) -> LoginResponse:
 
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在")
 
+    presence_store = getattr(request.app.state, "user_presence_store", None)
+    if isinstance(presence_store, UserPresenceStore):
+        presence_store.mark_online(session.user_id)
+
     return LoginResponse(
         session_id=session.session_id,
         user_id=session.user_id,
@@ -62,9 +67,19 @@ def login(body: LoginRequest, request: Request) -> LoginResponse:
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(request: Request, session: CurrentSession) -> None:
+async def logout(request: Request, session: CurrentSession) -> None:
     session_store: SessionStore = request.app.state.session_store
     session_store.revoke(session.session_id)
+    presence_store = getattr(request.app.state, "user_presence_store", None)
+    if isinstance(presence_store, UserPresenceStore):
+        presence_store.mark_offline(session.user_id)
+    compression_service = getattr(
+        request.app.state,
+        "conversation_compression_service",
+        None,
+    )
+    if compression_service is not None:
+        compression_service.wake()
 
 
 @router.post(

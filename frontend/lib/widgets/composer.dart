@@ -1,9 +1,10 @@
 // 输入区 —— 固定底部 顶部 1px 分割线 内容最大宽 820
 // Enter 发送 Shift+Enter 换行 发送按钮胶囊 无内容或生成中时禁用
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../models/task_mode.dart';
 import '../theme/esa_context.dart';
@@ -43,18 +44,33 @@ class _ComposerState extends State<Composer> {
 
   bool get _canSend => !widget.busy && _controller.text.trim().isNotEmpty;
 
+  /// 手机浏览器上软键盘行为与桌面不同：软键盘的回车会以 Enter KeyEvent
+  /// 到达（且没有 Shift 可按），应当换行而不是发送；发送后应收起键盘看
+  /// 回答。原生 App 的软键盘回车不走 KeyEvent，不需要该分支。
+  bool get _mobileBrowser =>
+      kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
   void _send() {
     if (!_canSend) return;
     widget.onSend(_controller.text, _markdownMode);
     _controller.clear();
     setState(() => _attachment = null);
-    _focus.requestFocus();
+    if (_mobileBrowser) {
+      // 收起键盘，把屏幕留给流式回答
+      _focus.unfocus();
+    } else {
+      _focus.requestFocus();
+    }
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.enter &&
         !HardwareKeyboard.instance.isShiftPressed) {
+      // 手机浏览器软键盘的回车插入换行；发送只走按钮
+      if (_mobileBrowser) return KeyEventResult.ignored;
       final composing = _controller.value.composing;
       if (composing.isValid && !composing.isCollapsed) {
         // Enter is being used to confirm an IME candidate (for example,
@@ -70,6 +86,7 @@ class _ComposerState extends State<Composer> {
 
   @override
   Widget build(BuildContext context) {
+    final narrow = MediaQuery.sizeOf(context).width < 600;
     final inputStyle = (context.texts.bodyLarge ?? const TextStyle()).copyWith(
       color: context.scheme.onSurface,
       fontSize: 15,
@@ -120,23 +137,33 @@ class _ComposerState extends State<Composer> {
                     ],
                     Focus(
                       onKeyEvent: _onKey,
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focus,
-                        minLines: 2,
-                        maxLines: 6,
-                        onChanged: (_) => setState(() {}),
-                        style: inputStyle,
-                        strutStyle: StrutStyle.fromTextStyle(
-                          inputStyle,
-                          forceStrutHeight: true,
-                        ),
-                        textAlignVertical: TextAlignVertical.top,
-                        cursorHeight: 21.75,
-                        cursorWidth: 2,
-                        decoration: InputDecoration.collapsed(
-                          hintText: widget.taskMode?.hint ?? '问点什么…',
-                          hintStyle: inputStyle.copyWith(color: context.n.n600),
+                      child: ListenableBuilder(
+                        listenable: _focus,
+                        builder: (context, _) => TextField(
+                          controller: _controller,
+                          focusNode: _focus,
+                          minLines: 2,
+                          maxLines: 6,
+                          onChanged: (_) => setState(() {}),
+                          style: inputStyle,
+                          textAlignVertical: TextAlignVertical.top,
+                          cursorWidth: 2,
+                          decoration: InputDecoration(
+                            isCollapsed: true,
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                            // Flutter Web 会让空字段的光标和 hint 从同一个
+                            // x 坐标开始绘制，光标会盖住首字形成“重影”。
+                            hintText: _focus.hasFocus
+                                ? null
+                                : widget.taskMode?.hint ?? '问点什么…',
+                            hintStyle: inputStyle.copyWith(
+                              color: context.n.n600,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -146,14 +173,16 @@ class _ComposerState extends State<Composer> {
                         _attachButton(context),
                         const SizedBox(width: EsaSpace.sm),
                         _markdownButton(context),
-                        const SizedBox(width: EsaSpace.md),
-                        Text(
-                          'Enter 发送 · Shift + Enter 换行',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: context.n.n600,
+                        if (!narrow) ...[
+                          const SizedBox(width: EsaSpace.md),
+                          Text(
+                            'Enter 发送 · Shift + Enter 换行',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: context.n.n600,
+                            ),
                           ),
-                        ),
+                        ],
                         const Spacer(),
                         _sendButton(context),
                       ],
@@ -234,7 +263,10 @@ class _ComposerState extends State<Composer> {
 
   Widget _attachButton(BuildContext context) {
     return InkWell(
-      onTap: () => setState(() => _attachment = '课堂笔记.pdf'),
+      // 附件上传后端尚未支持；明确提示而不是假装添加成功
+      onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('附件功能即将开放，课表文件请到课表页导入')),
+      ),
       customBorder: const CircleBorder(),
       child: Container(
         width: 32,

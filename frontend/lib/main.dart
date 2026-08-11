@@ -4,7 +4,7 @@
 
 import 'package:flutter/material.dart';
 
-import 'pages/chat_page.dart';
+import 'pages/home_shell.dart';
 import 'pages/login_page.dart';
 import 'state/app_state.dart';
 import 'theme/esa_theme.dart';
@@ -48,12 +48,12 @@ class _EsaAppState extends State<EsaApp> {
         listenable: _app,
         builder: (context, _) {
           return MaterialApp(
-            title: 'ESA 星知智链',
+            title: '星知智链',
             debugShowCheckedModeBanner: false,
             theme: esaTheme(brightness: Brightness.light),
             darkTheme: esaTheme(brightness: Brightness.dark),
             themeMode: _app.themeMode,
-            home: _app.username.isEmpty ? const LoginPage() : const ChatPage(),
+            home: _app.username.isEmpty ? const LoginPage() : const HomeShell(),
           );
         },
       ),

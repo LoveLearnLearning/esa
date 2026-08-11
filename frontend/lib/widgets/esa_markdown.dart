@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_markdown_plus_latex/flutter_markdown_plus_latex.dart';
 import 'package:highlight/highlight.dart' show Node, highlight;
@@ -7,6 +6,8 @@ import 'package:markdown/markdown.dart' as md;
 
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import '../utils/clipboard.dart';
+import 'copyable_selection_area.dart';
 
 String normalizeMarkdownLatex(String source) {
   final lines = source.split('\n');
@@ -56,9 +57,11 @@ class EsaMarkdown extends StatelessWidget {
       fontWeight: FontWeight.w700,
     );
 
-    return MarkdownBody(
+    final markdown = MarkdownBody(
       data: normalizeMarkdownLatex(data),
-      selectable: selectable,
+      // 单个 SelectableText 无法跨 Markdown 段落选择。外层统一交给
+      // SelectionArea，段落内部保持普通 Text/RichText。
+      selectable: false,
       builders: {
         'latex': LatexElementBuilder(textStyle: bodyStyle),
         'pre': _CodeBlockBuilder(),
@@ -94,17 +97,17 @@ class EsaMarkdown extends StatelessWidget {
           color: context.scheme.onSurface,
           backgroundColor: context.n.n200,
         ),
-        codeblockDecoration: BoxDecoration(
-          color: context.n.n100,
-          border: Border.all(color: context.n.divider),
-          borderRadius: BorderRadius.circular(EsaRadii.toolCard),
-        ),
+        // `pre` 已由 _EditableCodeBlock 自己绘制背景、边框和圆角。
+        // 这里保持透明，避免 MarkdownBody 再套一层形成顶部横线和露底。
+        codeblockDecoration: const BoxDecoration(),
         a: bodyStyle?.copyWith(
           color: EsaColors.accent,
           decoration: TextDecoration.underline,
         ),
       ),
     );
+
+    return selectable ? CopyableSelectionArea(child: markdown) : markdown;
   }
 }
 
@@ -140,14 +143,18 @@ class _EditableCodeBlock extends StatefulWidget {
 
 class _EditableCodeBlockState extends State<_EditableCodeBlock> {
   late final _HighlightEditingController _controller;
+  late String _originalCode;
   bool _editing = false;
   bool _copied = false;
+
+  bool get _modified => _controller.text != _originalCode;
 
   @override
   void initState() {
     super.initState();
+    _originalCode = widget.code.trimRight();
     _controller = _HighlightEditingController(
-      text: widget.code.trimRight(),
+      text: _originalCode,
       language: widget.language,
     );
   }
@@ -156,13 +163,23 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
   void didUpdateWidget(covariant _EditableCodeBlock oldWidget) {
     super.didUpdateWidget(oldWidget);
     _controller.language = widget.language;
-    if (!_editing && widget.code != oldWidget.code) {
-      final updatedCode = widget.code.trimRight();
+    if (widget.code != oldWidget.code) {
+      final hadLocalChanges = _modified;
+      _originalCode = widget.code.trimRight();
+      if (hadLocalChanges) return;
       _controller.value = TextEditingValue(
-        text: updatedCode,
-        selection: TextSelection.collapsed(offset: updatedCode.length),
+        text: _originalCode,
+        selection: TextSelection.collapsed(offset: _originalCode.length),
       );
     }
+  }
+
+  void _resetCode() {
+    _controller.value = TextEditingValue(
+      text: _originalCode,
+      selection: TextSelection.collapsed(offset: _originalCode.length),
+    );
+    setState(() {});
   }
 
   @override
@@ -173,11 +190,19 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
 
   @override
   Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    _controller.dark = dark;
+    final frameColor = dark ? const Color(0xFF171717) : const Color(0xFFF3F3F1);
+    final headerColor = dark ? const Color(0xFF222222) : const Color(0xFFE9E9E6);
+    final labelColor = dark ? const Color(0xFFAAAAAA) : const Color(0xFF75756D);
+    final codeBg = dark ? const Color(0xFF282C34) : const Color(0xFFFAFAFA);
+    final baseCodeColor =
+        dark ? const Color(0xFFABB2BF) : const Color(0xFF383A42);
+    final iconColor = dark ? const Color(0xFFCCCCCC) : const Color(0xFF55554F);
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF171717),
+        color: frameColor,
         border: Border.all(color: context.n.divider),
         borderRadius: BorderRadius.circular(EsaRadii.toolCard),
       ),
@@ -187,14 +212,14 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
         children: [
           Container(
             padding: const EdgeInsets.only(left: 12, right: 4),
-            color: const Color(0xFF222222),
+            color: headerColor,
             child: Row(
               children: [
                 Expanded(
                   child: Text(
                     widget.language,
-                    style: const TextStyle(
-                      color: Color(0xFFAAAAAA),
+                    style: TextStyle(
+                      color: labelColor,
                       fontSize: 11,
                       fontFamily: 'JetBrainsMono',
                     ),
@@ -203,17 +228,30 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                 _action(
                   _editing ? Icons.visibility_outlined : Icons.edit_outlined,
                   _editing ? '预览' : '编辑',
+                  iconColor,
                   () => setState(() => _editing = !_editing),
                 ),
+                if (_modified)
+                  _action(
+                    Icons.restore_rounded,
+                    '重置为模型生成内容',
+                    iconColor,
+                    _resetCode,
+                  ),
                 _action(
                   _copied ? Icons.check : Icons.copy_outlined,
                   '复制',
+                  iconColor,
                   () async {
-                    await Clipboard.setData(
-                      ClipboardData(text: _controller.text),
-                    );
-                    if (!mounted) return;
-                    setState(() => _copied = true);
+                    final copied = await copyText(_controller.text);
+                    if (!context.mounted) return;
+                    if (!copied) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('复制失败，请手动选择代码复制。')),
+                      );
+                      return;
+                    }
+                    setState(() => _copied = copied);
                     Future<void>.delayed(
                       const Duration(milliseconds: 1200),
                       () {
@@ -222,11 +260,9 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                     );
                   },
                 ),
-                _action(Icons.play_arrow_rounded, '运行', () {
+                _action(Icons.play_arrow_rounded, '运行', iconColor, () {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('尚未配置隔离代码执行服务，已阻止在浏览器中直接执行。'),
-                    ),
+                    const SnackBar(content: Text('尚未配置隔离代码执行服务，已阻止在浏览器中直接执行。')),
                   );
                 }),
               ],
@@ -234,32 +270,44 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
           ),
           if (_editing)
             SelectionContainer.disabled(
-              child: TextField(
-                controller: _controller,
-                minLines: 4,
-                maxLines: null,
-                onChanged: (_) => setState(() {}),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontFamily: 'JetBrainsMono',
-                  fontSize: 14,
-                  height: 1.65,
-                ),
-                strutStyle: const StrutStyle(
-                  fontFamily: 'JetBrainsMono',
-                  fontSize: 14,
-                  height: 1.65,
-                  forceStrutHeight: true,
-                ),
-                cursorHeight: 23.1,
-                cursorWidth: 2,
-                decoration: const InputDecoration(
-                  isCollapsed: true,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.all(14),
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Container(
+                    color: codeBg,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minWidth: constraints.maxWidth,
+                        ),
+                        child: IntrinsicWidth(
+                          child: TextField(
+                            controller: _controller,
+                            minLines: 4,
+                            maxLines: null,
+                            keyboardType: TextInputType.multiline,
+                            onChanged: (_) => setState(() {}),
+                            style: TextStyle(
+                              color: baseCodeColor,
+                              fontFamily: 'JetBrainsMono',
+                              fontSize: 14,
+                              height: 1.65,
+                            ),
+                            cursorWidth: 2,
+                            decoration: const InputDecoration(
+                              isCollapsed: true,
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              contentPadding: EdgeInsets.all(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             )
           else
@@ -270,15 +318,15 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                   child: ConstrainedBox(
                     constraints: BoxConstraints(minWidth: constraints.maxWidth),
                     child: Container(
-                      color: const Color(0xFF282C34),
+                      color: codeBg,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 14,
                       ),
-                      child: SelectableText.rich(
+                      child: Text.rich(
                         TextSpan(
-                          style: const TextStyle(
-                            color: Color(0xFFABB2BF),
+                          style: TextStyle(
+                            color: baseCodeColor,
                             fontFamily: 'JetBrainsMono',
                             fontSize: 14,
                             height: 1.65,
@@ -286,13 +334,8 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                           children: _highlightCode(
                             _controller.text,
                             widget.language,
+                            dark: dark,
                           ),
-                        ),
-                        strutStyle: const StrutStyle(
-                          fontFamily: 'JetBrainsMono',
-                          fontSize: 14,
-                          height: 1.65,
-                          forceStrutHeight: true,
                         ),
                       ),
                     ),
@@ -305,18 +348,25 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
     );
   }
 
-  Widget _action(IconData icon, String tooltip, VoidCallback onPressed) {
+  Widget _action(
+    IconData icon,
+    String tooltip,
+    Color color,
+    VoidCallback onPressed,
+  ) {
     return IconButton(
       tooltip: tooltip,
       onPressed: onPressed,
-      icon: Icon(icon, size: 16, color: const Color(0xFFCCCCCC)),
+      icon: Icon(icon, size: 16, color: color),
     );
   }
 }
 
 const _codeTheme = <String, TextStyle>{
-  'comment': TextStyle(color: Color(0xFF7F848E), fontStyle: FontStyle.italic),
-  'quote': TextStyle(color: Color(0xFF7F848E), fontStyle: FontStyle.italic),
+  // 项目只内置了 JetBrains Mono Regular。不要对 token 使用合成斜体或不同
+  // 字重，否则 Flutter Web 的编辑选择层会和实际 glyph 度量发生偏移。
+  'comment': TextStyle(color: Color(0xFF7F848E)),
+  'quote': TextStyle(color: Color(0xFF7F848E)),
   'keyword': TextStyle(color: Color(0xFFC678DD)),
   'selector-tag': TextStyle(color: Color(0xFFE06C75)),
   'type': TextStyle(color: Color(0xFFE5C07B)),
@@ -339,19 +389,52 @@ const _codeTheme = <String, TextStyle>{
   'template-variable': TextStyle(color: Color(0xFFE06C75)),
 };
 
-List<TextSpan> _highlightCode(String source, String language) {
+// One Light 配色，浅色主题下的代码高亮（与上表 token 一一对应）
+const _codeThemeLight = <String, TextStyle>{
+  'comment': TextStyle(color: Color(0xFFA0A1A7)),
+  'quote': TextStyle(color: Color(0xFFA0A1A7)),
+  'keyword': TextStyle(color: Color(0xFFA626A4)),
+  'selector-tag': TextStyle(color: Color(0xFFE45649)),
+  'type': TextStyle(color: Color(0xFFC18401)),
+  'literal': TextStyle(color: Color(0xFF0184BC)),
+  'number': TextStyle(color: Color(0xFF986801)),
+  'string': TextStyle(color: Color(0xFF50A14F)),
+  'regexp': TextStyle(color: Color(0xFF50A14F)),
+  'title': TextStyle(color: Color(0xFF4078F2)),
+  'name': TextStyle(color: Color(0xFFE45649)),
+  'function': TextStyle(color: Color(0xFF4078F2)),
+  'params': TextStyle(color: Color(0xFF383A42)),
+  'built_in': TextStyle(color: Color(0xFF0184BC)),
+  'symbol': TextStyle(color: Color(0xFF0184BC)),
+  'meta': TextStyle(color: Color(0xFF4078F2)),
+  'meta-keyword': TextStyle(color: Color(0xFFA626A4)),
+  'meta-string': TextStyle(color: Color(0xFF50A14F)),
+  'attr': TextStyle(color: Color(0xFF986801)),
+  'attribute': TextStyle(color: Color(0xFF986801)),
+  'variable': TextStyle(color: Color(0xFFE45649)),
+  'template-variable': TextStyle(color: Color(0xFFE45649)),
+};
+
+List<TextSpan> _highlightCode(
+  String source,
+  String language, {
+  required bool dark,
+}) {
   final nodes =
       highlight.parse(source, language: language).nodes ?? const <Node>[];
-  return _convertHighlightNodes(nodes);
+  return _convertHighlightNodes(nodes, dark ? _codeTheme : _codeThemeLight);
 }
 
-List<TextSpan> _convertHighlightNodes(List<Node> nodes) {
+List<TextSpan> _convertHighlightNodes(
+  List<Node> nodes,
+  Map<String, TextStyle> theme,
+) {
   return nodes.map((node) {
-    final style = node.className == null ? null : _codeTheme[node.className!];
+    final style = node.className == null ? null : theme[node.className!];
     if (node.value != null) return TextSpan(text: node.value, style: style);
     return TextSpan(
       style: style,
-      children: _convertHighlightNodes(node.children ?? const <Node>[]),
+      children: _convertHighlightNodes(node.children ?? const <Node>[], theme),
     );
   }).toList();
 }
@@ -360,6 +443,7 @@ class _HighlightEditingController extends TextEditingController {
   _HighlightEditingController({required super.text, required this.language});
 
   String language;
+  bool dark = true;
 
   @override
   TextSpan buildTextSpan({
@@ -367,6 +451,9 @@ class _HighlightEditingController extends TextEditingController {
     TextStyle? style,
     required bool withComposing,
   }) {
-    return TextSpan(style: style, children: _highlightCode(text, language));
+    return TextSpan(
+      style: style,
+      children: _highlightCode(text, language, dark: dark),
+    );
   }
 }

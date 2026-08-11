@@ -6,6 +6,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from backend.core.stores.sqlite_connection import connect_sqlite
+
 
 class CoreMemory:
     """
@@ -24,9 +26,7 @@ class CoreMemory:
         self.__initialize()
 
     def __connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=5.0)
-        connection.row_factory = sqlite3.Row
-        return connection
+        return connect_sqlite(self.database_path)
 
     def __initialize(self) -> None:
         with self.__connect() as connection:

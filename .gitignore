@@ -1,55 +1,130 @@
-# Operating-system files
+# Operating-system and filesystem files
 .DS_Store
+._*
 Thumbs.db
+Desktop.ini
+.nfs*
 
 # Editors and local AI tools
 .idea/
 .vscode/
 .zed/
+.fleet/
+.history/
+.agents/
+.codex/
 .claude/
 .trae/
 *.iml
 *.swp
 *.swo
+*~
 
-# Python caches, environments, tests and coverage
+# Python bytecode, build products, environments and tool caches
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
+.pytype/
+.ipynb_checkpoints/
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
 .tox/
 .nox/
+.pyre/
 .venv/
 venv/
 env/
+__pypackages__/
 
 # Local configuration and secrets
 .env
 .env.*
 !.env.example
+!.env.*.example
+.envrc
+.direnv/
+*.local
+*.secret
+secrets/
+.ssh/
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+known_hosts
+known_hosts.old
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
 
-# Runtime data and logs
+# Runtime data, process state, HPC output and crash dumps
 logs/
 *.log
+*.pid
+*.pid.lock
+*.out
+*.err
+nohup.out
+slurm-*.out
+/core
+/core.[0-9]*
 *.db
 *.db-*
 *.sqlite
+*.sqlite-*
 *.sqlite3
+*.sqlite3-*
 
-# RAG indexes and local model artifacts
+# Local caches, generated indexes and experiment output
+.cache/
+**/.cache/
+/artifacts/
+backend/agent/rag/artifacts/
 data/faiss_index/
 **/faiss_index/
 *.faiss
 *.pkl
+wandb/
+runs/
+lightning_logs/
+
+# Local model weights and checkpoints
 /models/
 /checkpoints/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.gguf
+pytorch_model*.bin
 
-# Flutter / Dart generated files
+# JavaScript / Web generated files
+node_modules/
+.npm/
+.yarn/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Flutter / Dart generated files and platform-local signing state
 frontend/.dart_tool/
 frontend/.flutter-plugins
 frontend/.flutter-plugins-dependencies
@@ -60,6 +135,7 @@ frontend/build/
 frontend/coverage/
 frontend/android/.gradle/
 frontend/android/local.properties
+frontend/android/key.properties
 frontend/android/app/debug/
 frontend/android/app/profile/
 frontend/android/app/release/
@@ -72,17 +148,19 @@ frontend/macos/Flutter/ephemeral/
 frontend/linux/flutter/ephemeral/
 frontend/windows/flutter/ephemeral/
 
-# Local design handoff material
+# Temporary files and local exports
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
+*.rej
 design_handoff_esa_chat/
-
-esa.err
-esa.out
-
-run.sh
-gpu_proxy.sh
-
 frontend-web.tar.gz
 
+# Cluster-local launch and tunnel helpers
+run.sh
+gpu_proxy.sh
 artifacts
 runtime
 backend/agent/DocIR/mineru_adapter_samples
@@ -91,3 +169,12 @@ backend/agent/DocIR/CS_Book
 backend/agent/DocIR/tests
 backend/agent/rag/tests
 backend/agent/mm/tests
+
+frpc.toml
+frpc.ini
+/frpc
+/frps
+/frp_*/
+/frp_*.tar.gz
+!frpc.example.toml
+!frpc.example.ini

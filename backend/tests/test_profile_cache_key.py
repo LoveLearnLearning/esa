@@ -15,6 +15,8 @@ class UserStore:
 
 
 class MasteryStore:
+    DEFAULT_MASTERY = 50.0
+
     def get(self, user_name, kp_id):
         return None
 
@@ -25,6 +27,11 @@ class MasteryStore:
 class KGStore:
     def list_all(self):
         return []
+
+
+class EvidenceStore:
+    def get_summary(self, user_name, *, kp_id=None, limit=20):
+        raise AssertionError("No resolved knowledge point should request evidence")
 
 
 class ProfileStore:
@@ -63,7 +70,13 @@ def make_builder(user=None):
     user = user or make_user()
     profile_store = ProfileStore()
     return (
-        ProfileBuilder(UserStore(user), MasteryStore(), KGStore(), profile_store),
+        ProfileBuilder(
+            UserStore(user),
+            MasteryStore(),
+            KGStore(),
+            profile_store,
+            EvidenceStore(),
+        ),
         profile_store,
         user,
     )
@@ -88,6 +101,10 @@ def test_cache_key_changes_for_group_tone_and_recent_messages():
         recent_messages=[{"role": "user", "content": "操作系统"}],
     )
     assert builder._compute_hash(user, q3, settings) != builder._compute_hash(user, q4, settings)
+
+    q5 = ProfileQuery(user_id="u1", username="alice", resolved_kp_ids=["二叉树"])
+    q6 = ProfileQuery(user_id="u1", username="alice", resolved_kp_ids=["递归"])
+    assert builder._compute_hash(user, q5, settings) != builder._compute_hash(user, q6, settings)
 
 
 def test_cache_key_changes_when_user_profile_inputs_change():

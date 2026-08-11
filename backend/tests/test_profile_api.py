@@ -42,6 +42,11 @@ class StubKGStore:
         return []
 
 
+class StubEvidenceStore:
+    def get_summary(self, user_name, *, kp_id=None, limit=20):
+        raise AssertionError("API profile view has no resolved knowledge point")
+
+
 class StubCoreMemory:
     def get_all(self, user_name):
         return []
@@ -90,6 +95,7 @@ def _create_app(tmp_path) -> FastAPI:
         mastery_store=StubMasteryStore(),
         kg_store=StubKGStore(),
         profile_store=profile_store,
+        evidence_store=StubEvidenceStore(),
     )
 
     app = FastAPI()
@@ -129,6 +135,13 @@ def test_get_profile_returns_structured_view(tmp_path):
     assert "inferred_patterns" in body
     assert "profile_version" in body
     assert "generated_at" in body
+
+    # 旧客户端仍可读取基础学情字段，避免 Profile V2 升级造成静默默认值。
+    assert body["major"] == "cs"
+    assert body["grade"] == "大二"
+    assert body["current_week"] == 3
+    assert body["total_weeks"] == 18
+    assert body["profile_enabled"] is True
 
     # explicit 包含 major 字段 origin=explicit_setting confidence=1.0
     explicit_fields = {item["field"]: item for item in body["explicit"]}

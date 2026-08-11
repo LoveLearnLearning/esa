@@ -41,14 +41,260 @@ class UserProfile {
   final bool profileEnabled;
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
+    final explicit = <String, dynamic>{};
+    final rawExplicit = json['explicit'];
+    if (rawExplicit is List) {
+      for (final item in rawExplicit.whereType<Map>()) {
+        final field = item['field'];
+        if (field is String) explicit[field] = item['value'];
+      }
+    }
+
+    dynamic value(String key) => json[key] ?? explicit[key];
+
     return UserProfile(
-      major: json['major'] as String? ?? 'cs',
-      grade: json['grade'] as String? ?? '',
-      currentWeek: json['current_week'] as int? ?? 1,
-      totalWeeks: json['total_weeks'] as int? ?? 16,
-      profileEnabled: json['profile_enabled'] as bool? ?? false,
+      major: value('major') as String? ?? 'cs',
+      grade: value('grade') as String? ?? '',
+      currentWeek: (value('current_week') as num?)?.toInt() ?? 1,
+      totalWeeks: (value('total_weeks') as num?)?.toInt() ?? 18,
+      profileEnabled: value('profile_enabled') as bool? ?? true,
     );
   }
+}
+
+class ScheduleCourse {
+  const ScheduleCourse({
+    required this.id,
+    required this.name,
+    required this.weekday,
+    required this.startPeriod,
+    required this.endPeriod,
+    required this.startWeek,
+    required this.endWeek,
+    required this.colorValue,
+    this.teacher = '',
+    this.location = '',
+  });
+
+  final String id;
+  final String name;
+  final String teacher;
+  final String location;
+  final int weekday;
+  final int startPeriod;
+  final int endPeriod;
+  final int startWeek;
+  final int endWeek;
+  final int colorValue;
+
+  bool occursInWeek(int week) => week >= startWeek && week <= endWeek;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'teacher': teacher,
+    'location': location,
+    'weekday': weekday,
+    'start_period': startPeriod,
+    'end_period': endPeriod,
+    'start_week': startWeek,
+    'end_week': endWeek,
+    'color_value': colorValue,
+  };
+
+  factory ScheduleCourse.fromJson(Map<String, dynamic> json) {
+    int number(String key, int fallback) =>
+        (json[key] as num?)?.toInt() ?? fallback;
+    return ScheduleCourse(
+      id: json['id']?.toString() ?? _nextId(),
+      name: json['name']?.toString() ?? '未命名课程',
+      teacher: json['teacher']?.toString() ?? '',
+      location: json['location']?.toString() ?? '',
+      weekday: number('weekday', 1).clamp(1, 7),
+      startPeriod: number('start_period', 1).clamp(1, 24),
+      endPeriod: number('end_period', 2).clamp(1, 24),
+      startWeek: number('start_week', 1).clamp(1, 30),
+      endWeek: number('end_week', 18).clamp(1, 30),
+      colorValue: number('color_value', 0xFF2563EB),
+    );
+  }
+}
+
+class ScheduleSettings {
+  const ScheduleSettings({
+    this.morningPeriodCount = 4,
+    this.afternoonPeriodCount = 4,
+    this.eveningPeriodCount = 4,
+    this.morningStartMinutes = 8 * 60,
+    this.afternoonStartMinutes = 14 * 60,
+    this.eveningStartMinutes = 19 * 60,
+    this.periodDurationMinutes = 45,
+    this.breakDurationMinutes = 10,
+    this.termStartDate = '',
+  });
+
+  final int morningPeriodCount;
+  final int afternoonPeriodCount;
+  final int eveningPeriodCount;
+  final int morningStartMinutes;
+  final int afternoonStartMinutes;
+  final int eveningStartMinutes;
+  final int periodDurationMinutes;
+  final int breakDurationMinutes;
+  final String termStartDate;
+
+  int get totalPeriods =>
+      morningPeriodCount + afternoonPeriodCount + eveningPeriodCount;
+
+  DateTime? get parsedTermStartDate => DateTime.tryParse(termStartDate);
+
+  int weekForDate(DateTime date) {
+    final start = parsedTermStartDate;
+    if (start == null) return 1;
+    final current = DateTime(date.year, date.month, date.day);
+    final firstDay = DateTime(start.year, start.month, start.day);
+    final elapsedDays = current.difference(firstDay).inDays;
+    return elapsedDays < 0 ? 1 : elapsedDays ~/ 7 + 1;
+  }
+
+  int periodStartMinutes(int period) {
+    final normalizedPeriod = period.clamp(
+      1,
+      totalPeriods == 0 ? 1 : totalPeriods,
+    );
+    final step = periodDurationMinutes + breakDurationMinutes;
+    if (normalizedPeriod <= morningPeriodCount) {
+      return morningStartMinutes + (normalizedPeriod - 1) * step;
+    }
+    final afternoonEnd = morningPeriodCount + afternoonPeriodCount;
+    if (normalizedPeriod <= afternoonEnd) {
+      return afternoonStartMinutes +
+          (normalizedPeriod - morningPeriodCount - 1) * step;
+    }
+    return eveningStartMinutes + (normalizedPeriod - afternoonEnd - 1) * step;
+  }
+
+  int periodEndMinutes(int period) =>
+      periodStartMinutes(period) + periodDurationMinutes;
+
+  String periodStartLabel(int period) =>
+      formatClockMinutes(periodStartMinutes(period));
+
+  String periodEndLabel(int period) =>
+      formatClockMinutes(periodEndMinutes(period));
+
+  String courseTimeLabel(int startPeriod, int endPeriod) =>
+      '${periodStartLabel(startPeriod)}–${periodEndLabel(endPeriod)}';
+
+  Map<String, dynamic> toJson() => {
+    'morning_period_count': morningPeriodCount,
+    'afternoon_period_count': afternoonPeriodCount,
+    'evening_period_count': eveningPeriodCount,
+    'morning_start_minutes': morningStartMinutes,
+    'afternoon_start_minutes': afternoonStartMinutes,
+    'evening_start_minutes': eveningStartMinutes,
+    'period_duration_minutes': periodDurationMinutes,
+    'break_duration_minutes': breakDurationMinutes,
+    'term_start_date': termStartDate,
+  };
+
+  factory ScheduleSettings.fromJson(Map<String, dynamic> json) {
+    int number(String key, int fallback) =>
+        (json[key] as num?)?.toInt() ?? fallback;
+    final legacyStart = number('first_period_start_minutes', 8 * 60);
+    return ScheduleSettings(
+      morningPeriodCount: number('morning_period_count', 4).clamp(0, 8),
+      afternoonPeriodCount: number('afternoon_period_count', 4).clamp(0, 8),
+      eveningPeriodCount: number('evening_period_count', 4).clamp(0, 8),
+      morningStartMinutes: number(
+        'morning_start_minutes',
+        legacyStart,
+      ).clamp(0, 23 * 60 + 59),
+      afternoonStartMinutes: number(
+        'afternoon_start_minutes',
+        14 * 60,
+      ).clamp(0, 23 * 60 + 59),
+      eveningStartMinutes: number(
+        'evening_start_minutes',
+        19 * 60,
+      ).clamp(0, 23 * 60 + 59),
+      periodDurationMinutes: number(
+        'period_duration_minutes',
+        45,
+      ).clamp(20, 180),
+      breakDurationMinutes: number('break_duration_minutes', 10).clamp(0, 120),
+      termStartDate: json['term_start_date']?.toString() ?? '',
+    );
+  }
+}
+
+class ScheduleTable {
+  const ScheduleTable({
+    required this.id,
+    required this.name,
+    required this.isActive,
+  });
+
+  final String id;
+  final String name;
+  final bool isActive;
+
+  factory ScheduleTable.fromJson(Map<String, dynamic> json) => ScheduleTable(
+        id: json['id'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        isActive: json['is_active'] as bool? ?? false,
+      );
+}
+
+class ScheduleSnapshot {
+  const ScheduleSnapshot({
+    required this.courses,
+    required this.settings,
+    this.tables = const [],
+    this.activeTableId = '',
+  });
+
+  final List<ScheduleCourse> courses;
+  final ScheduleSettings settings;
+  final List<ScheduleTable> tables;
+  final String activeTableId;
+
+  factory ScheduleSnapshot.fromJson(Map<String, dynamic> json) =>
+      ScheduleSnapshot(
+        courses: (json['courses'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
+        settings: ScheduleSettings.fromJson(
+          Map<String, dynamic>.from(json['settings'] as Map? ?? const {}),
+        ),
+        tables: (json['tables'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (item) => ScheduleTable.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
+        activeTableId: json['active_table_id'] as String? ?? '',
+      );
+}
+
+/// POST /me/schedule/import 的结果：成功导入的课程 + 因时间冲突被跳过的条数
+class ScheduleImportResult {
+  const ScheduleImportResult({required this.courses, required this.skippedCount});
+
+  final List<ScheduleCourse> courses;
+  final int skippedCount;
+}
+
+String formatClockMinutes(int totalMinutes) {
+  final normalized = totalMinutes % (24 * 60);
+  final hours = normalized ~/ 60;
+  final minutes = normalized % 60;
+  return '${hours.toString().padLeft(2, '0')}:'
+      '${minutes.toString().padLeft(2, '0')}';
 }
 
 class MasteryPoint {
@@ -91,6 +337,182 @@ class MasteryReport {
       stalePoints: points('stale_points'),
     );
   }
+}
+
+class LearningCourseSummary {
+  const LearningCourseSummary({
+    required this.name,
+    required this.totalPoints,
+    required this.evaluatedPoints,
+    required this.weakPoints,
+    required this.reviewPoints,
+    this.canonicalCourse,
+    this.supported = true,
+    this.source = 'manual',
+    this.averageMastery,
+  });
+
+  final String name;
+  final int totalPoints;
+  final int evaluatedPoints;
+  final int weakPoints;
+  final int reviewPoints;
+  final String? canonicalCourse;
+  final bool supported;
+  final String source;
+  final double? averageMastery;
+
+  factory LearningCourseSummary.fromJson(Map<String, dynamic> json) =>
+      LearningCourseSummary(
+        name: json['name']?.toString() ?? '',
+        totalPoints: (json['total_points'] as num?)?.toInt() ?? 0,
+        evaluatedPoints: (json['evaluated_points'] as num?)?.toInt() ?? 0,
+        weakPoints: (json['weak_points'] as num?)?.toInt() ?? 0,
+        reviewPoints: (json['review_points'] as num?)?.toInt() ?? 0,
+        canonicalCourse: json['canonical_course']?.toString(),
+        supported: json['supported'] as bool? ?? true,
+        source: json['source']?.toString() ?? 'manual',
+        averageMastery: (json['average_mastery'] as num?)?.toDouble(),
+      );
+}
+
+class LearningCourseCatalogItem {
+  const LearningCourseCatalogItem({required this.name, required this.added});
+
+  final String name;
+  final bool added;
+
+  factory LearningCourseCatalogItem.fromJson(Map<String, dynamic> json) =>
+      LearningCourseCatalogItem(
+        name: json['name']?.toString() ?? '',
+        added: json['added'] as bool? ?? false,
+      );
+}
+
+class KnowledgeMapNode {
+  const KnowledgeMapNode({
+    required this.id,
+    required this.name,
+    required this.course,
+    required this.category,
+    required this.weight,
+    required this.external,
+    required this.hasRecord,
+    required this.status,
+    required this.needsReview,
+    required this.practiceCount,
+    required this.evidenceCount,
+    required this.weakPrerequisiteCount,
+    required this.level,
+    this.masteryLevel,
+    this.retention,
+    this.evidenceConfidence,
+  });
+
+  final String id;
+  final String name;
+  final String course;
+  final String category;
+  final double weight;
+  final bool external;
+  final bool hasRecord;
+  final double? masteryLevel;
+  final String status;
+  final double? retention;
+  final double? evidenceConfidence;
+  final bool needsReview;
+  final int practiceCount;
+  final int evidenceCount;
+  final int weakPrerequisiteCount;
+  final int level;
+
+  factory KnowledgeMapNode.fromJson(Map<String, dynamic> json) =>
+      KnowledgeMapNode(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        course: json['course']?.toString() ?? '',
+        category: json['category']?.toString() ?? 'general',
+        weight: (json['weight'] as num?)?.toDouble() ?? 0,
+        external: json['external'] as bool? ?? false,
+        hasRecord: json['has_record'] as bool? ?? false,
+        masteryLevel: (json['mastery_level'] as num?)?.toDouble(),
+        status: json['status']?.toString() ?? 'unseen',
+        retention: (json['retention'] as num?)?.toDouble(),
+        evidenceConfidence: (json['evidence_confidence'] as num?)?.toDouble(),
+        needsReview: json['needs_review'] as bool? ?? false,
+        practiceCount: (json['practice_count'] as num?)?.toInt() ?? 0,
+        evidenceCount: (json['evidence_count'] as num?)?.toInt() ?? 0,
+        weakPrerequisiteCount:
+            (json['weak_prerequisite_count'] as num?)?.toInt() ?? 0,
+        level: (json['level'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class KnowledgeMapEdge {
+  const KnowledgeMapEdge({
+    required this.from,
+    required this.to,
+    required this.type,
+  });
+
+  final String from;
+  final String to;
+  final String type;
+
+  factory KnowledgeMapEdge.fromJson(Map<String, dynamic> json) =>
+      KnowledgeMapEdge(
+        from: json['from']?.toString() ?? '',
+        to: json['to']?.toString() ?? '',
+        type: json['type']?.toString() ?? 'prerequisite',
+      );
+}
+
+class KnowledgeMapData {
+  const KnowledgeMapData({
+    required this.course,
+    required this.nodes,
+    required this.edges,
+  });
+
+  final String course;
+  final List<KnowledgeMapNode> nodes;
+  final List<KnowledgeMapEdge> edges;
+
+  factory KnowledgeMapData.fromJson(Map<String, dynamic> json) =>
+      KnowledgeMapData(
+        course: json['course']?.toString() ?? '',
+        nodes: (json['nodes'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  KnowledgeMapNode.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
+        edges: (json['edges'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  KnowledgeMapEdge.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
+      );
+}
+
+class KnowledgePointDetail {
+  const KnowledgePointDetail({required this.raw});
+
+  final Map<String, dynamic> raw;
+  Map<String, dynamic> get point =>
+      Map<String, dynamic>.from(raw['point'] as Map? ?? const {});
+  Map<String, dynamic> get state =>
+      Map<String, dynamic>.from(raw['state'] as Map? ?? const {});
+  Map<String, dynamic> get evidence =>
+      Map<String, dynamic>.from(raw['evidence_summary'] as Map? ?? const {});
+  List<Map<String, dynamic>> get weakPrerequisites =>
+      (raw['weak_prerequisites'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
 }
 
 class CoreMemoryItem {

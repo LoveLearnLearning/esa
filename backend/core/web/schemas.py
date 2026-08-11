@@ -106,7 +106,16 @@ class ProfileFieldOut(BaseModel):
 
 
 class ProfileViewOut(BaseModel):
-    """完整画像视图 显式字段 + 派生字段"""
+    """完整画像视图。
+
+    顶层学情字段为旧客户端保留；分节字段承载 Profile V2 数据。
+    """
+
+    major: str
+    grade: str
+    current_week: int
+    total_weeks: int
+    profile_enabled: bool
     explicit: list[ProfileFieldOut] = Field(default_factory=list)
     preferences: list[ProfileFieldOut] = Field(default_factory=list)
     goals: list[ProfileFieldOut] = Field(default_factory=list)

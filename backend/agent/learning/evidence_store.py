@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
+from backend.core.stores.sqlite_connection import connect_sqlite
+
 
 class LearningEvidenceStore:
     """
@@ -37,9 +39,7 @@ class LearningEvidenceStore:
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=5.0)
-        connection.row_factory = sqlite3.Row
-        return connection
+        return connect_sqlite(self.database_path)
 
     def _initialize(self) -> None:
         with self._connect() as connection:

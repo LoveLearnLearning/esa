@@ -4,9 +4,12 @@
 //
 // 当 config.dart 里 kOfflineMode == true 时 所有方法走本地假数据 完全不发网络请求
 
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../config.dart';
 import '../models/models.dart';
@@ -226,6 +229,267 @@ class ApiClient {
     );
     if (r.statusCode != 200) _fail(r);
     return MasteryReport.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<List<LearningCourseSummary>> getLearningCourses() async {
+    final r = await http.get(
+      _uri('/me/learning/courses'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    final data = _decode(r) as Map<String, dynamic>;
+    return (data['courses'] as List? ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) =>
+              LearningCourseSummary.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .where((item) => item.name.isNotEmpty)
+        .toList();
+  }
+
+  Future<List<LearningCourseCatalogItem>> getLearningCourseCatalog({
+    String query = '',
+  }) async {
+    final suffix = query.trim().isEmpty
+        ? ''
+        : '?query=${Uri.encodeQueryComponent(query.trim())}';
+    final r = await http.get(
+      _uri('/me/learning/course-catalog$suffix'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    final data = _decode(r) as Map<String, dynamic>;
+    return (data['courses'] as List? ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => LearningCourseCatalogItem.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .where((item) => item.name.isNotEmpty)
+        .toList();
+  }
+
+  Future<void> addLearningCourses(
+    Iterable<String> names, {
+    required String source,
+  }) async {
+    final courses = names
+        .map((name) => name.trim())
+        .where((name) => name.isNotEmpty)
+        .map((name) => {'name': name, 'source': source})
+        .toList();
+    if (courses.isEmpty) return;
+    final r = await http.post(
+      _uri('/me/learning/courses'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'courses': courses}),
+    );
+    if (r.statusCode != 201) _fail(r);
+  }
+
+  Future<void> removeLearningCourse(String name) async {
+    final r = await http.delete(
+      _uri('/me/learning/courses/${Uri.encodeComponent(name.trim())}'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204) _fail(r);
+  }
+
+  Future<void> bindLearningCourse({
+    required String name,
+    required String canonicalCourse,
+  }) async {
+    final r = await http.patch(
+      _uri('/me/learning/courses/${Uri.encodeComponent(name.trim())}'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'canonical_course': canonicalCourse.trim()}),
+    );
+    if (r.statusCode != 200) _fail(r);
+  }
+
+  Future<ScheduleSnapshot> getSchedule() async {
+    final r = await http.get(
+      _uri('/me/schedule'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ScheduleSnapshot.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<ScheduleCourse> saveScheduleCourse(ScheduleCourse course) async {
+    final r = await http.put(
+      _uri('/me/schedule/courses'),
+      headers: _headers(auth: true),
+      body: jsonEncode(course.toJson()),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ScheduleCourse.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteScheduleCourse(String courseId) async {
+    final r = await http.delete(
+      _uri('/me/schedule/courses/${Uri.encodeComponent(courseId)}'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204) _fail(r);
+  }
+
+  Future<ScheduleSettings> saveScheduleSettings(
+    ScheduleSettings settings,
+  ) async {
+    final r = await http.put(
+      _uri('/me/schedule/settings'),
+      headers: _headers(auth: true),
+      body: jsonEncode(settings.toJson()),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ScheduleSettings.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  /// 按魔数优先、扩展名兜底推断 MIME。Android 相册/第三方文件提供器给出的
+  /// 文件名可能没有扩展名，后端判定完全依赖 content_type 或扩展名，两者
+  /// 都缺时合法图片也会被 422 拒绝。
+  static String _mimeFor(String filename, Uint8List bytes) {
+    if (bytes.length >= 12) {
+      if (bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44) {
+        return 'application/pdf'; // %PDF
+      }
+      if (bytes[0] == 0x89 && bytes[1] == 0x50) return 'image/png';
+      if (bytes[0] == 0xFF && bytes[1] == 0xD8) return 'image/jpeg';
+      if (bytes[0] == 0x42 && bytes[1] == 0x4D) return 'image/bmp';
+      if (bytes[0] == 0x52 &&
+          bytes[1] == 0x49 &&
+          bytes[8] == 0x57 &&
+          bytes[9] == 0x45) {
+        return 'image/webp'; // RIFF....WEBP
+      }
+      if (bytes[4] == 0x66 &&
+          bytes[5] == 0x74 &&
+          bytes[6] == 0x79 &&
+          bytes[7] == 0x70) {
+        return 'image/heic'; // ....ftyp
+      }
+    }
+    final ext = filename.contains('.')
+        ? filename.toLowerCase().split('.').last
+        : '';
+    return switch (ext) {
+      'pdf' => 'application/pdf',
+      'png' => 'image/png',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'webp' => 'image/webp',
+      'bmp' => 'image/bmp',
+      'heic' || 'heif' => 'image/heic',
+      'html' || 'htm' => 'text/html',
+      _ => 'application/octet-stream',
+    };
+  }
+
+  Future<ScheduleImportResult> importScheduleFile({
+    required String filename,
+    required Uint8List bytes,
+    bool toNewTable = false,
+    String? newTableName,
+  }) async {
+    final request = http.MultipartRequest('POST', _uri('/me/schedule/import'));
+    if (sessionId != null) {
+      request.headers['Authorization'] = 'Bearer $sessionId';
+    }
+    request.fields['target'] = toNewTable ? 'new' : 'current';
+    if (toNewTable && newTableName != null && newTableName.trim().isNotEmpty) {
+      request.fields['table_name'] = newTableName.trim();
+    }
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+        contentType: MediaType.parse(_mimeFor(filename, bytes)),
+      ),
+    );
+    // 后端 LLM 识别多页 PDF 可能要几十秒；但手机弱网下不能无限挂起，
+    // 否则 _importing 永远为 true、导入按钮永久禁用
+    try {
+      final streamed = await request.send().timeout(
+        const Duration(seconds: 180),
+      );
+      final r = await http.Response.fromStream(
+        streamed,
+      ).timeout(const Duration(seconds: 60));
+      if (r.statusCode != 200) _fail(r);
+      final data = _decode(r) as Map<String, dynamic>;
+      return ScheduleImportResult(
+        courses: (data['courses'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (item) => ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
+        skippedCount: (data['skipped_count'] as num?)?.toInt() ?? 0,
+      );
+    } on TimeoutException {
+      throw ApiException(0, '课表识别超时，请稍后重试');
+    } on http.ClientException {
+      throw ApiException(0, '网络异常，请检查网络后重试');
+    }
+  }
+
+  Future<ScheduleTable> createScheduleTable(String name) async {
+    final r = await http.post(
+      _uri('/me/schedule/tables'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'name': name}),
+    );
+    if (r.statusCode != 201) _fail(r);
+    return ScheduleTable.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<ScheduleTable> renameScheduleTable(String tableId, String name) async {
+    final r = await http.patch(
+      _uri('/me/schedule/tables/$tableId'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'name': name}),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ScheduleTable.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<ScheduleSnapshot> activateScheduleTable(String tableId) async {
+    final r = await http.post(
+      _uri('/me/schedule/tables/$tableId/activate'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ScheduleSnapshot.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteScheduleTable(String tableId) async {
+    final r = await http.delete(
+      _uri('/me/schedule/tables/$tableId'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204) _fail(r);
+  }
+
+  Future<KnowledgeMapData> getKnowledgeMap(String course) async {
+    final query = Uri.encodeQueryComponent(course.trim());
+    final r = await http.get(
+      _uri('/me/learning/knowledge-map?course=$query'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return KnowledgeMapData.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<KnowledgePointDetail> getKnowledgePointDetail(String kpId) async {
+    final r = await http.get(
+      _uri('/me/learning/knowledge-points/${Uri.encodeComponent(kpId)}'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return KnowledgePointDetail(raw: _decode(r) as Map<String, dynamic>);
   }
 
   Future<List<CoreMemoryItem>> listCoreMemories() async {

@@ -2,7 +2,7 @@
 
 > 在这里记录前后端网络 endpoint 前端照此对接 后端改动接口时同步更新本文档
 >
-> 最后核对：2026-08-04。
+> 最后核对：2026-08-09。
 
 - Base URL（`python -m backend.main`）: `http://127.0.0.1:51024`
 - 开发启动命令: `uvicorn backend.core.web.webAPI:app --host 0.0.0.0 --port 51024 --reload`
@@ -28,12 +28,12 @@ Authorization: Bearer <session_id>
 { "detail": "错误说明" }
 ```
 
-| 状态码 | 含义 |
-|---|---|
-| 401 | 未登录 / 会话无效 / 会话过期 / 用户名或密码错误 |
-| 404 | 资源不存在或不属于当前用户 |
-| 409 | 资源冲突 如用户名已存在 |
-| 422 | 请求体校验不通过 由 pydantic 自动返回 |
+| 状态码 | 含义                                                           |
+| ------ | -------------------------------------------------------------- |
+| 401    | 未登录 / 会话无效 / 会话过期 / 用户名或密码错误                |
+| 404    | 资源不存在或不属于当前用户                                     |
+| 409    | 资源冲突，如用户名已存在、分组达到上限或同一对话上一轮仍在生成 |
+| 422    | 请求体校验不通过 由 pydantic 自动返回                          |
 
 ---
 
@@ -73,10 +73,10 @@ Authorization: Bearer <session_id>
 
 ```json
 {
-  "session_id": "uuid 作为后续请求的 Bearer token",
-  "user_id": "用户uuid",
-  "username": "feng",
-  "expires_at": "2026-07-24T07:22:08.123456+00:00"
+    "session_id": "uuid 作为后续请求的 Bearer token",
+    "user_id": "用户uuid",
+    "username": "feng",
+    "expires_at": "2026-07-24T07:22:08.123456+00:00"
 }
 ```
 
@@ -96,8 +96,8 @@ Authorization: Bearer <session_id>
 
 ```json
 {
-  "old_password": "old-password",
-  "new_password": "new-password"
+    "old_password": "old-password",
+    "new_password": "new-password"
 }
 ```
 
@@ -115,14 +115,14 @@ Authorization: Bearer <session_id>
 
 ```json
 [
-  {
-    "conversation_id": "uuid",
-    "user_id": "用户uuid",
-    "title": "对话标题",
-    "group_id": "分组uuid 或 null(未分组)",
-    "created_at": "...",
-    "updated_at": "..."
-  }
+    {
+        "conversation_id": "uuid",
+        "user_id": "用户uuid",
+        "title": "对话标题",
+        "group_id": "分组uuid 或 null(未分组)",
+        "created_at": "...",
+        "updated_at": "..."
+    }
 ]
 ```
 
@@ -160,12 +160,12 @@ Authorization: Bearer <session_id>
 
 ```json
 [
-  {
-    "role": "user | assistant | tool",
-    "content": "消息内容",
-    "name": "工具名 仅 tool 消息有 其余为 null",
-    "created_at": "..."
-  }
+    {
+        "role": "user | assistant | tool",
+        "content": "消息内容",
+        "name": "工具名 仅 tool 消息有 其余为 null",
+        "created_at": "..."
+    }
 ]
 ```
 
@@ -204,16 +204,28 @@ data: {"delta":"回答正文"}
 
 事件类型:
 
-| event | data | 含义 |
-|---|---|---|
-| `start` | `conversation_id` | 服务端开始处理 |
-| `reasoning` | `delta` | 模型思考内容增量 |
-| `content` | `delta` | 最终回答增量 |
-| `tool` | `name`, `content` | 工具执行结果 |
-| `done` | `conversation_id` | 本轮完成且消息已持久化 |
-| `error` | `detail`, `type` | 流建立后发生生成错误 |
+| event       | data              | 含义                   |
+| ----------- | ----------------- | ---------------------- |
+| `start`     | `conversation_id` | 服务端开始处理         |
+| `reasoning` | `delta`           | 模型思考内容增量       |
+| `content`   | `delta`           | 最终回答增量           |
+| `tool`      | `name`, `content` | 工具执行结果           |
+| `done`      | `conversation_id` | 本轮完成且消息已持久化 |
+| `error`     | `detail`, `type`  | 流建立后发生生成错误   |
 
 客户端必须按 SSE 空行分隔事件，并将同类 `delta` 按收到顺序追加，不能把每个增量作为独立消息。工具调用 XML 不会作为可见内容发送。
+
+### 同一对话并发约定
+
+同步与流式发送接口共用对话级租约。同一 `conversation_id` 的请求会跨协程和多个
+Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手消息持久化都保持顺序；
+不同对话不互相阻塞。等待上一轮超过服务端时限时返回 `409`：
+
+```json
+{ "detail": "上一条消息仍在生成，请稍后重试" }
+```
+
+客户端收到该响应后不应自动重复追加用户消息，提示用户稍后重试即可。
 
 ---
 
@@ -227,18 +239,18 @@ data: {"delta":"回答正文"}
 
 ```json
 [
-  {
-    "group_id": "uuid",
-    "user_id": "用户uuid",
-    "name": "分组名称",
-    "description": "分组描述",
-    "custom_instruction": "分组内自定义指令",
-    "style": "concise | detailed | socratic 或 null(继承用户级)",
-    "tone": "friendly | formal | encouraging | strict 或 null(继承用户级)",
-    "conversation_count": 3,
-    "created_at": "...",
-    "updated_at": "..."
-  }
+    {
+        "group_id": "uuid",
+        "user_id": "用户uuid",
+        "name": "分组名称",
+        "description": "分组描述",
+        "custom_instruction": "分组内自定义指令",
+        "style": "concise | detailed | socratic 或 null(继承用户级)",
+        "tone": "friendly | formal | encouraging | strict 或 null(继承用户级)",
+        "conversation_count": 3,
+        "created_at": "...",
+        "updated_at": "..."
+    }
 ]
 ```
 
@@ -248,11 +260,11 @@ data: {"delta":"回答正文"}
 
 ```json
 {
-  "name": "高数",
-  "description": "高等数学复习",
-  "custom_instruction": "用苏格拉底式提问引导我",
-  "style": null,
-  "tone": null
+    "name": "高数",
+    "description": "高等数学复习",
+    "custom_instruction": "用苏格拉底式提问引导我",
+    "style": null,
+    "tone": null
 }
 ```
 
@@ -265,7 +277,12 @@ data: {"delta":"回答正文"}
 请求体为部分更新 以下字段均可选 (`style` / `tone` 传 `null` 表示改回继承用户级):
 
 ```json
-{ "name": "高等数学", "custom_instruction": "先给思路", "style": "socratic", "tone": null }
+{
+    "name": "高等数学",
+    "custom_instruction": "先给思路",
+    "style": "socratic",
+    "tone": null
+}
 ```
 
 响应 `200`: 最新分组对象; 不存在或不属于当前用户: `404`; 枚举非法: `400`
@@ -291,9 +308,127 @@ data: {"delta":"回答正文"}
 
 可选查询参数 `course`。返回知识点总数、平均掌握度、薄弱点、优势点和需要复习的知识点。
 
+### GET /me/learning/courses
+
+返回当前用户已加入学习空间的课程，而不是返回全部全局课程。每项包含
+`canonical_course`、`supported`、`source`，以及已评估、薄弱、待复习知识点数量和
+平均掌握度。未匹配 canonical KG 的课表课程仍会保留，此时 `supported: false`；
+未产生学习证据的课程，其 `average_mastery` 为 `null`。
+
+### GET /me/learning/course-catalog
+
+返回 ESA 全局支持的 canonical 课程目录。可选查询参数 `query` 做名称搜索；每项的
+`added` 表示当前用户是否已加入。课程目录和 KG 为全局共享数据，不会按用户复制。
+
+### POST /me/learning/courses
+
+把一门或多门课程加入当前用户的学习空间：
+
+```json
+{
+    "courses": [
+        { "name": "数据结构", "source": "timetable" },
+        { "name": "高等数学", "source": "manual" }
+    ]
+}
+```
+
+`source` 可为 `timetable` 或 `manual`。课表来源允许暂不受 KG 支持的课程，以便前端显示
+明确的“不支持”状态；手动来源必须从 canonical 课程目录选择。后端会先用
+`course_aliases.yaml` 做确定性别名解析，例如“数字电路技术”会关联到
+“数字逻辑与数字电路”；不会使用可能误绑课程的自动模糊匹配。
+
+### PATCH /me/learning/courses/{course_name}
+
+将一个尚未匹配的课表课程手动关联到 canonical 课程，同时保留原课表显示名称：
+
+```json
+{ "canonical_course": "数字逻辑与数字电路" }
+```
+
+该关联只改变用户课程到全局 KG 的引用，不复制或修改 KG。
+
+### DELETE /me/learning/courses/{course_name}
+
+从当前用户的学习空间移除课程，成功响应 `204`；不会删除全局课程或知识图谱。
+
+### GET /me/learning/knowledge-map
+
+必填查询参数 `course`。返回课程知识图的 `nodes` 和 `edges`。边方向固定为
+`prerequisite -> dependent`。未评估节点返回 `mastery_level: null`、
+`status: "unseen"`，不会伪装成 50 分掌握度。
+
+### GET /me/learning/knowledge-points/{kp_id}
+
+返回单个知识点的规范信息、掌握度、记忆保持率、判断可信度、学习证据摘要和薄弱前置。
+路径参数既可以是规范 `kp_id`，也可以是已配置的知识点名称或别名。
+
+### GET /me/learning/review-queue
+
+可选查询参数 `course`。按当前记忆保持率从低到高返回待复习知识点。
+
 ### GET /me/learning/recommendations
 
 查询参数：`course`（必填）、`weeks_to_exam`（可选，默认 4）。返回按优先级排序的练习推荐。
+
+---
+
+## 课表接口
+
+以下接口均需要认证，数据按用户隔离并存储在 SQLite。保存或导入课程时，会同步维护
+`user_courses` 关联，使知识地图不需要再次录入课程。
+
+每个用户可拥有多张课程表（`schedule_tables`），课程归属某一张课程表，且始终有一张
+处于激活状态；没有课程表时服务端会自动创建"默认课表"，历史课程在迁移时归入其中。
+
+### GET /me/schedule
+
+返回当前用户的 `tables`（每项含 `id`、`name`、`is_active`）、`active_table_id`、
+激活课程表下的 `courses` 和 `settings`。设置包括上午/下午/晚上的节数与开始时间、
+单节时长、课间间隔，以及 `term_start_date`（第一教学周周一，`YYYY-MM-DD`）。前端据此
+结合系统日期计算当前教学周和星期。作息设置为用户级，所有课程表共用。
+
+### POST /me/schedule/tables
+
+创建课程表：`{"name": "大二上", "activate": true}`（`activate` 缺省 true，创建后
+立即切换为激活表）。返回 201 与新表信息。
+
+### PATCH /me/schedule/tables/{table_id}
+
+重命名课程表：`{"name": "新名称"}`。
+
+### POST /me/schedule/tables/{table_id}/activate
+
+切换激活课程表，返回与 `GET /me/schedule` 相同结构的快照。
+
+### DELETE /me/schedule/tables/{table_id}
+
+删除课程表及其全部课程；删除的是激活表时自动激活剩余最早创建的一张。最后一张课程表
+不允许删除（409）。被删课程若不再出现于任何课程表，会同步清理 timetable 来源的用户
+课程关联。
+
+### PUT /me/schedule/courses
+
+新增或更新一条课程安排。字段包括 `id`、`name`、`teacher`、`location`、`weekday`
+（周一为 1）、`start_period`、`end_period`、`start_week`、`end_week` 和 `color_value`。
+新课程写入当前激活课程表；更新已有课程保持其原课程表归属。
+
+### DELETE /me/schedule/courses/{course_id}
+
+删除课程安排。若相同名称的课表课程已全部删除，也会移除由课表自动创建且不再使用的
+用户课程关联，不影响全局 canonical KG。
+
+### PUT /me/schedule/settings
+
+保存课表作息和第一周日期，返回服务端持久化后的完整设置。
+
+### POST /me/schedule/import
+
+使用 `multipart/form-data` 上传字段名为 `file` 的课表文件，最大 15 MB，支持 PDF、
+PNG/JPEG/WebP/BMP 和 HTML。图片会经过像素限制、缩放和重新编码后直接发送给本机
+Qwen3.5-9B 的多模态接口；PDF 最多 4 页，会先安全栅格化为页面图片；HTML 则保留表格
+结构并提取可见文本。模型输出经过严格 Schema 校验后才会去重写入用户课表。辅助模型
+不可用时返回 `502`，不会回退占用 122B 主模型。该导入链路不依赖 DocIR。
 
 ---
 
@@ -311,9 +446,9 @@ data: {"delta":"回答正文"}
 
 ```json
 {
-  "memory_key": "learning_goal",
-  "content": "本学期重点学习操作系统",
-  "category": "learning"
+    "memory_key": "learning_goal",
+    "content": "本学期重点学习操作系统",
+    "category": "learning"
 }
 ```
 
@@ -337,11 +472,92 @@ data: {"delta":"回答正文"}
 
 ### GET /me/profile
 
-返回专业、年级、当前教学周、总教学周和档案开关。
+返回 Profile V2 结构化画像视图，包括 `explicit`、`preferences`、`learning_state`、
+`inferred_patterns`、`profile_version` 等分节。为兼容旧客户端，响应顶层同时保留：
+
+- `major`
+- `grade`
+- `current_week`
+- `total_weeks`
+- `profile_enabled`
+
+新客户端应优先使用分节字段；只需要编辑基础学情资料的客户端可以继续读取上述顶层字段。
 
 ### PATCH /me/profile
 
 更新当前用户学情档案。档案开启时，Agent 会将相关学情信息注入本轮上下文。
+
+请求字段均可选：`major`、`grade`、`current_week`、`total_weeks`、
+`profile_enabled`。其中当前只接受 `major="cs"`，并要求
+`current_week <= total_weeks`。
+
+### PATCH /me/profile/explicit
+
+Profile V2 的显式字段统一更新入口，可部分更新：
+
+```json
+{
+    "major": "cs",
+    "grade": "大二",
+    "current_week": 6,
+    "total_weeks": 18,
+    "preferred_style": "concise",
+    "preferred_tone": "friendly",
+    "custom_instruction": "先给思路，再给答案"
+}
+```
+
+成功时返回最新的完整 Profile V2 视图。该接口每个用户每分钟最多 10 次。
+
+### GET /me/profile/sources
+
+使用查询参数 `field_key` 查看一个推断画像字段的来源、置信度、支撑记忆 ID 和最后确认
+时间。例如：`GET /me/profile/sources?field_key=learning_goal`。未命中时返回
+`found: false`，不返回 404。
+
+### DELETE /me/profile/inferred/{field_key}
+
+抑制一个推断画像字段，使其后续不再注入 Prompt。该操作保留审计记录，不删除原始长期
+记忆；字段不存在或已经被抑制时返回 `404`。成功响应：
+
+```json
+{ "deleted": true, "field_key": "learning_goal" }
+```
+
+### GET /me/profile/export
+
+导出当前用户全部画像维度，包括 active 和 suppressed 记录。响应包含 `user_id`、
+`exported_at` 和 `dimensions`。
+
+### DELETE /me/profile?confirm=DELETE
+
+物理删除当前用户的全部派生画像维度，并失效画像缓存。缺少精确的
+`confirm=DELETE` 时返回 `400`。该接口不删除登录账户、长期记忆或记忆设置，每个用户
+每分钟最多调用一次。
+
+## 记忆与画像开关
+
+### GET /me/memory-settings
+
+返回：
+
+```json
+{
+    "learning_profile_enabled": true,
+    "inferred_profile_enabled": true,
+    "default_conversation_mode": "normal"
+}
+```
+
+### PATCH /me/memory-settings
+
+上述字段均可部分更新。`default_conversation_mode` 只允许：
+
+- `normal`：允许读取和写入长期状态
+- `no_write`：允许读取，不写入长期状态
+- `isolated`：不读取也不写入长期状态
+
+成功时返回最新设置；该接口每个用户每分钟最多 10 次。
 
 ## Web 部署约定
 

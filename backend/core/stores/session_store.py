@@ -28,7 +28,8 @@ class SessionStore(BaseSQLiteStore):
                 session_id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 issued_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL
+                expires_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             )
             """
         )
