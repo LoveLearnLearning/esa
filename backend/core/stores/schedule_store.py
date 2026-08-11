@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import uuid
 from contextlib import closing
 from datetime import datetime, timezone
@@ -23,7 +24,7 @@ DEFAULT_SETTINGS = {
 DEFAULT_TABLE_NAME = "默认课表"
 
 
-def ensure_schedule_tables_schema(connection) -> None:
+def ensure_schedule_tables_schema(connection: sqlite3.Connection) -> None:
     """建 schedule_tables、给 schedule_courses 补 table_id 并回填老数据。
 
     幂等：store 初始化与版本化迁移共用，老库的既有课程会归入自动创建
@@ -148,7 +149,7 @@ class ScheduleStore(BaseSQLiteStore):
             ensure_schedule_tables_schema(connection)
 
     @staticmethod
-    def _course(row) -> dict:
+    def _course(row: sqlite3.Row) -> dict:
         return {
             key: row[key]
             for key in (
