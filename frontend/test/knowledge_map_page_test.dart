@@ -5,6 +5,7 @@ import 'package:frontend/models/models.dart';
 import 'package:frontend/pages/knowledge_map_page.dart';
 import 'package:frontend/state/app_state.dart';
 import 'package:frontend/theme/esa_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _KnowledgeApi extends ApiClient {
   _KnowledgeApi() : super(baseUrl: 'http://test.invalid');
@@ -229,6 +230,8 @@ Future<void> _pumpPage(WidgetTester tester, ApiClient api) async {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets('loads graph, filters problems, and opens point detail', (
     tester,
   ) async {

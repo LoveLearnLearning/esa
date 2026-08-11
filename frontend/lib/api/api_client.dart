@@ -4,10 +4,12 @@
 //
 // 当 config.dart 里 kOfflineMode == true 时 所有方法走本地假数据 完全不发网络请求
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../config.dart';
 import '../models/models.dart';
@@ -346,6 +348,45 @@ class ApiClient {
     return ScheduleSettings.fromJson(_decode(r) as Map<String, dynamic>);
   }
 
+  /// 按魔数优先、扩展名兜底推断 MIME。Android 相册/第三方文件提供器给出的
+  /// 文件名可能没有扩展名，后端判定完全依赖 content_type 或扩展名，两者
+  /// 都缺时合法图片也会被 422 拒绝。
+  static String _mimeFor(String filename, Uint8List bytes) {
+    if (bytes.length >= 12) {
+      if (bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44) {
+        return 'application/pdf'; // %PDF
+      }
+      if (bytes[0] == 0x89 && bytes[1] == 0x50) return 'image/png';
+      if (bytes[0] == 0xFF && bytes[1] == 0xD8) return 'image/jpeg';
+      if (bytes[0] == 0x42 && bytes[1] == 0x4D) return 'image/bmp';
+      if (bytes[0] == 0x52 &&
+          bytes[1] == 0x49 &&
+          bytes[8] == 0x57 &&
+          bytes[9] == 0x45) {
+        return 'image/webp'; // RIFF....WEBP
+      }
+      if (bytes[4] == 0x66 &&
+          bytes[5] == 0x74 &&
+          bytes[6] == 0x79 &&
+          bytes[7] == 0x70) {
+        return 'image/heic'; // ....ftyp
+      }
+    }
+    final ext = filename.contains('.')
+        ? filename.toLowerCase().split('.').last
+        : '';
+    return switch (ext) {
+      'pdf' => 'application/pdf',
+      'png' => 'image/png',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'webp' => 'image/webp',
+      'bmp' => 'image/bmp',
+      'heic' || 'heif' => 'image/heic',
+      'html' || 'htm' => 'text/html',
+      _ => 'application/octet-stream',
+    };
+  }
+
   Future<ScheduleImportResult> importScheduleFile({
     required String filename,
     required Uint8List bytes,
@@ -361,19 +402,38 @@ class ApiClient {
       request.fields['table_name'] = newTableName.trim();
     }
     request.files.add(
-      http.MultipartFile.fromBytes('file', bytes, filename: filename),
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+        contentType: MediaType.parse(_mimeFor(filename, bytes)),
+      ),
     );
-    final streamed = await request.send();
-    final r = await http.Response.fromStream(streamed);
-    if (r.statusCode != 200) _fail(r);
-    final data = _decode(r) as Map<String, dynamic>;
-    return ScheduleImportResult(
-      courses: (data['courses'] as List? ?? const [])
-          .whereType<Map>()
-          .map((item) => ScheduleCourse.fromJson(Map<String, dynamic>.from(item)))
-          .toList(),
-      skippedCount: (data['skipped_count'] as num?)?.toInt() ?? 0,
-    );
+    // 后端 LLM 识别多页 PDF 可能要几十秒；但手机弱网下不能无限挂起，
+    // 否则 _importing 永远为 true、导入按钮永久禁用
+    try {
+      final streamed = await request.send().timeout(
+        const Duration(seconds: 180),
+      );
+      final r = await http.Response.fromStream(
+        streamed,
+      ).timeout(const Duration(seconds: 60));
+      if (r.statusCode != 200) _fail(r);
+      final data = _decode(r) as Map<String, dynamic>;
+      return ScheduleImportResult(
+        courses: (data['courses'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (item) => ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
+        skippedCount: (data['skipped_count'] as num?)?.toInt() ?? 0,
+      );
+    } on TimeoutException {
+      throw ApiException(0, '课表识别超时，请稍后重试');
+    } on http.ClientException {
+      throw ApiException(0, '网络异常，请检查网络后重试');
+    }
   }
 
   Future<ScheduleTable> createScheduleTable(String name) async {

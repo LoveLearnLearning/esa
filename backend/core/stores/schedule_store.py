@@ -7,7 +7,6 @@ from pathlib import Path
 
 from backend.core.stores.base_sqlite_store import BaseSQLiteStore
 
-
 DEFAULT_SETTINGS = {
     "morning_period_count": 4,
     "afternoon_period_count": 4,
@@ -49,14 +48,10 @@ def ensure_schedule_tables_schema(connection) -> None:
     )
     columns = {
         row["name"]
-        for row in connection.execute(
-            "PRAGMA table_info(schedule_courses)"
-        ).fetchall()
+        for row in connection.execute("PRAGMA table_info(schedule_courses)").fetchall()
     }
     if "table_id" not in columns:
-        connection.execute(
-            "ALTER TABLE schedule_courses ADD COLUMN table_id TEXT"
-        )
+        connection.execute("ALTER TABLE schedule_courses ADD COLUMN table_id TEXT")
     now = datetime.now(timezone.utc).isoformat()
     orphan_users = [
         row["user_id"]
@@ -194,7 +189,11 @@ class ScheduleStore(BaseSQLiteStore):
         )
         if row is None:
             return None
-        return {"id": row["id"], "name": row["name"], "is_active": bool(row["is_active"])}
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "is_active": bool(row["is_active"]),
+        }
 
     def ensure_active_table(self, user_id: str) -> str:
         """返回当前激活课程表 id；没有任何课程表时创建默认课表。"""
@@ -228,9 +227,7 @@ class ScheduleStore(BaseSQLiteStore):
             )
             return table_id
 
-    def create_table(
-        self, user_id: str, name: str, *, activate: bool = True
-    ) -> dict:
+    def create_table(self, user_id: str, name: str, *, activate: bool = True) -> dict:
         table_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         with closing(self._connect()) as connection, connection:
@@ -274,8 +271,7 @@ class ScheduleStore(BaseSQLiteStore):
                 (user_id,),
             )
             connection.execute(
-                "UPDATE schedule_tables SET is_active = 1, updated_at = ? "
-                "WHERE id = ?",
+                "UPDATE schedule_tables SET is_active = 1, updated_at = ? WHERE id = ?",
                 (now, table_id),
             )
             return True

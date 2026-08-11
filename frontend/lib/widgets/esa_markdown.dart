@@ -190,10 +190,19 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
 
   @override
   Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    _controller.dark = dark;
+    final frameColor = dark ? const Color(0xFF171717) : const Color(0xFFF3F3F1);
+    final headerColor = dark ? const Color(0xFF222222) : const Color(0xFFE9E9E6);
+    final labelColor = dark ? const Color(0xFFAAAAAA) : const Color(0xFF75756D);
+    final codeBg = dark ? const Color(0xFF282C34) : const Color(0xFFFAFAFA);
+    final baseCodeColor =
+        dark ? const Color(0xFFABB2BF) : const Color(0xFF383A42);
+    final iconColor = dark ? const Color(0xFFCCCCCC) : const Color(0xFF55554F);
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFF171717),
+        color: frameColor,
         border: Border.all(color: context.n.divider),
         borderRadius: BorderRadius.circular(EsaRadii.toolCard),
       ),
@@ -203,14 +212,14 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
         children: [
           Container(
             padding: const EdgeInsets.only(left: 12, right: 4),
-            color: const Color(0xFF222222),
+            color: headerColor,
             child: Row(
               children: [
                 Expanded(
                   child: Text(
                     widget.language,
-                    style: const TextStyle(
-                      color: Color(0xFFAAAAAA),
+                    style: TextStyle(
+                      color: labelColor,
                       fontSize: 11,
                       fontFamily: 'JetBrainsMono',
                     ),
@@ -219,13 +228,20 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                 _action(
                   _editing ? Icons.visibility_outlined : Icons.edit_outlined,
                   _editing ? '预览' : '编辑',
+                  iconColor,
                   () => setState(() => _editing = !_editing),
                 ),
                 if (_modified)
-                  _action(Icons.restore_rounded, '重置为模型生成内容', _resetCode),
+                  _action(
+                    Icons.restore_rounded,
+                    '重置为模型生成内容',
+                    iconColor,
+                    _resetCode,
+                  ),
                 _action(
                   _copied ? Icons.check : Icons.copy_outlined,
                   '复制',
+                  iconColor,
                   () async {
                     final copied = await copyText(_controller.text);
                     if (!context.mounted) return;
@@ -244,7 +260,7 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                     );
                   },
                 ),
-                _action(Icons.play_arrow_rounded, '运行', () {
+                _action(Icons.play_arrow_rounded, '运行', iconColor, () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('尚未配置隔离代码执行服务，已阻止在浏览器中直接执行。')),
                   );
@@ -257,7 +273,7 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   return Container(
-                    color: const Color(0xFF282C34),
+                    color: codeBg,
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: ConstrainedBox(
@@ -271,8 +287,8 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                             maxLines: null,
                             keyboardType: TextInputType.multiline,
                             onChanged: (_) => setState(() {}),
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: baseCodeColor,
                               fontFamily: 'JetBrainsMono',
                               fontSize: 14,
                               height: 1.65,
@@ -302,15 +318,15 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                   child: ConstrainedBox(
                     constraints: BoxConstraints(minWidth: constraints.maxWidth),
                     child: Container(
-                      color: const Color(0xFF282C34),
+                      color: codeBg,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 14,
                       ),
                       child: Text.rich(
                         TextSpan(
-                          style: const TextStyle(
-                            color: Color(0xFFABB2BF),
+                          style: TextStyle(
+                            color: baseCodeColor,
                             fontFamily: 'JetBrainsMono',
                             fontSize: 14,
                             height: 1.65,
@@ -318,6 +334,7 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                           children: _highlightCode(
                             _controller.text,
                             widget.language,
+                            dark: dark,
                           ),
                         ),
                       ),
@@ -331,11 +348,16 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
     );
   }
 
-  Widget _action(IconData icon, String tooltip, VoidCallback onPressed) {
+  Widget _action(
+    IconData icon,
+    String tooltip,
+    Color color,
+    VoidCallback onPressed,
+  ) {
     return IconButton(
       tooltip: tooltip,
       onPressed: onPressed,
-      icon: Icon(icon, size: 16, color: const Color(0xFFCCCCCC)),
+      icon: Icon(icon, size: 16, color: color),
     );
   }
 }
@@ -367,19 +389,52 @@ const _codeTheme = <String, TextStyle>{
   'template-variable': TextStyle(color: Color(0xFFE06C75)),
 };
 
-List<TextSpan> _highlightCode(String source, String language) {
+// One Light 配色，浅色主题下的代码高亮（与上表 token 一一对应）
+const _codeThemeLight = <String, TextStyle>{
+  'comment': TextStyle(color: Color(0xFFA0A1A7)),
+  'quote': TextStyle(color: Color(0xFFA0A1A7)),
+  'keyword': TextStyle(color: Color(0xFFA626A4)),
+  'selector-tag': TextStyle(color: Color(0xFFE45649)),
+  'type': TextStyle(color: Color(0xFFC18401)),
+  'literal': TextStyle(color: Color(0xFF0184BC)),
+  'number': TextStyle(color: Color(0xFF986801)),
+  'string': TextStyle(color: Color(0xFF50A14F)),
+  'regexp': TextStyle(color: Color(0xFF50A14F)),
+  'title': TextStyle(color: Color(0xFF4078F2)),
+  'name': TextStyle(color: Color(0xFFE45649)),
+  'function': TextStyle(color: Color(0xFF4078F2)),
+  'params': TextStyle(color: Color(0xFF383A42)),
+  'built_in': TextStyle(color: Color(0xFF0184BC)),
+  'symbol': TextStyle(color: Color(0xFF0184BC)),
+  'meta': TextStyle(color: Color(0xFF4078F2)),
+  'meta-keyword': TextStyle(color: Color(0xFFA626A4)),
+  'meta-string': TextStyle(color: Color(0xFF50A14F)),
+  'attr': TextStyle(color: Color(0xFF986801)),
+  'attribute': TextStyle(color: Color(0xFF986801)),
+  'variable': TextStyle(color: Color(0xFFE45649)),
+  'template-variable': TextStyle(color: Color(0xFFE45649)),
+};
+
+List<TextSpan> _highlightCode(
+  String source,
+  String language, {
+  required bool dark,
+}) {
   final nodes =
       highlight.parse(source, language: language).nodes ?? const <Node>[];
-  return _convertHighlightNodes(nodes);
+  return _convertHighlightNodes(nodes, dark ? _codeTheme : _codeThemeLight);
 }
 
-List<TextSpan> _convertHighlightNodes(List<Node> nodes) {
+List<TextSpan> _convertHighlightNodes(
+  List<Node> nodes,
+  Map<String, TextStyle> theme,
+) {
   return nodes.map((node) {
-    final style = node.className == null ? null : _codeTheme[node.className!];
+    final style = node.className == null ? null : theme[node.className!];
     if (node.value != null) return TextSpan(text: node.value, style: style);
     return TextSpan(
       style: style,
-      children: _convertHighlightNodes(node.children ?? const <Node>[]),
+      children: _convertHighlightNodes(node.children ?? const <Node>[], theme),
     );
   }).toList();
 }
@@ -388,6 +443,7 @@ class _HighlightEditingController extends TextEditingController {
   _HighlightEditingController({required super.text, required this.language});
 
   String language;
+  bool dark = true;
 
   @override
   TextSpan buildTextSpan({
@@ -395,6 +451,9 @@ class _HighlightEditingController extends TextEditingController {
     TextStyle? style,
     required bool withComposing,
   }) {
-    return TextSpan(style: style, children: _highlightCode(text, language));
+    return TextSpan(
+      style: style,
+      children: _highlightCode(text, language, dark: dark),
+    );
   }
 }

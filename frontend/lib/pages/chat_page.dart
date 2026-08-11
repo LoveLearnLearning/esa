@@ -5,7 +5,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../models/models.dart';
 import '../models/task_mode.dart';
@@ -99,7 +99,12 @@ class _ChatPageState extends State<ChatPage> {
   void _handleMessagePointerDown(PointerDownEvent event) {
     // 在移动端，等到 ScrollStartNotification 才暂停已经太晚：流式回复可能
     // 已在手指产生位移前再次 jumpTo 底部。按下正文时立刻冻结追底和流式重绘。
-    FocusManager.instance.primaryFocus?.unfocus();
+    // 只有触摸/手写笔按下才收键盘：鼠标按下往往是要选中复制文本，
+    // 收焦点会打断桌面端正在输入的用户。
+    if (event.kind == PointerDeviceKind.touch ||
+        event.kind == PointerDeviceKind.stylus) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
     _messagePointerDown = true;
     _userScrollInProgress = true;
     _pauseFollowing();
@@ -170,15 +175,26 @@ class _ChatPageState extends State<ChatPage> {
               onMemory: () => showMemorySheet(context),
             ),
             Expanded(
-              child: app.loadingMessages && app.messages.isEmpty
-                  ? const Center(child: CircularProgressIndicator())
-                  : app.messages.isEmpty
-                  ? _EmptyState(
-                      name: app.username,
-                      selected: _taskMode,
-                      onPick: (mode) => setState(() => _taskMode = mode),
-                    )
-                  : _messageList(context, app),
+              // 触摸消息区/空状态的任意位置都收起键盘（覆盖空状态分支，
+              // 消息列表内部的 Listener 有更细的追底处理）
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (event) {
+                  if (event.kind == PointerDeviceKind.touch ||
+                      event.kind == PointerDeviceKind.stylus) {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                  }
+                },
+                child: app.loadingMessages && app.messages.isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : app.messages.isEmpty
+                    ? _EmptyState(
+                        name: app.username,
+                        selected: _taskMode,
+                        onPick: (mode) => setState(() => _taskMode = mode),
+                      )
+                    : _messageList(context, app),
+              ),
             ),
             Composer(
               busy: app.busy,
@@ -211,7 +227,8 @@ class _ChatPageState extends State<ChatPage> {
       onPointerCancel: _finishMessagePointerInteraction,
       onPointerSignal: (event) {
         if (event is PointerScrollEvent) {
-          FocusManager.instance.primaryFocus?.unfocus();
+          // 滚轮只暂停追底，不收键盘：滚轮说明在用鼠标，
+          // 用户很可能一边打字一边翻历史消息
           _userScrollInProgress = true;
           _pauseFollowing();
         }

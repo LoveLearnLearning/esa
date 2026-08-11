@@ -1,13 +1,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../models/models.dart';
 import '../../theme/esa_context.dart';
 import '../../theme/esa_theme.dart';
 
-class KnowledgeGraphCanvas extends StatelessWidget {
+class KnowledgeGraphCanvas extends StatefulWidget {
   const KnowledgeGraphCanvas({
     super.key,
     required this.visibleNodes,
@@ -25,9 +25,24 @@ class KnowledgeGraphCanvas extends StatelessWidget {
   static const verticalGap = 28.0;
   static const padding = 52.0;
 
+  @override
+  State<KnowledgeGraphCanvas> createState() => _KnowledgeGraphCanvasState();
+}
+
+class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas> {
+  final _transformation = TransformationController();
+  double _fitScale = 1.0;
+  Size? _fittedViewport;
+
+  @override
+  void dispose() {
+    _transformation.dispose();
+    super.dispose();
+  }
+
   Map<String, Rect> _layout() {
     final byLevel = <int, List<KnowledgeMapNode>>{};
-    for (final node in visibleNodes) {
+    for (final node in widget.visibleNodes) {
       byLevel.putIfAbsent(node.level, () => []).add(node);
     }
     for (final nodes in byLevel.values) {
@@ -39,60 +54,94 @@ class KnowledgeGraphCanvas extends StatelessWidget {
       final nodes = byLevel[levels[column]]!;
       for (var row = 0; row < nodes.length; row++) {
         result[nodes[row].id] = Rect.fromLTWH(
-          padding + column * (nodeWidth + horizontalGap),
-          padding + row * (nodeHeight + verticalGap),
-          nodeWidth,
-          nodeHeight,
+          KnowledgeGraphCanvas.padding +
+              column *
+                  (KnowledgeGraphCanvas.nodeWidth +
+                      KnowledgeGraphCanvas.horizontalGap),
+          KnowledgeGraphCanvas.padding +
+              row *
+                  (KnowledgeGraphCanvas.nodeHeight +
+                      KnowledgeGraphCanvas.verticalGap),
+          KnowledgeGraphCanvas.nodeWidth,
+          KnowledgeGraphCanvas.nodeHeight,
         );
       }
     }
     return result;
   }
 
+  /// 首次（及视口尺寸变化时）把整张图缩放到刚好放进屏幕。
+  /// 手机竖屏上多列图谱宽度轻松超过 2000px，不缩放的话只能看到左上角。
+  /// 在帧后回调里改 controller，避免构建期间触发依赖方重建。
+  void _scheduleFitScale(Size viewport, double width, double height) {
+    if (_fittedViewport == viewport) return;
+    _fittedViewport = viewport;
+    final fit = math.min(
+      math.min(viewport.width / width, viewport.height / height),
+      1.0,
+    );
+    _fitScale = fit.clamp(0.3, 1.0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _transformation.value = Matrix4.diagonal3Values(_fitScale, _fitScale, 1);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (visibleNodes.isEmpty) {
+    if (widget.visibleNodes.isEmpty) {
       return const Center(child: Text('当前筛选条件下没有知识点'));
     }
     final rects = _layout();
     final width = rects.values.fold<double>(
       720,
-      (value, rect) => math.max(value, rect.right + padding),
+      (value, rect) => math.max(value, rect.right + KnowledgeGraphCanvas.padding),
     );
     final height = rects.values.fold<double>(
       480,
-      (value, rect) => math.max(value, rect.bottom + padding),
+      (value, rect) =>
+          math.max(value, rect.bottom + KnowledgeGraphCanvas.padding),
     );
-    return InteractiveViewer(
-      minScale: 0.3,
-      maxScale: 2.4,
-      boundaryMargin: const EdgeInsets.all(260),
-      constrained: false,
-      child: SizedBox(
-        width: width,
-        height: height,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _KnowledgeEdgePainter(
-                  rects: rects,
-                  edges: edges,
-                  color: context.n.n500,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _scheduleFitScale(
+          Size(constraints.maxWidth, constraints.maxHeight),
+          width,
+          height,
+        );
+        return InteractiveViewer(
+          transformationController: _transformation,
+          minScale: 0.3,
+          maxScale: 2.4,
+          boundaryMargin: const EdgeInsets.all(260),
+          constrained: false,
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: _KnowledgeEdgePainter(
+                      rects: rects,
+                      edges: widget.edges,
+                      color: context.n.n500,
+                    ),
+                  ),
                 ),
-              ),
+                for (final node in widget.visibleNodes)
+                  Positioned.fromRect(
+                    rect: rects[node.id]!,
+                    child: _KnowledgeNodeCard(
+                      node: node,
+                      onTap: () => widget.onNodeTap(node),
+                    ),
+                  ),
+              ],
             ),
-            for (final node in visibleNodes)
-              Positioned.fromRect(
-                rect: rects[node.id]!,
-                child: _KnowledgeNodeCard(
-                  node: node,
-                  onTap: () => onNodeTap(node),
-                ),
-              ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

@@ -18,11 +18,23 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <!--
+    移动端视口必须在这里显式声明，不能依赖 Flutter 引擎运行时注入：
+    - 引擎注入前手机浏览器按 980px 桌面视口渲染，首屏错误缩放
+    - interactive-widget=resizes-content 让 Chrome Android 108+ 在软键盘
+      弹出时缩小布局视口，否则输入框会被键盘盖住
+    - maximum-scale=1 阻止 iOS Safari 聚焦输入框时自动放大
+    - viewport-fit=cover 让刘海屏的 safe-area-inset 正确传入 SafeArea
+  -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="google" content="notranslate">
   <meta name="description" content="星知智链智能学习助手">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#2563EB">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1B1A19">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="星知智链">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
@@ -44,6 +56,20 @@
       color: transparent !important;
       text-shadow: none !important;
       -webkit-text-fill-color: transparent !important;
+    }
+    /*
+      移动浏览器兜底：深色背景避免弱网加载期白屏闪烁；
+      overscroll-behavior 禁用 Android 下拉刷新和 iOS 橡皮筋回弹，
+      避免与应用内滚动冲突；tap-highlight 去掉触摸高亮闪烁。
+    */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #1B1A19;
+      overscroll-behavior-y: none;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
     }
   </style>
 </head>

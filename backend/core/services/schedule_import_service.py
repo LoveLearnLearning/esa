@@ -149,6 +149,13 @@ def _image_data_url(data: bytes) -> str:
         from PIL import Image, ImageOps, UnidentifiedImageError
     except ImportError as error:
         raise ValueError("服务器未安装图片处理组件 Pillow") from error
+    # iPhone 默认拍照是 HEIC；pillow-heif 可选安装，缺失时仅 HEIC 不可用
+    try:
+        from pillow_heif import register_heif_opener
+
+        register_heif_opener()
+    except ImportError:
+        pass
 
     try:
         with warnings.catch_warnings():
@@ -191,9 +198,7 @@ def _pdf_image_data_urls(data: bytes) -> tuple[str, ...]:
                 bitmap = page.render(scale=2.0)
                 images.append(_encode_pil_image(bitmap.to_pil()))
             except (ValueError, RuntimeError, OSError) as error:
-                raise ValueError(
-                    f"PDF 第 {page_index + 1} 页无法渲染"
-                ) from error
+                raise ValueError(f"PDF 第 {page_index + 1} 页无法渲染") from error
             finally:
                 if bitmap is not None:
                     bitmap.close()
@@ -229,6 +234,8 @@ async def extract_schedule_document(
         "jpeg",
         "webp",
         "bmp",
+        "heic",
+        "heif",
     }:
         image = await asyncio.to_thread(_image_data_url, data)
         return ExtractedScheduleDocument(image_data_urls=(image,))
@@ -295,8 +302,7 @@ async def extract_schedule_courses(
             {
                 "type": "text",
                 "text": (
-                    request_text
-                    + "以下图片按顺序组成同一份课表。请直接读取视觉表格，"
+                    request_text + "以下图片按顺序组成同一份课表。请直接读取视觉表格，"
                     "不要依赖 OCR 猜测被截断的文字。"
                 ),
             },

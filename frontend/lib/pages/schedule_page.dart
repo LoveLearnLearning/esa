@@ -1,7 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../api/api_client.dart';
 import '../models/models.dart';
@@ -317,7 +317,7 @@ class _SchedulePageState extends State<SchedulePage> {
     AppState app, {
     required bool compactLayout,
   }) {
-    final periodHeight = compactLayout ? 62.0 : 76.0;
+    final periodHeight = compactLayout ? 82.0 : 92.0;
     final headerHeight = compactLayout ? 38.0 : 46.0;
     final totalPeriods = app.scheduleSettings.totalPeriods;
     final totalHeight = headerHeight + periodHeight * totalPeriods;
@@ -610,8 +610,6 @@ class _SchedulePageState extends State<SchedulePage> {
                       ),
                     Text(
                       course.name,
-                      maxLines: ultraCompact ? 5 : 3,
-                      overflow: TextOverflow.ellipsis,
                       style: context.texts.titleMedium?.copyWith(
                         fontSize: ultraCompact
                             ? 10.5
@@ -627,8 +625,6 @@ class _SchedulePageState extends State<SchedulePage> {
                           ? '${course.startPeriod}-${course.endPeriod} 节'
                           : '${course.startPeriod}-${course.endPeriod} 节 · '
                                 '${app.scheduleSettings.courseTimeLabel(course.startPeriod, course.endPeriod)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: context.texts.bodySmall?.copyWith(
                         fontSize: ultraCompact
                             ? 9
@@ -640,8 +636,17 @@ class _SchedulePageState extends State<SchedulePage> {
                     if (course.location.isNotEmpty)
                       Text(
                         course.location,
-                        maxLines: ultraCompact ? 2 : 1,
-                        overflow: TextOverflow.ellipsis,
+                        style: context.texts.bodySmall?.copyWith(
+                          fontSize: ultraCompact
+                              ? 9
+                              : compact
+                              ? 10
+                              : 10.5,
+                        ),
+                      ),
+                    if (course.teacher.isNotEmpty)
+                      Text(
+                        course.teacher,
                         style: context.texts.bodySmall?.copyWith(
                           fontSize: ultraCompact
                               ? 9
@@ -758,6 +763,8 @@ class _SchedulePageState extends State<SchedulePage> {
     return (true, name.isEmpty ? null : name);
   }
 
+  static const _maxImportBytes = 15 * 1024 * 1024; // 与后端 MAX_UPLOAD_BYTES 对齐
+
   Future<void> _importSchedule(AppState app) async {
     try {
       final result = await FilePicker.pickFiles(
@@ -768,19 +775,38 @@ class _SchedulePageState extends State<SchedulePage> {
           'jpg',
           'jpeg',
           'webp',
+          'bmp',
+          // iPhone 默认拍照格式；后端用 pillow-heif 解码
+          'heic',
+          'heif',
           'html',
           'htm',
         ],
         withData: true,
+        // 必须为 false：选择器打开必然造成 window blur，手机拍照/HEIC
+        // 转码/大文件读取常超过默认 1 秒回焦检测，默认值会把已选文件
+        // 误判为取消。不要改回默认。
         cancelUploadOnWindowBlur: false,
       );
       final file = result?.files.singleOrNull;
       if (file == null) return;
+      if (file.size > _maxImportBytes) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('文件不能超过 15 MB')),
+        );
+        return;
+      }
       final target = await _askImportTarget(app);
       if (target == null || !mounted) return;
       final (toNewTable, newTableName) = target;
       setState(() => _importing = true);
-      final bytes = await file.xFile.readAsBytes();
+      // withData: true 时字节已在内存，直接用，避免整份文件的多余复制
+      final bytes = file.bytes ?? await file.xFile.readAsBytes();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('正在识别课表，大约需要半分钟…')),
+      );
       final importResult = await app.importScheduleFile(
         filename: file.name,
         bytes: bytes,
@@ -799,19 +825,26 @@ class _SchedulePageState extends State<SchedulePage> {
           : (skipped > 0
               ? '已导入 $count 条课程安排到$destination，另有 $skipped 条因时间冲突被跳过'
               : '已识别并导入 $count 条课程安排${destination.isEmpty ? '' : '到$destination'}');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.detail)));
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error.detail)));
     } on PlatformException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message ?? '文件读取失败')));
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error.message ?? '文件读取失败')));
+    } catch (_) {
+      // 手机弱网下 http 抛 ClientException 等；任何失败都要给出反馈，
+      // 不能只让 spinner 悄悄消失
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('导入失败，请检查网络后重试')));
     } finally {
       if (mounted) setState(() => _importing = false);
     }

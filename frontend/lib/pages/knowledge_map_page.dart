@@ -1,7 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
 import '../models/models.dart';
@@ -37,8 +38,35 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
   KnowledgeMapData? _map;
   String _statusFilter = 'all';
   bool _weakOnly = false;
+  bool _bannerDismissed = true; // 读取到持久化状态前先不显示，避免闪烁
 
   ApiClient get _api => widget.api ?? AppScope.of(context).api;
+
+  String get _bannerDismissKey =>
+      'esa.knowledge_map.banner_dismissed.${_api.userId ?? _api.username ?? 'guest'}';
+
+  Future<void> _loadBannerDismissed() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(
+        () => _bannerDismissed = prefs.getBool(_bannerDismissKey) ?? false,
+      );
+    } catch (_) {
+      // 插件不可用（如 Web hot-restart）时按未关闭处理
+      if (mounted) setState(() => _bannerDismissed = false);
+    }
+  }
+
+  Future<void> _dismissBanner() async {
+    setState(() => _bannerDismissed = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_bannerDismissKey, true);
+    } catch (_) {
+      // 插件不可用时无持久化，仅本次会话隐藏
+    }
+  }
 
   LearningCourseSummary? get _selectedCourse {
     for (final item in _courses) {
@@ -53,6 +81,7 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
     if (!_started) {
       _started = true;
       unawaited(_loadCourses());
+      unawaited(_loadBannerDismissed());
     }
   }
 
@@ -656,7 +685,8 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
     if (data == null || data.nodes.isEmpty) return _unsupportedState();
     return Column(
       children: [
-        if ((_selectedCourse?.evaluatedPoints ?? 0) == 0) _unassessedBanner(),
+        if ((_selectedCourse?.evaluatedPoints ?? 0) == 0 && !_bannerDismissed)
+          _unassessedBanner(),
         Expanded(
           child: KnowledgeGraphCanvas(
             visibleNodes: _visibleNodes(),
@@ -772,6 +802,18 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
     ),
     child: Row(
       children: [
+        IconButton(
+          key: const ValueKey('knowledge-map-banner-close'),
+          tooltip: '关闭提示',
+          visualDensity: VisualDensity.compact,
+          onPressed: () => unawaited(_dismissBanner()),
+          icon: Icon(
+            LucideIcons.x,
+            size: 16,
+            color: context.scheme.primary,
+          ),
+        ),
+        const SizedBox(width: 4),
         Icon(LucideIcons.sparkles, color: context.scheme.primary, size: 20),
         const SizedBox(width: 12),
         const Expanded(

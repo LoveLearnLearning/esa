@@ -3,7 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
@@ -88,23 +88,28 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, c) {
-          final stacked = c.maxWidth < 880;
-          final poster = _Poster(stacked: stacked);
-          final form = _buildForm(context);
-          if (stacked) {
-            return SingleChildScrollView(
-              child: Column(children: [poster, form]),
+      // 点击表单外空白处收起软键盘（手机浏览器上没有系统返回手势可用）
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: LayoutBuilder(
+          builder: (context, c) {
+            final stacked = c.maxWidth < 880;
+            final poster = _Poster(stacked: stacked);
+            final form = _buildForm(context);
+            if (stacked) {
+              return SingleChildScrollView(
+                child: Column(children: [poster, form]),
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: poster),
+                Expanded(child: SingleChildScrollView(child: form)),
+              ],
             );
-          }
-          return Row(
-            children: [
-              Expanded(child: poster),
-              Expanded(child: SingleChildScrollView(child: form)),
-            ],
-          );
-        },
+          },
+        ),
       ),
     );
   }
@@ -249,6 +254,10 @@ class _LoginPageState extends State<LoginPage> {
           obscureText: obscure,
           autofillHints: autofillHints,
           textInputAction: textInputAction,
+          // 竖排布局下字段靠近屏幕底部，聚焦时确保滚到键盘上方
+          scrollPadding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom + 24,
+          ),
           onSubmitted: onSubmitted,
         ),
       ],
@@ -286,6 +295,9 @@ class _LoginPageState extends State<LoginPage> {
           textInputAction: _isRegister
               ? TextInputAction.next
               : TextInputAction.done,
+          scrollPadding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom + 24,
+          ),
           onSubmitted: (_) {
             if (_isRegister) {
               _password2Focus.requestFocus();

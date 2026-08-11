@@ -5,7 +5,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../models/models.dart';
 import '../theme/esa_context.dart';
@@ -384,8 +384,9 @@ class _IconAction extends StatelessWidget {
           borderRadius: BorderRadius.circular(EsaRadii.iconButton),
           hoverColor: context.n.n200,
           child: SizedBox(
-            width: 30,
-            height: 30,
+            // 触屏最小命中区（Apple 44pt 建议）；图标保持 15px 不变
+            width: 42,
+            height: 42,
             child: Icon(icon, size: 15, color: color),
           ),
         ),

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/esa_context.dart';
 import 'chat_page.dart';
@@ -90,10 +90,17 @@ class _HomeShellState extends State<HomeShell> {
         ),
       );
     }
+    // 键盘弹出时把底部导航整个隐藏，子页面的 Scaffold 自己按完整
+    // viewInsets 避让键盘——输入框直接贴键盘，没有导航栏高度的空隙。
+    // 原生（viewInsets 上报键盘高度）与移动浏览器（窗口整体缩小、
+    // viewInsets 可能为 0，此时导航栏保持可见）两种模式都正确。
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: pages,
-      bottomNavigationBar: DecoratedBox(
+      bottomNavigationBar: keyboardOpen
+          ? null
+          : DecoratedBox(
         decoration: BoxDecoration(
           color: context.scheme.surface,
           border: Border(top: BorderSide(color: context.n.divider)),

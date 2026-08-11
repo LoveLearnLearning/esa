@@ -3,7 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
@@ -82,8 +82,9 @@ class _UserBubbleState extends State<UserBubble> {
                   },
                   borderRadius: BorderRadius.circular(EsaRadii.iconButton),
                   child: SizedBox(
-                    width: 30,
-                    height: 30,
+                    // 触屏最小命中区；图标尺寸不变
+                    width: 42,
+                    height: 42,
                     child: Icon(
                       _copied ? LucideIcons.check : LucideIcons.copy,
                       size: 15,

@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' show ClientException;
@@ -645,17 +646,41 @@ class AppState extends ChangeNotifier {
         placeholder.typing = false;
       }
       if (_handled401(e)) return;
-      final detail = e is ApiException ? e.detail : '无法连接服务器 请检查后端是否启动';
-      list.add(
-        ChatMessage(
-          id: DateTime.now().microsecondsSinceEpoch.toString(),
-          role: MessageRole.assistant,
-          text: '（出错了：$detail）',
-        ),
-      );
+      // 手机浏览器切后台/锁屏/断网会掐断 SSE，但后端通常已完成生成并
+      // 落库；先尝试用服务端持久化结果覆盖本地，只有拉不到时才报错
+      final recovered = await _recoverInterruptedReply(id, list);
+      if (!recovered) {
+        final detail = e is ApiException ? e.detail : '无法连接服务器 请检查后端是否启动';
+        list.add(
+          ChatMessage(
+            id: DateTime.now().microsecondsSinceEpoch.toString(),
+            role: MessageRole.assistant,
+            text: '（出错了：$detail）',
+          ),
+        );
+      }
     } finally {
       busy = false;
       notifyListeners();
+    }
+  }
+
+  /// SSE 中断后从服务端拉取持久化消息，就地覆盖当前列表。
+  /// 拉到以助手回复结尾的完整历史返回 true。
+  Future<bool> _recoverInterruptedReply(
+    String id,
+    List<ChatMessage> list,
+  ) async {
+    try {
+      final msgs = await api.getMessages(id);
+      if (msgs.isEmpty || msgs.last.isUser) return false;
+      list
+        ..clear()
+        ..addAll(msgs);
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -687,11 +712,24 @@ class AppState extends ChangeNotifier {
     void ensureTypewriter() {
       queueDrained ??= Completer<void>();
       typewriterTimer ??= Timer.periodic(EsaMotion.streamTick, (_) {
+        // 手机浏览器后台会把定时器节流到秒级，回前台时队列可能积压了
+        // 几千字符；按积压量批量出队，积压过大时直接整段刷出，
+        // 避免以每 tick 一个字符的速度补播几十秒
+        String takeFrom(Queue<String> queue) {
+          var take = queue.length > 600 ? queue.length : queue.length ~/ 20;
+          if (take < 1) take = 1;
+          final buffer = StringBuffer();
+          while (take-- > 0 && queue.isNotEmpty) {
+            buffer.write(queue.removeFirst());
+          }
+          return buffer.toString();
+        }
+
         if (reasoningQueue.isNotEmpty) {
-          assistant.reasoning += reasoningQueue.removeFirst();
+          assistant.reasoning += takeFrom(reasoningQueue);
           assistant.notifyListeners();
         } else if (contentQueue.isNotEmpty) {
-          assistant.text += contentQueue.removeFirst();
+          assistant.text += takeFrom(contentQueue);
           assistant.notifyListeners();
         }
         completeDrainIfReady();
@@ -716,7 +754,18 @@ class AppState extends ChangeNotifier {
     }
 
     try {
-      await for (final event in api.streamMessage(conversationId, input)) {
+      // 手机浏览器锁屏/切网时 fetch 流可能既不报错也不再有数据；相邻
+      // 事件间隔超过 120 秒视为挂死，结束流走中断恢复。只在 Web 上
+      // 启用：原生平台连接中断会正常抛错，而且 Stream.timeout 的假
+      // 定时器会挂死 FakeAsync 测试环境。
+      var events = api.streamMessage(conversationId, input);
+      if (kIsWeb) {
+        events = events.timeout(
+          const Duration(seconds: 120),
+          onTimeout: (sink) => sink.close(),
+        );
+      }
+      await for (final event in events) {
         switch (event.event) {
           case 'start':
             break;
