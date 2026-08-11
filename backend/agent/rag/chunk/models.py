@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+from enum import Enum
 from pathlib import PurePosixPath
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from backend.agent.DocIR.core.enums import TextOrigin
+from backend.agent.DocIR.core.geometry import Locator
 
 SHA256_LENGTH = 64
 
@@ -33,13 +35,51 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class ContentRole(str, Enum):
+    """RAG 侧内容角色；不改变 DocIR 对原文事实的表达。"""
+
+    BODY = "body"
+    REFERENCE = "reference"
+    METADATA = "metadata"
+    AUTHOR_INFO = "author_info"
+    AFFILIATION = "affiliation"
+    CITATION_INFO = "citation_info"
+    APPENDIX = "appendix"
+    FIGURE_CAPTION = "figure_caption"
+    TABLE = "table"
+
+
+DEFAULT_RETRIEVAL_ROLES = frozenset(
+    {
+        ContentRole.BODY,
+        ContentRole.APPENDIX,
+        ContentRole.FIGURE_CAPTION,
+        ContentRole.TABLE,
+    }
+)
+
+
 class ChunkConfig(StrictModel):
-    schema_version: Literal["chunk-config-0.1"] = "chunk-config-0.1"
+    schema_version: Literal[
+        "chunk-config-0.1",
+        "chunk-config-0.2",
+        "chunk-config-0.3",
+    ] = "chunk-config-0.3"
     target_chars: int = Field(default=800, gt=0)
     max_chars: int = Field(default=1200, gt=0)
+    min_chars: int = Field(default=120, ge=0)
     overlap_elements: int = Field(default=1, ge=0, le=1)
+    fragment_overlap_sentences: int = Field(default=1, ge=0, le=1)
+    retrieval_cleaning_version: Literal[
+        "retrieval-cleaning-0.4",
+        "retrieval-cleaning-0.5",
+    ] = (
+        "retrieval-cleaning-0.5"
+    )
     repeat_table_header: bool = True
     reject_unknown_elements: bool = True
+    filter_standalone_figure_labels: bool = True
+    filter_navigation_labels: bool = True
 
     @model_validator(mode="after")
     def ordered_limits(self) -> ChunkConfig:
@@ -49,7 +89,35 @@ class ChunkConfig(StrictModel):
 
     @property
     def sha256(self) -> str:
-        return canonical_sha256(self.model_dump(mode="json"))
+        payload = self.model_dump(mode="json")
+        if self.schema_version == "chunk-config-0.1":
+            payload = {
+                key: payload[key]
+                for key in (
+                    "schema_version",
+                    "target_chars",
+                    "max_chars",
+                    "overlap_elements",
+                    "repeat_table_header",
+                    "reject_unknown_elements",
+                )
+            }
+        elif self.schema_version == "chunk-config-0.2":
+            payload = {
+                key: payload[key]
+                for key in (
+                    "schema_version",
+                    "target_chars",
+                    "max_chars",
+                    "min_chars",
+                    "overlap_elements",
+                    "fragment_overlap_sentences",
+                    "retrieval_cleaning_version",
+                    "repeat_table_header",
+                    "reject_unknown_elements",
+                )
+            }
+        return canonical_sha256(payload)
 
 
 class ChunkEvidence(StrictModel):
@@ -68,9 +136,7 @@ class ChunkEvidence(StrictModel):
         "table_html_rows",
         "table_text_fallback",
     ]
-    region_ids: tuple[str, ...] = Field(min_length=1)
-    page_ids: tuple[str, ...] = Field(min_length=1)
-    page_indexes: tuple[int, ...] = Field(min_length=1)
+    locators: tuple[Locator, ...] = ()
     asset_ids: tuple[str, ...] = ()
     quality_issue_ids: tuple[str, ...] = ()
 
@@ -81,25 +147,32 @@ class ChunkEvidence(StrictModel):
         if self.text_start is not None and self.text_end is not None:
             if self.text_end <= self.text_start:
                 raise ValueError("evidence 文本跨度顺序错误")
-            if self.derivation == "primary_text_span" and self.text_end - self.text_start != len(self.text):
+            if (
+                self.derivation == "primary_text_span"
+                and self.text_end - self.text_start != len(self.text)
+            ):
                 raise ValueError("primary_text_span 长度与 evidence 文本不一致")
         return self
 
     @model_validator(mode="after")
     def valid_location(self) -> ChunkEvidence:
-        if len(self.region_ids) != len(set(self.region_ids)):
-            raise ValueError("evidence region_id 不能重复")
-        if len(self.page_ids) != len(self.page_indexes):
-            raise ValueError("page_ids 与 page_indexes 数量不一致")
+        locator_ids = [locator.locator_id for locator in self.locators]
+        if len(locator_ids) != len(set(locator_ids)):
+            raise ValueError("evidence locator_id 不能重复")
         return self
 
     @model_validator(mode="after")
     def valid_quote_eligibility(self) -> ChunkEvidence:
-        if self.text_origin in {
-            TextOrigin.PARSER_DERIVED,
-            TextOrigin.UNKNOWN,
-            TextOrigin.NATIVE_OR_OCR_UNVERIFIED,
-        } and self.quote_eligible:
+        if (
+            self.text_origin
+            in {
+                TextOrigin.PARSER_DERIVED,
+                TextOrigin.VLM_DERIVED,
+                TextOrigin.UNKNOWN,
+                TextOrigin.NATIVE_OR_OCR_UNVERIFIED,
+            }
+            and self.quote_eligible
+        ):
             raise ValueError("派生、未知或未验证文字不能提升引用资格")
         return self
 
@@ -115,6 +188,8 @@ class Chunk(StrictModel):
     section_path: tuple[str, ...] = ()
     element_ids: tuple[str, ...] = Field(min_length=1)
     kind_counts: dict[str, int]
+    content_role: ContentRole = ContentRole.BODY
+    retrieval_enabled: bool = True
     dense_text: str = Field(min_length=1)
     bm25_body: str = Field(min_length=1)
     bm25_heading: str = Field(min_length=1)
@@ -128,7 +203,9 @@ class Chunk(StrictModel):
     def internal_consistency(self) -> Chunk:
         if self.body_char_count != len(self.bm25_body):
             raise ValueError("body_char_count 与 bm25_body 长度不一致")
-        evidence_elements = tuple(dict.fromkeys(item.element_id for item in self.evidence))
+        evidence_elements = tuple(
+            dict.fromkeys(item.element_id for item in self.evidence)
+        )
         if evidence_elements != self.element_ids:
             raise ValueError("element_ids 必须等于 evidence 中首次出现的 element 顺序")
         if any(value <= 0 for value in self.kind_counts.values()):
@@ -159,7 +236,9 @@ class ChunkDocument(StrictModel):
     @field_validator("docir_sha256", "chunk_config_sha256")
     @classmethod
     def sha_format(cls, value: str) -> str:
-        if len(value) != SHA256_LENGTH or any(char not in "0123456789abcdef" for char in value):
+        if len(value) != SHA256_LENGTH or any(
+            char not in "0123456789abcdef" for char in value
+        ):
             raise ValueError("SHA-256 必须为 64 位小写十六进制")
         return value
 
@@ -170,7 +249,9 @@ class ChunkDocument(StrictModel):
         ids = [chunk.chunk_id for chunk in self.chunks]
         if len(ids) != len(set(ids)):
             raise ValueError("chunk_id 不能重复")
-        if [chunk.document_order for chunk in self.chunks] != list(range(len(self.chunks))):
+        if [chunk.document_order for chunk in self.chunks] != list(
+            range(len(self.chunks))
+        ):
             raise ValueError("Chunk document_order 必须从 0 连续")
         return self
 
@@ -200,23 +281,81 @@ class ChunkDocument(StrictModel):
         if len(dispositions) != len(self.element_dispositions):
             raise ValueError("每个 element 只能有一个处理分类")
         for chunk in self.chunks:
-            if any(dispositions.get(element_id) is None for element_id in chunk.element_ids):
+            if any(
+                dispositions.get(element_id) is None for element_id in chunk.element_ids
+            ):
                 raise ValueError("Chunk 引用了未分类 element")
-            if any(dispositions[element_id].action != "chunked" for element_id in chunk.element_ids):
+            if any(
+                dispositions[element_id].action != "chunked"
+                for element_id in chunk.element_ids
+            ):
                 raise ValueError("进入 Chunk 的 element 必须分类为 chunked")
+        referenced = {
+            element_id for chunk in self.chunks for element_id in chunk.element_ids
+        }
+        if any(
+            item.action == "chunked" and item.element_id not in referenced
+            for item in self.element_dispositions
+        ):
+            raise ValueError("分类为 chunked 的 element 必须出现在至少一个 Chunk 中")
         return self
 
     @model_validator(mode="after")
     def valid_overlap_groups(self) -> ChunkDocument:
         evidence_locations: dict[str, list[Chunk]] = {}
+        evidence_by_layer: dict[
+            tuple[str, str | None], list[tuple[ChunkEvidence, Chunk]]
+        ] = {}
         for chunk in self.chunks:
             for item in chunk.evidence:
                 evidence_locations.setdefault(item.evidence_id, []).append(chunk)
+                if item.text_start is not None and item.text_end is not None:
+                    evidence_by_layer.setdefault(
+                        (item.element_id, item.text_layer_id), []
+                    ).append((item, chunk))
         for evidence_id, owners in evidence_locations.items():
             if len(owners) > 1:
                 expected = f"overlap_{canonical_sha256(evidence_id)[:24]}"
                 if any(expected not in owner.overlap_group_ids for owner in owners):
                     raise ValueError("重复 evidence 必须用稳定 overlap group 标记")
+        if self.chunk_config.schema_version != "chunk-config-0.3":
+            return self
+        for located in evidence_by_layer.values():
+            ordered = sorted(
+                located,
+                key=lambda pair: (
+                    pair[0].text_start,
+                    pair[0].text_end,
+                    pair[0].evidence_id,
+                    pair[1].chunk_id,
+                ),
+            )
+            for index, (left, left_chunk) in enumerate(ordered):
+                for right, right_chunk in ordered[index + 1 :]:
+                    if right.text_start >= left.text_end:
+                        break
+                    if left.evidence_id == right.evidence_id:
+                        continue
+                    overlap_start = max(left.text_start, right.text_start)
+                    overlap_end = min(left.text_end, right.text_end)
+                    if overlap_start >= overlap_end:
+                        continue
+                    expected = (
+                        "overlap_"
+                        + canonical_sha256(
+                            (
+                                left.element_id,
+                                left.text_layer_id,
+                                overlap_start,
+                                overlap_end,
+                            )
+                        )[:24]
+                    )
+                    if (
+                        expected not in left_chunk.overlap_group_ids
+                        or expected not in right_chunk.overlap_group_ids
+                    ):
+                        raise ValueError("相交 evidence 必须用稳定 overlap group 标记")
         return self
 
 
@@ -240,7 +379,9 @@ class ChunkDocumentRef(StrictModel):
     @field_validator("sha256")
     @classmethod
     def sha_format(cls, value: str) -> str:
-        if len(value) != SHA256_LENGTH or any(char not in "0123456789abcdef" for char in value):
+        if len(value) != SHA256_LENGTH or any(
+            char not in "0123456789abcdef" for char in value
+        ):
             raise ValueError("SHA-256 必须为 64 位小写十六进制")
         return value
 

@@ -9,8 +9,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+import re
 
 from ..chunk import Chunk
 from .contracts import ContextLevel, Evidence
@@ -22,6 +23,7 @@ class ContextBuilder:
 
     chunks: Sequence[Chunk]
     section_window: int
+    token_counter: Callable[[str], int] | None = None
     _sections: Mapping[tuple[str, str], list[Chunk]] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -56,6 +58,66 @@ class ContextBuilder:
         end = min(len(section), position + self.section_window + 1)
         return section[start:end]
 
+    def plan(
+        self,
+        hits: Sequence[Chunk],
+        level: ContextLevel,
+        max_tokens: int,
+    ) -> Mapping[str, tuple[Chunk, ...]]:
+        """先装载全部 primary，再按命中顺序装邻居并执行全局去重。"""
+
+        selected: dict[str, list[Chunk]] = {hit.chunk_id: [] for hit in hits}
+        used: set[str] = set()
+        token_count = 0
+
+        def add(owner: str, chunk: Chunk) -> bool:
+            nonlocal token_count
+            if chunk.chunk_id in used:
+                return False
+            cost = self._token_count(chunk.bm25_body) + (1 if used else 0)
+            if token_count + cost > max_tokens:
+                return False
+            selected[owner].append(chunk)
+            used.add(chunk.chunk_id)
+            token_count += cost
+            return True
+
+        active_hits: list[Chunk] = []
+        for hit in hits:
+            if add(hit.chunk_id, hit):
+                active_hits.append(hit)
+
+        for hit in active_hits:
+            for chunk in self.select(hit, level):
+                if chunk.chunk_id != hit.chunk_id:
+                    add(hit.chunk_id, chunk)
+        return {
+            hit_id: tuple(sorted(parts, key=lambda chunk: chunk.document_order))
+            for hit_id, parts in selected.items()
+            if parts
+        }
+
+    def _token_count(self, text: str) -> int:
+        """优先使用已配置 tokenizer，失败时回退到无模型估算。"""
+
+        if self.token_counter is not None:
+            try:
+                value = self.token_counter(text)
+                if value > 0:
+                    return value
+            except Exception:
+                pass
+        return estimate_tokens(text)
+
+
+_TOKEN = re.compile(r"[\u3400-\u9fff]|[A-Za-z0-9_]+|[^\s]")
+
+
+def estimate_tokens(text: str) -> int:
+    """无模型依赖的保守 token 估算；CJK、词和标点分别计数。"""
+
+    return len(_TOKEN.findall(text))
+
 
 class EvidenceAssembler:
     """只使用权威引用字段组装结构化证据，不接触检索拼接文本。"""
@@ -84,9 +146,9 @@ class EvidenceAssembler:
                     parse_revision_id=chunk.parse_revision_id,
                     document_name=document_name,
                     section_path=tuple(chunk.section_path),
-                    region_ids=item.region_ids,
-                    page_ids=item.page_ids,
-                    page_indexes=item.page_indexes,
+                    locators=tuple(
+                        locator.model_dump(mode="json") for locator in item.locators
+                    ),
                     asset_ids=item.asset_ids,
                 )
             )
