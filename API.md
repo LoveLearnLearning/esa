@@ -425,16 +425,10 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 ### POST /me/schedule/import
 
 使用 `multipart/form-data` 上传字段名为 `file` 的课表文件，最大 15 MB，支持 PDF、
-PNG/JPEG/WebP/BMP 和 HTML。服务端先从 PDF/HTML 提取文字或对图片执行 OCR，再让当前
-本机 Qwen3.5-9B 辅助模型输出经过严格校验的课程结构，最后去重写入用户课表。辅助模型
-不可用时返回 `502`，不会回退占用 122B 主模型。扫描版 PDF 如果无法提取文字，应改为
-上传清晰图片。
-
-图片识别依赖服务器安装 Tesseract 及中文语言包，例如 Debian/Ubuntu：
-
-```bash
-sudo apt install tesseract-ocr tesseract-ocr-chi-sim
-```
+PNG/JPEG/WebP/BMP 和 HTML。图片会经过像素限制、缩放和重新编码后直接发送给本机
+Qwen3.5-9B 的多模态接口；PDF 最多 4 页，会先安全栅格化为页面图片；HTML 则保留表格
+结构并提取可见文本。模型输出经过严格 Schema 校验后才会去重写入用户课表。辅助模型
+不可用时返回 `502`，不会回退占用 122B 主模型。该导入链路不依赖 DocIR。
 
 ---
 

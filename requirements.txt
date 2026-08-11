@@ -22,7 +22,7 @@ requests
 sentence-transformers
 pypdf
 pillow
-pytesseract
+pypdfium2==5.5.0
 
 # KHG
 pyyaml

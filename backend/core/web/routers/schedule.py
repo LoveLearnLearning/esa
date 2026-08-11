@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from backend.agent.tools.mastery_tools import kg_store
 from backend.core.services.schedule_import_service import (
-    extract_document_text,
+    extract_schedule_document,
     extract_schedule_courses,
 )
 from backend.core.stores.schedule_store import ScheduleStore
@@ -260,7 +260,7 @@ async def import_schedule(
     filename = file.filename or "schedule"
     content_type = file.content_type or "application/octet-stream"
     try:
-        text = await extract_document_text(
+        document = await extract_schedule_document(
             filename=filename,
             content_type=content_type,
             data=data,
@@ -268,7 +268,7 @@ async def import_schedule(
         store: ScheduleStore = request.app.state.schedule_store
         courses = await extract_schedule_courses(
             llm_client=request.app.state.auxiliary_llm_client,
-            document_text=text,
+            document=document,
             total_weeks=user.total_weeks,
             settings=store.get_settings(user.id),
             max_output_tokens=AUXILIARY_MODEL_MAX_OUTPUT_TOKENS,

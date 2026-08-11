@@ -546,9 +546,16 @@ class _SchedulePageState extends State<SchedulePage> {
     bool dimmed = false,
   }) {
     final color = Color(course.colorValue);
+    // 窄课块用小圆角：16 的圆角在 40 多像素宽的块上接近药丸形，
+    // 四角会吃掉文字可用空间，看起来像文字压出了边界
+    final radius = ultraCompact
+        ? 7.0
+        : compact
+        ? 11.0
+        : EsaRadii.card;
     final tile = DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(EsaRadii.card),
+        borderRadius: BorderRadius.circular(radius),
         boxShadow: dimmed
             ? const []
             : [
@@ -561,14 +568,14 @@ class _SchedulePageState extends State<SchedulePage> {
       ),
       child: Material(
         color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(EsaRadii.card),
+        borderRadius: BorderRadius.circular(radius),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () => _openEditor(app, app.userProfile.totalWeeks, course),
           child: Container(
             padding: EdgeInsets.all(
               ultraCompact
-                  ? 3
+                  ? 4
                   : compact
                   ? 7
                   : 10,
@@ -578,9 +585,9 @@ class _SchedulePageState extends State<SchedulePage> {
                 color: color.withValues(alpha: 0.6),
                 style: dimmed ? BorderStyle.none : BorderStyle.solid,
               ),
-              borderRadius: BorderRadius.circular(EsaRadii.card),
+              borderRadius: BorderRadius.circular(radius),
             ),
-            // 超窄课块也要完整展示信息：字体缩小、允许多行，
+            // 超窄课块也要完整展示信息：允许多行，
             // 超出部分裁剪而不是报 overflow
             child: ClipRect(
               child: SingleChildScrollView(
@@ -594,27 +601,27 @@ class _SchedulePageState extends State<SchedulePage> {
                         maxLines: 1,
                         style: context.texts.bodySmall?.copyWith(
                           fontSize: ultraCompact
-                              ? 7
-                              : compact
                               ? 8.5
+                              : compact
+                              ? 9.5
                               : 9.5,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     Text(
                       course.name,
-                      maxLines: ultraCompact ? 4 : 2,
+                      maxLines: ultraCompact ? 5 : 3,
                       overflow: TextOverflow.ellipsis,
                       style: context.texts.titleMedium?.copyWith(
                         fontSize: ultraCompact
-                            ? 8.5
+                            ? 10.5
                             : compact
-                            ? 11.5
+                            ? 12
                             : 12.5,
-                        height: ultraCompact ? 1.12 : null,
+                        height: ultraCompact ? 1.18 : null,
                       ),
                     ),
-                    SizedBox(height: ultraCompact ? 1 : 3),
+                    SizedBox(height: ultraCompact ? 2 : 3),
                     Text(
                       compact
                           ? '${course.startPeriod}-${course.endPeriod} 节'
@@ -624,9 +631,9 @@ class _SchedulePageState extends State<SchedulePage> {
                       overflow: TextOverflow.ellipsis,
                       style: context.texts.bodySmall?.copyWith(
                         fontSize: ultraCompact
-                            ? 7.5
+                            ? 9
                             : compact
-                            ? 9.5
+                            ? 10
                             : 10.5,
                       ),
                     ),
@@ -637,9 +644,9 @@ class _SchedulePageState extends State<SchedulePage> {
                         overflow: TextOverflow.ellipsis,
                         style: context.texts.bodySmall?.copyWith(
                           fontSize: ultraCompact
-                              ? 7.5
+                              ? 9
                               : compact
-                              ? 9.5
+                              ? 10
                               : 10.5,
                         ),
                       ),

@@ -9,7 +9,7 @@ sympy==1.14.0
 pypdf==6.14.2
 python-multipart==0.0.32
 Pillow==11.1.0
-pytesseract==0.3.13
+pypdfium2==5.5.0
 PyYAML==6.0.3
 
 pytest==8.3.5

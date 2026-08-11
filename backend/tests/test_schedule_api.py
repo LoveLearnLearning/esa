@@ -1,5 +1,8 @@
+import io
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_course_store import UserCourseStore
@@ -11,7 +14,11 @@ from backend.core.web.routers import schedule
 
 class _LLMClient:
     async def chat(self, messages, *, max_tokens, temperature):
-        assert "数据结构" in messages[-1]["content"]
+        content = messages[-1]["content"]
+        if isinstance(content, list):
+            assert any(part.get("type") == "image_url" for part in content)
+        else:
+            assert "数据结构" in content
         assert max_tokens > 0
         assert temperature == 0.0
         return """[
@@ -26,6 +33,13 @@ class _LLMClient:
             "end_week": 18
           }
         ]"""
+
+
+def _schedule_png() -> bytes:
+    output = io.BytesIO()
+    Image.new("RGB", (64, 48), "white").save(output, format="PNG")
+    return output.getvalue()
+
 
 def _app(tmp_path, monkeypatch):
     database = tmp_path / "schedule-api.db"
@@ -94,6 +108,22 @@ def test_schedule_crud_and_html_model_import(tmp_path, monkeypatch):
     ]
     assert "操作系统" not in names
     assert "数据结构" in names
+
+
+def test_schedule_image_import_uses_multimodal_auxiliary_model(
+    tmp_path, monkeypatch
+):
+    app = _app(tmp_path, monkeypatch)
+    client = TestClient(app)
+
+    imported = client.post(
+        "/me/schedule/import",
+        files={"file": ("schedule.png", _schedule_png(), "image/png")},
+    )
+
+    assert imported.status_code == 200
+    assert imported.json()["imported_count"] == 1
+    assert imported.json()["courses"][0]["name"] == "数据结构"
 
 
 def test_schedule_table_management_and_import_to_new_table(tmp_path, monkeypatch):

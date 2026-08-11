@@ -28,12 +28,14 @@ export VLLM_TARGET_DEVICE='cuda'
 read -r \
     main_model main_tp \
     auxiliary_model auxiliary_name auxiliary_port auxiliary_dtype \
-    auxiliary_gpu_memory auxiliary_max_length auxiliary_max_num_seqs < <(
+    auxiliary_gpu_memory auxiliary_max_length auxiliary_max_num_seqs \
+    auxiliary_max_images < <(
     python - <<'PY'
 from backend.core.utils.config import (
     AUXILIARY_MODEL_DTYPE,
     AUXILIARY_MODEL_GPU_MEMORY_UTILIZATION,
     AUXILIARY_MODEL_MAX_MODEL_LENGTH,
+    AUXILIARY_MODEL_MAX_IMAGES_PER_PROMPT,
     AUXILIARY_MODEL_MAX_NUM_SEQS,
     AUXILIARY_MODEL_NAME,
     AUXILIARY_MODEL_PATH,
@@ -52,6 +54,7 @@ print(
     AUXILIARY_MODEL_GPU_MEMORY_UTILIZATION,
     AUXILIARY_MODEL_MAX_MODEL_LENGTH,
     AUXILIARY_MODEL_MAX_NUM_SEQS,
+    AUXILIARY_MODEL_MAX_IMAGES_PER_PROMPT,
 )
 PY
 )
@@ -118,6 +121,7 @@ python -m vllm.entrypoints.openai.api_server \
     --gpu-memory-utilization "$auxiliary_gpu_memory" \
     --max-model-len "$auxiliary_max_length" \
     --max-num-seqs "$auxiliary_max_num_seqs" \
+    --limit-mm-per-prompt "{\"image\": ${auxiliary_max_images}}" \
     --generation-config vllm \
     --enable-prefix-caching \
     --disable-log-stats \

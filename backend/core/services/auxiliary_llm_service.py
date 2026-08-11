@@ -1,4 +1,4 @@
-"""Client for the localhost-only auxiliary Qwen vLLM service."""
+"""Client for the localhost-only auxiliary multimodal Qwen vLLM service."""
 
 from __future__ import annotations
 
@@ -51,6 +51,11 @@ class AuxiliaryLLMClient:
         max_tokens: int,
         temperature: float = 0.1,
     ) -> str:
+        """调用 OpenAI-compatible Chat API。
+
+        ``messages[*].content`` 既可以是文本，也可以是包含 ``image_url``
+        的多模态 content parts；媒体统一由上游编码为受控的 Data URL。
+        """
         if max_tokens <= 0:
             raise ValueError("max_tokens 必须大于 0")
 
