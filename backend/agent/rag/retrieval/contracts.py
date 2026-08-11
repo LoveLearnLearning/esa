@@ -12,9 +12,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Protocol
+from typing import Literal, Protocol
 
-from ..chunk import Chunk
+from ..chunk import Chunk, ContentRole
 
 
 class ContextLevel(str, Enum):
@@ -33,11 +33,19 @@ class RetrievalConfig:
     bm25_body_limit: int = 20
     bm25_heading_limit: int = 20
     rrf_limit: int = 30
-    rerank_limit: int = 10
+    rerank_limit: int = 20
+    reranker_batch_size: int = 4
     final_limit: int = 5
     rrf_k: int = 60
     section_window: int = 1
+    max_context_tokens: int = 8192
     rerank_threshold: float | None = None
+    fusion_method: Literal["dense", "equal_rrf", "weighted_rrf", "score"] = "score"
+    dense_weight: float = 1.0
+    lexical_body_weight: float = 0.75
+    lexical_gate_enabled: bool = True
+    reranker_enabled: bool = False
+    reranker_prior_weight: float = 0.90
 
     def __post_init__(self) -> None:
         """拒绝非正候选数量、非正 RRF 常数和负章节窗口。"""
@@ -48,14 +56,24 @@ class RetrievalConfig:
             ("bm25_heading_limit", self.bm25_heading_limit),
             ("rrf_limit", self.rrf_limit),
             ("rerank_limit", self.rerank_limit),
+            ("reranker_batch_size", self.reranker_batch_size),
             ("final_limit", self.final_limit),
             ("rrf_k", self.rrf_k),
+            ("max_context_tokens", self.max_context_tokens),
         )
         for name, value in positive_fields:
             if value <= 0:
                 raise ValueError(f"{name} must be positive")
         if self.section_window < 0:
             raise ValueError("section_window cannot be negative")
+        unit_fields = (
+            ("dense_weight", self.dense_weight),
+            ("lexical_body_weight", self.lexical_body_weight),
+            ("reranker_prior_weight", self.reranker_prior_weight),
+        )
+        for name, value in unit_fields:
+            if not 0 <= value <= 1:
+                raise ValueError(f"{name} must be between zero and one")
 
 
 @dataclass(frozen=True)
@@ -137,17 +155,28 @@ class RetrievalIndex(Protocol):
         self,
         query_vector: Sequence[float],
         limit: int,
+        content_roles: frozenset[ContentRole] | None = None,
     ) -> list[RankedItem]:
         """执行 Dense 向量召回。"""
 
         ...
 
-    def bm25_body(self, query: str, limit: int) -> list[RankedItem]:
+    def bm25_body(
+        self,
+        query: str,
+        limit: int,
+        content_roles: frozenset[ContentRole] | None = None,
+    ) -> list[RankedItem]:
         """执行正文 BM25 召回。"""
 
         ...
 
-    def bm25_heading(self, query: str, limit: int) -> list[RankedItem]:
+    def bm25_heading(
+        self,
+        query: str,
+        limit: int,
+        content_roles: frozenset[ContentRole] | None = None,
+    ) -> list[RankedItem]:
         """执行标题和章节路径 BM25 召回。"""
 
         ...
@@ -173,9 +202,7 @@ class Evidence:
     parse_revision_id: str
     document_name: str
     section_path: tuple[str, ...]
-    region_ids: tuple[str, ...]
-    page_ids: tuple[str, ...]
-    page_indexes: tuple[int, ...]
+    locators: tuple[Mapping[str, object], ...]
     asset_ids: tuple[str, ...]
 
 
@@ -197,6 +224,8 @@ class SearchTrace:
 
     rankings: Mapping[str, tuple[str, ...]]
     degraded: tuple[str, ...] = field(default_factory=tuple)
+    raw_scores: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
+    fusion: Mapping[str, float | str | bool] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

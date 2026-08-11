@@ -60,6 +60,11 @@ class HashingEmbeddingProvider:
     def embed_query(self, query: str) -> list[float]:
         return self.embed([query])[0]
 
+    def count_tokens(self, text: str) -> int:
+        """为无模型测试提供确定性 token 预算。"""
+
+        return len(reference_tokens(text))
+
 
 @dataclass(frozen=True)
 class LexicalOverlapReranker:

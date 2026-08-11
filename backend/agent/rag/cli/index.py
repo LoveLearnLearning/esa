@@ -63,9 +63,7 @@ def build_deployment(arguments: argparse.Namespace) -> Path:
         embedding_backend=arguments.embedding_backend,
         embedding_model_name=embedding.model_name,
         embedding_base_url=(
-            arguments.embedding_url
-            if arguments.embedding_backend == "vllm"
-            else None
+            arguments.embedding_url if arguments.embedding_backend == "vllm" else None
         ),
     )
     deployment_root = arguments.output / deployment.deployment_id
@@ -214,10 +212,18 @@ def _retrieval_config() -> RetrievalConfig:
         bm25_heading_limit=core_config.RAG_BM25_HEADING_LIMIT,
         rrf_limit=core_config.RAG_RRF_LIMIT,
         rerank_limit=core_config.RAG_RERANK_LIMIT,
+        reranker_batch_size=core_config.RAG_RERANKER_BATCH_SIZE,
         final_limit=core_config.RAG_FINAL_LIMIT,
         rrf_k=core_config.RAG_RRF_K,
         section_window=core_config.RAG_SECTION_WINDOW,
+        max_context_tokens=core_config.RAG_MAX_CONTEXT_TOKENS,
         rerank_threshold=core_config.RAG_RERANK_THRESHOLD,
+        fusion_method=core_config.RAG_FUSION_METHOD,
+        dense_weight=core_config.RAG_DENSE_WEIGHT,
+        lexical_body_weight=core_config.RAG_LEXICAL_BODY_WEIGHT,
+        lexical_gate_enabled=core_config.RAG_LEXICAL_GATE_ENABLED,
+        reranker_enabled=core_config.RAG_RERANKER_ENABLED,
+        reranker_prior_weight=core_config.RAG_RERANKER_PRIOR_WEIGHT,
     )
 
 

@@ -398,7 +398,7 @@ def benchmark_reranker(
     domain_scores = score(
         domain_query,
         [
-            "DocIR 的表格元素保存 HTML，Evidence 记录页码、Region、文本层和 span，可回查原始 PDF。",
+            "DocIR 的表格元素保存 HTML，Evidence 记录 Locator、文本层和 span，可回查原始文档。",
             "今天天气晴朗，适合户外运动。",
         ],
     )
