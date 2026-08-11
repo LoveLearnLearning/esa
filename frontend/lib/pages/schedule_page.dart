@@ -93,8 +93,7 @@ class _SchedulePageState extends State<SchedulePage> {
                         switchOutCurve: Curves.easeInCubic,
                         transitionBuilder: (child, animation) {
                           // 新周从切换方向一侧滑入，旧周向另一侧滑出并淡出
-                          final incoming =
-                              child.key == ValueKey<int>(_week);
+                          final incoming = child.key == ValueKey<int>(_week);
                           final begin = Offset(
                             (incoming ? 0.08 : -0.08) * _weekSlideDirection,
                             0,
@@ -181,7 +180,10 @@ class _SchedulePageState extends State<SchedulePage> {
                             : null,
                       ),
                       Flexible(
-                        child: Text(table.name, overflow: TextOverflow.ellipsis),
+                        child: Text(
+                          table.name,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
@@ -367,171 +369,173 @@ class _SchedulePageState extends State<SchedulePage> {
             child: SingleChildScrollView(
               controller: controller,
               primary: false,
-            padding: EdgeInsets.fromLTRB(
-              horizontalMargin,
-              compactLayout ? 10 : 24,
-              horizontalMargin,
-              compactLayout ? 92 : 28,
-            ),
-            child: Container(
-              key: const ValueKey('schedule-week-card'),
-              width: cardWidth,
-              padding: EdgeInsets.all(cardPadding),
-              decoration: BoxDecoration(
-                color: context.scheme.surface,
-                border: Border.all(color: context.n.divider),
-                borderRadius: BorderRadius.circular(compactLayout ? 16 : 22),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(
-                      alpha: Theme.of(context).brightness == Brightness.dark
-                          ? 0.28
-                          : 0.1,
-                    ),
-                    blurRadius: 24,
-                    spreadRadius: 1,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+              padding: EdgeInsets.fromLTRB(
+                horizontalMargin,
+                compactLayout ? 10 : 24,
+                horizontalMargin,
+                compactLayout ? 92 : 28,
               ),
-              child: LayoutBuilder(
-                builder: (context, gridConstraints) {
-                  final gridWidth = gridConstraints.maxWidth;
-                  final labelWidth = compactLayout
-                      ? (gridWidth * 0.13).clamp(42.0, 52.0)
-                      : (gridWidth * 0.105).clamp(72.0, 88.0);
-                  final dayWidth = (gridWidth - labelWidth) / 7;
-                  final compactTiles = dayWidth < 118;
-                  final ultraCompactTiles = dayWidth < 64;
-                  final tileInset = ultraCompactTiles ? 2.0 : 4.0;
-                  return SizedBox(
-                    key: const ValueKey('schedule-week-grid'),
-                    width: gridWidth,
-                    height: totalHeight,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: CustomPaint(
-                            painter: _ScheduleGridPainter(
-                              divider: context.n.divider,
-                              surface: context.n.n100,
-                              labelWidth: labelWidth,
-                              headerHeight: headerHeight,
-                              dayWidth: dayWidth,
-                              periodHeight: periodHeight,
-                              periodCount: totalPeriods,
+              child: Container(
+                key: const ValueKey('schedule-week-card'),
+                width: cardWidth,
+                padding: EdgeInsets.all(cardPadding),
+                decoration: BoxDecoration(
+                  color: context.scheme.surface,
+                  border: Border.all(color: context.n.divider),
+                  borderRadius: BorderRadius.circular(compactLayout ? 16 : 22),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(
+                        alpha: Theme.of(context).brightness == Brightness.dark
+                            ? 0.28
+                            : 0.1,
+                      ),
+                      blurRadius: 24,
+                      spreadRadius: 1,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: LayoutBuilder(
+                  builder: (context, gridConstraints) {
+                    final gridWidth = gridConstraints.maxWidth;
+                    final labelWidth = compactLayout
+                        ? (gridWidth * 0.13).clamp(42.0, 52.0)
+                        : (gridWidth * 0.105).clamp(72.0, 88.0);
+                    final dayWidth = (gridWidth - labelWidth) / 7;
+                    final compactTiles = dayWidth < 118;
+                    final ultraCompactTiles = dayWidth < 64;
+                    final tileInset = ultraCompactTiles ? 2.0 : 4.0;
+                    return SizedBox(
+                      key: const ValueKey('schedule-week-grid'),
+                      width: gridWidth,
+                      height: totalHeight,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: CustomPaint(
+                              painter: _ScheduleGridPainter(
+                                divider: context.n.divider,
+                                surface: context.n.n100,
+                                labelWidth: labelWidth,
+                                headerHeight: headerHeight,
+                                dayWidth: dayWidth,
+                                periodHeight: periodHeight,
+                                periodCount: totalPeriods,
+                              ),
                             ),
                           ),
-                        ),
-                        for (var day = 0; day < 7; day++)
-                          Positioned(
-                            left: labelWidth + day * dayWidth,
-                            top: 0,
-                            width: dayWidth,
-                            height: headerHeight,
-                            child: Center(
-                              key: ValueKey('schedule-weekday-${day + 1}'),
-                              child: Text(
-                                _weekdays[day],
-                                maxLines: 1,
-                                style: context.texts.titleMedium?.copyWith(
-                                  fontSize: compactLayout ? 10 : null,
+                          for (var day = 0; day < 7; day++)
+                            Positioned(
+                              left: labelWidth + day * dayWidth,
+                              top: 0,
+                              width: dayWidth,
+                              height: headerHeight,
+                              child: Center(
+                                key: ValueKey('schedule-weekday-${day + 1}'),
+                                child: Text(
+                                  _weekdays[day],
+                                  maxLines: 1,
+                                  style: context.texts.titleMedium?.copyWith(
+                                    fontSize: compactLayout ? 10 : null,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        for (var period = 1; period <= totalPeriods; period++)
-                          Positioned(
-                            left: 0,
-                            top: headerHeight + (period - 1) * periodHeight,
-                            width: labelWidth,
-                            height: periodHeight,
-                            child: Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '第 $period 节',
-                                    style: context.texts.bodySmall?.copyWith(
-                                      fontSize: compactLayout ? 9 : null,
-                                      fontWeight: FontWeight.w700,
-                                      color: context.scheme.onSurface,
+                          for (var period = 1; period <= totalPeriods; period++)
+                            Positioned(
+                              left: 0,
+                              top: headerHeight + (period - 1) * periodHeight,
+                              width: labelWidth,
+                              height: periodHeight,
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '第 $period 节',
+                                      style: context.texts.bodySmall?.copyWith(
+                                        fontSize: compactLayout ? 9 : null,
+                                        fontWeight: FontWeight.w700,
+                                        color: context.scheme.onSurface,
+                                      ),
                                     ),
-                                  ),
-                                  SizedBox(height: compactLayout ? 1 : 2),
-                                  Text(
-                                    app.scheduleSettings.periodStartLabel(
-                                      period,
+                                    SizedBox(height: compactLayout ? 1 : 2),
+                                    Text(
+                                      app.scheduleSettings.periodStartLabel(
+                                        period,
+                                      ),
+                                      style: context.texts.bodySmall?.copyWith(
+                                        fontSize: compactLayout ? 8 : 10,
+                                      ),
                                     ),
-                                    style: context.texts.bodySmall?.copyWith(
-                                      fontSize: compactLayout ? 8 : 10,
+                                    Text(
+                                      app.scheduleSettings.periodEndLabel(
+                                        period,
+                                      ),
+                                      style: context.texts.bodySmall?.copyWith(
+                                        fontSize: compactLayout ? 8 : 10,
+                                      ),
                                     ),
-                                  ),
-                                  Text(
-                                    app.scheduleSettings.periodEndLabel(period),
-                                    style: context.texts.bodySmall?.copyWith(
-                                      fontSize: compactLayout ? 8 : 10,
-                                    ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        for (final course in courses)
-                          Positioned(
-                            left:
-                                labelWidth +
-                                (course.weekday - 1) * dayWidth +
-                                tileInset,
-                            top:
-                                headerHeight +
-                                (course.startPeriod - 1) * periodHeight +
-                                tileInset,
-                            width: dayWidth - tileInset * 2,
-                            height:
-                                (course.endPeriod - course.startPeriod + 1) *
-                                    periodHeight -
-                                tileInset * 2,
-                            child: _courseTile(
-                              context,
-                              app,
-                              course,
-                              compact: compactTiles,
-                              ultraCompact: ultraCompactTiles,
+                          for (final course in courses)
+                            Positioned(
+                              left:
+                                  labelWidth +
+                                  (course.weekday - 1) * dayWidth +
+                                  tileInset,
+                              top:
+                                  headerHeight +
+                                  (course.startPeriod - 1) * periodHeight +
+                                  tileInset,
+                              width: dayWidth - tileInset * 2,
+                              height:
+                                  (course.endPeriod - course.startPeriod + 1) *
+                                      periodHeight -
+                                  tileInset * 2,
+                              child: _courseTile(
+                                context,
+                                app,
+                                course,
+                                compact: compactTiles,
+                                ultraCompact: ultraCompactTiles,
+                              ),
                             ),
-                          ),
-                        for (final course in ghostCourses)
-                          Positioned(
-                            left:
-                                labelWidth +
-                                (course.weekday - 1) * dayWidth +
-                                tileInset,
-                            top:
-                                headerHeight +
-                                (course.startPeriod - 1) * periodHeight +
-                                tileInset,
-                            width: dayWidth - tileInset * 2,
-                            height:
-                                (course.endPeriod - course.startPeriod + 1) *
-                                    periodHeight -
-                                tileInset * 2,
-                            child: _courseTile(
-                              context,
-                              app,
-                              course,
-                              compact: compactTiles,
-                              ultraCompact: ultraCompactTiles,
-                              dimmed: true,
+                          for (final course in ghostCourses)
+                            Positioned(
+                              left:
+                                  labelWidth +
+                                  (course.weekday - 1) * dayWidth +
+                                  tileInset,
+                              top:
+                                  headerHeight +
+                                  (course.startPeriod - 1) * periodHeight +
+                                  tileInset,
+                              width: dayWidth - tileInset * 2,
+                              height:
+                                  (course.endPeriod - course.startPeriod + 1) *
+                                      periodHeight -
+                                  tileInset * 2,
+                              child: _courseTile(
+                                context,
+                                app,
+                                course,
+                                compact: compactTiles,
+                                ultraCompact: ultraCompactTiles,
+                                dimmed: true,
+                              ),
                             ),
-                          ),
-                      ],
-                    ),
-                  );
-                },
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ),
-        ),
         );
       },
     );
@@ -816,15 +820,16 @@ class _SchedulePageState extends State<SchedulePage> {
       if (!mounted) return;
       final count = importResult.courses.length;
       final skipped = importResult.skippedCount;
-      final destination =
-          toNewTable ? '「${app.activeScheduleTable?.name ?? '新课程表'}」' : '';
+      final destination = toNewTable
+          ? '「${app.activeScheduleTable?.name ?? '新课程表'}」'
+          : '';
       final message = count == 0
           ? (skipped > 0
-              ? '识别到 $skipped 条课程与现有课表时间冲突，未导入'
-              : '没有发现新的课程，已有课程不会重复导入')
+                ? '识别到 $skipped 条课程与现有课表时间冲突，未导入'
+                : '没有发现新的课程，已有课程不会重复导入')
           : (skipped > 0
-              ? '已导入 $count 条课程安排到$destination，另有 $skipped 条因时间冲突被跳过'
-              : '已识别并导入 $count 条课程安排${destination.isEmpty ? '' : '到$destination'}');
+                ? '已导入 $count 条课程安排到$destination，另有 $skipped 条因时间冲突被跳过'
+                : '已识别并导入 $count 条课程安排${destination.isEmpty ? '' : '到$destination'}');
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));

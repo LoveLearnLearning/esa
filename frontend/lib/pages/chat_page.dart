@@ -161,6 +161,7 @@ class _ChatPageState extends State<ChatPage> {
 
     return Scaffold(
       key: _scaffoldKey,
+      resizeToAvoidBottomInset: false,
       drawerEdgeDragWidth: 24,
       drawer: const HistoryDrawer(),
       body: SafeArea(
