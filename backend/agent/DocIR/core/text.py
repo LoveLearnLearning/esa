@@ -44,6 +44,7 @@ class TextLayer(StrictModel):
     def quotation_and_spans(self):
         if self.origin in {
             TextOrigin.PARSER_DERIVED,
+            TextOrigin.VLM_DERIVED,
             TextOrigin.UNKNOWN,
             TextOrigin.NATIVE_OR_OCR_UNVERIFIED,
         } and self.quote_eligible:

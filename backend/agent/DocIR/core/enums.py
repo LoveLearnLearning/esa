@@ -2,11 +2,11 @@
 
 """
 
-这个文件干什么：DocIR V0.2 的稳定枚举。
+这个文件干什么：DocIR 的稳定枚举。
 
 直白点说就是：把文字来源、元素角色、严重程度等固定选项集中列出来，避免各处随便写字符串。
 
-DocIR V0.2 的稳定枚举。
+DocIR 的稳定枚举。
 """
 
 from enum import Enum
@@ -20,6 +20,9 @@ class TextOrigin(str, Enum):
     NATIVE_OR_OCR_UNVERIFIED = "native_or_ocr_unverified"
     DOCUMENT_CAPTION = "document_caption"
     PARSER_DERIVED = "parser_derived"
+    # 由视觉语言模型基于受 SHA-256 约束的视觉 Asset 生成；它可以用于
+    # 检索和理解，但不是源文档逐字文字。
+    VLM_DERIVED = "vlm_derived"
     UNKNOWN = "unknown"
 
 
@@ -31,6 +34,7 @@ class ElementRole(str, Enum):
     FOOTER = "footer"
     PAGE_NUMBER = "page_number"
     ASIDE = "aside"
+    VLM_DESCRIPTION = "vlm_description"
     DISCARDED = "discarded"
 
 

@@ -12,8 +12,7 @@
 from __future__ import annotations
 
 import math
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 
 class StrictModel(BaseModel):
@@ -71,12 +70,19 @@ class CoordinateTransform(StrictModel):
         return value
 
 
-class Region(StrictModel):
-    region_id: str = Field(min_length=1)
-    page_id: str = Field(min_length=1)
-    bbox: NormalizedBox
+class Locator(StrictModel):
+    """可选来源定位；内容合法性不依赖定位或空间坐标。"""
+
+    locator_id: str = Field(min_length=1)
+    kind: str = Field(min_length=1)
+    container_id: str | None = None
+    container_index: int | None = Field(default=None, ge=0)
+    label: str | None = None
+    page_id: str | None = None
+    bbox: NormalizedBox | None = None
     polygon: tuple[Point, ...] | None = None
     source_geometry: SourceGeometry | None = None
+    metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
     @field_validator("polygon")
     @classmethod
@@ -91,4 +97,17 @@ def normalize_bbox(raw: list[float] | tuple[float, ...], width: float, height: f
     if len(raw) != 4 or width <= 0 or height <= 0:
         raise ValueError("无法归一化 bbox")
     x0, y0, x1, y1 = (float(item) for item in raw)
-    return NormalizedBox(x0=x0 / width, y0=y0 / height, x1=x1 / width, y1=y1 / height)
+    if not all(math.isfinite(item) for item in (x0, y0, x1, y1)):
+        raise ValueError("无法归一化非有限 bbox")
+    normalized = (
+        max(0.0, min(1.0, x0 / width)),
+        max(0.0, min(1.0, y0 / height)),
+        max(0.0, min(1.0, x1 / width)),
+        max(0.0, min(1.0, y1 / height)),
+    )
+    return NormalizedBox(
+        x0=normalized[0],
+        y0=normalized[1],
+        x1=normalized[2],
+        y1=normalized[3],
+    )
