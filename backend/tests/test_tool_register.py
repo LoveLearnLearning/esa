@@ -1,4 +1,5 @@
 from backend.agent.tools.tool_register import ToolRegistry
+import asyncio
 
 
 def _registry() -> ToolRegistry:
@@ -101,3 +102,28 @@ def test_registry_rejects_invalid_integer_with_clear_error() -> None:
     assert registry.call("typed_echo", {"count": "three"}) == (
         "[Error]: 参数 'count' 必须是整数"
     )
+
+
+def test_registry_awaits_async_tools() -> None:
+    registry = ToolRegistry()
+
+    @registry.register(
+        {
+            "type": "function",
+            "function": {
+                "name": "async_echo",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                    "required": ["value"],
+                },
+            },
+        }
+    )
+    async def async_echo(value: str) -> dict:
+        await asyncio.sleep(0)
+        return {"value": value}
+
+    assert asyncio.run(registry.acall("async_echo", {"value": "ok"})) == {
+        "value": "ok"
+    }

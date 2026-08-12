@@ -41,6 +41,7 @@
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="preload" href="main.dart.js" as="script">
 
   <title>星知智链</title>
   <link rel="manifest" href="manifest.json">
@@ -71,29 +72,74 @@
       overflow: hidden;
       -webkit-tap-highlight-color: transparent;
     }
+    #app-loading {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      background: #1B1A19;
+      color: #F8FAFC;
+      transition: opacity 160ms ease;
+    }
+    #app-loading.is-ready {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #app-loading img {
+      width: 56px;
+      height: 56px;
+    }
+    #app-loading strong {
+      display: block;
+      margin-top: 14px;
+      font: 600 18px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+      text-align: center;
+    }
+    #app-loading span {
+      display: block;
+      width: 22px;
+      height: 22px;
+      margin: 18px auto 0;
+      border: 2px solid rgba(248, 250, 252, 0.24);
+      border-top-color: #3B82F6;
+      border-radius: 50%;
+      animation: app-loading-spin 700ms linear infinite;
+    }
+    @keyframes app-loading-spin {
+      to { transform: rotate(360deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #app-loading { transition: none; }
+      #app-loading span { animation-duration: 1400ms; }
+    }
   </style>
 </head>
 <body>
+  <div id="app-loading" role="status" aria-label="星知智链正在启动">
+    <div>
+      <img src="icons/Icon-192.png" alt="">
+      <strong>星知智链</strong>
+      <span aria-hidden="true"></span>
+    </div>
+  </div>
   <script>
-    // This site is deployed by replacing static files. Remove Flutter's old
-    // offline worker before loading the app so a prior release cannot keep
-    // serving a stale main.dart.js after deployment.
-    (async () => {
-      if ('serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map((item) => item.unregister()));
-      }
-      if ('caches' in window) {
-        const keys = await caches.keys();
-        await Promise.all(
-          keys.filter((key) => key.startsWith('flutter-')).map((key) => caches.delete(key)),
-        );
-      }
-      const bootstrap = document.createElement('script');
-      bootstrap.src = 'flutter_bootstrap.js';
-      bootstrap.async = true;
-      document.body.appendChild(bootstrap);
-    })();
+    // Clean up releases that used Flutter's old offline worker, but never
+    // block the current app download on browser cache housekeeping.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((items) => {
+        for (const item of items) item.unregister();
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then((keys) => {
+        for (const key of keys) {
+          if (key.startsWith('flutter-')) caches.delete(key);
+        }
+      });
+    }
   </script>
+  <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

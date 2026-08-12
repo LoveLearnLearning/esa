@@ -109,6 +109,7 @@ class PromptContext:
     conversation_summary: str = ""
     conversation_mode: str = "normal"
     attachment_context: str = ""
+    attachment_tool_context: object | None = None
     workspace_type: str = "learning"
 
     # 由 Agent._prepare_run 内部生成，不属于用户可写偏好。

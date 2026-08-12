@@ -6,8 +6,10 @@
 // tree, read text, and verify that the values of widget properties are correct.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/main.dart';
+import 'package:frontend/state/app_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -23,6 +25,22 @@ void main() {
     expect(find.text('邮箱或用户名'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
     expect(find.text('记住登录'), findsOneWidget);
+  });
+
+  testWidgets('renders a startup page while the remembered session loads', (
+    tester,
+  ) async {
+    final state = AppState(restoringSession: true);
+
+    await tester.pumpWidget(EsaApp(state: state));
+
+    expect(find.text('星知智链'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    await state.restoreSession();
+    await tester.pump();
+
+    expect(find.text('邮箱或用户名'), findsOneWidget);
   });
 
   testWidgets('submits login form from password keyboard action', (
@@ -85,6 +103,26 @@ void main() {
 
     expect(find.text('Your knowledge\nis a network.'), findsOneWidget);
     expect(find.text('欢迎回来'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('desktop knowledge graph responds to mouse movement', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const EsaApp());
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: const Offset(120, 180));
+    await mouse.moveTo(const Offset(460, 310));
+    await tester.pump(const Duration(milliseconds: 80));
+    await mouse.moveTo(const Offset(720, 520));
+    await tester.pump(const Duration(milliseconds: 80));
+
     expect(tester.takeException(), isNull);
   });
 

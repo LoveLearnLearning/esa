@@ -17,6 +17,7 @@ from backend.agent.memories.profile_builder import ProfileBuilder
 from backend.agent.mm import MMConfig, MultimodalIngestionService, MultimodalSessionService
 from backend.agent.rag.lifecycle import RAGApplicationLifecycle
 from backend.agent.tools.learning_tools import evidence_store
+from backend.agent.tools.attachment_tools import AttachmentToolContext
 from backend.agent.tools.mastery_tools import kg_store, mastery_store
 from backend.core.services.auth_service import AuthService
 from backend.core.services.auxiliary_llm_service import AuxiliaryLLMClient
@@ -31,6 +32,7 @@ from backend.core.services.email_verification_service import (
 from backend.core.services.frontier_tracking_service import FrontierTrackingService
 from backend.core.services.research_data_service import ResearchDataService
 from backend.core.services.research_writing_service import ResearchWritingService
+from backend.core.services.user_attachment_service import UserAttachmentStore
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.conversation_summary_store import ConversationSummaryStore
 from backend.core.stores.email_verification_store import EmailVerificationStore
@@ -82,6 +84,8 @@ from backend.core.utils.config import (
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
     TRUSTED_HOSTS,
+    USER_ATTACHMENT_MAX_BYTES,
+    USER_ATTACHMENT_ROOT,
     validate_startup_config,
 )
 from backend.core.web.routers import (
@@ -113,6 +117,10 @@ async def lifespan(app: FastAPI):
     app.state.chat_store = ChatStore(DB_PATH)
     app.state.session_store = SessionStore(DB_PATH)
     app.state.profile_store = ProfileStore(DB_PATH)
+    app.state.user_attachment_store = UserAttachmentStore(
+        USER_ATTACHMENT_ROOT,
+        max_bytes=USER_ATTACHMENT_MAX_BYTES,
+    )
 
     run_migrations(DB_PATH)
     app.state.research_project_store = ResearchProjectStore(DB_PATH)

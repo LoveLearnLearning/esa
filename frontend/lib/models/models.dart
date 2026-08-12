@@ -313,7 +313,11 @@ class DocumentAttachment {
   final String validationStatus;
   final int qualityIssueCount;
 
-  String get modeLabel => mode == 'rag' ? 'DocIR · RAG' : 'DocIR · 全文';
+  String get modeLabel => switch (mode) {
+    'pending' => '已保存 · 发送后按需解析',
+    'rag' => 'DocIR · RAG',
+    _ => 'DocIR · 全文',
+  };
 
   factory DocumentAttachment.fromJson(Map<String, dynamic> json) =>
       DocumentAttachment(
@@ -596,6 +600,7 @@ class ChatMessage extends ChangeNotifier {
     this.typing = false,
     this.markdown = false,
     this.reasoning = '',
+    this.toolRunning = false,
   });
 
   final String id;
@@ -606,6 +611,7 @@ class ChatMessage extends ChangeNotifier {
   bool typing; // 等待后端回复时显示光标
   final bool markdown; // 仅前端使用：用户是否通过 Markdown 模式发送
   String reasoning; // 后端可选返回：模型思考内容
+  bool toolRunning; // 工具已开始调用但结果尚未返回
 
   bool get isUser => role == MessageRole.user;
   bool get isTool => role == MessageRole.tool;
@@ -618,6 +624,7 @@ class ChatMessage extends ChangeNotifier {
       name: j['name'] as String?,
       createdAt: j['created_at'] as String?,
       reasoning: (j['reasoning'] ?? j['thinking']) as String? ?? '',
+      toolRunning: false,
     );
   }
 

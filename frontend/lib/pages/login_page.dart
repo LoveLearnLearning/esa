@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -38,6 +39,8 @@ class _LoginPageState extends State<LoginPage>
   final _password2Focus = FocusNode();
 
   late final AnimationController _graphAnimation;
+  late final ValueNotifier<Offset?> _graphPointer;
+  late final _KnowledgeGraphPainter _graphPainter;
   AuthMode _mode = AuthMode.login;
   String _accountRole = 'student';
   bool _showPw = false;
@@ -62,10 +65,27 @@ class _LoginPageState extends State<LoginPage>
     ]) {
       focusNode.addListener(_handleInputFocusChange);
     }
+    _graphPointer = ValueNotifier<Offset?>(null);
     _graphAnimation = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 18),
-    )..repeat();
+      duration: const Duration(seconds: 24),
+    );
+    _graphPainter = _KnowledgeGraphPainter(
+      animation: _graphAnimation,
+      pointer: _graphPointer,
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final media = MediaQuery.of(context);
+    final animate = media.size.width >= 600 && !media.disableAnimations;
+    if (animate && !_graphAnimation.isAnimating) {
+      _graphAnimation.repeat();
+    } else if (!animate && _graphAnimation.isAnimating) {
+      _graphAnimation.stop();
+    }
   }
 
   void _handleInputFocusChange() {
@@ -76,6 +96,7 @@ class _LoginPageState extends State<LoginPage>
   void dispose() {
     _codeTimer?.cancel();
     _graphAnimation.dispose();
+    _graphPointer.dispose();
     for (final focusNode in [
       _emailFocus,
       _verificationCodeFocus,
@@ -210,29 +231,33 @@ class _LoginPageState extends State<LoginPage>
         child: LayoutBuilder(
           builder: (context, constraints) {
             final compact = constraints.maxWidth < 920;
-            return Stack(
-              children: [
-                const Positioned.fill(child: _BackgroundWash()),
-                Positioned.fill(
-                  child: RepaintBoundary(
-                    child: AnimatedBuilder(
-                      animation: _graphAnimation,
-                      builder: (context, _) => CustomPaint(
-                        painter: _KnowledgeGraphPainter(
-                          phase: _graphAnimation.value * math.pi * 2,
-                          compact: compact,
-                        ),
+            _graphPainter.compact = compact;
+            return MouseRegion(
+              opaque: false,
+              onHover: constraints.maxWidth < 600
+                  ? null
+                  : (event) => _graphPointer.value = event.localPosition,
+              onExit: (_) => _graphPointer.value = null,
+              child: Stack(
+                children: [
+                  const Positioned.fill(child: _BackgroundWash()),
+                  Positioned.fill(
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: _graphPainter,
+                        isComplex: true,
+                        willChange: true,
                       ),
                     ),
                   ),
-                ),
-                const Positioned(top: 26, left: 34, child: _Brand()),
-                if (compact)
-                  _compactLayout(constraints)
-                else
-                  _desktopLayout(constraints),
-                if (_loading) const Positioned.fill(child: _LoadingStage()),
-              ],
+                  const Positioned(top: 26, left: 34, child: _Brand()),
+                  if (compact)
+                    _compactLayout(constraints)
+                  else
+                    _desktopLayout(constraints),
+                  if (_loading) const Positioned.fill(child: _LoadingStage()),
+                ],
+              ),
             );
           },
         ),
@@ -1109,9 +1134,49 @@ class _GraphNode {
 }
 
 class _KnowledgeGraphPainter extends CustomPainter {
-  const _KnowledgeGraphPainter({required this.phase, required this.compact});
-  final double phase;
-  final bool compact;
+  _KnowledgeGraphPainter({required this.animation, required this.pointer})
+    : super(repaint: Listenable.merge([animation, pointer])) {
+    _labels = List.generate(nodes.length, (index) {
+      final small = index == 3 || index == 4 || index == 5;
+      return TextPainter(
+        text: TextSpan(
+          text: nodes[index].label,
+          style: TextStyle(
+            color: small ? const Color(0xFF8794A8) : const Color(0xFFDCE4F2),
+            fontSize: small ? 10 : 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+    }, growable: false);
+  }
+
+  final Animation<double> animation;
+  final ValueListenable<Offset?> pointer;
+  bool compact = false;
+
+  late final List<TextPainter> _labels;
+  final List<Offset> _points = List.filled(
+    nodes.length,
+    Offset.zero,
+    growable: false,
+  );
+  Offset _smoothedPointer = Offset.zero;
+  double _hoverAmount = 0;
+
+  final Paint _edgePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1;
+  final Paint _ringPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1;
+  final Paint _haloPaint = Paint()..style = PaintingStyle.fill;
+  final Paint _nodePaint = Paint()..style = PaintingStyle.fill;
+  final Paint _cursorEdgePaint = Paint()
+    ..color = const Color(0x6B8DDBF8)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1;
 
   static const nodes = <_GraphNode>[
     _GraphNode(.17, .31, 7, 'Mathematics', core: true),
@@ -1161,80 +1226,130 @@ class _KnowledgeGraphPainter extends CustomPainter {
     (16, 6),
   ];
 
-  Offset _point(_GraphNode node, Size size, int index) {
+  Offset _point(
+    _GraphNode node,
+    Size size,
+    int index,
+    double phase,
+    Offset parallax,
+  ) {
     final width = compact ? size.width * 1.45 : size.width;
     final xShift = compact ? -size.width * .13 : 0.0;
-    final dx = math.sin(phase + index * .73) * 3.5;
-    final dy = math.cos(phase * .83 + index * .61) * 3.5;
-    return Offset(xShift + node.x * width + dx, node.y * size.height + dy);
+    final depth = .45 + (index % 4) * .15;
+    final dx = math.sin(phase + index * .73) * 2.4;
+    final dy = math.cos(phase * .83 + index * .61) * 2.4;
+    return Offset(
+      xShift + node.x * width + dx + parallax.dx * depth,
+      node.y * size.height + dy + parallax.dy * depth,
+    );
   }
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final targetPointer = pointer.value;
+    final targetHover = targetPointer == null ? 0.0 : 1.0;
+    _hoverAmount += (targetHover - _hoverAmount) * .14;
+    final fallback = Offset(size.width * .5, size.height * .45);
+    final target = targetPointer ?? fallback;
+    if (_smoothedPointer == Offset.zero) _smoothedPointer = target;
+    _smoothedPointer = Offset.lerp(_smoothedPointer, target, .14)!;
+    final phase = animation.value * math.pi * 2;
+    final parallax = Offset(
+      ((_smoothedPointer.dx / size.width) - .5) * 22 * _hoverAmount,
+      ((_smoothedPointer.dy / size.height) - .5) * 16 * _hoverAmount,
+    );
     final visibleCount = compact ? 13 : nodes.length;
-    final points = <Offset>[
-      for (var i = 0; i < visibleCount; i++) _point(nodes[i], size, i),
-    ];
-    final edgePaint = Paint()
-      ..color = const Color(0x2E9FB4FF)
-      ..strokeWidth = 1;
+    for (var i = 0; i < visibleCount; i++) {
+      _points[i] = _point(nodes[i], size, i, phase, parallax);
+    }
+
     for (var i = 0; i < edges.length; i++) {
       final edge = edges[i];
       if (edge.$1 >= visibleCount || edge.$2 >= visibleCount) continue;
-      edgePaint.color = i % 5 == 0
-          ? const Color(0x579FB4FF)
-          : const Color(0x2E9FB4FF);
-      canvas.drawLine(points[edge.$1], points[edge.$2], edgePaint);
+      final proximity = math.max(
+        _proximity(_points[edge.$1]),
+        _proximity(_points[edge.$2]),
+      );
+      _edgePaint.color = Color.lerp(
+        i % 5 == 0 ? const Color(0x579FB4FF) : const Color(0x2E9FB4FF),
+        const Color(0xB58DDBF8),
+        proximity,
+      )!;
+      _edgePaint.strokeWidth = 1 + proximity * .7;
+      canvas.drawLine(_points[edge.$1], _points[edge.$2], _edgePaint);
     }
 
+    var nearestIndex = -1;
+    var nearestDistance = double.infinity;
     for (var i = 0; i < visibleCount; i++) {
       final node = nodes[i];
-      final point = points[i];
+      var point = _points[i];
+      final distance = (point - _smoothedPointer).distance;
+      final proximity = _proximity(point);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = i;
+      }
+      if (proximity > 0) {
+        point += (_smoothedPointer - point) * (proximity * .025);
+      }
+      final radius = node.radius * (1 + proximity * .38);
+
+      _ringPaint.color = Color.lerp(
+        const Color(0x479CB0FF),
+        const Color(0xC98DDBF8),
+        proximity,
+      )!;
+      _ringPaint.strokeWidth = 1 + proximity;
       canvas.drawCircle(
         point,
-        node.radius + (node.core ? 10 : 6),
-        Paint()
-          ..color = const Color(0x479CB0FF)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1,
+        radius + (node.core ? 10 : 6) + proximity * 3,
+        _ringPaint,
       );
       if (node.core) {
+        _haloPaint.color = Color.lerp(
+          const Color(0x2492A8FF),
+          const Color(0x568DDBF8),
+          proximity,
+        )!;
+        canvas.drawCircle(point, radius + 8, _haloPaint);
+        _haloPaint.color = const Color(0x1A92A8FF);
         canvas.drawCircle(
           point,
-          node.radius + 5,
-          Paint()
-            ..color = const Color(0x5592A8FF)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+          radius + 15 + math.sin(phase + i) * 2,
+          _haloPaint,
         );
       }
-      canvas.drawCircle(
-        point,
-        node.radius,
-        Paint()
-          ..color = node.core
-              ? const Color(0xFFA9BBFF)
-              : const Color(0xFFDDE5F5),
-      );
+      _nodePaint.color = Color.lerp(
+        node.core ? const Color(0xFFA9BBFF) : const Color(0xFFDDE5F5),
+        const Color(0xFFB9F0FF),
+        proximity,
+      )!;
+      canvas.drawCircle(point, radius, _nodePaint);
       if (!compact || i < 8) {
-        final painter = TextPainter(
-          text: TextSpan(
-            text: node.label,
-            style: TextStyle(
-              color: i == 3 || i == 4 || i == 5
-                  ? const Color(0xFF8794A8)
-                  : const Color(0xFFDCE4F2),
-              fontSize: i == 3 || i == 4 || i == 5 ? 10 : 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        painter.paint(canvas, point + Offset(node.radius + 10, -7));
+        _labels[i].paint(canvas, point + Offset(radius + 10, -7));
       }
+    }
+
+    if (_hoverAmount > .05 && nearestIndex >= 0 && nearestDistance < 190) {
+      _cursorEdgePaint.color = const Color(
+        0x6B8DDBF8,
+      ).withValues(alpha: .42 * _hoverAmount * (1 - nearestDistance / 190));
+      canvas.drawLine(
+        _smoothedPointer,
+        _points[nearestIndex],
+        _cursorEdgePaint,
+      );
     }
   }
 
+  double _proximity(Offset point) {
+    if (_hoverAmount <= .01) return 0;
+    final distance = (point - _smoothedPointer).distance;
+    return (1 - distance / 175).clamp(0.0, 1.0) * _hoverAmount;
+  }
+
   @override
-  bool shouldRepaint(covariant _KnowledgeGraphPainter oldDelegate) =>
-      oldDelegate.phase != phase || oldDelegate.compact != compact;
+  bool shouldRepaint(covariant _KnowledgeGraphPainter oldDelegate) => false;
 }

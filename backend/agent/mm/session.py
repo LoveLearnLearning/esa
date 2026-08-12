@@ -31,6 +31,24 @@ class MultimodalSessionService:
                 bucket[item.document.document_id] = item
         return prepared
 
+    async def prepare_attachment(
+        self,
+        session_id: str,
+        attachment_id: str,
+        path: Path,
+    ) -> PreparedAttachment:
+        """Prepare one persisted upload under its public attachment handle."""
+
+        if not session_id.strip() or not attachment_id.strip():
+            raise ValueError("session_id and attachment_id cannot be blank")
+        existing = self._sessions.get(session_id, {}).get(attachment_id)
+        if existing is not None:
+            return existing
+        prepared = await self.ingestion.prepare_file(Path(path))
+        async with self._lock:
+            bucket = self._sessions.setdefault(session_id, {})
+            return bucket.setdefault(attachment_id, prepared)
+
     def list(self, session_id: str) -> tuple[PreparedAttachment, ...]:
         return tuple(self._sessions.get(session_id, {}).values())
 

@@ -163,6 +163,7 @@ run.sh
 gpu_proxy.sh
 artifacts
 runtime
+/backend/data/user/
 # DocIR corpora and generated MinerU regression data stay local. Tests that
 # require them must skip clearly when they are unavailable.
 backend/agent/DocIR/CS_Book_mineru

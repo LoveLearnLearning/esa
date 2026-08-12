@@ -320,11 +320,13 @@ PATCH 可传 `name`、`description`、`status`，其中 `status` 为 `active` �
 ```json
 {
   "content": "用户输入的内容",
-  "attachment_ids": ["本对话内已解析的 DocIR document_id"]
+  "attachment_ids": ["本对话内已上传的 attachment_id"]
 }
 ```
 
-`attachment_ids` 可省略，单轮最多 3 个；附件不存在或不属于当前对话时返回 `404`。
+`attachment_ids` 可省略，单轮最多 3 个；附件不存在或不属于当前用户和对话时返回
+`404`。发送消息后，模型会先加载匹配文件类型的 Skill，再按需调用受限附件 Tool；Tool
+只能读取本轮明确传入的附件 ID，不能接收客户端文件路径。
 
 响应 `200`: 本轮新产生的消息列表(用户消息 + 助手回复 + 工具结果) 结构同历史消息
 
@@ -332,19 +334,19 @@ PATCH 可传 `name`、`description`、`status`，其中 `status` 为 `active` �
 
 对话不存在或不属于当前用户: `404`
 
-### POST /conversations/{conversation_id}/attachments — 解析附件
+### POST /conversations/{conversation_id}/attachments — 上传附件
 
-使用 `multipart/form-data` 上传字段名为 `file` 的单个文件，最大 15 MB。支持 PDF、
-DOCX、PPTX、XLSX 及 PNG/JPEG/WebP/BMP/GIF/TIFF。服务端执行
-`MinerU → DocIR → VLM 派生描述`，短文档返回 `mode: direct`，长文档返回
-`mode: rag`；响应包含 `id`、文件名、token/元素/页数和 DocIR 校验状态。
+使用 `multipart/form-data` 上传字段名为 `file` 的单个文件，默认最大 200 MB。支持 PDF、
+DOCX、PPTX、XLSX 及 PNG/JPEG/WebP/BMP/GIF/TIFF。上传请求仅将源文件流式保存到
+`backend/data/user`，不会运行 MinerU、DocIR、VLM 或 RAG；响应中的 `mode` 和
+`validation_status` 均为 `pending`。
 
-将响应 `id` 放进发送消息的 `attachment_ids` 后，后端才会把全文或当前查询的 RAG
-证据注入本轮。`MM_ENABLED=false` 时返回 `503`。
+将响应 `id` 放进发送消息的 `attachment_ids` 后，模型才能调用对应 Tool 解析该文件。
+默认大小由 `ESA_USER_ATTACHMENT_MAX_BYTES` 控制；反向代理的请求体限制不得更小。
 
 ### DELETE /conversations/{conversation_id}/attachments/{attachment_id}
 
-释放当前对话内的临时附件句柄，成功响应 `204`。
+删除当前对话内的附件源文件和元数据，成功响应 `204`。
 
 ### POST /conversations/{conversation_id}/messages/stream — 流式发送消息
 
@@ -728,6 +730,12 @@ Profile V2 的显式字段统一更新入口，可部分更新：
 Flutter Web 默认使用同源 `/api`。Nginx 必须把 `/api` 前缀原样转发到后端；
 `proxy_pass` 末尾不能带 `/`，否则会剥离后端所需的 `/api`。SSE 代理必须关闭缓冲：
 
+Flutter Web 的 `main.dart.js` 和 CanvasKit WASM 必须启用 gzip；否则首屏需要原样下载
+约 11 MB。部署包已包含 `.gz` 预压缩文件，Nginx 应启用 `gzip_static on`。`index.html`、
+`flutter_bootstrap.js` 和 `main.dart.js` 使用 `no-cache`，浏览器会通过 ETag 复用未变化的
+版本；字体和图片可缓存 7 天。完整静态站点配置见
+`deploy/nginx/esa-web.conf.example`。
+
 ```nginx
 # 运维指标不应通过公网前端域名暴露。
 location ^~ /api/internal/ {
@@ -737,7 +745,7 @@ location ^~ /api/internal/ {
 location ^~ /api/ {
     proxy_pass http://115.29.197.244:51024;
     proxy_http_version 1.1;
-    client_max_body_size 20m;
+    client_max_body_size 200m;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

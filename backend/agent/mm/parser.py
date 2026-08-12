@@ -18,6 +18,10 @@ from backend.agent.DocIR.tools.batch_corpus import (
 )
 
 from .contracts import ParsedAttachment
+from backend.core.log.logger import get_pipeline_logger
+
+
+logger = get_pipeline_logger("DOCIR", __name__)
 
 
 @dataclass(frozen=True)
@@ -53,6 +57,7 @@ class MinerUDocumentParser:
             "-b", "pipeline", "-m", "auto", "-l", "ch",
         ]
         failures: list[str] = []
+        logger.info("MinerU parse started source=%s", source.name)
         for attempt in range(1, self.attempts + 1):
             with log_path.open("a", encoding="utf-8") as stream:
                 stream.write(f"\n=== attempt {attempt}/{self.attempts} ===\n")
@@ -67,12 +72,28 @@ class MinerUDocumentParser:
                     )
                 except subprocess.TimeoutExpired:
                     failures.append(f"attempt {attempt}: timeout")
+                    logger.warning(
+                        "MinerU attempt timed out attempt=%d max_attempts=%d",
+                        attempt,
+                        self.attempts,
+                    )
                     continue
                 if result.returncode == 0:
+                    logger.info(
+                        "MinerU attempt completed attempt=%d elapsed_seconds=%.3f",
+                        attempt,
+                        time.monotonic() - started,
+                    )
                     break
                 failures.append(f"attempt {attempt}: exit_code={result.returncode}")
+                logger.warning(
+                    "MinerU attempt failed attempt=%d exit_code=%d",
+                    attempt,
+                    result.returncode,
+                )
                 stream.write(f"elapsed_seconds={time.monotonic() - started:.3f}\n")
         else:
+            logger.error("MinerU parse failed failures=%s", "; ".join(failures))
             raise RuntimeError("MinerU failed: " + "; ".join(failures))
 
         parse_dir = find_parse_dir(raw_root)
@@ -96,5 +117,10 @@ class MinerUDocumentParser:
             if raw is not None:
                 link_or_copy(raw, document_root / "raw" / raw.name)
         materialize_visual_assets(document, bundle, document_root)
+        logger.info(
+            "DocIR conversion completed document_id=%s elements=%d assets=%d",
+            document.document_id,
+            len(document.elements),
+            len(document.assets),
+        )
         return ParsedAttachment(document=document, document_root=document_root)
-

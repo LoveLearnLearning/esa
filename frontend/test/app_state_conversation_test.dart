@@ -29,6 +29,20 @@ class _ConversationApi extends ApiClient {
   }
 }
 
+class _InterruptedToolApi extends _ConversationApi {
+  @override
+  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+    yield const ChatStreamEvent('start', {});
+    yield const ChatStreamEvent('tool_start', {
+      'id': 'tool-1',
+      'name': 'parse_pdf_attachment',
+    });
+  }
+
+  @override
+  Future<List<ChatMessage>> getMessages(String conversationId) async => [];
+}
+
 void main() {
   test('空白新对话不会被重复创建', () async {
     final api = _ConversationApi()
@@ -52,5 +66,20 @@ void main() {
     await state.newConversation();
     expect(api.createCalls, 2);
     expect(state.activeId, 'conversation-2');
+  });
+
+  test('工具调用期间连接中断会停止进度状态', () async {
+    final api = _InterruptedToolApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+
+    await state.send('解析附件');
+
+    final tool = state.messages.singleWhere((message) => message.isTool);
+    expect(tool.toolRunning, isFalse);
+    expect(tool.text, '工具调用未完成：连接已中断');
   });
 }

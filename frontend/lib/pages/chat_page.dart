@@ -213,10 +213,11 @@ class _ChatPageState extends State<ChatPage> {
               conversationId: app.activeId,
               taskMode: _taskMode,
               onClearTaskMode: () => setState(() => _taskMode = null),
-              onUploadAttachment: (filename, bytes) =>
+              onUploadAttachment: (filename, stream, length) =>
                   app.uploadConversationAttachment(
                     filename: filename,
-                    bytes: bytes,
+                    stream: stream,
+                    length: length,
                   ),
               onRemoveAttachment: app.removeConversationAttachment,
               onSend: (text, markdown) {
@@ -247,7 +248,7 @@ class _ChatPageState extends State<ChatPage> {
     // 关闭工具详情时过滤掉 tool 消息 避免残留分隔间距
     final messages = app.toolsOn
         ? app.messages
-        : app.messages.where((m) => !m.isTool).toList();
+        : app.messages.where((m) => !m.isTool || m.toolRunning).toList();
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: _handleMessagePointerDown,
@@ -280,7 +281,11 @@ class _ChatPageState extends State<ChatPage> {
               case MessageRole.tool:
                 child = Align(
                   alignment: Alignment.centerLeft,
-                  child: ToolCallCard(name: m.name ?? 'tool', output: m.text),
+                  child: ToolCallCard(
+                    name: m.name ?? 'tool',
+                    output: m.text,
+                    running: m.toolRunning,
+                  ),
                 );
               case MessageRole.assistant:
                 child = AssistantMessage(

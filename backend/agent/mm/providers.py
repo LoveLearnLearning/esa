@@ -12,6 +12,10 @@ from typing import Any
 import httpx
 
 from .contracts import VisualAnalysis
+from backend.core.log.logger import get_pipeline_logger
+
+
+logger = get_pipeline_logger("MM", __name__)
 
 
 def _fingerprint(payload: object) -> str:
@@ -90,8 +94,13 @@ class OpenAICompatibleVisionProvider:
         if key:
             headers["Authorization"] = f"Bearer {key}"
         last_error: Exception | None = None
-        for _attempt in range(self.attempts):
+        for attempt in range(1, self.attempts + 1):
             try:
+                logger.info(
+                    "VLM request started model=%s attempt=%d",
+                    self.model_name,
+                    attempt,
+                )
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
                     response = await client.post(
                         f"{self.base_url.rstrip('/')}/chat/completions",
@@ -100,9 +109,16 @@ class OpenAICompatibleVisionProvider:
                     )
                     response.raise_for_status()
                 content = response.json()["choices"][0]["message"]["content"]
+                logger.info("VLM request completed model=%s", self.model_name)
                 return _parse_visual_analysis(content)
             except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
                 last_error = exc
+                logger.warning(
+                    "VLM request failed model=%s attempt=%d error_type=%s",
+                    self.model_name,
+                    attempt,
+                    type(exc).__name__,
+                )
         raise RuntimeError(f"VLM request failed after {self.attempts} attempts") from last_error
 
 
@@ -124,4 +140,3 @@ def _parse_visual_analysis(content: object) -> VisualAnalysis:
     if not isinstance(visible, str) or not isinstance(content_type, str):
         raise ValueError("VLM response text fields must be strings")
     return VisualAnalysis(description.strip(), visible.strip(), content_type.strip())
-

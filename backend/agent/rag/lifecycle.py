@@ -6,6 +6,10 @@ from collections.abc import Callable
 
 from .agent_api import configure_retrieval_service, reset_retrieval_service
 from .retrieval.service import RetrievalService
+from backend.core.log.logger import get_pipeline_logger
+
+
+logger = get_pipeline_logger("RAG", __name__)
 class RAGApplicationLifecycle:
     """Start and stop the single retrieval service owned by an ESA process."""
 
@@ -33,15 +37,19 @@ class RAGApplicationLifecycle:
 
     def start(self) -> RetrievalService | None:
         if not self.enabled:
+            logger.info("application RAG disabled")
             return None
         if self.service is not None:
             return self.service
+        logger.info("application RAG startup started")
         self.service = self._factory()
         configure_retrieval_service(self.service)
+        logger.info("application RAG startup completed")
         return self.service
 
     def close(self) -> None:
         if self.service is not None:
+            logger.info("application RAG shutdown")
             reset_retrieval_service()
             self.service = None
 

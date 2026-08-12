@@ -17,7 +17,8 @@ import '../models/models.dart';
 import '../theme/esa_theme.dart';
 
 class AppState extends ChangeNotifier {
-  AppState({ApiClient? api}) : api = api ?? ApiClient();
+  AppState({ApiClient? api, this.restoringSession = false})
+    : api = api ?? ApiClient();
 
   final ApiClient api;
 
@@ -57,6 +58,7 @@ class AppState extends ChangeNotifier {
   UserPreferences preferences = const UserPreferences();
   UserProfile userProfile = const UserProfile();
   bool loadingProfile = false;
+  bool restoringSession;
 
   // ---- 对话数据 ----
   final List<ChatConversation> conversations = [];
@@ -174,35 +176,46 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> restoreSession() async {
-    final localPreferences = await _getLocalPreferences();
-    if (localPreferences == null) return;
-    final sessionId = localPreferences.getString(_rememberSessionKey);
-    final userId = localPreferences.getString(_rememberUserIdKey);
-    final username = localPreferences.getString(_rememberUsernameKey);
-    final rememberedEmail = localPreferences.getString(_rememberEmailKey);
-    final expiresAtValue = localPreferences.getString(_rememberExpiresAtKey);
-    final expiresAt = DateTime.tryParse(expiresAtValue ?? '');
-
-    if (sessionId == null ||
-        userId == null ||
-        username == null ||
-        expiresAt == null ||
-        !expiresAt.isAfter(DateTime.now().toUtc())) {
-      await _forgetRememberedSession();
-      return;
-    }
-
-    api.sessionId = sessionId;
-    api.userId = userId;
-    api.username = username;
-    api.email = rememberedEmail;
-    api.sessionExpiresAt = expiresAt;
-    email = rememberedEmail ?? '';
-
     try {
-      await _afterLogin();
-    } catch (_) {
-      _clearSession();
+      final localPreferences = await _getLocalPreferences();
+      if (localPreferences == null) return;
+      final sessionId = localPreferences.getString(_rememberSessionKey);
+      final userId = localPreferences.getString(_rememberUserIdKey);
+      final username = localPreferences.getString(_rememberUsernameKey);
+      final rememberedEmail = localPreferences.getString(_rememberEmailKey);
+      final expiresAtValue = localPreferences.getString(_rememberExpiresAtKey);
+      final expiresAt = DateTime.tryParse(expiresAtValue ?? '');
+
+      if (sessionId == null ||
+          userId == null ||
+          username == null ||
+          expiresAt == null ||
+          !expiresAt.isAfter(DateTime.now().toUtc())) {
+        await _forgetRememberedSession();
+        return;
+      }
+
+      api.sessionId = sessionId;
+      api.userId = userId;
+      api.username = username;
+      api.email = rememberedEmail;
+      api.sessionExpiresAt = expiresAt;
+      email = rememberedEmail ?? '';
+
+      // The local session is enough to render the application shell. Remote
+      // workspace and conversation data can continue loading behind it.
+      restoringSession = false;
+      notifyListeners();
+      try {
+        await _afterLogin();
+      } catch (_) {
+        _clearSession();
+      }
+    } finally {
+      if (restoringSession) {
+        restoringSession = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -827,15 +840,6 @@ class AppState extends ChangeNotifier {
         );
       }
     } finally {
-      if (attachmentIds.isNotEmpty) {
-        await Future.wait(
-          attachmentIds.map(
-            (attachmentId) => api
-                .deleteConversationAttachment(id, attachmentId)
-                .catchError((_) {}),
-          ),
-        );
-      }
       busy = false;
       notifyListeners();
     }
@@ -956,18 +960,50 @@ class AppState extends ChangeNotifier {
             enqueue(reasoningQueue, event.data['delta'] as String? ?? '');
           case 'content':
             enqueue(contentQueue, event.data['delta'] as String? ?? '');
-          case 'tool':
-            // 工具结果应位于最终助手回复之前。
+          case 'tool_start':
             list.remove(assistant);
             list.add(
               ChatMessage(
-                id: DateTime.now().microsecondsSinceEpoch.toString(),
+                id:
+                    event.data['id']?.toString() ??
+                    DateTime.now().microsecondsSinceEpoch.toString(),
                 role: MessageRole.tool,
                 name: event.data['name'] as String?,
-                text: event.data['content']?.toString() ?? '',
+                toolRunning: true,
               ),
             );
             list.add(assistant);
+            notifyListeners();
+          case 'tool_progress':
+            // 后端长任务心跳；保留调用中卡片并刷新 Web 的 SSE 超时计时。
+            break;
+          case 'tool':
+            final toolId = event.data['id']?.toString();
+            final toolIndex = toolId == null
+                ? -1
+                : list.indexWhere(
+                    (message) => message.isTool && message.id == toolId,
+                  );
+            if (toolIndex >= 0) {
+              final tool = list[toolIndex];
+              tool.text = event.data['content']?.toString() ?? '';
+              tool.toolRunning = false;
+              tool.notifyListeners();
+            } else {
+              // 兼容尚未发送 tool_start 的旧后端。
+              list.remove(assistant);
+              list.add(
+                ChatMessage(
+                  id:
+                      toolId ??
+                      DateTime.now().microsecondsSinceEpoch.toString(),
+                  role: MessageRole.tool,
+                  name: event.data['name'] as String?,
+                  text: event.data['content']?.toString() ?? '',
+                ),
+              );
+              list.add(assistant);
+            }
             notifyListeners();
           case 'done':
             await finishTypewriter();
@@ -994,6 +1030,16 @@ class AppState extends ChangeNotifier {
         reasoningQueue.clear();
         contentQueue.clear();
         assistant.notifyListeners();
+        for (final message in list.where(
+          (message) => message.isTool && message.toolRunning,
+        )) {
+          message.toolRunning = false;
+          if (message.text.isEmpty) {
+            message.text = '工具调用未完成：连接已中断';
+          }
+          message.notifyListeners();
+        }
+        notifyListeners();
       }
     }
 
@@ -1004,7 +1050,8 @@ class AppState extends ChangeNotifier {
 
   Future<DocumentAttachment> uploadConversationAttachment({
     required String filename,
-    required Uint8List bytes,
+    required Stream<List<int>> stream,
+    required int length,
   }) async {
     if (activeId == null) {
       await _createConversation();
@@ -1016,7 +1063,8 @@ class AppState extends ChangeNotifier {
     return api.uploadConversationAttachment(
       conversationId: conversationId,
       filename: filename,
-      bytes: bytes,
+      stream: stream,
+      length: length,
     );
   }
 

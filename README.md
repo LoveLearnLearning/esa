@@ -12,6 +12,7 @@ ESA 是一个面向学习场景的多用户 Agent 项目，由 FastAPI 后端、
 - Qwen3.5-122B 主模型通过 vLLM 异步引擎提供推理
 - 独占第 5 张 GPU 的 Qwen3.5-9B 辅助服务负责课表解析和离线对话压缩
 - 对话与消息持久化、同步回复和 SSE 流式回复
+- 聊天附件先持久化到 `backend/data/user`，模型按文件类型加载 Skill 后再调用解析 Tool
 - 同一对话跨 Worker 串行生成，不同对话可以并行
 - 模型思考内容、工具调用、Markdown、LaTeX 与代码高亮展示
 - 核心记忆管理、用户偏好、学情档案、Student Model V2、个人知识地图和复习推荐
@@ -113,12 +114,20 @@ flutter run --dart-define=ESA_API_BASE=http://127.0.0.1:51024/api
 由 Nginx 将 `/api` 原样反向代理到后端时：
 
 ```bash
-cd frontend
-flutter build web --release --pwa-strategy=none --dart-define=ESA_API_BASE=/api
+./frontend/scripts/build_web_release.sh
 ```
 
-构建产物位于 `frontend/build/web/`。禁用 Flutter PWA 缓存可避免替换静态文件后浏览器
-继续运行旧版 `main.dart.js`。根目录的 `frontend-web.tar.gz` 是本地部署包，已被 Git 忽略。
+脚本会构建 `frontend/build/web/`，为 JS、WASM、JSON、SVG、CSS 和 HTML 生成 `.gz`
+预压缩文件，并在根目录创建 `frontend-web.tar.gz`。压缩包解压后只有一个 `esa/`
+顶层目录。禁用 Flutter PWA 缓存可避免替换静态文件后浏览器继续运行旧版
+`main.dart.js`。Nginx 必须启用 `gzip_static on;` 才会直接返回预压缩文件，完整配置见
+[`deploy/nginx/esa-web.conf.example`](deploy/nginx/esa-web.conf.example)。
+
+聊天附件默认最大 200 MB，后端配置为 `ESA_USER_ATTACHMENT_MAX_BYTES=209715200`。
+Nginx 的 `/api/` 代理也必须配置 `client_max_body_size 200m;`，修改后执行
+`sudo nginx -t && sudo systemctl reload nginx`。上传阶段只保存源文件；PDF、Word、PPT、
+Excel 和图片会在聊天过程中由模型选择对应 Skill 和 Tool 后解析。文件保存在
+`backend/data/user/{user_id}/{conversation_id}/{attachment_id}/`，主动删除附件或对话时清理。
 
 ## 开发约定
 
