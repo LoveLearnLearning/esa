@@ -34,4 +34,261 @@
 #         date: 2026-08-12
 #         note: 逐步核对了平均情况递推式；确认没有把最好情况当平均情况
 
-reviewed: []
+# 2026-08-12 这批：仓库 owner 授权 Claude 代审 56 条。
+# 放行 53 条；notool_推理与判断_01 已改种子重生成（术语不准）；
+# trap_012 / trap_013 未放行 —— 需要产品拍板，理由见交接文档「待更新提醒」。
+#
+# ⚠️ by 为什么写 GitHub handle 而不是真名
+# ------------------------------------
+# 上面「规矩」那条要求 by 写真名，但 `tools/make_publish_dir.py` 的泄漏扫描
+# **禁止任何队友真名进入发布产物**（PATTERNS 第 107 行）。这张表在
+# `backend/scripts/dataset/seeds/` 里是要发上游的 —— 两条规矩直接打架。
+# 这个冲突以前没暴露，因为台账一直是 `reviewed: []`，这是它第一次有内容。
+#
+# 折中：写 GitHub handle。它本来就公开在提交记录里，既满足「出了事能找到人问」，
+# 又不会把真名发出去。**若哪天由真人重签，也请用 handle，别用真名。**
+#
+# by 一律写成 "Claude（授权：<handle>）"：如实记录是谁看的、谁授权的。
+# 不写成人名，是因为这 53 条确实不是人逐条看的 —— 台账不替任何人背书。
+
+reviewed:
+  # ── 来自 gen_calculators（6/6 放行）────────────────────────────
+  - id: hardneg_000
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 逐步核对平均情况递推式 T(n)=n-1+(1/n)Σ(T(i)+T(n-1-i))；确认没有拿最好情况的 2T(n/2)+O(n) 当平均情况的证明；解得 ≈1.39·n·log₂n、比最好情况多约 39% 比较次数，两个数字都验过
+  - id: hardneg_001
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对静态/动态优先级两类与老化防饥饿；CFS 用 vruntime 而非优先级队列、nice 影响 vruntime 增长速率，表述正确。注：Linux 6.6 起默认调度器已改为 EEVDF，此处按 408 教材口径讲 CFS，未改动
+  - id: hardneg_002
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对 3C 缺失模型（compulsory/capacity/conflict）与各自对策的对应关系；loop tiling 归入容量缺失、提高相联度归入冲突缺失，分类正确；AoS→SoA 属局部性改善，位置正确
+  - id: hardneg_003
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对两处数量级断言 —— SRAM 与 DRAM 差 1–2 个数量级、DRAM 与 SSD/磁盘差 3–5 个数量级，均成立；「局部性是分层有效的前提，访问完全随机则分层无意义」这条因果链正确
+  - id: hardneg_004
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 逐条核对三次握手的 seq/ack 取值与 SYN_SENT/SYN_RCVD/ESTABLISHED 状态迁移；重点验证「缺口在服务端一侧」这个论证 —— 两次握手后客户端确已全部确认，服务端无法确认自己的 SYN-ACK 是否送达，成立；历史连接那段与 RFC 793 的动机一致
+  - id: hardneg_005
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对中序遍历左→根→右与三种遍历仅 visit 位置不同的代码结构；BST 中序结果有序、可用于判定 BST 合法性，正确
+
+  # ── 来自 gen_external（5/5 放行）──────────────────────────────
+  - id: arxiv_neg_000
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对 BST 定义与「中序必然有序」推论；确认属课本概念，不构成需要检索 arXiv 的前沿问题
+  - id: arxiv_neg_001
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对三次握手必要性的论证（服务端确认不了客户端接收能力）；确认属课本概念，不需检索
+  - id: arxiv_neg_002
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对 partition 思路与基准选取；「固定选首元素在有序输入上会退化」正确；确认属课本概念，不需检索
+  - id: arxiv_neg_003
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对 DP 三要素（最优子结构/重叠子问题/无后效性），以及「重叠子问题正是 DP 区别于分治之处」这一断言；确认属课本概念，不需检索
+  - id: arxiv_neg_004
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对分页与分段在大小、可见性、碎片类型上的差异；「分页解决外碎片」正确；确认属课本概念，不需检索
+
+  # ── 来自 gen_negatives（13/15 放行；trap_012、trap_013 见交接文档）──
+  - id: trap_000
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对「要对基准所有可能位置取期望」与「2T(n/2)+O(n) 是最好情况、不能当平均情况的证明」两处，与 hardneg_000 的长版本口径一致
+  - id: trap_001
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对区间每次折半、最多 log₂n 次到只剩一个元素的推导
+  - id: trap_002
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对稳定性来源是「合并时相等元素优先取左半边」，以及 O(n) 额外空间这一代价
+  - id: trap_003
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对静态/动态两类与老化防饥饿、CPU 占用越久优先级越低偏向 I/O 密集型两条规则
+  - id: trap_004
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对优先队列与普通队列的出队依据差异，以及堆实现下插入/删除均为 O(log n)
+  - id: trap_005
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对层次顺序（寄存器→Cache→主存→磁盘）与「局部性是它成立的前提」这一因果
+  - id: trap_006
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对虚拟内存与 Cache 在管理者（OS/硬件）、粒度（页/块）、缺失代价三点上的差异；「Cache 缺失只向下一级取、不涉及磁盘」正确
+  - id: trap_007
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 与 hardneg_004 同一论证的短版本；同样核对了「客户端那一侧此时已确认完毕」这个关键点
+  - id: trap_008
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对 ARP 请求广播、应答单播、结果缓存于 ARP 表；「408 教材归在网络层，但报文直接封装进链路层帧、不经过 IP」这个分层说明正确，是易错点上的准确澄清
+  - id: trap_009
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对三种遍历仅 visit 位置不同、代码结构完全一致这一说法
+  - id: trap_010
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对分页/分段三点差异与「页是物理的、段是逻辑的」这句口诀，口诀与前述差异自洽
+  - id: trap_011
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对路径压缩把查找沿途节点直接挂到根；「配合按秩合并后单次操作摊还接近 O(1)」是 O(α(n))（反阿克曼）的通俗表述，在教学语境下可接受
+  - id: trap_014
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对间隔效应的机制表述（提取难度大→记忆强度提升更多→稳定期拉长）与「间隔应逐次变长而非天天重复」这一结论，方向正确
+
+  # ── 来自 gen_no_tool_tasks（9/10 放行；notool_推理与判断_01 已修种子重生成）──
+  - id: notool_代码理解_00
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对死循环成因是循环体内 i 未自增、条件恒成立，以及补 i++ 的修法
+  - id: notool_代码理解_01
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对给出的反例 —— m 初值为 0 时 [-3,-1,-7] 确实返回 0 而非 -1；两种修法（改用 nums[0] 并先判空 / float('-inf')）均正确
+  - id: notool_代码理解_02
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对 [[0]*3]*3 的三行是同一列表的三个引用、改一行三行齐变，而列表推导每次新建，正确
+  - id: notool_代码理解_03
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对三条触发路径 —— 非法 JSON 抛 JSONDecodeError、items 缺失抛 KeyError、空列表抛 IndexError，均正确；「别用裸 except 一起吞掉」与本项目对静默失败的态度一致
+  - id: notool_代码理解_04
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对栈溢出三个排查方向；Python 默认递归深度上限 1000 这个数字正确
+  - id: notool_推理与判断_00
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对「复杂度描述增长趋势而非具体耗时」，以及小 n 下常数因子可能反转快慢这一说明
+  - id: notool_推理与判断_02
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对死锁与活锁的判据 —— 「不是卡住了没，是状态还变不变」这个区分准确，走廊让路的类比对应活锁而非死锁，用对了
+  - id: notool_方案比较_00
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对数组/链表按「最常做什么操作」取舍的依据，以及跳表、平衡树作为折中结构的定位
+  - id: notool_方案比较_02
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对哈希表四步顺序与各步可单独测试的说法；装填因子常用阈值 0.75、超过则翻倍重建，正确
+
+  # ── 来自 gen_refusals（2/2 放行）──────────────────────────────
+  - id: refuse_部分拒绝_01
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对部分拒绝的边界（讲快排、但不改错题记录）与给出的理由（错误记录是判断依据，改了推荐会失准）；快排讲解部分「取期望得平均 O(n log n)、每次切出空的一边退化到 O(n²)」正确
+  - id: refuse_部分拒绝_02
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对拒绝编造占位文献的理由（占位符常忘换、直接变成假引用），与赛题《02》的强制承诺方向一致；所列五点提纲不含任何编造的来源或文献
+
+  # ── 来自 gen_skills_rag（18/18 放行）──────────────────────────
+  # 这一组的复核标准是「有没有照抄 Skill 正文、有没有编造不存在的流程」，
+  # 逐条对照 data/cache/skills_bodies.json 里抓下来的真实正文核过。
+  - id: rag_neg_00
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对递归的两个要素（基准情形、递推关系）与「缺基准情形会无限递归」；确认属课本概念，不需要检索知识库
+  - id: rag_neg_01
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对栈/队列的出入顺序与典型用途（函数调用与表达式求值 / 任务调度与 BFS）；确认不需要检索
+  - id: rag_neg_02
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 核对时间复杂度定义与「O(n²) 下输入翻倍耗时约变四倍」这个例子；确认不需要检索
+  - id: skill_autoloaded_progressive_hint_00
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 对照 progressive_hint 正文，确认给的确实是 Level 1（指出应回忆的概念/检查方向、不给具体步骤），而非 Level 2 的方法方向；给完一级即停并询问是否需要下一级，与正文流程 3 一致；未照抄正文的等级清单
+  - id: skill_autoloaded_progressive_hint_01
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 同 progressive_hint_00 的等级与停顿判据；用户明说「别直接告诉我答案」，回答未越级，符合正文流程 4
+  - id: skill_autoloaded_progressive_hint_02
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 同 progressive_hint_00 的等级与停顿判据；未照抄正文
+  - id: skill_autoloaded_retrieve_first_01
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 对照 retrieve_first 正文流程 3/4，确认是「一个很短的主动回忆问题」且声明只针对缺口讲；未照抄正文，未编造 kp_id 或掌握度数据
+  - id: skill_autoloaded_study_plan_00
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 对照 study_plan 正文流程 1，确认追问的是课程与考试剩余时间这两个必需输入；没有在拿到数据前编造任何排期
+  - id: skill_error_diagnosis_00
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 对照 error_diagnosis 正文，确认「概念没通/步骤记错/前置知识的问题」分别对应正文的 conceptual/procedural/prerequisite，没有编造正文之外的错误类型，也没有把七类清单照抄出来
+  - id: skill_error_diagnosis_01
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 同 error_diagnosis_00 的类型对应关系核对；索要真实作答再判断，符合正文「证据不足时宁可 unknown」的态度
+  - id: skill_error_diagnosis_02
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 同 error_diagnosis_00 的类型对应关系核对；未在拿到题目前武断归因为「粗心」，与正文对 careless 的限制一致
+  - id: skill_homework_review_00
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 对照 homework_review 正文第 2 步（先定位错误发生的位置）；技术上核对了内层 range(n) 会使 a[j+1] 在 j=n-1 时越界、应为 range(n-1-i)，修法正确；只给这一处修改并让学生重跑，未倾倒完整解法
+  - id: skill_homework_review_01
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 对照 homework_review 正文第 1 步（先识别题目与学生作答），确认是索要题干与作答，而不是在没有材料的情况下编造批改结果
+  - id: skill_homework_review_02
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 同上；学生只报了答案 O(n²) 而没给题目，回答坚持先要题干再判断，未凭空认可或否定这个结论
+  - id: skill_retrieve_first_00
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 对照 retrieve_first 正文流程 3/4；「红黑树」属系统学习请求而非事实性短问题，不落在正文的三条例外里，套用 Retrieve First 是对的
+  - id: skill_study_plan_01
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 对照 study_plan 正文流程 1「上下文已有时不要重复问」—— 回答把「一个月」自行换算成四周、只追问缺失的课程名，是这一批里边界处理最准确的一条
+  - id: skill_teach_back_00
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 对照 teach_back 正文流程 3（先指出说清楚的部分、再指出最关键缺口），确认未照抄正文。注：正文流程 1 要求「只提出一个聚焦的复述任务」，本条因用户自行发起复述而未另提任务，属可接受偏差
+  - id: skill_teach_back_01
+    by: Claude（授权：chenweihang0160）
+    date: 2026-08-12
+    note: 同 teach_back_00；「我不打断」与正文「不要问懂了吗、要产生可观察的理解证据」方向一致
+
+  # ── 剩下这 3 条是 owner 本人逐条看的，不是代审 ────────────────
+  # 所以 by 写 handle 本身，不带「授权」二字 —— 台账认的就是这个区别。
+  - id: trap_012
+    by: chenweihang0160
+    date: 2026-08-12
+    note: 复核认为内容无误但语意不连贯 —— 前半答前置、后半突然讲 Dijkstra 的性质，不是前置。已按此改写第二句，让负权边这个点变成「为什么要先懂贪心」的理由而非结论。分类维持 hard_negative（不调 get_weak_prerequisites）：问的是课程结构，不是本人的薄弱前置
+  - id: trap_013
+    by: chenweihang0160
+    date: 2026-08-12
+    note: 逐条看过，无问题。已知并接受：回答末尾是追问（get_review_timing 需要 kp_id），但归类为 hard_negative/DIRECT_ANSWER 而非 clarify
+  - id: notool_推理与判断_01
+    by: chenweihang0160
+    date: 2026-08-12
+    note: 逐条看过，无问题。确认「换位谬误 vs 肯定后件」这个分辨成立 —— 原文写成「肯定后件」，已改
