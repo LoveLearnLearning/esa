@@ -1,0 +1,331 @@
+{
+  "_meta": {
+    "captured_at": "2026-08-12T06:51:52+00:00",
+    "source": "github.com/LoveLearnLearning/esa",
+    "source_repo": "local-clone@d9fd971",
+    "source_sha256": {
+      "backend/agent/tools/math_tools/calculator.py": "321d318472b5e132",
+      "backend/agent/tools/math_tools/bitwise_calculator.py": "db8ad8c55b3800e0",
+      "backend/agent/tools/math_tools/math_solver.py": "73cd85f36a0d1701",
+      "backend/agent/tools/math_tools/_base_evaluator.py": "a2e02ba826e2ae3c"
+    },
+    "note": "由 dataset/tools/capture_math_outputs.py 执行后端真实函数产出，禁止手改"
+  },
+  "entries": {
+    "calculator|{\"expression\": \"sqrt(144) + 2^5\"}": {
+      "expression": "sqrt(144) + 2^5",
+      "result": 44
+    },
+    "calculator|{\"expression\": \"log2(1024)\"}": {
+      "expression": "log2(1024)",
+      "result": 10
+    },
+    "calculator|{\"expression\": \"2^10\"}": {
+      "expression": "2^10",
+      "result": 1024
+    },
+    "calculator|{\"expression\": \"factorial(10)\"}": {
+      "expression": "factorial(10)",
+      "result": 3628800
+    },
+    "calculator|{\"expression\": \"log2(65536)\"}": {
+      "expression": "log2(65536)",
+      "result": 16
+    },
+    "calculator|{\"expression\": \"gcd(1071, 462)\"}": {
+      "expression": "gcd(1071, 462)",
+      "result": 21
+    },
+    "calculator|{\"expression\": \"2^20 / 1024\"}": {
+      "expression": "2^20 / 1024",
+      "result": 1024
+    },
+    "calculator|{\"expression\": \"ceil(1000 / 64)\"}": {
+      "expression": "ceil(1000 / 64)",
+      "result": 16
+    },
+    "bitwise_calculator|{\"expression\": \"0xFF & 0xAA\"}": {
+      "expression": "0xFF & 0xAA",
+      "result": 170,
+      "formats": {
+        "decimal": 170,
+        "binary": "0b10101010",
+        "octal": "0o252",
+        "hexadecimal": "0xaa",
+        "bit_length": 8,
+        "popcount": 4
+      }
+    },
+    "bitwise_calculator|{\"expression\": \"0b1010 | 0b0101\"}": {
+      "expression": "0b1010 | 0b0101",
+      "result": 15,
+      "formats": {
+        "decimal": 15,
+        "binary": "0b1111",
+        "octal": "0o17",
+        "hexadecimal": "0xf",
+        "bit_length": 4,
+        "popcount": 4
+      }
+    },
+    "bitwise_calculator|{\"expression\": \"5 ^ 3\"}": {
+      "expression": "5 ^ 3",
+      "result": 6,
+      "formats": {
+        "decimal": 6,
+        "binary": "0b110",
+        "octal": "0o6",
+        "hexadecimal": "0x6",
+        "bit_length": 3,
+        "popcount": 2
+      }
+    },
+    "bitwise_calculator|{\"expression\": \"1 << 10\"}": {
+      "expression": "1 << 10",
+      "result": 1024,
+      "formats": {
+        "decimal": 1024,
+        "binary": "0b10000000000",
+        "octal": "0o2000",
+        "hexadecimal": "0x400",
+        "bit_length": 11,
+        "popcount": 1
+      }
+    },
+    "bitwise_calculator|{\"expression\": \"~0\"}": {
+      "expression": "~0",
+      "result": -1,
+      "formats": {
+        "decimal": -1,
+        "binary": "-0b1",
+        "octal": "-0o1",
+        "hexadecimal": "-0x1",
+        "bit_length": 1,
+        "popcount": null,
+        "popcount_note": "负数不支持 popcount"
+      }
+    },
+    "bitwise_calculator|{\"expression\": \"0xFF ^ 0xFF\"}": {
+      "expression": "0xFF ^ 0xFF",
+      "result": 0,
+      "formats": {
+        "decimal": 0,
+        "binary": "0b0",
+        "octal": "0o0",
+        "hexadecimal": "0x0",
+        "bit_length": 0,
+        "popcount": 0
+      }
+    },
+    "bitwise_calculator|{\"expression\": \"popcount(255)\"}": {
+      "expression": "popcount(255)",
+      "result": 8,
+      "formats": {
+        "decimal": 8,
+        "binary": "0b1000",
+        "octal": "0o10",
+        "hexadecimal": "0x8",
+        "bit_length": 4,
+        "popcount": 1
+      }
+    },
+    "bitwise_calculator|{\"expression\": \"0b1100 >> 2\"}": {
+      "expression": "0b1100 >> 2",
+      "result": 3,
+      "formats": {
+        "decimal": 3,
+        "binary": "0b11",
+        "octal": "0o3",
+        "hexadecimal": "0x3",
+        "bit_length": 2,
+        "popcount": 2
+      }
+    },
+    "math_solver|{\"expression\": \"x**3 + 2*x\", \"operation\": \"diff\", \"variable\": \"x\"}": {
+      "operation": "diff",
+      "expression": "x**3 + 2*x",
+      "result": "3*x**2 + 2"
+    },
+    "math_solver|{\"expression\": \"i\", \"lower\": \"1\", \"operation\": \"summation\", \"upper\": \"n\", \"variable\": \"i\"}": {
+      "operation": "summation",
+      "expression": "i",
+      "result": "n**2/2 + n/2"
+    },
+    "math_solver|{\"expression\": \"x**2 - 5*x + 6\", \"operation\": \"solve\", \"variable\": \"x\"}": {
+      "operation": "solve",
+      "expression": "x**2 - 5*x + 6",
+      "result": "[2, 3]"
+    },
+    "math_solver|{\"expression\": \"(x + 1)**3\", \"operation\": \"expand\", \"variable\": \"x\"}": {
+      "operation": "expand",
+      "expression": "(x + 1)**3",
+      "result": "x**3 + 3*x**2 + 3*x + 1"
+    },
+    "math_solver|{\"expression\": \"x**2 - 1\", \"operation\": \"factor\", \"variable\": \"x\"}": {
+      "operation": "factor",
+      "expression": "x**2 - 1",
+      "result": "(x - 1)*(x + 1)"
+    },
+    "math_solver|{\"expression\": \"sin(x)/x\", \"operation\": \"limit\", \"point\": \"0\", \"variable\": \"x\"}": {
+      "operation": "limit",
+      "expression": "sin(x)/x",
+      "result": "1"
+    },
+    "math_solver|{\"expression\": \"2**i\", \"lower\": \"0\", \"operation\": \"summation\", \"upper\": \"n\", \"variable\": \"i\"}": {
+      "operation": "summation",
+      "expression": "2**i",
+      "result": "2**(n + 1) - 1"
+    },
+    "math_solver|{\"expression\": \"(x**2 - 1)/(x - 1)\", \"operation\": \"simplify\", \"variable\": \"x\"}": {
+      "operation": "simplify",
+      "expression": "(x**2 - 1)/(x - 1)",
+      "result": "x + 1"
+    },
+    "calculator|{\"expression\": \"factorial(15)\"}": {
+      "expression": "factorial(15)",
+      "result": 1307674368000
+    },
+    "calculator|{\"expression\": \"2**16\"}": {
+      "expression": "2**16",
+      "result": 65536
+    },
+    "calculator|{\"expression\": \"1024/(10-10)\"}": {
+      "expression": "1024/(10-10)",
+      "result": null,
+      "error": "除零错误"
+    },
+    "calculator|{\"expression\": \"n*log(n)\"}": {
+      "expression": "n*log(n)",
+      "result": null,
+      "error": "未知的变量或常量: 'n'"
+    },
+    "calculator|{\"expression\": \"arcsin(0.5)\"}": {
+      "expression": "arcsin(0.5)",
+      "result": null,
+      "error": "未知的函数: 'arcsin'"
+    },
+    "calculator|{\"expression\": \"asin(0.5)\"}": {
+      "expression": "asin(0.5)",
+      "result": 0.5235987755982988
+    },
+    "calculator|{\"expression\": \"2 +* 3\"}": {
+      "expression": "2 +* 3",
+      "result": null,
+      "error": "语法错误: invalid syntax"
+    },
+    "calculator|{\"expression\": \"inf - inf\"}": {
+      "expression": "inf - inf",
+      "result": null,
+      "error": "计算结果为 NaN（非数字）"
+    },
+    "bitwise_calculator|{\"expression\": \"popcount(-3)\"}": {
+      "expression": "popcount(-3)",
+      "result": null,
+      "error": "函数 'popcount' 调用错误: popcount 仅支持非负整数，负数在任意精度下无确定补码表示"
+    },
+    "bitwise_calculator|{\"expression\": \"0xFF & 0xGG\"}": {
+      "expression": "0xFF & 0xGG",
+      "result": null,
+      "error": "语法错误: invalid hexadecimal literal"
+    },
+    "bitwise_calculator|{\"expression\": \"rotate(5, 1)\"}": {
+      "expression": "rotate(5, 1)",
+      "result": null,
+      "error": "未知的函数: 'rotate'"
+    },
+    "math_solver|{\"expression\": \"5\", \"operation\": \"binomial\"}": {
+      "operation": "binomial",
+      "expression": "5",
+      "result": null,
+      "error": "组合数需要两个参数，格式 'n, r'，如 '5, 2'"
+    },
+    "math_solver|{\"expression\": \"5, 2\", \"operation\": \"binomial\"}": {
+      "operation": "binomial",
+      "expression": "5, 2",
+      "result": "10"
+    },
+    "math_solver|{\"expression\": \"6\", \"operation\": \"permutation\"}": {
+      "operation": "permutation",
+      "expression": "6",
+      "result": null,
+      "error": "排列数需要两个参数，格式 'n, r'，如 '5, 2'"
+    },
+    "math_solver|{\"expression\": \"6, 3\", \"operation\": \"permutation\"}": {
+      "operation": "permutation",
+      "expression": "6, 3",
+      "result": "120"
+    },
+    "math_solver|{\"expression\": \"i\", \"operation\": \"summation\", \"variable\": \"i\"}": {
+      "operation": "summation",
+      "expression": "i",
+      "result": null,
+      "error": "求和需要 lower 和 upper 参数"
+    },
+    "math_solver|{\"expression\": \"x^^2\", \"operation\": \"diff\", \"variable\": \"x\"}": {
+      "operation": "diff",
+      "expression": "x^^2",
+      "result": null,
+      "error": "表达式解析失败: invalid syntax (<string>, line 1)"
+    }
+  },
+  "observation_format": [
+    {
+      "probe": "北京: 26 摄氏度 晴朗",
+      "expected": "\"北京: 26 摄氏度 晴朗\""
+    },
+    {
+      "probe": "08/11/26-07:00:00",
+      "expected": "\"08/11/26-07:00:00\""
+    },
+    {
+      "probe": "exam_prediction skill not found!",
+      "expected": "\"exam_prediction skill not found!\""
+    },
+    {
+      "probe": "[Error]: division by zero",
+      "expected": "\"[Error]: division by zero\""
+    },
+    {
+      "probe": {
+        "expression": "20+4*6",
+        "result": 44
+      },
+      "expected": "{\"expression\": \"20+4*6\", \"result\": 44}"
+    },
+    {
+      "probe": {
+        "expression": "1/0",
+        "result": null,
+        "error": "division by zero"
+      },
+      "expected": "{\"expression\": \"1/0\", \"result\": null, \"error\": \"division by zero\"}"
+    },
+    {
+      "probe": {
+        "recommendations": [],
+        "count": 0,
+        "ok": true
+      },
+      "expected": "{\"recommendations\": [], \"count\": 0, \"ok\": true}"
+    },
+    {
+      "probe": {
+        "中文键": "中文值"
+      },
+      "expected": "{\"中文键\": \"中文值\"}"
+    },
+    {
+      "probe": [
+        {
+          "name": "a",
+          "content": 1
+        },
+        {
+          "name": "b",
+          "content": 2
+        }
+      ],
+      "expected": "[{\"name\": \"a\", \"content\": 1}, {\"name\": \"b\", \"content\": 2}]"
+    }
+  ]
+}
