@@ -24,8 +24,8 @@ from backend.core.services.conversation_compression_service import (
     ConversationCompressionService,
 )
 from backend.core.services.email_verification_service import (
+    EmailServiceSender,
     EmailVerificationService,
-    ResendEmailSender,
     VerificationPolicy,
 )
 from backend.core.stores.chat_store import ChatStore
@@ -60,8 +60,9 @@ from backend.core.utils.config import (
     EMAIL_CODE_IP_HOURLY_LIMIT,
     EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_TTL_SECONDS,
-    EMAIL_FROM,
     EMAIL_PROVIDER,
+    EMAIL_SERVICE_TOKEN,
+    EMAIL_SERVICE_URL,
     EMAIL_VERIFICATION_SECRET,
     FORWARDED_ALLOW_IPS,
     MODEL_DTYPE,
@@ -73,8 +74,6 @@ from backend.core.utils.config import (
     MODEL_PATH,
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
-    RESEND_API_KEY,
-    RESEND_BASE_URL,
     TRUSTED_HOSTS,
     validate_startup_config,
 )
@@ -108,16 +107,15 @@ async def lifespan(app: FastAPI):
     run_migrations(DB_PATH)
     app.state.email_verification_store = EmailVerificationStore(DB_PATH)
     app.state.email_verification_service = None
-    if EMAIL_PROVIDER == "resend":
+    if EMAIL_PROVIDER == "service":
         # validate_startup_config has already guaranteed these values.
-        if RESEND_API_KEY is None or EMAIL_VERIFICATION_SECRET is None:
+        if not EMAIL_SERVICE_URL or not EMAIL_SERVICE_TOKEN or not EMAIL_VERIFICATION_SECRET:
             raise RuntimeError("邮件服务配置不完整")
         app.state.email_verification_service = EmailVerificationService(
             store=app.state.email_verification_store,
-            sender=ResendEmailSender(
-                api_key=RESEND_API_KEY,
-                from_address=EMAIL_FROM,
-                base_url=RESEND_BASE_URL,
+            sender=EmailServiceSender(
+                base_url=EMAIL_SERVICE_URL,
+                service_token=EMAIL_SERVICE_TOKEN,
             ),
             digest_secret=EMAIL_VERIFICATION_SECRET,
             policy=VerificationPolicy(

@@ -64,24 +64,43 @@ flutter pub get
 flutter run
 ```
 
-## 配置验证邮件
+## 配置验证邮件（超算 + 独立邮件服务器）
 
-验证码由 ESA 后端生成和校验，Resend 只负责投递。先在 Resend 添加独立发信子域名
-`notify.lovelearnlearning.cn`，再按 Resend 控制台给出的值到域名 DNS 控制台添加
-SPF、DKIM 记录并等待域名状态变为 Verified。不要自行猜测 DNS 记录值。
+验证码由超算上的 ESA 后端生成、摘要存储和校验；另一台服务器只运行
+[`email_service`](email_service)，负责邮件模板和 Resend 投递。前端始终只访问 ESA，
+不能直接访问邮件服务。两台服务器之间使用 HTTPS 和共享服务令牌认证。
 
-在服务器环境文件中设置：
+先在 Resend 添加发信子域名 `notify.lovelearnlearning.cn`，再按 Resend 控制台给出的
+准确值添加 SPF、DKIM DNS 记录，并等待状态变为 Verified。
+
+在独立邮件服务器配置：
 
 ```bash
-ESA_EMAIL_PROVIDER=resend
+MAIL_SERVICE_TOKEN=<openssl rand -hex 32>
 RESEND_API_KEY=re_xxxxxxxxx
-ESA_EMAIL_FROM=星知智链 <verify@notify.lovelearnlearning.cn>
-ESA_EMAIL_VERIFICATION_SECRET=<至少32字符的随机密钥>
+MAIL_FROM=星知智链 <verify@notify.lovelearnlearning.cn>
 ```
 
-随机密钥可用 `openssl rand -hex 32` 生成。配置完成后重启后端，通过注册页发送一封
-验证码邮件完成联调。密钥只放服务器环境变量，不要提交到仓库。未配置时发送验证码
-接口会返回 `503`，不会在日志或响应中暴露验证码。
+将其部署在 HTTPS 地址（例如 `https://mail-api.lovelearnlearning.cn`），并只对外暴露
+反向代理的 443 端口。邮件服务器只需复制 `email_service/` 目录，在该目录构建：
+
+```bash
+docker build -t esa-mail-service .
+docker run --env-file .env -p 127.0.0.1:8080:8080 esa-mail-service
+```
+
+超算不需要 `.env`。在 `backend/core/utils/config.py` 的邮件配置区填写：
+
+```python
+EMAIL_PROVIDER = "service"
+EMAIL_SERVICE_URL = "https://mail-api.lovelearnlearning.cn"
+EMAIL_SERVICE_TOKEN = "与邮件服务器 MAIL_SERVICE_TOKEN 完全相同"
+EMAIL_VERIFICATION_SECRET = "另一个 openssl rand -hex 32 生成值"
+```
+
+`EMAIL_VERIFICATION_SECRET` 和服务令牌必须使用两个不同的随机值。Resend API Key
+只放在独立邮件服务器，不能放在超算或前端。未配置时验证码接口返回 `503`；投递失败
+返回 `502`，验证码不会出现在日志或 API 响应中。
 
 通过编译参数覆盖 API 地址：
 

@@ -206,34 +206,17 @@ ENABLE_LEGACY_API_ROUTES: bool = _bool_from_env(
     True,
 )
 
-# Transactional email. Disabled is the safe development default: registration
-# endpoints return 503 instead of leaking codes to logs or accepting unverified mail.
-EMAIL_PROVIDER: Literal["disabled", "resend"] = _choice_from_env(
-    "ESA_EMAIL_PROVIDER", "disabled", ("disabled", "resend")
-)
-RESEND_API_KEY: str | None = _optional_str_from_env("RESEND_API_KEY")
-RESEND_BASE_URL: str = _str_from_env(
-    "ESA_RESEND_BASE_URL", "https://api.resend.com"
-)
-EMAIL_FROM: str = _str_from_env(
-    "ESA_EMAIL_FROM", "星知智链 <verify@notify.lovelearnlearning.cn>"
-)
-EMAIL_VERIFICATION_SECRET: str | None = _optional_str_from_env(
-    "ESA_EMAIL_VERIFICATION_SECRET"
-)
-EMAIL_CODE_TTL_SECONDS: int = _int_from_env("ESA_EMAIL_CODE_TTL_SECONDS", 600)
-EMAIL_CODE_COOLDOWN_SECONDS: int = _int_from_env(
-    "ESA_EMAIL_CODE_COOLDOWN_SECONDS", 60
-)
-EMAIL_CODE_MAX_ATTEMPTS: int = _int_from_env(
-    "ESA_EMAIL_CODE_MAX_ATTEMPTS", 5
-)
-EMAIL_CODE_EMAIL_HOURLY_LIMIT: int = _int_from_env(
-    "ESA_EMAIL_CODE_EMAIL_HOURLY_LIMIT", 5
-)
-EMAIL_CODE_IP_HOURLY_LIMIT: int = _int_from_env(
-    "ESA_EMAIL_CODE_IP_HOURLY_LIMIT", 20
-)
+# Email verification on the supercomputer. Fill these constants in the private
+# deployment copy of this file; the standalone mail server has its own config.
+EMAIL_PROVIDER: Literal["disabled", "service"] = "disabled"
+EMAIL_SERVICE_URL: str = "https://mail-api.lovelearnlearning.cn"
+EMAIL_SERVICE_TOKEN: str = ""
+EMAIL_VERIFICATION_SECRET: str = ""
+EMAIL_CODE_TTL_SECONDS: int = 600
+EMAIL_CODE_COOLDOWN_SECONDS: int = 60
+EMAIL_CODE_MAX_ATTEMPTS: int = 5
+EMAIL_CODE_EMAIL_HOURLY_LIMIT: int = 5
+EMAIL_CODE_IP_HOURLY_LIMIT: int = 20
 
 
 # collection and deployment
@@ -372,20 +355,23 @@ def validate_startup_config() -> None:
         candidate = Path(value).expanduser()
         if candidate.is_absolute() and not candidate.exists():
             raise RuntimeError(f"{name} points to a missing local path: {candidate}")
-    if EMAIL_PROVIDER == "resend":
-        if not RESEND_API_KEY:
-            raise RuntimeError("ESA_EMAIL_PROVIDER=resend requires RESEND_API_KEY")
+    if EMAIL_PROVIDER == "service":
+        if not EMAIL_SERVICE_URL or not EMAIL_SERVICE_URL.startswith("https://"):
+            raise RuntimeError("EMAIL_SERVICE_URL must be an https URL")
+        if not EMAIL_SERVICE_TOKEN or len(EMAIL_SERVICE_TOKEN) < 32:
+            raise RuntimeError(
+                "EMAIL_SERVICE_TOKEN in config.py must contain at least 32 characters"
+            )
         if not EMAIL_VERIFICATION_SECRET or len(EMAIL_VERIFICATION_SECRET) < 32:
             raise RuntimeError(
-                "ESA_EMAIL_PROVIDER=resend requires ESA_EMAIL_VERIFICATION_SECRET "
-                "with at least 32 characters"
+                "EMAIL_VERIFICATION_SECRET in config.py must contain at least 32 characters"
             )
         numeric_email_settings = {
-            "ESA_EMAIL_CODE_TTL_SECONDS": EMAIL_CODE_TTL_SECONDS,
-            "ESA_EMAIL_CODE_COOLDOWN_SECONDS": EMAIL_CODE_COOLDOWN_SECONDS,
-            "ESA_EMAIL_CODE_MAX_ATTEMPTS": EMAIL_CODE_MAX_ATTEMPTS,
-            "ESA_EMAIL_CODE_EMAIL_HOURLY_LIMIT": EMAIL_CODE_EMAIL_HOURLY_LIMIT,
-            "ESA_EMAIL_CODE_IP_HOURLY_LIMIT": EMAIL_CODE_IP_HOURLY_LIMIT,
+            "EMAIL_CODE_TTL_SECONDS": EMAIL_CODE_TTL_SECONDS,
+            "EMAIL_CODE_COOLDOWN_SECONDS": EMAIL_CODE_COOLDOWN_SECONDS,
+            "EMAIL_CODE_MAX_ATTEMPTS": EMAIL_CODE_MAX_ATTEMPTS,
+            "EMAIL_CODE_EMAIL_HOURLY_LIMIT": EMAIL_CODE_EMAIL_HOURLY_LIMIT,
+            "EMAIL_CODE_IP_HOURLY_LIMIT": EMAIL_CODE_IP_HOURLY_LIMIT,
         }
         invalid = [name for name, value in numeric_email_settings.items() if value <= 0]
         if invalid:

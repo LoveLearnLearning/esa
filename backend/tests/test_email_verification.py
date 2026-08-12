@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 
+import httpx
 import pytest
 
 from backend.core.services.email_verification_service import (
     EmailDeliveryError,
+    EmailServiceSender,
     EmailVerificationService,
     VerificationPolicy,
     normalize_email,
@@ -82,3 +85,40 @@ def test_failed_delivery_removes_challenge(tmp_path):
         assert connection.execute(
             "SELECT COUNT(*) FROM email_verification_codes"
         ).fetchone()[0] == 0
+
+
+def test_supercomputer_sender_calls_only_the_standalone_email_service():
+    captured: dict[str, object] = {}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["authorization"] = request.headers["Authorization"]
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(204)
+
+    sender = EmailServiceSender(
+        base_url="https://mail-api.example.com",
+        service_token="service-token-that-is-at-least-32-characters",
+        transport=httpx.MockTransport(handle),
+    )
+
+    asyncio.run(
+        sender.send_code(
+            email="user@example.com",
+            code="123456",
+            ttl_minutes=10,
+            idempotency_key="verification-id-1234567890",
+        )
+    )
+    asyncio.run(sender.close())
+
+    assert captured["path"] == "/internal/v1/verification-email"
+    assert captured["authorization"] == (
+        "Bearer service-token-that-is-at-least-32-characters"
+    )
+    assert captured["body"] == {
+        "email": "user@example.com",
+        "code": "123456",
+        "ttl_minutes": 10,
+        "idempotency_key": "verification-id-1234567890",
+    }

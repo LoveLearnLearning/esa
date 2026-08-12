@@ -1,10 +1,9 @@
-"""Email identity normalization, verification-code lifecycle, and Resend delivery."""
+"""Email identity normalization, verification-code lifecycle, and delivery."""
 
 from __future__ import annotations
 
 import hashlib
 import hmac
-import html
 import re
 import secrets
 from dataclasses import dataclass
@@ -53,11 +52,22 @@ def normalize_email(value: str) -> str:
     return normalized
 
 
-class ResendEmailSender:
-    def __init__(self, *, api_key: str, from_address: str, base_url: str) -> None:
-        self._api_key = api_key
-        self._from_address = from_address
-        self._client = httpx.AsyncClient(base_url=base_url, timeout=15.0)
+class EmailServiceSender:
+    """Deliver codes through the separately deployed transactional-mail service."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        service_token: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self._client = httpx.AsyncClient(
+            base_url=base_url.rstrip("/"),
+            timeout=15.0,
+            headers={"Authorization": f"Bearer {service_token}"},
+            transport=transport,
+        )
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -70,25 +80,14 @@ class ResendEmailSender:
         ttl_minutes: int,
         idempotency_key: str,
     ) -> None:
-        safe_code = html.escape(code)
         try:
             response = await self._client.post(
-                "/emails",
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Idempotency-Key": idempotency_key,
-                },
+                "/internal/v1/verification-email",
                 json={
-                    "from": self._from_address,
-                    "to": [email],
-                    "subject": "星知智链邮箱验证码",
-                    "text": f"你的验证码是 {code}，{ttl_minutes} 分钟内有效。请勿转发给他人。",
-                    "html": (
-                        "<div style='font-family:system-ui,sans-serif;line-height:1.7'>"
-                        "<h2>星知智链邮箱验证</h2>"
-                        f"<p>你的验证码是：</p><p style='font-size:30px;font-weight:700;letter-spacing:6px'>{safe_code}</p>"
-                        f"<p>{ttl_minutes} 分钟内有效，请勿转发给他人。</p></div>"
-                    ),
+                    "email": email,
+                    "code": code,
+                    "ttl_minutes": ttl_minutes,
+                    "idempotency_key": idempotency_key,
                 },
             )
             response.raise_for_status()
@@ -115,7 +114,7 @@ class EmailVerificationService:
         policy: VerificationPolicy,
     ) -> None:
         if len(digest_secret) < 32:
-            raise ValueError("ESA_EMAIL_VERIFICATION_SECRET 至少需要 32 个字符")
+            raise ValueError("EMAIL_VERIFICATION_SECRET 至少需要 32 个字符")
         self.store = store
         self.sender = sender
         self._secret = digest_secret.encode()
