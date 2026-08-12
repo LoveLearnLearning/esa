@@ -37,7 +37,7 @@ def test_every_project_connection_enables_foreign_keys(tmp_path):
     store = UserStore(tmp_path / "users.db")
 
     assert store.query_one("PRAGMA foreign_keys")[0] == 1
-    assert store.query_one("PRAGMA busy_timeout")[0] == 5000
+    assert store.query_one("PRAGMA busy_timeout")[0] == 30000
 
 
 def test_owned_tables_reject_orphan_records(tmp_path):

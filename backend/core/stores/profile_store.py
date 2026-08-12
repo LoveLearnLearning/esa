@@ -4,6 +4,7 @@ import json
 import logging
 import sqlite3
 import uuid
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -19,7 +20,7 @@ class ProfileStore(BaseSQLiteStore):
         super().__init__(database_path)
 
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_profile_dimensions (

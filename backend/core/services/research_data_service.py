@@ -31,11 +31,12 @@ class ResearchDataService:
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
 
-    def start(self) -> None:
+    def start(self, *, recover_interrupted: bool = True) -> None:
         if self._worker is not None and not self._worker.done():
             return
-        for job_id in self.store.requeue_interrupted():
-            self._queue.put_nowait(job_id)
+        if recover_interrupted:
+            for job_id in self.store.requeue_interrupted():
+                self._queue.put_nowait(job_id)
         self._worker = asyncio.create_task(self._run_worker())
 
     async def stop(self) -> None:

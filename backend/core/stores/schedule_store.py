@@ -93,7 +93,7 @@ class ScheduleStore(BaseSQLiteStore):
         super().__init__(database_path)
 
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS schedule_courses (

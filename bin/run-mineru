@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+# MinerU imports OpenCV even on headless compute nodes.  The cluster image does
+# not expose libGL through the default loader path, so allow the deployment
+# environment to provide the matching Conda runtime without modifying the host.
+if [[ -n "${MINERU_LIBRARY_PATH:-}" ]]; then
+    export LD_LIBRARY_PATH="${MINERU_LIBRARY_PATH}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+fi
+
+# MinerU 3.x starts a loopback API for local orchestration.  GPU jobs can
+# inherit the login-node HTTP proxy, so always keep loopback traffic local.
+loopback_no_proxy="127.0.0.1,localhost"
+export NO_PROXY="${loopback_no_proxy}${NO_PROXY:+,${NO_PROXY}}"
+export no_proxy="${loopback_no_proxy}${no_proxy:+,${no_proxy}}"
+
 mineru_bin="${MINERU_BIN:-mineru}"
 if ! command -v "$mineru_bin" >/dev/null 2>&1; then
     echo "ERROR: MinerU executable not found: $mineru_bin (set MINERU_BIN)" >&2

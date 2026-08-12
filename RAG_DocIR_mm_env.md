@@ -229,6 +229,22 @@ export MINERU_BIN="$(conda run -n esa-mineru which mineru)"
 export MINERU_MODEL_SOURCE=modelscope
 ```
 
+无桌面的计算节点若在导入 OpenCV 时提示 `libGL.so.1`、`libGLX.so.0` 或
+`libGLdispatch.so.0` 缺失，可把平台已有的兼容动态库目录以冒号分隔写入
+`MINERU_LIBRARY_PATH`。`bin/run-mineru` 只会为 MinerU 子进程追加该路径，不会污染
+ESA 主模型的动态库环境。模型缓存和 MinerU 配置也建议放进被忽略的 `runtime/`：
+
+```bash
+export MINERU_TOOLS_CONFIG_JSON="$ESA_WORKSPACE/runtime/mineru.json"
+export HF_HOME="$ESA_WORKSPACE/runtime/huggingface-mineru"
+export MINERU_MODEL_SOURCE=huggingface
+mineru-models-download -s huggingface -m pipeline
+```
+
+六卡部署中，MinerU 和长附件 Embedding 应与正式 RAG Embedding 共用第六张卡；在后端
+只暴露“主模型四卡 + 第六张卡”时，对应逻辑设备是 `cuda:4`。不要把 MinerU 默认的
+`cuda` 留在逻辑 `cuda:0`，否则会和主模型抢显存。
+
 首次解析时 MinerU 可能下载自己的模型。MinerU 模型、RAG Embedding 模型、可选
 Reranker 和 mm VLM 是不同组件，不能互相替代。
 
@@ -674,6 +690,12 @@ docker logs esa-rag-qdrant
 command -v "$MINERU_BIN"
 bin/run-mineru --version
 ```
+
+### MinerU 导入 OpenCV 时缺少 OpenGL 动态库
+
+先用 `ldd` 确认缺少的库，再把同一套 Conda/系统运行库目录配置到
+`MINERU_LIBRARY_PATH`。不要把不匹配版本的单个 `.so` 复制进项目，也不要覆盖主环境的
+全局 `LD_LIBRARY_PATH`；包装脚本会把该变量限制在 MinerU 子进程内。
 
 ### CUDA OOM
 
