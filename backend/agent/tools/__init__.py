@@ -1,6 +1,7 @@
 # backend/agent/tools/__init__.py
 
 from backend.agent.tools import (
+    attachment_tools,  # noqa: E402, F401
     arxiv_search,  # 触发注册  # noqa: E402, F401
     learning_tools,  # noqa: E402, F401
     mastery_tools,  # noqa: E402, F401

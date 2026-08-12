@@ -196,12 +196,65 @@ final answer = 42;
     expect(copiedText, '选中的文字');
   });
 
-  testWidgets('tool output is selectable', (tester) async {
+  testWidgets('completed tool output is collapsed until expanded', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       app(const ToolCallCard(name: 'calculator', output: '{"value": 42}')),
     );
 
+    expect(find.byType(SelectableText), findsNothing);
+    expect(find.text('{"value": 42}'), findsNothing);
+
+    await tester.tap(find.text('TOOL · calculator'));
+    await tester.pumpAndSettle();
+
     expect(find.byType(SelectableText), findsOneWidget);
     expect(find.text('{"value": 42}'), findsOneWidget);
+  });
+
+  testWidgets('running tool is expanded with a progress indicator', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      app(
+        const ToolCallCard(
+          name: 'parse_pdf_attachment',
+          output: '',
+          running: true,
+        ),
+      ),
+    );
+
+    expect(find.text('调用中'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('正在执行 parse_pdf_attachment…'), findsOneWidget);
+  });
+
+  testWidgets('tool collapses automatically when the call completes', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      app(
+        const ToolCallCard(
+          name: 'parse_pdf_attachment',
+          output: '',
+          running: true,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      app(const ToolCallCard(name: 'parse_pdf_attachment', output: '解析完成')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('解析完成'), findsNothing);
+
+    await tester.tap(find.text('TOOL · parse_pdf_attachment'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('解析完成'), findsOneWidget);
   });
 }

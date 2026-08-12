@@ -17,6 +17,7 @@ from backend.agent.memories.profile_builder import ProfileBuilder
 from backend.agent.mm import MMConfig, MultimodalIngestionService, MultimodalSessionService
 from backend.agent.rag.lifecycle import RAGApplicationLifecycle
 from backend.agent.tools.learning_tools import evidence_store
+from backend.agent.tools.attachment_tools import AttachmentToolContext
 from backend.agent.tools.mastery_tools import kg_store, mastery_store
 from backend.core.services.auth_service import AuthService
 from backend.core.services.auxiliary_llm_service import AuxiliaryLLMClient
@@ -84,6 +85,8 @@ from backend.core.utils.config import (
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
     TRUSTED_HOSTS,
+    USER_ATTACHMENT_MAX_BYTES,
+    USER_ATTACHMENT_ROOT,
     validate_startup_config,
 )
 from backend.core.web.routers import (
@@ -117,7 +120,14 @@ async def lifespan(app: FastAPI):
     app.state.chat_store = ChatStore(DB_PATH)
     app.state.session_store = SessionStore(DB_PATH)
     app.state.profile_store = ProfileStore(DB_PATH)
+<<<<<<< HEAD
+    app.state.user_attachment_store = UserAttachmentStore(
+        USER_ATTACHMENT_ROOT,
+        max_bytes=USER_ATTACHMENT_MAX_BYTES,
+    )
+=======
     app.state.teaching_store = TeachingStore(DB_PATH)
+>>>>>>> b3f476f15bc13d437df12bb1a0ce673baf5bec37
 
     run_migrations(DB_PATH)
     app.state.research_project_store = ResearchProjectStore(DB_PATH)

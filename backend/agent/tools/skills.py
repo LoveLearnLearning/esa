@@ -199,15 +199,20 @@ def _validated_definitions() -> tuple[SkillDefinition, ...]:
     return list_skill_definitions()
 
 
-def build_skills_context() -> str:
+def build_skills_context(*, categories: set[str] | None = None) -> str:
     """
     构建给 Agent 的 Skill 索引。
 
     这里只注入 name/category/description，完整正文按需通过 load_skill 加载，
     避免把所有 Skill 正文永久塞进 system prompt。
     """
+    selected = [
+        skill
+        for skill in _validated_definitions()
+        if categories is None or skill.category in categories
+    ]
     skills = sorted(
-        _validated_definitions(),
+        selected,
         key=lambda skill: (-skill.priority, skill.name),
     )
     if not skills:

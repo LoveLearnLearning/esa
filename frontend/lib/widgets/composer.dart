@@ -33,7 +33,11 @@ class Composer extends StatefulWidget {
   final TaskMode? taskMode;
   final VoidCallback? onClearTaskMode;
   final String? conversationId;
-  final Future<DocumentAttachment> Function(String filename, Uint8List bytes)?
+  final Future<DocumentAttachment> Function(
+    String filename,
+    Stream<List<int>> stream,
+    int length,
+  )?
   onUploadAttachment;
   final Future<void> Function(
     DocumentAttachment attachment,
@@ -266,7 +270,7 @@ class _ComposerState extends State<Composer> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
               const SizedBox(width: 8),
-              const Text('正在用 DocIR 解析…'),
+              const Text('正在保存附件…'),
             ] else ...[
               Flexible(
                 child: Column(
@@ -282,7 +286,9 @@ class _ComposerState extends State<Composer> {
                       ),
                     ),
                     Text(
-                      '${_attachment!.modeLabel} · ${_attachment!.elementCount} 个元素',
+                      _attachment!.mode == 'pending'
+                          ? _attachment!.modeLabel
+                          : '${_attachment!.modeLabel} · ${_attachment!.elementCount} 个元素',
                       style: TextStyle(fontSize: 10.5, color: context.n.n600),
                     ),
                   ],
@@ -371,20 +377,23 @@ class _ComposerState extends State<Composer> {
           'tif',
           'tiff',
         ],
-        withData: true,
+        withData: false,
         cancelUploadOnWindowBlur: false,
       );
       final file = result?.files.singleOrNull;
       if (file == null || !mounted) return;
-      if (file.size > 15 * 1024 * 1024) {
+      if (file.size > 200 * 1024 * 1024) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('文件不能超过 15 MB')));
+        ).showSnackBar(const SnackBar(content: Text('文件不能超过 200 MB')));
         return;
       }
       setState(() => _uploadingAttachment = true);
-      final bytes = file.bytes ?? await file.xFile.readAsBytes();
-      final attachment = await widget.onUploadAttachment!(file.name, bytes);
+      final attachment = await widget.onUploadAttachment!(
+        file.name,
+        file.xFile.openRead(),
+        file.size,
+      );
       if (!mounted) return;
       setState(() {
         _attachment = attachment;

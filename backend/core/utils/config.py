@@ -21,6 +21,8 @@ DEBUG_MODE: bool = os.environ.get("ESA_DEBUG", "false").strip().lower() in {
     "on",
 }
 
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+
 SEARXNG_BASE_URL = os.environ.get("SEARXNG_BASE_URL", "http://127.0.0.1:8888")
 
 # model
@@ -207,6 +209,17 @@ if "*" in FORWARDED_ALLOW_IPS:
 ENABLE_LEGACY_API_ROUTES: bool = _bool_from_env(
     "ESA_ENABLE_LEGACY_API_ROUTES",
     True,
+)
+
+# User uploads are persisted before any model or DocIR work begins. The public
+# proxy limit must be at least this large.
+USER_ATTACHMENT_ROOT: Path = _path_from_env(
+    "ESA_USER_ATTACHMENT_ROOT",
+    BACKEND_ROOT / "data" / "user",
+)
+USER_ATTACHMENT_MAX_BYTES: int = _int_from_env(
+    "ESA_USER_ATTACHMENT_MAX_BYTES",
+    200 * 1024 * 1024,
 )
 
 # Email verification on the supercomputer. Fill these constants in the private

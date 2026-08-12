@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import sqlite3
-import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated
@@ -14,15 +14,20 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, 
 from fastapi.responses import StreamingResponse
 
 from backend.agent.agent import Agent
+from backend.agent.tools.attachment_tools import AttachmentToolContext
 from backend.agent.mm import MultimodalSessionService
 from backend.agent.DocIR.tools.batch_corpus import SUPPORTED_SOURCE_SUFFIXES
-from backend.agent.rag.retrieval.contracts import SearchResponse
 from backend.agent.memories.memory_models import ProfileQuery
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.research_project_store import ResearchProjectStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
+from backend.core.services.user_attachment_service import (
+    AttachmentTooLarge,
+    StoredAttachment,
+    UserAttachmentStore,
+)
 from backend.core.utils.models import (
     MessageContext,
     PromptContext,
@@ -48,8 +53,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["chat"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
-MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
-MAX_ATTACHMENT_CONTEXT_CHARS = 120_000
 
 
 def _mm_sessions(request: Request) -> MultimodalSessionService:
@@ -62,58 +65,74 @@ def _mm_sessions(request: Request) -> MultimodalSessionService:
     return service
 
 
-def _attachment_out(item) -> dict:
-    document = item.document
+def _attachment_store(request: Request) -> UserAttachmentStore:
+    store = getattr(request.app.state, "user_attachment_store", None)
+    if not isinstance(store, UserAttachmentStore):
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "附件存储尚未配置",
+        )
+    return store
+
+
+def _attachment_out(item: StoredAttachment) -> dict:
     return {
-        "id": document.document_id,
-        "filename": document.source.filename,
-        "mode": item.mode.value,
-        "token_count": item.token_count,
-        "element_count": len(document.elements),
-        "page_count": document.source_page_count or document.parsed_page_count,
-        "validation_status": document.validation.status.value,
-        "quality_issue_count": len(document.quality_issues),
+        "id": item.attachment_id,
+        "filename": item.filename,
+        "mode": "pending",
+        "token_count": 0,
+        "element_count": 0,
+        "page_count": 0,
+        "validation_status": "pending",
+        "quality_issue_count": 0,
+        "size_bytes": item.size_bytes,
     }
 
 
-def _render_retrieval(response: SearchResponse) -> str:
-    parts: list[str] = []
-    for index, hit in enumerate(response.hits, start=1):
-        evidence = hit.evidence[0] if hit.evidence else None
-        source = evidence.document_name if evidence is not None else "附件"
-        location = ""
-        if evidence is not None and evidence.locators:
-            locator = evidence.locators[0]
-            label = locator.get("label") or locator.get("container_id")
-            if label:
-                location = f" · {label}"
-        parts.append(f"## 命中 {index}：{source}{location}\n\n{hit.context_text}")
-    return "\n\n".join(parts)
-
-
-def _attachment_context(
+def _attachment_inventory(
     request: Request,
+    user_id: str,
     conversation_id: str,
     attachment_ids: list[str],
-    query: str,
-) -> str:
+) -> tuple[str, AttachmentToolContext | None]:
     if not attachment_ids:
-        return ""
+        return "", None
+    store = _attachment_store(request)
+    try:
+        items = store.require_many(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            attachment_ids=attachment_ids,
+        )
+    except KeyError as error:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "附件不存在或不属于当前用户和对话",
+        ) from error
     service = _mm_sessions(request)
-    sections: list[str] = []
-    for attachment_id in dict.fromkeys(attachment_ids):
-        try:
-            value = service.context_for(conversation_id, attachment_id, query)
-        except KeyError as error:
-            raise HTTPException(
-                status.HTTP_404_NOT_FOUND,
-                "附件不存在或不属于当前对话",
-            ) from error
-        sections.append(value if isinstance(value, str) else _render_retrieval(value))
-    merged = "\n\n".join(sections)
-    if len(merged) > MAX_ATTACHMENT_CONTEXT_CHARS:
-        merged = merged[:MAX_ATTACHMENT_CONTEXT_CHARS] + "\n\n[附件上下文已按预算截断]"
-    return merged
+    payload = [
+        {
+            "attachment_id": item.attachment_id,
+            "filename": item.filename,
+            "suffix": item.suffix,
+            "media_type": item.media_type,
+            "size_bytes": item.size_bytes,
+            "status": "stored_unparsed",
+        }
+        for item in items
+    ]
+    inventory = (
+        "以下附件已保存但尚未解析。需要读取内容时，必须先加载匹配文件类型的 "
+        "Skill，再调用该 Skill 指定的 Tool；不得猜测附件内容或传入文件路径。\n\n"
+        + json.dumps(payload, ensure_ascii=False)
+    )
+    return inventory, AttachmentToolContext(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        allowed_attachment_ids=frozenset(item.attachment_id for item in items),
+        store=store,
+        mm_sessions=service,
+    )
 
 
 def _turn_coordinator(request: Request) -> ConversationTurnCoordinator:
@@ -315,7 +334,10 @@ def _prepare_message(
 
 
 def _build_prompt_context(
-    ctx: MessageContext, *, attachment_context: str = ""
+    ctx: MessageContext,
+    *,
+    attachment_context: str = "",
+    attachment_tool_context: AttachmentToolContext | None = None,
 ) -> PromptContext:
     """将 MessageContext 收敛为 PromptContext 供 agent 构建提示词
 
@@ -336,6 +358,7 @@ def _build_prompt_context(
         conversation_summary=ctx.conversation_summary,
         conversation_mode=ctx.conversation_mode,
         attachment_context=attachment_context,
+        attachment_tool_context=attachment_tool_context,
         workspace_type=ctx.workspace_type,
     )
 
@@ -446,6 +469,12 @@ async def delete_conversation(
     _load_owned(request, conversation_id, session)
     chat_store: ChatStore = request.app.state.chat_store
     chat_store.delete_conversation(conversation_id)
+    attachment_store = getattr(request.app.state, "user_attachment_store", None)
+    if isinstance(attachment_store, UserAttachmentStore):
+        attachment_store.delete_conversation(
+            user_id=session.user_id,
+            conversation_id=conversation_id,
+        )
     mm_sessions = getattr(request.app.state, "mm_sessions", None)
     if mm_sessions is not None:
         await mm_sessions.clear(conversation_id)
@@ -467,26 +496,24 @@ async def upload_attachment(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"DocIR 不支持该文件类型；支持：{supported}",
         )
-    data = await file.read(MAX_ATTACHMENT_BYTES + 1)
-    await file.close()
-    if not data:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "文件为空")
-    if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "文件不能超过 15 MB")
-
     try:
-        with tempfile.TemporaryDirectory(prefix="esa-attachment-") as temporary:
-            source = Path(temporary) / filename
-            source.write_bytes(data)
-            prepared = await _mm_sessions(request).prepare(
-                conversation_id,
-                [source],
-            )
-    except (FileNotFoundError, ValueError) as error:
+        stored = await _attachment_store(request).save(
+            user_id=session.user_id,
+            conversation_id=conversation_id,
+            filename=filename,
+            media_type=file.content_type or "application/octet-stream",
+            read=file.read,
+        )
+    except AttachmentTooLarge as error:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            str(error),
+        ) from error
+    except ValueError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
-    except RuntimeError as error:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "DocIR 解析附件失败") from error
-    return _attachment_out(prepared[0])
+    finally:
+        await file.close()
+    return _attachment_out(stored)
 
 
 @router.delete(
@@ -502,7 +529,15 @@ async def delete_attachment(
     session: CurrentSession,
 ) -> None:
     _load_owned(request, conversation_id, session)
-    if not await _mm_sessions(request).remove(conversation_id, attachment_id):
+    removed = _attachment_store(request).delete(
+        user_id=session.user_id,
+        conversation_id=conversation_id,
+        attachment_id=attachment_id,
+    )
+    mm_sessions = getattr(request.app.state, "mm_sessions", None)
+    if isinstance(mm_sessions, MultimodalSessionService):
+        await mm_sessions.remove(conversation_id, attachment_id)
+    if not removed:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "附件不存在")
 
 
@@ -528,8 +563,11 @@ async def send_message(
     _load_owned(request, conversation_id, session)
     lease = await _acquire_turn(request, conversation_id)
     async with lease:
-        attachment_context = _attachment_context(
-            request, conversation_id, body.attachment_ids, body.content
+        attachment_context, tool_context = _attachment_inventory(
+            request,
+            session.user_id,
+            conversation_id,
+            body.attachment_ids,
         )
         ctx = _prepare_message(request, conversation_id, body, session)
         chat_store: ChatStore = request.app.state.chat_store
@@ -540,7 +578,9 @@ async def send_message(
             ctx.user.username,
             history=ctx.history,
             prompt_ctx=_build_prompt_context(
-                ctx, attachment_context=attachment_context
+                ctx,
+                attachment_context=attachment_context,
+                attachment_tool_context=tool_context,
             ),
             total_weeks=ctx.user.total_weeks,
         )
@@ -562,14 +602,19 @@ async def stream_message(
     _load_owned(request, conversation_id, session)
     lease = await _acquire_turn(request, conversation_id)
     try:
-        attachment_context = _attachment_context(
-            request, conversation_id, body.attachment_ids, body.content
+        attachment_context, tool_context = _attachment_inventory(
+            request,
+            session.user_id,
+            conversation_id,
+            body.attachment_ids,
         )
         ctx = _prepare_message(request, conversation_id, body, session)
         chat_store: ChatStore = request.app.state.chat_store
         agent: Agent = request.app.state.agent
         prompt_ctx = _build_prompt_context(
-            ctx, attachment_context=attachment_context
+            ctx,
+            attachment_context=attachment_context,
+            attachment_tool_context=tool_context,
         )
     except BaseException:
         await lease.release()

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+import time
 
 from ..chunk import Chunk
 from ..collection import LoadedChunkCollection
@@ -39,6 +40,10 @@ from .fusion import (
 )
 from .reranking import CandidateReranker, CandidateSelection
 from .routing import RouteRetriever
+from backend.core.log.logger import get_pipeline_logger
+
+
+logger = get_pipeline_logger("RAG", __name__)
 
 
 @dataclass
@@ -119,6 +124,9 @@ class RetrievalService:
         if not query.strip():
             raise ValueError("query cannot be blank")
 
+        started = time.monotonic()
+        logger.info("retrieval started query_chars=%d", len(query))
+
         route_result = self._route_retriever.retrieve(query)
         fused, fusion_trace = self._fuse(query, route_result.routes)
         fused_scores = {item.chunk_id: item.score for item in fused}
@@ -161,7 +169,14 @@ class RetrievalService:
             raw_scores=raw_scores,
             fusion=fusion_trace,
         )
-        return SearchResponse(query, context_level, hits, trace)
+        response = SearchResponse(query, context_level, hits, trace)
+        logger.info(
+            "retrieval completed hits=%d degraded=%d elapsed_seconds=%.3f",
+            len(hits),
+            len(degraded),
+            time.monotonic() - started,
+        )
+        return response
 
     def _fuse(
         self,

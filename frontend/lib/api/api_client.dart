@@ -1153,7 +1153,8 @@ class ApiClient {
   Future<DocumentAttachment> uploadConversationAttachment({
     required String conversationId,
     required String filename,
-    required Uint8List bytes,
+    required Stream<List<int>> stream,
+    required int length,
   }) async {
     final request = http.MultipartRequest(
       'POST',
@@ -1163,11 +1164,12 @@ class ApiClient {
       request.headers['Authorization'] = 'Bearer $sessionId';
     }
     request.files.add(
-      http.MultipartFile.fromBytes(
+      http.MultipartFile(
         'file',
-        bytes,
+        stream,
+        length,
         filename: filename,
-        contentType: MediaType.parse(_mimeFor(filename, bytes)),
+        contentType: MediaType.parse(_mimeFor(filename, Uint8List(0))),
       ),
     );
     try {

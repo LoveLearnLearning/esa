@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from contextlib import nullcontext
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from pathlib import Path
@@ -17,6 +18,10 @@ if TYPE_CHECKING:
 
 from backend.agent.learning.pedagogy_router import PedagogyRouter
 from backend.agent.tools import tr
+from backend.agent.tools.attachment_tools import (
+    AttachmentToolContext,
+    attachment_tool_context,
+)
 from backend.agent.tools.mastery_tools import set_current_total_weeks
 from backend.agent.tools.memory_tools import (
     set_current_conversation_mode,
@@ -60,7 +65,6 @@ _LEARNING_ONLY_TOOLS = frozenset(
         "get_learning_evidence_summary",
         "retrieve_knowledge",
         "get_knowledge_base_stats",
-        "load_skill",
     }
 )
 
@@ -76,11 +80,23 @@ def tool_schemas_for_workspace(workspace_type: str) -> list[dict]:
     ]
 
 
+async def call_workspace_tool_async(
+    workspace_type: str,
+    name: str,
+    arguments: dict,
+) -> object:
+    if workspace_type != "learning" and name in _LEARNING_ONLY_TOOLS:
+        return f"[Error]: tool {name!r} is unavailable in {workspace_type} workspace"
+    return await tr.acall(name, arguments)
+
+
 def call_workspace_tool(
     workspace_type: str,
     name: str,
     arguments: dict,
 ) -> object:
+    """Synchronous compatibility entrypoint used by existing tests/callers."""
+
     if workspace_type != "learning" and name in _LEARNING_ONLY_TOOLS:
         return f"[Error]: tool {name!r} is unavailable in {workspace_type} workspace"
     return tr.call(name, arguments)
@@ -212,10 +228,10 @@ class Agent:
                 pedagogy_context="",
                 autoload_skills_context="",
             )
-        skills_context = (
-            build_skills_context()
+        skills_context = build_skills_context(
+            categories=None
             if prompt_ctx.workspace_type == "learning"
-            else ""
+            else {"attachment"}
         )
 
         system_prompt = build_system_prompt(
@@ -269,7 +285,28 @@ class Agent:
             prompt_ctx=prompt_ctx,
             total_weeks=total_weeks,
         )
+        attachment_context = (prompt_ctx or PromptContext()).attachment_tool_context
+        tool_scope = (
+            attachment_tool_context(attachment_context)
+            if isinstance(attachment_context, AttachmentToolContext)
+            else nullcontext()
+        )
 
+        with tool_scope:
+            return await self._run_loop(
+                messages,
+                new_messages,
+                workspace_type,
+                tool_schemas,
+            )
+
+    async def _run_loop(
+        self,
+        messages: list[dict],
+        new_messages: list[dict],
+        workspace_type: str,
+        tool_schemas: list[dict],
+    ) -> list[dict]:
         for _ in range(self.loop_times):
             response = await self.llm_provider.generate(
                 messages,
@@ -319,8 +356,7 @@ class Agent:
             )
 
             for tool_call in tool_calls:
-                result = await asyncio.to_thread(
-                    call_workspace_tool,
+                result = await call_workspace_tool_async(
                     workspace_type,
                     tool_call.name,
                     tool_call.arguments,
@@ -362,7 +398,29 @@ class Agent:
             prompt_ctx=prompt_ctx,
             total_weeks=total_weeks,
         )
+        attachment_context = (prompt_ctx or PromptContext()).attachment_tool_context
+        tool_scope = (
+            attachment_tool_context(attachment_context)
+            if isinstance(attachment_context, AttachmentToolContext)
+            else nullcontext()
+        )
 
+        with tool_scope:
+            async for event in self._run_stream_loop(
+                messages,
+                new_messages,
+                workspace_type,
+                tool_schemas,
+            ):
+                yield event
+
+    async def _run_stream_loop(
+        self,
+        messages: list[dict],
+        new_messages: list[dict],
+        workspace_type: str,
+        tool_schemas: list[dict],
+    ) -> AsyncIterator[AgentStreamEvent]:
         for _ in range(self.loop_times):
             stream_parser = self.llm_provider.create_stream_parser()
 
@@ -423,13 +481,37 @@ class Agent:
                 }
             )
 
-            for tool_call in tool_calls:
-                result = await asyncio.to_thread(
-                    call_workspace_tool,
-                    workspace_type,
-                    tool_call.name,
-                    tool_call.arguments,
+            for tool_index, tool_call in enumerate(tool_calls):
+                tool_call_id = f"tool-{len(new_messages)}-{tool_index}"
+                yield AgentStreamEvent(
+                    event="tool_start",
+                    data={
+                        "id": tool_call_id,
+                        "name": tool_call.name,
+                    },
                 )
+                tool_task = asyncio.create_task(
+                    call_workspace_tool_async(
+                        workspace_type,
+                        tool_call.name,
+                        tool_call.arguments,
+                    )
+                )
+                while True:
+                    try:
+                        result = await asyncio.wait_for(
+                            asyncio.shield(tool_task),
+                            timeout=15,
+                        )
+                        break
+                    except TimeoutError:
+                        yield AgentStreamEvent(
+                            event="tool_progress",
+                            data={
+                                "id": tool_call_id,
+                                "name": tool_call.name,
+                            },
+                        )
                 result_text = serialize_tool_result(result)
 
                 tool_message = {
@@ -451,6 +533,7 @@ class Agent:
                 yield AgentStreamEvent(
                     event="tool",
                     data={
+                        "id": tool_call_id,
                         "name": tool_call.name,
                         "content": result_text,
                     },
