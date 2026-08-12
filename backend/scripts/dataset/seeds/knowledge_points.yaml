@@ -1,0 +1,295 @@
+# 本科计算机专业核心知识点清单
+#
+# 用途有三：
+#   1. S006 概念讲解数据的种子（每个知识点按 10 个变体展开）
+#   2. S007 词面陷阱负样本的来源（trap 字段）
+#   3. recommend_practice / get_mastery_report / record_answer 的 kp_id 取值池
+#
+# kp_id 用 snake_case，与 tool_schemas.json 里 record_answer.kp_id 的示例格式一致
+#   （"binary_tree_traversal / process_scheduling"）。
+#
+# 字段说明：
+#   confused_with —— 学生最容易与之混淆的概念。用于「与相近概念有什么区别」变体，
+#                    也是出对比题和困难负样本的来源。
+#   pitfall       —— 最常见的错误理解。用于「常见误区」变体。
+#   trap          —— 该知识点的提问里含有和某个工具名撞车的词，属于 S007 词面陷阱。
+#   tier          —— core = 408 高频考点，优先扩样本；ext = 扩展考点。
+#
+# 前四门（数据结构 / 计算机组成原理 / 操作系统 / 计算机网络）即考研 408 范围，
+# 是学生真正会反复刷的部分，也最贴合学情类工具的应用场景。
+
+数据结构:
+  code: ds
+  kps:
+    - {id: linear_list_seq_vs_linked, name: 顺序表与链表的对比, chapter: 线性表, tier: core,
+       confused_with: [随机存取与顺序存取], pitfall: 认为链表一定比顺序表省空间，忽略了指针域开销}
+    - {id: linked_list_operations, name: 单链表的插入与删除, chapter: 线性表, tier: core,
+       confused_with: [双链表, 循环链表], pitfall: 删除结点时没有先保存后继指针，导致断链}
+    - {id: stack_basics, name: 栈的定义与应用, chapter: 栈和队列, tier: core,
+       confused_with: [队列], pitfall: 混淆入栈出栈顺序，误以为出栈序列唯一}
+    - {id: queue_basics, name: 队列的定义与应用, chapter: 栈和队列, tier: core,
+       confused_with: [栈, 双端队列], pitfall: 忽略队空与队满的判别条件}
+    - {id: circular_queue, name: 循环队列的判空判满, chapter: 栈和队列, tier: core,
+       confused_with: [顺序队列], pitfall: 牺牲一个单元与设置计数器两种方案混用}
+    - {id: string_kmp, name: KMP 模式匹配与 next 数组, chapter: 串, tier: core,
+       confused_with: [朴素模式匹配], pitfall: next 数组下标从 0 还是 1 开始搞混，导致回退位置错误}
+    - {id: binary_tree_properties, name: 二叉树的性质与计数, chapter: 树, tier: core,
+       confused_with: [完全二叉树, 满二叉树], pitfall: 把完全二叉树和满二叉树的定义弄反}
+    - {id: binary_tree_traversal, name: 二叉树的先中后序遍历, chapter: 树, tier: core,
+       confused_with: [层序遍历], pitfall: 只背代码不理解 visit 位置决定遍历名称}
+    - {id: threaded_binary_tree, name: 线索二叉树, chapter: 树, tier: ext,
+       confused_with: [普通二叉树的空指针], pitfall: 不清楚线索标志位 ltag/rtag 的含义}
+    - {id: huffman_tree, name: 哈夫曼树与哈夫曼编码, chapter: 树, tier: core,
+       confused_with: [最优二叉搜索树], pitfall: 认为哈夫曼编码唯一，忽略左右子树可交换}
+    - {id: binary_search_tree, name: 二叉搜索树, chapter: 树, tier: core,
+       confused_with: [平衡二叉树, 堆], pitfall: 忘记 BST 中序遍历必然有序这一判定性质}
+    - {id: avl_tree, name: 平衡二叉树与四种旋转, chapter: 树, tier: core,
+       confused_with: [红黑树, 二叉搜索树], pitfall: LR 与 RL 型的旋转方向记反}
+    - {id: b_tree_and_bplus, name: B 树与 B+ 树, chapter: 树, tier: core,
+       confused_with: [二叉搜索树, B+树索引], pitfall: 混淆 m 阶 B 树的关键字数与孩子数的关系}
+    - {id: graph_storage, name: 邻接矩阵与邻接表, chapter: 图, tier: core,
+       confused_with: [十字链表, 邻接多重表], pitfall: 稀疏图仍用邻接矩阵，空间浪费}
+    - {id: graph_traversal, name: 图的深度优先与广度优先遍历, chapter: 图, tier: core,
+       confused_with: [树的遍历], pitfall: 忘记访问标记数组，导致无限循环}
+    - {id: minimum_spanning_tree, name: 最小生成树 Prim 与 Kruskal, chapter: 图, tier: core,
+       confused_with: [最短路径], pitfall: 把最小生成树当成任意两点间最短路径的集合}
+    - {id: shortest_path, name: Dijkstra 与 Floyd 最短路径, chapter: 图, tier: core,
+       confused_with: [最小生成树, Bellman-Ford], pitfall: 在含负权边的图上使用 Dijkstra}
+    - {id: topological_sort, name: 拓扑排序与 AOV 网, chapter: 图, tier: core,
+       confused_with: [关键路径 AOE], pitfall: 认为拓扑序列唯一}
+    - {id: hash_table, name: 散列表与冲突处理, chapter: 查找, tier: core,
+       confused_with: [二叉搜索树], pitfall: 线性探测的删除必须用惰性删除，直接置空会截断探测链,
+       trap: 提问里出现「命中率」「装填因子」，与 get_mastery_report 的「掌握度」词面接近}
+    - {id: sorting_comparison, name: 各类排序算法的时间空间复杂度与稳定性, chapter: 排序, tier: core,
+       confused_with: [快速排序最坏情况, 堆排序], pitfall: 记住结论但说不出快排最坏退化的触发条件,
+       trap: 提问里出现「时间复杂度」，与 get_time 词面撞车}
+
+计算机组成原理:
+  code: co
+  kps:
+    - {id: number_representation, name: 原码反码补码移码, chapter: 数据表示, tier: core,
+       confused_with: [无符号数], pitfall: 补码的表示范围不对称，最小值没有对应的正数,
+       trap: 需要真的算就该调 bitwise_calculator，问原理则不该调}
+    - {id: floating_point_ieee754, name: IEEE 754 浮点数表示, chapter: 数据表示, tier: core,
+       confused_with: [定点数], pitfall: 忘记阶码用移码、尾数有隐含的最高位 1}
+    - {id: arithmetic_overflow, name: 溢出判断方法, chapter: 数据运算, tier: core,
+       confused_with: [进位], pitfall: 把无符号数的进位当作有符号数的溢出}
+    - {id: boolean_logic_ops, name: 位运算与逻辑运算, chapter: 数据运算, tier: core,
+       confused_with: [算术运算], pitfall: 混淆逻辑右移与算术右移对符号位的处理,
+       trap: 需要真的算就该调 bitwise_calculator，问概念则不该调}
+    - {id: memory_hierarchy, name: 存储器层次结构与局部性原理, chapter: 存储系统, tier: core,
+       confused_with: [虚拟存储器], pitfall: 只背层次名称，说不清分层为什么有效,
+       trap: 提问里出现「存储/记忆」，与 save_core_memory 词面撞车}
+    - {id: cache_mapping, name: Cache 的三种映射方式, chapter: 存储系统, tier: core,
+       confused_with: [页表映射], pitfall: 组相联的组号与块号计算搞混,
+       trap: 提问里出现「命中率」，与 get_mastery_report 的「掌握度」接近}
+    - {id: cache_replacement, name: Cache 替换算法, chapter: 存储系统, tier: core,
+       confused_with: [页面置换算法], pitfall: 与操作系统的页面置换算法张冠李戴}
+    - {id: cache_write_policy, name: 写直达与写回, chapter: 存储系统, tier: ext,
+       confused_with: [写分配与非写分配], pitfall: 认为写回一定更快，忽略脏块换出的开销}
+    - {id: virtual_memory, name: 虚拟存储器与快表 TLB, chapter: 存储系统, tier: core,
+       confused_with: [Cache], pitfall: 分不清 TLB 缺失与缺页的区别}
+    - {id: instruction_format, name: 指令格式与操作数, chapter: 指令系统, tier: core,
+       confused_with: [寻址方式], pitfall: 扩展操作码的编码不留够短码空间}
+    - {id: addressing_modes, name: 寻址方式, chapter: 指令系统, tier: core,
+       confused_with: [指令格式], pitfall: 混淆间接寻址与寄存器间接寻址的访存次数}
+    - {id: cisc_vs_risc, name: CISC 与 RISC 的对比, chapter: 指令系统, tier: ext,
+       confused_with: [流水线], pitfall: 认为 RISC 指令一定比 CISC 少}
+    - {id: cpu_datapath, name: CPU 数据通路与单周期多周期, chapter: 中央处理器, tier: core,
+       confused_with: [控制器], pitfall: 分不清哪些部件在取指阶段工作}
+    - {id: control_unit, name: 硬布线与微程序控制器, chapter: 中央处理器, tier: ext,
+       confused_with: [数据通路], pitfall: 微指令与机器指令的层次关系混乱}
+    - {id: pipeline_basics, name: 指令流水线与加速比, chapter: 中央处理器, tier: core,
+       confused_with: [并行处理], pitfall: 加速比公式套错，忽略流水线建立时间,
+       trap: 提问里出现「时间」「周期」，与 get_time 词面撞车}
+    - {id: pipeline_hazards, name: 流水线的结构相关数据相关控制相关, chapter: 中央处理器, tier: core,
+       confused_with: [中断], pitfall: 认为转发能解决所有数据相关，忽略 load-use 冒险}
+    - {id: bus_structure, name: 总线的分类与仲裁, chapter: 总线, tier: ext,
+       confused_with: [接口], pitfall: 混淆总线带宽与总线传输周期}
+    - {id: io_control_modes, name: 程序查询中断DMA三种IO方式, chapter: 输入输出, tier: core,
+       confused_with: [通道方式], pitfall: 认为 DMA 完全不需要 CPU 参与}
+    - {id: interrupt_handling, name: 中断的响应与处理过程, chapter: 输入输出, tier: core,
+       confused_with: [异常, 系统调用], pitfall: 分不清中断隐指令做了哪些事}
+    - {id: interrupt_priority, name: 中断屏蔽与优先级, chapter: 输入输出, tier: ext,
+       confused_with: [进程优先级], pitfall: 把中断优先级和进程调度优先级混为一谈,
+       trap: 提问里出现「优先级」，与 recommend_practice 的优先级得分词面撞车}
+
+操作系统:
+  code: os
+  kps:
+    - {id: process_vs_thread, name: 进程与线程的区别, chapter: 进程管理, tier: core,
+       confused_with: [程序], pitfall: 只说「线程更轻」，说不清资源拥有权的归属}
+    - {id: process_state_transition, name: 进程的五状态模型与转换, chapter: 进程管理, tier: core,
+       confused_with: [线程状态], pitfall: 认为就绪可以直接转为阻塞}
+    - {id: pcb_and_context_switch, name: PCB 与上下文切换, chapter: 进程管理, tier: core,
+       confused_with: [中断处理], pitfall: 低估上下文切换的开销来源}
+    - {id: process_scheduling, name: 进程调度算法, chapter: 处理机调度, tier: core,
+       confused_with: [作业调度], pitfall: 计算周转时间时把到达时间漏掉,
+       trap: 提问里出现「优先级」，与 recommend_practice 的优先级得分词面撞车}
+    - {id: scheduling_criteria, name: 周转时间带权周转时间与响应比, chapter: 处理机调度, tier: core,
+       confused_with: [吞吐量], pitfall: 带权周转时间的分母用错}
+    - {id: critical_section, name: 临界区与同步互斥的四个准则, chapter: 同步与互斥, tier: core,
+       confused_with: [原子操作], pitfall: 忽略「让权等待」，写出忙等解法}
+    - {id: semaphore, name: 信号量机制与 PV 操作, chapter: 同步与互斥, tier: core,
+       confused_with: [互斥锁, 管程], pitfall: P 操作顺序写反导致死锁}
+    - {id: producer_consumer, name: 生产者消费者问题, chapter: 同步与互斥, tier: core,
+       confused_with: [读者写者], pitfall: 互斥信号量与同步信号量的 P 操作次序颠倒}
+    - {id: readers_writers, name: 读者写者问题, chapter: 同步与互斥, tier: ext,
+       confused_with: [生产者消费者], pitfall: 读者优先导致写者饥饿的原因说不清}
+    - {id: dining_philosophers, name: 哲学家就餐问题, chapter: 同步与互斥, tier: ext,
+       confused_with: [死锁], pitfall: 只会背解法，说不出它破坏了死锁的哪个条件}
+    - {id: deadlock_conditions, name: 死锁的四个必要条件, chapter: 死锁, tier: core,
+       confused_with: [饥饿, 活锁], pitfall: 把「必要条件」当成「充分条件」}
+    - {id: deadlock_prevention, name: 死锁的预防避免检测与解除, chapter: 死锁, tier: core,
+       confused_with: [死锁避免], pitfall: 分不清预防和避免的区别}
+    - {id: bankers_algorithm, name: 银行家算法, chapter: 死锁, tier: core,
+       confused_with: [死锁检测], pitfall: 安全序列不唯一，误以为找不到某个序列就是不安全}
+    - {id: memory_allocation, name: 连续分配与动态分区分配算法, chapter: 内存管理, tier: core,
+       confused_with: [分页], pitfall: 混淆内碎片与外碎片的产生原因}
+    - {id: paging, name: 基本分页存储管理, chapter: 内存管理, tier: core,
+       confused_with: [分段], pitfall: 页表项数与页表大小的计算搞错}
+    - {id: segmentation, name: 分段与段页式存储管理, chapter: 内存管理, tier: core,
+       confused_with: [分页], pitfall: 说不清分段对用户可见而分页对用户透明}
+    - {id: page_replacement, name: 页面置换算法 OPT FIFO LRU CLOCK, chapter: 虚拟内存, tier: core,
+       confused_with: [Cache 替换算法], pitfall: 忽略 Belady 异常只发生在 FIFO}
+    - {id: thrashing_working_set, name: 抖动与工作集, chapter: 虚拟内存, tier: core,
+       confused_with: [缺页率], pitfall: 认为增加内存一定能消除抖动}
+    - {id: file_allocation, name: 文件的物理结构, chapter: 文件管理, tier: core,
+       confused_with: [目录结构], pitfall: 索引分配的最大文件大小算错}
+    - {id: disk_scheduling, name: 磁盘调度算法, chapter: 输入输出管理, tier: core,
+       confused_with: [进程调度], pitfall: 计算寻道总量时把起始磁道漏掉}
+
+计算机网络:
+  code: net
+  kps:
+    - {id: network_layering, name: OSI 七层与 TCP/IP 四层模型, chapter: 体系结构, tier: core,
+       confused_with: [五层教学模型], pitfall: 记不住各层对应的数据单元名称}
+    - {id: encapsulation, name: 封装与解封装, chapter: 体系结构, tier: core,
+       confused_with: [分片], pitfall: 混淆封装开销与有效载荷}
+    - {id: channel_capacity, name: 奈奎斯特定理与香农定理, chapter: 物理层, tier: core,
+       confused_with: [带宽与时延], pitfall: 用错公式，忽略有无噪声的前提}
+    - {id: framing, name: 组帧与透明传输, chapter: 数据链路层, tier: core,
+       confused_with: [差错控制], pitfall: 字节填充与比特填充的适用场景搞混}
+    - {id: error_detection_crc, name: CRC 循环冗余校验, chapter: 数据链路层, tier: core,
+       confused_with: [海明码], pitfall: 认为 CRC 能纠错}
+    - {id: flow_control_arq, name: 停止等待与滑动窗口协议, chapter: 数据链路层, tier: core,
+       confused_with: [TCP 流量控制], pitfall: 后退 N 帧与选择重传的窗口大小限制记混}
+    - {id: csma_cd, name: CSMA/CD 与最小帧长, chapter: 数据链路层, tier: core,
+       confused_with: [CSMA/CA], pitfall: 最小帧长与争用期的关系推不出来}
+    - {id: ethernet_and_mac, name: 以太网帧格式与 MAC 地址, chapter: 数据链路层, tier: core,
+       confused_with: [IP 地址], pitfall: 分不清广播域与冲突域}
+    - {id: switch_self_learning, name: 交换机的自学习与转发, chapter: 数据链路层, tier: ext,
+       confused_with: [路由器], pitfall: 认为交换机工作在网络层}
+    - {id: arp_protocol, name: ARP 地址解析协议, chapter: 网络层, tier: core,
+       confused_with: [DNS, RARP], pitfall: 说不清 ARP 请求广播而应答单播}
+    - {id: ip_addressing_subnet, name: IP 地址与子网划分, chapter: 网络层, tier: core,
+       confused_with: [MAC 地址], pitfall: 子网掩码与可用主机数的计算出错,
+       trap: 需要真的算掩码就该调 bitwise_calculator，问概念则不该调}
+    - {id: nat, name: 网络地址转换 NAT, chapter: 网络层, tier: ext,
+       confused_with: [代理服务器], pitfall: 认为 NAT 只改 IP 不改端口}
+    - {id: routing_protocols, name: RIP 与 OSPF 路由协议, chapter: 网络层, tier: core,
+       confused_with: [BGP], pitfall: 距离向量与链路状态的收敛特性说反}
+    - {id: ip_fragmentation, name: IP 分片与重组, chapter: 网络层, tier: core,
+       confused_with: [TCP 分段], pitfall: 片偏移以 8 字节为单位这一点忘记}
+    - {id: icmp, name: ICMP 与 ping traceroute, chapter: 网络层, tier: ext,
+       confused_with: [IGMP], pitfall: 认为 ICMP 是应用层协议}
+    - {id: udp_vs_tcp, name: UDP 与 TCP 的对比, chapter: 传输层, tier: core,
+       confused_with: [IP], pitfall: 认为 UDP 一定不可靠因而一无是处}
+    - {id: tcp_handshake, name: TCP 三次握手, chapter: 传输层, tier: core,
+       confused_with: [四次挥手], pitfall: 说不清为什么两次握手不够,
+       trap: 提问里出现「回忆一下」，与 get_core_memories 词面撞车}
+    - {id: tcp_teardown, name: TCP 四次挥手与 TIME_WAIT, chapter: 传输层, tier: core,
+       confused_with: [三次握手], pitfall: TIME_WAIT 等待 2MSL 的两个理由只说得出一个}
+    - {id: tcp_congestion_control, name: TCP 拥塞控制四个阶段, chapter: 传输层, tier: core,
+       confused_with: [流量控制], pitfall: 把拥塞窗口和接收窗口混为一谈}
+    - {id: http_and_dns, name: HTTP 与 DNS 解析过程, chapter: 应用层, tier: core,
+       confused_with: [HTTPS], pitfall: 递归查询与迭代查询的发起方搞反}
+
+数据库系统:
+  code: db
+  kps:
+    - {id: relational_model, name: 关系模型的基本概念, chapter: 关系数据库, tier: core,
+       confused_with: [ER 模型], pitfall: 混淆关系模式与关系实例}
+    - {id: relational_algebra, name: 关系代数运算, chapter: 关系数据库, tier: core,
+       confused_with: [SQL], pitfall: 自然连接与等值连接的属性去重规则记混}
+    - {id: sql_select, name: SELECT 查询与条件过滤, chapter: SQL, tier: core,
+       confused_with: [关系代数投影], pitfall: WHERE 与 HAVING 的使用时机搞错}
+    - {id: sql_join, name: 内连接外连接与自连接, chapter: SQL, tier: core,
+       confused_with: [笛卡尔积], pitfall: 左外连接的空值填充方向弄反}
+    - {id: sql_aggregate, name: 聚合函数与 GROUP BY, chapter: SQL, tier: core,
+       confused_with: [窗口函数], pitfall: SELECT 列表里出现未分组的非聚合列}
+    - {id: subquery, name: 相关子查询与非相关子查询, chapter: SQL, tier: core,
+       confused_with: [连接查询], pitfall: 不理解相关子查询要对外层每行执行一次}
+    - {id: view, name: 视图的定义与可更新性, chapter: SQL, tier: ext,
+       confused_with: [临时表], pitfall: 认为所有视图都可更新}
+    - {id: functional_dependency, name: 函数依赖与闭包, chapter: 关系规范化, tier: core,
+       confused_with: [多值依赖], pitfall: 部分依赖与传递依赖的判定条件混淆}
+    - {id: candidate_key, name: 候选键主键与外键, chapter: 关系规范化, tier: core,
+       confused_with: [超键], pitfall: 求候选键时漏掉不出现在依赖右部的属性}
+    - {id: normalization, name: 1NF 2NF 3NF 范式, chapter: 关系规范化, tier: core,
+       confused_with: [BCNF], pitfall: 只看形式不看候选键，判错范式等级}
+    - {id: bcnf, name: BCNF 与无损连接分解, chapter: 关系规范化, tier: core,
+       confused_with: [3NF], pitfall: 分解后不检验是否保持函数依赖}
+    - {id: er_model, name: ER 模型与向关系模式转换, chapter: 数据库设计, tier: core,
+       confused_with: [关系模型], pitfall: 多对多联系没有单独建表}
+    - {id: index_bplus_tree, name: B+ 树索引, chapter: 索引与存储, tier: core,
+       confused_with: [B 树, 哈希索引], pitfall: 说不清为什么数据库用 B+ 树而不是二叉搜索树}
+    - {id: index_hash, name: 哈希索引与适用场景, chapter: 索引与存储, tier: ext,
+       confused_with: [B+ 树索引], pitfall: 在范围查询上使用哈希索引}
+    - {id: clustered_index, name: 聚簇索引与非聚簇索引, chapter: 索引与存储, tier: core,
+       confused_with: [主键索引], pitfall: 不理解回表的代价来源}
+    - {id: query_optimization, name: 查询优化与执行计划, chapter: 查询处理, tier: ext,
+       confused_with: [索引选择], pitfall: 认为建索引越多越好}
+    - {id: transaction_acid, name: 事务的 ACID 特性, chapter: 事务管理, tier: core,
+       confused_with: [并发控制], pitfall: 一致性与隔离性的界限说不清}
+    - {id: concurrency_problems, name: 丢失修改脏读不可重复读与幻读, chapter: 并发控制, tier: core,
+       confused_with: [隔离级别], pitfall: 不可重复读与幻读的区别说不出来}
+    - {id: locking_2pl, name: 封锁协议与两段锁, chapter: 并发控制, tier: core,
+       confused_with: [隔离级别], pitfall: 认为两段锁能避免死锁}
+    - {id: isolation_and_recovery, name: 隔离级别与日志恢复, chapter: 恢复技术, tier: core,
+       confused_with: [封锁协议], pitfall: undo 与 redo 的执行顺序记反}
+
+算法设计与分析:
+  code: algo
+  kps:
+    - {id: asymptotic_notation, name: 大O大Ω大Θ渐进记号, chapter: 算法基础, tier: core,
+       confused_with: [实际运行时间], pitfall: 认为 O 是紧确界,
+       trap: 提问里出现「时间复杂度」，与 get_time 词面撞车}
+    - {id: master_theorem, name: 主定理, chapter: 分治, tier: core,
+       confused_with: [递归树法], pitfall: 三种情形的判定条件套错}
+    - {id: recurrence_solving, name: 递推式求解方法, chapter: 分治, tier: ext,
+       confused_with: [主定理], pitfall: 代入法没有验证归纳假设}
+    - {id: divide_and_conquer, name: 分治法的基本思想, chapter: 分治, tier: core,
+       confused_with: [动态规划], pitfall: 分不清子问题是否重叠}
+    - {id: binary_search, name: 二分查找及其变形, chapter: 分治, tier: core,
+       confused_with: [二叉搜索树], pitfall: 边界条件写错导致死循环}
+    - {id: quicksort_analysis, name: 快速排序的平均与最坏分析, chapter: 排序算法, tier: core,
+       confused_with: [归并排序], pitfall: 说不出最坏情况的触发条件与随机化的作用}
+    - {id: mergesort_analysis, name: 归并排序与稳定性, chapter: 排序算法, tier: core,
+       confused_with: [快速排序], pitfall: 忽略归并排序的额外空间开销}
+    - {id: dp_basics, name: 动态规划的最优子结构与无后效性, chapter: 动态规划, tier: core,
+       confused_with: [贪心, 分治], pitfall: 状态定义不含足够信息，导致无后效性被破坏}
+    - {id: dp_knapsack, name: 01 背包与完全背包, chapter: 动态规划, tier: core,
+       confused_with: [贪心解部分背包], pitfall: 一维滚动数组的遍历方向搞反}
+    - {id: dp_lcs, name: 最长公共子序列, chapter: 动态规划, tier: core,
+       confused_with: [最长公共子串], pitfall: 子序列与子串的定义混淆}
+    - {id: dp_lis, name: 最长上升子序列, chapter: 动态规划, tier: core,
+       confused_with: [最长公共子序列], pitfall: 只会 O(n^2) 解法，说不清二分优化的单调性依据}
+    - {id: dp_edit_distance, name: 编辑距离, chapter: 动态规划, tier: ext,
+       confused_with: [最长公共子序列], pitfall: 三种操作对应的状态转移写漏}
+    - {id: greedy_basics, name: 贪心算法与正确性证明, chapter: 贪心, tier: core,
+       confused_with: [动态规划], pitfall: 不做交换论证就断言贪心正确}
+    - {id: activity_selection, name: 活动选择问题, chapter: 贪心, tier: core,
+       confused_with: [区间调度加权版], pitfall: 按开始时间而非结束时间排序}
+    - {id: huffman_greedy, name: 哈夫曼编码的贪心性质, chapter: 贪心, tier: ext,
+       confused_with: [哈夫曼树构造], pitfall: 说不清为什么合并最小两个权值是最优的}
+    - {id: backtracking, name: 回溯法与剪枝, chapter: 回溯与分支限界, tier: core,
+       confused_with: [深度优先搜索], pitfall: 忘记恢复现场}
+    - {id: branch_and_bound, name: 分支限界法, chapter: 回溯与分支限界, tier: ext,
+       confused_with: [回溯法], pitfall: 搞不清两者的搜索顺序差异}
+    - {id: dijkstra_correctness, name: Dijkstra 的正确性与贪心选择, chapter: 图算法, tier: core,
+       confused_with: [Bellman-Ford], pitfall: 说不出负权边为何破坏贪心选择性质}
+    - {id: np_completeness, name: P NP NPC 与归约, chapter: 计算复杂性, tier: core,
+       confused_with: [不可判定问题], pitfall: 认为 NP 就是「非多项式」}
+    - {id: amortized_analysis, name: 摊还分析, chapter: 算法基础, tier: ext,
+       confused_with: [平均情况分析], pitfall: 把摊还代价当成概率意义上的平均}
