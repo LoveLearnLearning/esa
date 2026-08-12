@@ -53,6 +53,10 @@ class UserRecord:
     learning_profile_enabled: bool = True
     inferred_profile_enabled: bool = True
 
+    # 邮箱身份：新用户注册时必填并已验证；老用户为 None 直至主动绑定
+    email: str | None = None
+    email_verified_at: str | None = None
+
 
 @dataclass
 class MemorySettings:
