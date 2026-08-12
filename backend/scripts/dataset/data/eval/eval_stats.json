@@ -1,36 +1,32 @@
 {
-  "eval_total": 265,
-  "eval_questions": 441,
-  "respond_questions": 176,
-  "train_total": 846,
-  "train_held_for_review": 43,
-  "train_held_by_category": {
-    "hard_negative": 32,
-    "refusal": 2,
-    "single_tool_call": 9
-  },
-  "no_call_ratio_before_hold": 0.2722,
-  "no_call_ratio": 0.2459,
+  "eval_total": 295,
+  "eval_questions": 500,
+  "respond_questions": 205,
+  "train_total": 1030,
+  "train_held_for_review": 0,
+  "train_held_by_category": {},
+  "no_call_ratio_before_hold": 0.3369,
+  "no_call_ratio": 0.3369,
   "eval_by_category": {
     "multi_turn_tool": 22,
-    "single_tool_call": 155,
-    "clarify": 30,
+    "single_tool_call": 184,
+    "clarify": 31,
     "hard_negative": 40,
     "refusal": 6,
     "tool_error": 12
   },
   "eval_by_layer": {
-    "L1_同分布": 120,
-    "L2_状态外推": 94,
+    "L1_同分布": 152,
+    "L2_状态外推": 92,
     "L3_场景外推": 51
   },
   "eval_by_action": {
-    "CALL_TOOL": 177,
-    "ASK_USER": 30,
+    "CALL_TOOL": 206,
+    "ASK_USER": 31,
     "DIRECT_ANSWER": 40,
     "REFUSE": 6,
     "RECOVER_TOOL_ERROR": 12,
-    "RESPOND_TOOL_RESULT": 176
+    "RESPOND_TOOL_RESULT": 205
   },
   "layer_by_template": {
     "S002__修改参数__操作系统_2": "L1_同分布",
@@ -38,7 +34,6 @@
     "S002__参数在历史轮__操作系统_16": "L1_同分布",
     "S002__参数在历史轮__操作系统_3": "L1_同分布",
     "S002__参数齐全__操作系统_3": "L1_同分布",
-    "S002__参数齐全__操作系统_6": "L1_同分布",
     "S002__缺course__16": "L1_同分布",
     "S002__缺course__3": "L1_同分布",
     "S002__缺weeks__操作系统": "L1_同分布",
@@ -83,7 +78,6 @@
     "get_review_timing__混淆_应调get_mastery_level__000": "L3_场景外推",
     "get_review_timing__混淆_应调get_mastery_level__001": "L3_场景外推",
     "get_review_timing__混淆_应调get_mastery_level__002": "L3_场景外推",
-    "get_weak_prerequisites__正例__寻址方式": "L2_状态外推",
     "get_weak_prerequisites__正例__页面置换算法": "L2_状态外推",
     "get_weak_prerequisites__混淆_应调recommend_practice__001": "L2_状态外推",
     "hardneg__002": "L2_状态外推",

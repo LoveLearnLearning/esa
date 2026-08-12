@@ -148,6 +148,18 @@ def render(be, message: str, style: str, tone: str) -> tuple[str, object]:
         preferred_style=style,
         preferred_tone=tone,
     )
+    # 2026-08-12 后端新增 `# Current workspace` 段，内容取自 PromptContext.workspace_type。
+    # 我们用它的默认值 "learning"（正好是本项目的场景：面向学生的学习空间）。
+    # 哪天默认值变了、或者我们开始按 workspace 分数据，提示词会整片变而这里不会报错 ——
+    # 所以在这儿钉住，让它先炸给人看，别等数据训完才发现分布不一致。
+    assert ctx.workspace_type == "learning", (
+        f"workspace_type 不再是 learning（{ctx.workspace_type!r}），"
+        "system prompt 里的 `# Current workspace` 段会整片变，缓存键要跟着加维度"
+    )
+    assert not ctx.attachment_context, (
+        "attachment_context 非空：会多出「# 当前附件内容（DocIR）」一段。"
+        "我们不传附件，出现这种情况说明渲染参数变了"
+    )
     text = be["build"](user_name=USER_NAME, skills_context=be["skills_context"], prompt_ctx=ctx)
     return text, decision
 
@@ -217,6 +229,7 @@ def main() -> int:
                     "tones": tones,
                     "profile": None,
                     "history": None,
+                    "workspace_type": "learning",
                 },
                 "skill_names": [name for name, _ in be["skills_detail"]],
                 "skills_index_block": be["skills_context"],
