@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from backend.core.services.schedule_import_service import ExtractedScheduleDocument
 from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.stores.user_store import UserStore
@@ -175,3 +176,41 @@ def test_schedule_table_management_and_import_to_new_table(tmp_path, monkeypatch
     # 剩两张，逐个删到最后一张时拒绝
     assert client.delete(f"/me/schedule/tables/{new_id}").status_code == 204
     assert client.delete(f"/me/schedule/tables/{default_id}").status_code == 409
+
+
+def test_schedule_import_prefers_docir_when_mm_is_enabled(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch)
+    app.state.mm_sessions = object()
+
+    async def _docir(**kwargs):
+        assert kwargs["filename"] == "schedule.xlsx"
+        assert kwargs["data"] == b"xlsx"
+        return ExtractedScheduleDocument(
+            text="周一第1-2节 数据结构",
+            pipeline="docir",
+            docir_document_id="docir-schedule",
+            docir_validation_status="passed",
+            docir_element_count=8,
+            docir_page_count=1,
+        )
+
+    monkeypatch.setattr(schedule, "extract_schedule_document_via_docir", _docir)
+    response = TestClient(app).post(
+        "/me/schedule/import",
+        files={
+            "file": (
+                "schedule.xlsx",
+                b"xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["document"] == {
+        "pipeline": "docir",
+        "document_id": "docir-schedule",
+        "validation_status": "passed",
+        "element_count": 8,
+        "page_count": 1,
+    }

@@ -14,7 +14,9 @@ source → MinerU → DocIR → VLM descriptions → final DocIR → Markdown
   `MM_VLM_MODEL` 和可选的 `MM_VLM_API_KEY`。
 - 工件保存在 `MM_ARTIFACT_ROOT`（默认 `runtime/mm`），以源文件和 pipeline
   指纹隔离；索引只保存在 `PreparedAttachment` 的进程内生命周期中。
-- 每个文件独立路由。模块不负责 Web 上传、会话权限或 Agent 生命周期。
+- 每个文件独立路由。Web 层已通过
+  `POST /conversations/{conversation_id}/attachments` 接入前端，并在消息请求的
+  `attachment_ids` 中选择本轮上下文；课程表导入也会优先复用这条 DocIR 管线。
 
 ```python
 from pathlib import Path

@@ -1,5 +1,6 @@
 import asyncio
 import io
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -161,3 +162,51 @@ def test_schedule_image_is_sent_as_multimodal_content():
 
     assert courses[0]["name"] == "高等数学"
     assert courses[0]["weekday"] == 2
+
+
+def test_schedule_docir_projection_preserves_metadata_and_original_name(
+    monkeypatch,
+):
+    class _Sessions:
+        def __init__(self):
+            self.cleared = False
+
+        async def prepare(self, session_key, paths):
+            source = paths[0]
+            assert source.name == "课程表.xlsx"
+            assert source.read_bytes() == b"xlsx"
+            document = SimpleNamespace(
+                document_id="schedule-doc",
+                validation=SimpleNamespace(
+                    status=SimpleNamespace(value="passed")
+                ),
+                elements=(1, 2, 3),
+                source_page_count=None,
+                parsed_page_count=1,
+            )
+            return (SimpleNamespace(document=document),)
+
+        async def clear(self, session_key):
+            self.cleared = True
+
+    sessions = _Sessions()
+    monkeypatch.setattr(
+        schedule_import_service,
+        "render_document_markdown",
+        lambda document: "| 周一 | 周二 |\n| 数据结构 | 高等数学 |",
+    )
+
+    document = asyncio.run(
+        schedule_import_service.extract_schedule_document_via_docir(
+            mm_sessions=sessions,
+            session_key="schedule:u1:run",
+            filename="课程表.xlsx",
+            data=b"xlsx",
+        )
+    )
+
+    assert document.pipeline == "docir"
+    assert document.docir_document_id == "schedule-doc"
+    assert document.docir_element_count == 3
+    assert "数据结构" in document.text
+    assert sessions.cleared

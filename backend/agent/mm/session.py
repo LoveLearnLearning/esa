@@ -34,6 +34,16 @@ class MultimodalSessionService:
     def list(self, session_id: str) -> tuple[PreparedAttachment, ...]:
         return tuple(self._sessions.get(session_id, {}).values())
 
+    async def remove(self, session_id: str, attachment_id: str) -> bool:
+        async with self._lock:
+            bucket = self._sessions.get(session_id)
+            if bucket is None or attachment_id not in bucket:
+                return False
+            del bucket[attachment_id]
+            if not bucket:
+                self._sessions.pop(session_id, None)
+            return True
+
     def context_for(
         self,
         session_id: str,

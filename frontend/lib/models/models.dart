@@ -283,10 +283,53 @@ class ScheduleSnapshot {
 
 /// POST /me/schedule/import 的结果：成功导入的课程 + 因时间冲突被跳过的条数
 class ScheduleImportResult {
-  const ScheduleImportResult({required this.courses, required this.skippedCount});
+  const ScheduleImportResult({
+    required this.courses,
+    required this.skippedCount,
+    this.documentPipeline = 'legacy',
+    this.documentId,
+  });
 
   final List<ScheduleCourse> courses;
   final int skippedCount;
+  final String documentPipeline;
+  final String? documentId;
+}
+
+class DocumentAttachment {
+  const DocumentAttachment({
+    required this.id,
+    required this.filename,
+    required this.mode,
+    required this.tokenCount,
+    required this.elementCount,
+    required this.pageCount,
+    required this.validationStatus,
+    required this.qualityIssueCount,
+  });
+
+  final String id;
+  final String filename;
+  final String mode;
+  final int tokenCount;
+  final int elementCount;
+  final int pageCount;
+  final String validationStatus;
+  final int qualityIssueCount;
+
+  String get modeLabel => mode == 'rag' ? 'DocIR · RAG' : 'DocIR · 全文';
+
+  factory DocumentAttachment.fromJson(Map<String, dynamic> json) =>
+      DocumentAttachment(
+        id: json['id']?.toString() ?? '',
+        filename: json['filename']?.toString() ?? '附件',
+        mode: json['mode']?.toString() ?? 'direct',
+        tokenCount: (json['token_count'] as num?)?.toInt() ?? 0,
+        elementCount: (json['element_count'] as num?)?.toInt() ?? 0,
+        pageCount: (json['page_count'] as num?)?.toInt() ?? 0,
+        validationStatus: json['validation_status']?.toString() ?? '',
+        qualityIssueCount: (json['quality_issue_count'] as num?)?.toInt() ?? 0,
+      );
 }
 
 String formatClockMinutes(int totalMinutes) {

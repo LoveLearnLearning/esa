@@ -775,6 +775,9 @@ class _SchedulePageState extends State<SchedulePage> {
         type: FileType.custom,
         allowedExtensions: const [
           'pdf',
+          'docx',
+          'pptx',
+          'xlsx',
           'png',
           'jpg',
           'jpeg',
@@ -820,6 +823,9 @@ class _SchedulePageState extends State<SchedulePage> {
       if (!mounted) return;
       final count = importResult.courses.length;
       final skipped = importResult.skippedCount;
+      final parserLabel = importResult.documentPipeline == 'docir'
+          ? 'DocIR 已解析'
+          : '已解析';
       final destination = toNewTable
           ? '「${app.activeScheduleTable?.name ?? '新课程表'}」'
           : '';
@@ -828,8 +834,8 @@ class _SchedulePageState extends State<SchedulePage> {
                 ? '识别到 $skipped 条课程与现有课表时间冲突，未导入'
                 : '没有发现新的课程，已有课程不会重复导入')
           : (skipped > 0
-                ? '已导入 $count 条课程安排到$destination，另有 $skipped 条因时间冲突被跳过'
-                : '已识别并导入 $count 条课程安排${destination.isEmpty ? '' : '到$destination'}');
+                ? '$parserLabel，已导入 $count 条课程安排到$destination，另有 $skipped 条因时间冲突被跳过'
+                : '$parserLabel，已导入 $count 条课程安排${destination.isEmpty ? '' : '到$destination'}');
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));

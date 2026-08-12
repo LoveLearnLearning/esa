@@ -103,6 +103,7 @@ class PromptContext:
     group_custom_instruction: str = ""
     conversation_summary: str = ""
     conversation_mode: str = "normal"
+    attachment_context: str = ""
 
     # 由 Agent._prepare_run 内部生成，不属于用户可写偏好。
     pedagogy_context: str = ""

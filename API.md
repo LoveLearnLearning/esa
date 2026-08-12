@@ -194,14 +194,33 @@ Authorization: Bearer <session_id>
 请求体:
 
 ```json
-{ "content": "用户输入的内容" }
+{
+  "content": "用户输入的内容",
+  "attachment_ids": ["本对话内已解析的 DocIR document_id"]
+}
 ```
+
+`attachment_ids` 可省略，单轮最多 3 个；附件不存在或不属于当前对话时返回 `404`。
 
 响应 `200`: 本轮新产生的消息列表(用户消息 + 助手回复 + 工具结果) 结构同历史消息
 
 注意: 该同步兼容接口会等待本轮模型与工具调用全部完成后再返回
 
 对话不存在或不属于当前用户: `404`
+
+### POST /conversations/{conversation_id}/attachments — 解析附件
+
+使用 `multipart/form-data` 上传字段名为 `file` 的单个文件，最大 15 MB。支持 PDF、
+DOCX、PPTX、XLSX 及 PNG/JPEG/WebP/BMP/GIF/TIFF。服务端执行
+`MinerU → DocIR → VLM 派生描述`，短文档返回 `mode: direct`，长文档返回
+`mode: rag`；响应包含 `id`、文件名、token/元素/页数和 DocIR 校验状态。
+
+将响应 `id` 放进发送消息的 `attachment_ids` 后，后端才会把全文或当前查询的 RAG
+证据注入本轮。`MM_ENABLED=false` 时返回 `503`。
+
+### DELETE /conversations/{conversation_id}/attachments/{attachment_id}
+
+释放当前对话内的临时附件句柄，成功响应 `204`。
 
 ### POST /conversations/{conversation_id}/messages/stream — 流式发送消息
 
@@ -444,11 +463,12 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 
 ### POST /me/schedule/import
 
-使用 `multipart/form-data` 上传字段名为 `file` 的课表文件，最大 15 MB，支持 PDF、
-PNG/JPEG/WebP/BMP 和 HTML。图片会经过像素限制、缩放和重新编码后直接发送给本机
-Qwen3.5-9B 的多模态接口；PDF 最多 4 页，会先安全栅格化为页面图片；HTML 则保留表格
-结构并提取可见文本。模型输出经过严格 Schema 校验后才会去重写入用户课表。辅助模型
-不可用时返回 `502`，不会回退占用 122B 主模型。该导入链路不依赖 DocIR。
+使用 `multipart/form-data` 上传字段名为 `file` 的课表文件，最大 15 MB。启用 MM 时，
+PDF、DOCX、PPTX、XLSX 与常见图片先经过 `MinerU → DocIR → Markdown`，再由本机辅助
+模型做课程字段提取；响应的 `document.pipeline` 为 `docir`，并携带 document id、
+校验状态、元素数与页数。HTML 以及未启用 MM 时的 PDF/图片保留兼容解析路径，响应为
+`document.pipeline: legacy`。模型输出经过严格 Schema 校验后才会去重写入用户课表；
+辅助模型不可用时返回 `502`，不会回退占用主模型。
 
 ---
 
