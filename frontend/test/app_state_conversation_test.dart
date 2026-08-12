@@ -9,12 +9,13 @@ class _ConversationApi extends ApiClient {
   int createCalls = 0;
 
   @override
-  Future<ChatConversation> createConversation() async {
+  Future<ChatConversation> createConversation({String? groupId}) async {
     createCalls++;
     return ChatConversation(
       id: 'conversation-$createCalls',
       title: '新对话',
       updatedAt: DateTime(2026),
+      groupId: groupId,
     );
   }
 
