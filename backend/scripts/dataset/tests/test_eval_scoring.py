@@ -89,7 +89,9 @@ def main() -> int:
         print("先跑 PYTHONPATH=dataset python3 -m esa.evalset 生成评测集")
         return 1
 
-    recs = [json.loads(l) for l in (EVAL_DIR / "eval.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    recs = [json.loads(line)
+            for line in (EVAL_DIR / "eval.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()]
     schemas, _ = load_schemas(Path(__file__).resolve().parents[1] / "schemas/tool_schemas.json")
     by_name = schemas_by_name(schemas)
 

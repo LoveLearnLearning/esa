@@ -223,7 +223,7 @@ def check(dt: DesignTable, schemas_path: str | Path = DEFAULT_SCHEMAS) -> list[I
 
     # --- 与 tool_schemas.json 对齐 ---
     try:
-        schemas, version = load_schemas(schemas_path)
+        schemas, _ = load_schemas(schemas_path)
         by_name = schemas_by_name(schemas)
         table_tools = {str(t["tool_name"]) for t in dt.tools if t.get("tool_name")}
         for extra in sorted(table_tools - set(by_name)):
@@ -237,7 +237,6 @@ def check(dt: DesignTable, schemas_path: str | Path = DEFAULT_SCHEMAS) -> list[I
                     out.append(Issue("error", f"05_State/{s['state_id']}", f"expected_tool={name!r} 不存在"))
     except FileNotFoundError:
         out.append(Issue("warn", "schemas", f"找不到 {schemas_path}，跳过 schema 对齐检查"))
-        version = "?"
 
     # --- 预算 vs 变量多样性 ---
     for s in dt.states:

@@ -27,7 +27,6 @@ import re
 import sys
 import urllib.request
 from collections import Counter, defaultdict
-from pathlib import Path
 
 from jsonschema import Draft7Validator
 
@@ -114,7 +113,9 @@ def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
 
 
 def cmd_predict(args) -> int:
-    recs = [json.loads(l) for l in (EVAL_DIR / "eval.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    recs = [json.loads(line)
+            for line in (EVAL_DIR / "eval.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()]
     total = len(recs)
     if getattr(args, "limit", None):
         # 试通端点用。比"把 eval.jsonl 挪走再挪回来"安全得多 ——
@@ -462,15 +463,17 @@ def print_report(name: str, r: dict) -> None:
 
 
 def load_eval() -> list[dict]:
-    return [json.loads(l) for l in (EVAL_DIR / "eval.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    return [json.loads(line)
+            for line in (EVAL_DIR / "eval.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()]
 
 
 def load_preds(tag: str) -> dict[str, str]:
     p = EVAL_DIR / f"pred_{tag}.jsonl"
     if not p.exists():
         sys.exit(f"找不到 {p}。先跑：python3 -m esa.eval predict --tag {tag} ...")
-    return {json.loads(l)["id"]: json.loads(l)["raw"]
-            for l in p.read_text(encoding="utf-8").splitlines() if l.strip()}
+    return {json.loads(line)["id"]: json.loads(line)["raw"]
+            for line in p.read_text(encoding="utf-8").splitlines() if line.strip()}
 
 
 def score_by_layer(recs: list[dict], preds: dict[str, str], parser_name: str,
