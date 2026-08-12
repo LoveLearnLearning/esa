@@ -1153,6 +1153,250 @@ class ApiClient {
     }
   }
 
+  // ---------- 教师端与学生端 ----------
+  Future<Map<String, dynamic>> getTeachingOverview() async {
+    final response = await http.get(
+      _uri('/teaching/overview'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return Map<String, dynamic>.from(_decode(response) as Map);
+  }
+
+  Future<TeachingClass> createTeachingClass({
+    required String name,
+    required String course,
+    String term = '',
+    String description = '',
+  }) async {
+    final response = await http.post(
+      _uri('/teaching/classes'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'name': name,
+        'canonical_course': course,
+        'term': term,
+        'description': description,
+      }),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return TeachingClass.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<Map<String, dynamic>> getTeachingClass(String classId) async {
+    final response = await http.get(
+      _uri('/teaching/classes/$classId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return Map<String, dynamic>.from(_decode(response) as Map);
+  }
+
+  Future<void> inviteStudent(String classId, String username) async {
+    final response = await http.post(
+      _uri('/teaching/classes/$classId/invitations'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'username': username}),
+    );
+    if (response.statusCode != 201) _fail(response);
+  }
+
+  Future<TeachingAssignment> createTeachingAssignment({
+    required String classId,
+    required String title,
+    required String instructions,
+    required List<Map<String, dynamic>> questions,
+    DateTime? dueAt,
+  }) async {
+    final response = await http.post(
+      _uri('/teaching/classes/$classId/assignments'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'title': title,
+        'instructions': instructions,
+        'due_at': dueAt?.toUtc().toIso8601String(),
+        'questions': questions,
+      }),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return TeachingAssignment.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<TeachingAssignment> publishTeachingAssignment(String id) async {
+    final response = await http.post(
+      _uri('/teaching/assignments/$id/publish'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingAssignment.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<List<TeachingSubmission>> listTeachingSubmissions(String id) async {
+    final response = await http.get(
+      _uri('/teaching/assignments/$id/submissions'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map(
+          (item) => TeachingSubmission.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList();
+  }
+
+  Future<TeachingSubmission> getTeachingSubmission(String id) async {
+    final response = await http.get(
+      _uri('/teaching/submissions/$id'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingSubmission.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<TeachingSubmission> analyzeTeachingSubmission(String id) async {
+    final response = await http.post(
+      _uri('/teaching/submissions/$id/analyze'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingSubmission.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<Map<String, dynamic>> analyzeTeachingAssignment(String id) async {
+    final response = await http.post(
+      _uri('/teaching/assignments/$id/analyze'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return Map<String, dynamic>.from(_decode(response) as Map);
+  }
+
+  Future<TeachingSubmission> reviewTeachingSubmission(
+    String id,
+    List<Map<String, dynamic>> reviews,
+  ) async {
+    final response = await http.post(
+      _uri('/teaching/submissions/$id/review'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'reviews': reviews}),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingSubmission.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<TeachingSubmission> publishTeachingFeedback(String id) async {
+    final response = await http.post(
+      _uri('/teaching/submissions/$id/publish-feedback'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingSubmission.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<Map<String, dynamic>> getClassDashboard(String classId) async {
+    final response = await http.get(
+      _uri('/teaching/classes/$classId/dashboard'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return Map<String, dynamic>.from(_decode(response) as Map);
+  }
+
+  Future<List<TeachingClass>> listStudentClasses() async {
+    final response = await http.get(
+      _uri('/student/classes'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map((item) => TeachingClass.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  Future<void> respondClassInvitation(String membershipId, bool accept) async {
+    final response = await http.post(
+      _uri('/student/invitations/$membershipId/respond'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'accept': accept}),
+    );
+    if (response.statusCode != 200) _fail(response);
+  }
+
+  Future<List<TeachingAssignment>> listStudentAssignments() async {
+    final response = await http.get(
+      _uri('/student/assignments'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map(
+          (item) => TeachingAssignment.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList();
+  }
+
+  Future<TeachingAssignment> getStudentAssignment(String id) async {
+    final response = await http.get(
+      _uri('/student/assignments/$id'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingAssignment.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<TeachingSubmission> submitAssignment(
+    String id,
+    Map<String, String> answers,
+  ) async {
+    final response = await http.post(
+      _uri('/student/assignments/$id/submissions'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'answers': answers.entries
+            .map((item) => {'question_id': item.key, 'answer_text': item.value})
+            .toList(),
+      }),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return TeachingSubmission.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<TeachingSubmission> getStudentSubmission(String id) async {
+    final response = await http.get(
+      _uri('/student/submissions/$id'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingSubmission.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
   // ==================== 离线模式实现 ====================
   final List<ChatConversation> _offConvs = [];
   final List<ResearchProject> _offResearchProjects = [];

@@ -896,3 +896,195 @@ class ChatConversation {
     );
   }
 }
+
+class TeachingClass {
+  const TeachingClass({
+    required this.id,
+    required this.name,
+    required this.course,
+    required this.term,
+    required this.status,
+    required this.studentCount,
+    required this.openAssignmentCount,
+    this.membershipStatus,
+    this.membershipId,
+    this.teacherUsername,
+  });
+
+  final String id;
+  final String name;
+  final String course;
+  final String term;
+  final String status;
+  final int studentCount;
+  final int openAssignmentCount;
+  final String? membershipStatus;
+  final String? membershipId;
+  final String? teacherUsername;
+
+  factory TeachingClass.fromJson(Map<String, dynamic> json) => TeachingClass(
+    id: json['class_id']?.toString() ?? '',
+    name: json['name']?.toString() ?? '',
+    course: json['canonical_course']?.toString() ?? '',
+    term: json['term']?.toString() ?? '',
+    status: json['status']?.toString() ?? 'active',
+    studentCount: (json['student_count'] as num?)?.toInt() ?? 0,
+    openAssignmentCount:
+        (json['open_assignment_count'] as num?)?.toInt() ?? 0,
+    membershipStatus: json['membership_status']?.toString(),
+    membershipId: json['membership_id']?.toString(),
+    teacherUsername: json['teacher_username']?.toString(),
+  );
+}
+
+class TeachingQuestion {
+  const TeachingQuestion({
+    required this.id,
+    required this.type,
+    required this.prompt,
+    required this.maxPoints,
+    required this.rubric,
+    required this.referenceAnswer,
+    this.kpId,
+  });
+
+  final String id;
+  final String type;
+  final String prompt;
+  final double maxPoints;
+  final String rubric;
+  final String referenceAnswer;
+  final String? kpId;
+
+  factory TeachingQuestion.fromJson(Map<String, dynamic> json) =>
+      TeachingQuestion(
+        id: json['question_id']?.toString() ?? '',
+        type: json['question_type']?.toString() ?? 'short_answer',
+        prompt: json['prompt']?.toString() ?? '',
+        maxPoints: (json['max_points'] as num?)?.toDouble() ?? 0,
+        rubric: json['rubric']?.toString() ?? '',
+        referenceAnswer: json['reference_answer']?.toString() ?? '',
+        kpId: json['kp_id']?.toString(),
+      );
+}
+
+class TeachingAssignment {
+  const TeachingAssignment({
+    required this.id,
+    required this.classId,
+    required this.title,
+    required this.instructions,
+    required this.status,
+    required this.totalPoints,
+    required this.submittedCount,
+    required this.studentCount,
+    required this.questions,
+    this.className = '',
+    this.course = '',
+    this.dueAt,
+    this.submissionId,
+    this.analysisStatus,
+    this.feedbackStatus,
+    this.totalScore,
+  });
+
+  final String id;
+  final String classId;
+  final String className;
+  final String course;
+  final String title;
+  final String instructions;
+  final String status;
+  final double totalPoints;
+  final int submittedCount;
+  final int studentCount;
+  final DateTime? dueAt;
+  final List<TeachingQuestion> questions;
+  final String? submissionId;
+  final String? analysisStatus;
+  final String? feedbackStatus;
+  final double? totalScore;
+
+  factory TeachingAssignment.fromJson(Map<String, dynamic> json) =>
+      TeachingAssignment(
+        id: json['assignment_id']?.toString() ?? '',
+        classId: json['class_id']?.toString() ?? '',
+        className: json['class_name']?.toString() ?? '',
+        course: json['canonical_course']?.toString() ?? '',
+        title: json['title']?.toString() ?? '',
+        instructions: json['instructions']?.toString() ?? '',
+        status: json['status']?.toString() ?? 'draft',
+        totalPoints: (json['total_points'] as num?)?.toDouble() ?? 0,
+        submittedCount: (json['submitted_count'] as num?)?.toInt() ?? 0,
+        studentCount: (json['student_count'] as num?)?.toInt() ?? 0,
+        dueAt: DateTime.tryParse(json['due_at']?.toString() ?? '')?.toLocal(),
+        questions: (json['questions'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (item) => TeachingQuestion.fromJson(
+                Map<String, dynamic>.from(item),
+              ),
+            )
+            .toList(),
+        submissionId: json['submission_id']?.toString(),
+        analysisStatus: json['analysis_status']?.toString(),
+        feedbackStatus: json['feedback_status']?.toString(),
+        totalScore: (json['total_score'] as num?)?.toDouble(),
+      );
+}
+
+class TeachingAnswer {
+  const TeachingAnswer({required this.raw});
+  final Map<String, dynamic> raw;
+  String get id => raw['answer_id']?.toString() ?? '';
+  String get questionId => raw['question_id']?.toString() ?? '';
+  String get prompt => raw['prompt']?.toString() ?? '';
+  String get answerText => raw['answer_text']?.toString() ?? '';
+  double get maxPoints => (raw['max_points'] as num?)?.toDouble() ?? 0;
+  double? get aiScore => (raw['ai_score'] as num?)?.toDouble();
+  double? get finalScore => (raw['final_score'] as num?)?.toDouble();
+  String get feedback =>
+      raw['final_feedback']?.toString() ?? raw['ai_feedback']?.toString() ?? '';
+  String? get kpId =>
+      raw['final_kp_id']?.toString() ?? raw['ai_kp_id']?.toString() ?? raw['kp_id']?.toString();
+}
+
+class TeachingSubmission {
+  const TeachingSubmission({
+    required this.id,
+    required this.assignmentId,
+    required this.studentId,
+    required this.studentUsername,
+    required this.analysisStatus,
+    required this.feedbackStatus,
+    required this.totalPoints,
+    required this.answers,
+    this.totalScore,
+  });
+
+  final String id;
+  final String assignmentId;
+  final String studentId;
+  final String studentUsername;
+  final String analysisStatus;
+  final String feedbackStatus;
+  final double totalPoints;
+  final double? totalScore;
+  final List<TeachingAnswer> answers;
+
+  factory TeachingSubmission.fromJson(Map<String, dynamic> json) =>
+      TeachingSubmission(
+        id: json['submission_id']?.toString() ?? '',
+        assignmentId: json['assignment_id']?.toString() ?? '',
+        studentId: json['student_id']?.toString() ?? '',
+        studentUsername: json['student_username']?.toString() ?? '',
+        analysisStatus: json['analysis_status']?.toString() ?? 'pending',
+        feedbackStatus: json['feedback_status']?.toString() ?? 'unpublished',
+        totalPoints: (json['total_points'] as num?)?.toDouble() ?? 0,
+        totalScore: (json['total_score'] as num?)?.toDouble(),
+        answers: (json['answers'] as List? ?? const [])
+            .whereType<Map>()
+            .map((item) => TeachingAnswer(raw: Map<String, dynamic>.from(item)))
+            .toList(),
+      );
+}
