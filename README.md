@@ -49,7 +49,8 @@ Slurm 获得 5 张 GPU（主模型 TP=4，辅助模型 TP=1），再从仓库根
 对话压缩会暂时返回不可用。用户退出或超过 5 分钟没有认证请求后，后台会在保留最近
 8 条原始消息及全部历史记录的前提下，为较早消息生成上下文摘要。
 
-默认监听 `0.0.0.0:51024`。也可以直接启动 ASGI 应用：
+默认监听 `0.0.0.0:51024`，可通过 `HOST`、`PORT` 覆盖。生产 API 的
+canonical prefix 是 `/api`；旧的无前缀路径仅作为迁移期兼容别名。也可以直接启动 ASGI 应用：
 
 ```bash
 uvicorn backend.core.web.webAPI:app --host 0.0.0.0 --port 51024
@@ -66,12 +67,12 @@ flutter run
 通过编译参数覆盖 API 地址：
 
 ```bash
-flutter run --dart-define=ESA_API_BASE=http://127.0.0.1:51024
+flutter run --dart-define=ESA_API_BASE=http://127.0.0.1:51024/api
 ```
 
 ## 构建 Web
 
-由 Nginx 将 `/api` 反向代理到后端时：
+由 Nginx 将 `/api` 原样反向代理到后端时：
 
 ```bash
 cd frontend
