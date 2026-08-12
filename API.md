@@ -2,13 +2,19 @@
 
 > 在这里记录前后端网络 endpoint 前端照此对接 后端改动接口时同步更新本文档
 >
-> 最后核对：2026-08-09。
+> 最后核对：2026-08-12。
 
-- Base URL（`python -m backend.main`）: `http://127.0.0.1:51024`
+- Base URL（`python -m backend.main`）: `http://127.0.0.1:51024/api`
+- 生产 Base URL: `https://esa.lovelearnlearning.cn/api`
 - 开发启动命令: `uvicorn backend.core.web.webAPI:app --host 0.0.0.0 --port 51024 --reload`
 - 交互式调试: 启动后访问 `http://127.0.0.1:51024/docs`
 - 通信格式: 普通接口使用 JSON 流式消息接口响应 `text/event-stream`
 - 时间格式: 统一为 UTC ISO 8601 字符串 例如 `2026-07-24T05:22:08.123456+00:00`
+
+下文标题中的 `/auth/...`、`/conversations/...`、`/me/...` 均为相对 Base URL
+的路径。例如 `POST /auth/login` 的实际 canonical wire path 是
+`POST /api/auth/login`。迁移期仍可通过 `ESA_ENABLE_LEGACY_API_ROUTES=true`
+启用旧的无 `/api` 前缀别名，但新客户端不得依赖这些别名。
 
 ## 认证约定
 
@@ -30,23 +36,62 @@ Authorization: Bearer <session_id>
 
 | 状态码 | 含义                                                           |
 | ------ | -------------------------------------------------------------- |
-| 401    | 未登录 / 会话无效 / 会话过期 / 用户名或密码错误                |
+| 401    | 未登录 / 会话无效 / 会话过期 / 邮箱、用户名或密码错误          |
 | 404    | 资源不存在或不属于当前用户                                     |
-| 409    | 资源冲突，如用户名已存在、分组达到上限或同一对话上一轮仍在生成 |
+| 409    | 资源冲突，如用户名或邮箱已存在、分组达到上限                    |
+| 429    | 验证码发送过于频繁，按 `Retry-After` 响应头稍后重试             |
 | 422    | 请求体校验不通过 由 pydantic 自动返回                          |
+
+---
+
+## 运维接口
+
+### GET /health — 存活检查
+
+无需认证，成功响应 `200`：
+
+```json
+{ "status": "ok" }
+```
+
+该接口只表示 HTTP 进程存活，不访问数据库，也不调用主模型、辅助模型或 RAG。
 
 ---
 
 ## 已实现接口
 
-### POST /auth/register — 注册
+### POST /auth/email/send-code — 发送注册验证码
+
+无需认证。请求体：
+
+```json
+{ "email": "user@example.com" }
+```
+
+成功响应 `202`：
+
+```json
+{ "status": "accepted", "retry_after_seconds": 60 }
+```
+
+验证码默认 10 分钟有效、同一邮箱 60 秒内不可重发。验证码由业务后端生成和校验，
+独立邮件服务器只负责投递。邮箱已注册返回 `409`，邮件服务未配置返回 `503`，
+投递失败返回 `502`。
+
+### POST /auth/register — 邮箱注册
 
 无需认证
 
 请求体:
 
 ```json
-{ "username": "feng", "password": "password123" }
+{
+  "email": "user@example.com",
+  "verification_code": "123456",
+  "username": "feng",
+  "password": "password123",
+  "account_role": "student"
+}
 ```
 
 校验规则: `username` 1-32 位 `password` 8-128 位 不符合返回 422
@@ -54,10 +99,10 @@ Authorization: Bearer <session_id>
 成功响应 `201`:
 
 ```json
-{ "user_id": "服务端生成的uuid", "username": "feng" }
+{ "user_id": "服务端生成的uuid", "username": "feng", "email": "user@example.com", "account_role": "student" }
 ```
 
-失败: `409` 用户名已存在
+验证码错误或过期返回 `400`，用户名或邮箱已存在返回 `409`。
 
 ### POST /auth/login — 登录
 
@@ -66,7 +111,7 @@ Authorization: Bearer <session_id>
 请求体:
 
 ```json
-{ "username": "feng", "password": "password123" }
+{ "username": "user@example.com", "password": "password123" }
 ```
 
 成功响应 `200`:
@@ -76,13 +121,30 @@ Authorization: Bearer <session_id>
     "session_id": "uuid 作为后续请求的 Bearer token",
     "user_id": "用户uuid",
     "username": "feng",
+    "email": "user@example.com",
+    "account_role": "student",
     "expires_at": "2026-07-24T07:22:08.123456+00:00"
 }
 ```
 
-失败: `401` 用户名或密码错误(不区分具体原因)
+`username` 字段兼容邮箱和用户名。老用户可继续用用户名登录；已绑定邮箱的用户也可
+使用邮箱登录。失败返回 `401`，不区分具体原因。
 
 注意: 密码原样发送 前端不要对密码做 trim 或其他改动
+
+### POST /auth/email/bind/send-code — 发送绑定邮箱验证码
+
+需要认证，请求和响应与发送注册验证码相同。邮箱已被使用返回 `409`。
+
+### POST /auth/email/bind — 绑定或更换邮箱
+
+需要认证。请求体：
+
+```json
+{ "email": "user@example.com", "verification_code": "123456" }
+```
+
+成功响应 `200`：`{ "email": "user@example.com" }`。
 
 ### POST /auth/logout — 登出
 
@@ -105,11 +167,86 @@ Authorization: Bearer <session_id>
 
 ---
 
+## Workspace 与科研项目接口
+
+以下接口均需要认证。`account_role` 目前只允许 `student` 或 `teacher`：学生可进入学习、科研 Workspace，教师可进入教学、科研 Workspace。
+
+### GET /workspaces — 当前账号可用 Workspace
+
+响应 `200`：
+
+```json
+{
+  "account_role": "student",
+  "default_workspace": "learning",
+  "workspaces": [
+    {
+      "type": "learning",
+      "name": "学习空间",
+      "description": "课程学习、练习、课表与知识掌握",
+      "capabilities": ["chat", "schedule", "knowledge_map", "mastery"]
+    },
+    {
+      "type": "research",
+      "name": "科研空间",
+      "description": "科研项目、文献、写作、趋势与数据分析",
+      "capabilities": ["chat", "research_projects", "attachments"]
+    }
+  ]
+}
+```
+
+### GET/POST /research/projects — 科研项目列表与创建
+
+创建请求：
+
+```json
+{ "name": "多智能体科研", "description": "前沿追踪与论文写作" }
+```
+
+创建成功返回 `201`。列表默认只返回当前用户的活跃项目；`GET /research/projects?include_archived=true` 可包含归档项目。
+
+### GET/PATCH /research/projects/{project_id} — 项目详情与更新
+
+PATCH 可传 `name`、`description`、`status`，其中 `status` 为 `active` 或 `archived`。项目不存在或不属于当前用户均返回 `404`。
+
+### 领域前沿追踪
+
+- `GET /research/projects/{project_id}/frontier-jobs`：列出项目的追踪任务。
+- `POST /research/projects/{project_id}/frontier-jobs`：创建任务，返回 `202`。请求体字段为 `query`、`time_window_years`（1–20）和 `max_results`（5–40）。
+- `GET /research/frontier-jobs/{job_id}`：查询任务状态和结果。
+
+后台任务从 arXiv 获取真实论文，输出年度分布、类别、热点词、新兴词和论文样本。热点与增长分值仅作为筛选信号，不等同于正式文献计量结论。单机部署使用 SQLite 持久队列；服务重启后会重新排队未完成任务。
+
+### 学术写作
+
+- `GET/POST /research/projects/{project_id}/documents`：列出或创建项目文档。
+- `GET /research/documents/{document_id}`：获取当前版本。
+- `GET /research/documents/{document_id}/versions`：获取版本历史。
+- `POST /research/documents/{document_id}/writing-jobs`：创建写作任务，返回 `202`。
+- `GET /research/writing-jobs/{job_id}`：查询写作任务状态。
+
+文档类型：`outline`、`literature_review`、`paper`、`notes`。写作操作：`outline`、`literature_review`、`polish`、`format_check`。每次成功任务会写入一个不可覆盖的文档新版本；生成规则禁止虚构来源、数据、实验结果和引用，材料不足处标记 `[待补来源]`。
+
+### 科研数据分析
+
+- `GET /research/projects/{project_id}/datasets`：列出数据集。
+- `POST /research/projects/{project_id}/datasets`：以 multipart 上传，字段为 `name` 和 `file`，返回 `201`。
+- `GET /research/datasets/{dataset_id}`：获取不含服务器文件路径的数据画像。
+- `GET/POST /research/datasets/{dataset_id}/analysis-jobs`：列出或创建分析任务。
+- `GET /research/analysis-jobs/{job_id}`：查询分析结果。
+
+生产形态 demo 采用单机本地文件存储，支持 UTF-8 CSV、JSON、TXT，单文件最多 15 MB，最多读取 100,000 行。分析类型包括 `descriptive`、`correlation`、`group_compare` 和 `text_frequency`。相关分析不代表因果，分组比较暂不进行显著性检验。
+
+---
+
 ## 对话接口
 
 以下接口均需要认证 只能访问属于当前登录用户的对话
 
 ### GET /conversations — 历史对话列表
+
+可用 `workspace_type=learning|teaching|research` 过滤；服务端会校验当前账号是否有权进入该 Workspace。
 
 响应 `200` 按最近更新排序:
 
@@ -120,6 +257,8 @@ Authorization: Bearer <session_id>
         "user_id": "用户uuid",
         "title": "对话标题",
         "group_id": "分组uuid 或 null(未分组)",
+        "workspace_type": "learning",
+        "research_project_id": null,
         "created_at": "...",
         "updated_at": "..."
     }
@@ -131,12 +270,17 @@ Authorization: Bearer <session_id>
 请求体(`title` / `group_id` 均可省略 默认 "新对话" + 未分组):
 
 ```json
-{ "title": "线性代数问题", "group_id": "分组uuid" }
+{
+  "title": "线性代数问题",
+  "group_id": "分组uuid",
+  "workspace_type": "learning",
+  "research_project_id": null
+}
 ```
 
 响应 `201`: 单个对话对象 结构同上
 
-`group_id` 不存在或不属于当前用户: `404`
+`group_id` 不存在或不属于当前用户: `404`。无权进入所选 Workspace 返回 `403`；科研项目不存在或不属于当前用户返回 `404`；非科研 Workspace 绑定科研项目返回 `422`。
 
 ### PATCH /conversations/{conversation_id} — 重命名或移动分组
 
@@ -174,14 +318,33 @@ Authorization: Bearer <session_id>
 请求体:
 
 ```json
-{ "content": "用户输入的内容" }
+{
+  "content": "用户输入的内容",
+  "attachment_ids": ["本对话内已解析的 DocIR document_id"]
+}
 ```
+
+`attachment_ids` 可省略，单轮最多 3 个；附件不存在或不属于当前对话时返回 `404`。
 
 响应 `200`: 本轮新产生的消息列表(用户消息 + 助手回复 + 工具结果) 结构同历史消息
 
 注意: 该同步兼容接口会等待本轮模型与工具调用全部完成后再返回
 
 对话不存在或不属于当前用户: `404`
+
+### POST /conversations/{conversation_id}/attachments — 解析附件
+
+使用 `multipart/form-data` 上传字段名为 `file` 的单个文件，最大 15 MB。支持 PDF、
+DOCX、PPTX、XLSX 及 PNG/JPEG/WebP/BMP/GIF/TIFF。服务端执行
+`MinerU → DocIR → VLM 派生描述`，短文档返回 `mode: direct`，长文档返回
+`mode: rag`；响应包含 `id`、文件名、token/元素/页数和 DocIR 校验状态。
+
+将响应 `id` 放进发送消息的 `attachment_ids` 后，后端才会把全文或当前查询的 RAG
+证据注入本轮。`MM_ENABLED=false` 时返回 `503`。
+
+### DELETE /conversations/{conversation_id}/attachments/{attachment_id}
+
+释放当前对话内的临时附件句柄，成功响应 `204`。
 
 ### POST /conversations/{conversation_id}/messages/stream — 流式发送消息
 
@@ -424,11 +587,12 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 
 ### POST /me/schedule/import
 
-使用 `multipart/form-data` 上传字段名为 `file` 的课表文件，最大 15 MB，支持 PDF、
-PNG/JPEG/WebP/BMP 和 HTML。图片会经过像素限制、缩放和重新编码后直接发送给本机
-Qwen3.5-9B 的多模态接口；PDF 最多 4 页，会先安全栅格化为页面图片；HTML 则保留表格
-结构并提取可见文本。模型输出经过严格 Schema 校验后才会去重写入用户课表。辅助模型
-不可用时返回 `502`，不会回退占用 122B 主模型。该导入链路不依赖 DocIR。
+使用 `multipart/form-data` 上传字段名为 `file` 的课表文件，最大 15 MB。启用 MM 时，
+PDF、DOCX、PPTX、XLSX 与常见图片先经过 `MinerU → DocIR → Markdown`，再由本机辅助
+模型做课程字段提取；响应的 `document.pipeline` 为 `docir`，并携带 document id、
+校验状态、元素数与页数。HTML 以及未启用 MM 时的 PDF/图片保留兼容解析路径，响应为
+`document.pipeline: legacy`。模型输出经过严格 Schema 校验后才会去重写入用户课表；
+辅助模型不可用时返回 `502`，不会回退占用主模型。
 
 ---
 
@@ -561,14 +725,27 @@ Profile V2 的显式字段统一更新入口，可部分更新：
 
 ## Web 部署约定
 
-推荐把 Flutter Web 编译时的 `ESA_API_BASE` 设置为 `/api`，再由 Nginx 反向代理到 `127.0.0.1:51024`。SSE 代理必须关闭缓冲：
+Flutter Web 默认使用同源 `/api`。Nginx 必须把 `/api` 前缀原样转发到后端；
+`proxy_pass` 末尾不能带 `/`，否则会剥离后端所需的 `/api`。SSE 代理必须关闭缓冲：
 
 ```nginx
-location /api/ {
-    proxy_pass http://127.0.0.1:51024/;
+# 运维指标不应通过公网前端域名暴露。
+location ^~ /api/internal/ {
+    return 404;
+}
+
+location ^~ /api/ {
+    proxy_pass http://115.29.197.244:51024;
     proxy_http_version 1.1;
+    client_max_body_size 20m;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
     proxy_buffering off;
     proxy_cache off;
     proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
 }
 ```

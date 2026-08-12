@@ -5,16 +5,22 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
+import tempfile
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from backend.agent.agent import Agent
+from backend.agent.mm import MultimodalSessionService
+from backend.agent.DocIR.tools.batch_corpus import SUPPORTED_SOURCE_SUFFIXES
+from backend.agent.rag.retrieval.contracts import SearchResponse
 from backend.agent.memories.memory_models import ProfileQuery
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
+from backend.core.stores.research_project_store import ResearchProjectStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import (
@@ -36,11 +42,78 @@ from backend.core.web.schemas import (
     SendMessageRequest,
 )
 from backend.core.web.sse import encode_sse
+from backend.core.workspaces import WorkspaceAccessPolicy
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["chat"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
+MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
+MAX_ATTACHMENT_CONTEXT_CHARS = 120_000
+
+
+def _mm_sessions(request: Request) -> MultimodalSessionService:
+    service = getattr(request.app.state, "mm_sessions", None)
+    if service is None:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "DocIR 附件解析尚未启用",
+        )
+    return service
+
+
+def _attachment_out(item) -> dict:
+    document = item.document
+    return {
+        "id": document.document_id,
+        "filename": document.source.filename,
+        "mode": item.mode.value,
+        "token_count": item.token_count,
+        "element_count": len(document.elements),
+        "page_count": document.source_page_count or document.parsed_page_count,
+        "validation_status": document.validation.status.value,
+        "quality_issue_count": len(document.quality_issues),
+    }
+
+
+def _render_retrieval(response: SearchResponse) -> str:
+    parts: list[str] = []
+    for index, hit in enumerate(response.hits, start=1):
+        evidence = hit.evidence[0] if hit.evidence else None
+        source = evidence.document_name if evidence is not None else "附件"
+        location = ""
+        if evidence is not None and evidence.locators:
+            locator = evidence.locators[0]
+            label = locator.get("label") or locator.get("container_id")
+            if label:
+                location = f" · {label}"
+        parts.append(f"## 命中 {index}：{source}{location}\n\n{hit.context_text}")
+    return "\n\n".join(parts)
+
+
+def _attachment_context(
+    request: Request,
+    conversation_id: str,
+    attachment_ids: list[str],
+    query: str,
+) -> str:
+    if not attachment_ids:
+        return ""
+    service = _mm_sessions(request)
+    sections: list[str] = []
+    for attachment_id in dict.fromkeys(attachment_ids):
+        try:
+            value = service.context_for(conversation_id, attachment_id, query)
+        except KeyError as error:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "附件不存在或不属于当前对话",
+            ) from error
+        sections.append(value if isinstance(value, str) else _render_retrieval(value))
+    merged = "\n\n".join(sections)
+    if len(merged) > MAX_ATTACHMENT_CONTEXT_CHARS:
+        merged = merged[:MAX_ATTACHMENT_CONTEXT_CHARS] + "\n\n[附件上下文已按预算截断]"
+    return merged
 
 
 def _turn_coordinator(request: Request) -> ConversationTurnCoordinator:
@@ -194,10 +267,11 @@ def _prepare_message(
     conversation_mode = (
         settings.default_conversation_mode if settings is not None else "normal"
     )
+    workspace_type = conversation.get("workspace_type", "learning")
     kp_resolver = getattr(request.app.state, "kp_resolver", None)
     kp_matches = (
         kp_resolver.resolve(body.content, limit=3)
-        if kp_resolver is not None
+        if kp_resolver is not None and workspace_type == "learning"
         else []
     )
     resolved_kp_ids = [match.kp_id for match in kp_matches]
@@ -210,7 +284,7 @@ def _prepare_message(
     # isolated 会话不读取长期记忆 不构建画像快照
     user_profile_context = (
         None
-        if conversation_mode == "isolated"
+        if conversation_mode == "isolated" or workspace_type != "learning"
         else request.app.state.profile_builder.build(
             ProfileQuery(
                 user_id=user.id,
@@ -236,10 +310,13 @@ def _prepare_message(
         group_custom_instruction=group_custom_instruction,
         conversation_summary=conversation_summary or "",
         conversation_mode=conversation_mode,
+        workspace_type=workspace_type,
     )
 
 
-def _build_prompt_context(ctx: MessageContext) -> PromptContext:
+def _build_prompt_context(
+    ctx: MessageContext, *, attachment_context: str = ""
+) -> PromptContext:
     """将 MessageContext 收敛为 PromptContext 供 agent 构建提示词
 
     Args:
@@ -258,6 +335,8 @@ def _build_prompt_context(ctx: MessageContext) -> PromptContext:
         group_custom_instruction=ctx.group_custom_instruction,
         conversation_summary=ctx.conversation_summary,
         conversation_mode=ctx.conversation_mode,
+        attachment_context=attachment_context,
+        workspace_type=ctx.workspace_type,
     )
 
 
@@ -265,9 +344,20 @@ def _build_prompt_context(ctx: MessageContext) -> PromptContext:
 def list_conversations(
     request: Request,
     session: CurrentSession,
+    workspace_type: str | None = None,
 ) -> list[dict]:
     chat_store: ChatStore = request.app.state.chat_store
-    return chat_store.list_conversations(session.user_id)
+    if workspace_type is not None:
+        user_store: UserStore = request.app.state.user_store
+        user = user_store.get_by_id(session.user_id)
+        if user is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "user no longer exists")
+        if not WorkspaceAccessPolicy.can_access(user.account_role, workspace_type):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "workspace access denied")
+    return chat_store.list_conversations(
+        session.user_id,
+        workspace_type=workspace_type,
+    )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -278,11 +368,29 @@ def create_conversation(
 ) -> dict:
     body = body or ConversationCreateRequest()
     _validate_group_owned(request, body.group_id, session)
+    user_store: UserStore = request.app.state.user_store
+    user = user_store.get_by_id(session.user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "user no longer exists")
+    if not WorkspaceAccessPolicy.can_access(user.account_role, body.workspace_type):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "workspace access denied")
+    if body.research_project_id is not None:
+        project_store: ResearchProjectStore = request.app.state.research_project_store
+        project = project_store.get_project(body.research_project_id, session.user_id)
+        if project is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "research project not found")
+        if project["status"] != "active":
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "archived research project cannot accept new conversations",
+            )
     chat_store: ChatStore = request.app.state.chat_store
     return chat_store.create_conversation(
         session.user_id,
         title=body.title,
         group_id=body.group_id,
+        workspace_type=body.workspace_type,
+        research_project_id=body.research_project_id,
     )
 
 
@@ -330,7 +438,7 @@ def update_conversation(
     response_class=Response,
     response_model=None,
 )
-def delete_conversation(
+async def delete_conversation(
     conversation_id: str,
     request: Request,
     session: CurrentSession,
@@ -338,6 +446,64 @@ def delete_conversation(
     _load_owned(request, conversation_id, session)
     chat_store: ChatStore = request.app.state.chat_store
     chat_store.delete_conversation(conversation_id)
+    mm_sessions = getattr(request.app.state, "mm_sessions", None)
+    if mm_sessions is not None:
+        await mm_sessions.clear(conversation_id)
+
+
+@router.post("/{conversation_id}/attachments", status_code=status.HTTP_201_CREATED)
+async def upload_attachment(
+    conversation_id: str,
+    request: Request,
+    session: CurrentSession,
+    file: Annotated[UploadFile, File()],
+) -> dict:
+    _load_owned(request, conversation_id, session)
+    filename = Path((file.filename or "attachment").replace("\\", "/")).name
+    suffix = Path(filename).suffix.lower()
+    if suffix not in SUPPORTED_SOURCE_SUFFIXES:
+        supported = "、".join(sorted(item.lstrip(".") for item in SUPPORTED_SOURCE_SUFFIXES))
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"DocIR 不支持该文件类型；支持：{supported}",
+        )
+    data = await file.read(MAX_ATTACHMENT_BYTES + 1)
+    await file.close()
+    if not data:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "文件为空")
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "文件不能超过 15 MB")
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="esa-attachment-") as temporary:
+            source = Path(temporary) / filename
+            source.write_bytes(data)
+            prepared = await _mm_sessions(request).prepare(
+                conversation_id,
+                [source],
+            )
+    except (FileNotFoundError, ValueError) as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "DocIR 解析附件失败") from error
+    return _attachment_out(prepared[0])
+
+
+@router.delete(
+    "/{conversation_id}/attachments/{attachment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
+async def delete_attachment(
+    conversation_id: str,
+    attachment_id: str,
+    request: Request,
+    session: CurrentSession,
+) -> None:
+    _load_owned(request, conversation_id, session)
+    if not await _mm_sessions(request).remove(conversation_id, attachment_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "附件不存在")
 
 
 @router.get("/{conversation_id}/messages")
@@ -362,6 +528,9 @@ async def send_message(
     _load_owned(request, conversation_id, session)
     lease = await _acquire_turn(request, conversation_id)
     async with lease:
+        attachment_context = _attachment_context(
+            request, conversation_id, body.attachment_ids, body.content
+        )
         ctx = _prepare_message(request, conversation_id, body, session)
         chat_store: ChatStore = request.app.state.chat_store
         agent: Agent = request.app.state.agent
@@ -370,7 +539,9 @@ async def send_message(
             body.content,
             ctx.user.username,
             history=ctx.history,
-            prompt_ctx=_build_prompt_context(ctx),
+            prompt_ctx=_build_prompt_context(
+                ctx, attachment_context=attachment_context
+            ),
             total_weeks=ctx.user.total_weeks,
         )
 
@@ -391,10 +562,15 @@ async def stream_message(
     _load_owned(request, conversation_id, session)
     lease = await _acquire_turn(request, conversation_id)
     try:
+        attachment_context = _attachment_context(
+            request, conversation_id, body.attachment_ids, body.content
+        )
         ctx = _prepare_message(request, conversation_id, body, session)
         chat_store: ChatStore = request.app.state.chat_store
         agent: Agent = request.app.state.agent
-        prompt_ctx = _build_prompt_context(ctx)
+        prompt_ctx = _build_prompt_context(
+            ctx, attachment_context=attachment_context
+        )
     except BaseException:
         await lease.release()
         raise

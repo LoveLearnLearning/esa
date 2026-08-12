@@ -597,6 +597,16 @@ def test_transformers_embedding_uses_bounded_batches(
     assert batches == [["a", "bb"], ["ccc"]]
 
 
+def test_transformers_embedding_runtime_device_does_not_change_index_identity() -> None:
+    default = TransformersEmbeddingProvider(device="cuda")
+    remapped = TransformersEmbeddingProvider(
+        device="cuda",
+        runtime_device="cuda:4",
+    )
+
+    assert remapped.configuration_fingerprint == default.configuration_fingerprint
+
+
 def test_transformers_embedding_rejects_invalid_batch_size() -> None:
     with pytest.raises(ValueError, match="batch_size must be positive"):
         TransformersEmbeddingProvider(batch_size=0)

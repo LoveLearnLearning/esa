@@ -1,12 +1,16 @@
 // 输入区 —— 固定底部 顶部 1px 分割线 内容最大宽 820
 // Enter 发送 Shift+Enter 换行 发送按钮胶囊 无内容或生成中时禁用
 
+import 'dart:async';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../models/task_mode.dart';
+import '../models/models.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 import 'esa_markdown.dart';
@@ -18,12 +22,30 @@ class Composer extends StatefulWidget {
     required this.onSend,
     this.taskMode,
     this.onClearTaskMode,
+    this.conversationId,
+    this.onUploadAttachment,
+    this.onRemoveAttachment,
+    this.onSendWithAttachment,
   });
 
   final bool busy;
   final void Function(String text, bool markdown) onSend;
   final TaskMode? taskMode;
   final VoidCallback? onClearTaskMode;
+  final String? conversationId;
+  final Future<DocumentAttachment> Function(String filename, Uint8List bytes)?
+  onUploadAttachment;
+  final Future<void> Function(
+    DocumentAttachment attachment,
+    String conversationId,
+  )?
+  onRemoveAttachment;
+  final void Function(
+    String text,
+    bool markdown,
+    DocumentAttachment attachment,
+  )?
+  onSendWithAttachment;
 
   @override
   State<Composer> createState() => _ComposerState();
@@ -32,7 +54,9 @@ class Composer extends StatefulWidget {
 class _ComposerState extends State<Composer> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
-  String? _attachment; // 模拟附件文件名
+  DocumentAttachment? _attachment;
+  String? _attachmentConversationId;
+  bool _uploadingAttachment = false;
   bool _markdownMode = false;
 
   @override
@@ -42,7 +66,20 @@ class _ComposerState extends State<Composer> {
     super.dispose();
   }
 
-  bool get _canSend => !widget.busy && _controller.text.trim().isNotEmpty;
+  bool get _canSend =>
+      !widget.busy &&
+      !_uploadingAttachment &&
+      (_controller.text.trim().isNotEmpty || _attachment != null);
+
+  @override
+  void didUpdateWidget(covariant Composer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.conversationId == widget.conversationId ||
+        _attachment == null) {
+      return;
+    }
+    _removeAttachment();
+  }
 
   /// 手机浏览器上软键盘行为与桌面不同：软键盘的回车会以 Enter KeyEvent
   /// 到达（且没有 Shift 可按），应当换行而不是发送；发送后应收起键盘看
@@ -54,9 +91,20 @@ class _ComposerState extends State<Composer> {
 
   void _send() {
     if (!_canSend) return;
-    widget.onSend(_controller.text, _markdownMode);
+    final text = _controller.text.trim().isEmpty
+        ? '请分析这个附件，并给出结构化结论。'
+        : _controller.text;
+    final attachment = _attachment;
+    if (attachment != null && widget.onSendWithAttachment != null) {
+      widget.onSendWithAttachment!(text, _markdownMode, attachment);
+    } else {
+      widget.onSend(text, _markdownMode);
+    }
     _controller.clear();
-    setState(() => _attachment = null);
+    setState(() {
+      _attachment = null;
+      _attachmentConversationId = null;
+    });
     if (_mobileBrowser) {
       // 收起键盘，把屏幕留给流式回答
       _focus.unfocus();
@@ -109,7 +157,7 @@ class _ComposerState extends State<Composer> {
                 _taskModeCard(context, widget.taskMode!),
                 const SizedBox(height: EsaSpace.sm),
               ],
-              if (_attachment != null) ...[
+              if (_attachment != null || _uploadingAttachment) ...[
                 _attachmentChip(context),
                 const SizedBox(height: EsaSpace.sm),
               ],
@@ -212,15 +260,41 @@ class _ComposerState extends State<Composer> {
           children: [
             Icon(LucideIcons.file, size: 14, color: context.n.n600),
             const SizedBox(width: 8),
-            Text(
-              _attachment!,
-              style: TextStyle(fontSize: 12.5, color: context.scheme.onSurface),
-            ),
+            if (_uploadingAttachment) ...[
+              const SizedBox.square(
+                dimension: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 8),
+              const Text('正在用 DocIR 解析…'),
+            ] else ...[
+              Flexible(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _attachment!.filename,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: context.scheme.onSurface,
+                      ),
+                    ),
+                    Text(
+                      '${_attachment!.modeLabel} · ${_attachment!.elementCount} 个元素',
+                      style: TextStyle(fontSize: 10.5, color: context.n.n600),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => setState(() => _attachment = null),
-              child: Icon(LucideIcons.x, size: 14, color: context.n.n600),
-            ),
+            if (!_uploadingAttachment)
+              GestureDetector(
+                onTap: _removeAttachment,
+                child: Icon(LucideIcons.x, size: 14, color: context.n.n600),
+              ),
           ],
         ),
       ),
@@ -263,10 +337,7 @@ class _ComposerState extends State<Composer> {
 
   Widget _attachButton(BuildContext context) {
     return InkWell(
-      // 附件上传后端尚未支持；明确提示而不是假装添加成功
-      onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('附件功能即将开放，课表文件请到课表页导入')),
-      ),
+      onTap: widget.busy || _uploadingAttachment ? null : _pickAttachment,
       customBorder: const CircleBorder(),
       child: Container(
         width: 32,
@@ -279,6 +350,68 @@ class _ComposerState extends State<Composer> {
         child: Icon(LucideIcons.paperclip, size: 16, color: context.n.n600),
       ),
     );
+  }
+
+  Future<void> _pickAttachment() async {
+    if (widget.onUploadAttachment == null) return;
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          'pdf',
+          'docx',
+          'pptx',
+          'xlsx',
+          'png',
+          'jpg',
+          'jpeg',
+          'webp',
+          'bmp',
+          'gif',
+          'tif',
+          'tiff',
+        ],
+        withData: true,
+        cancelUploadOnWindowBlur: false,
+      );
+      final file = result?.files.singleOrNull;
+      if (file == null || !mounted) return;
+      if (file.size > 15 * 1024 * 1024) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('文件不能超过 15 MB')));
+        return;
+      }
+      setState(() => _uploadingAttachment = true);
+      final bytes = file.bytes ?? await file.xFile.readAsBytes();
+      final attachment = await widget.onUploadAttachment!(file.name, bytes);
+      if (!mounted) return;
+      setState(() {
+        _attachment = attachment;
+        _attachmentConversationId = widget.conversationId;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('附件解析失败：$error')));
+    } finally {
+      if (mounted) setState(() => _uploadingAttachment = false);
+    }
+  }
+
+  void _removeAttachment() {
+    final attachment = _attachment;
+    final conversationId = _attachmentConversationId;
+    setState(() {
+      _attachment = null;
+      _attachmentConversationId = null;
+    });
+    if (attachment != null &&
+        conversationId != null &&
+        widget.onRemoveAttachment != null) {
+      unawaited(widget.onRemoveAttachment!(attachment, conversationId));
+    }
   }
 
   Widget _markdownButton(BuildContext context) {

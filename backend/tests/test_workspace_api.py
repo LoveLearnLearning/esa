@@ -1,0 +1,217 @@
+from fastapi.testclient import TestClient
+
+from backend.agent.agent import Agent, call_workspace_tool, tool_schemas_for_workspace
+from backend.core.services.auth_service import AuthService
+from backend.core.stores.chat_store import ChatStore
+from backend.core.stores.group_store import GroupStore
+from backend.core.stores.research_project_store import ResearchProjectStore
+from backend.core.stores.session_store import SessionStore
+from backend.core.stores.user_presence_store import UserPresenceStore
+from backend.core.stores.user_store import UserStore
+from backend.core.web.webAPI import create_app
+from backend.core.utils.models import PromptContext
+from backend.core.workspaces import workspace_prompt
+
+
+def _app(tmp_path):
+    database = tmp_path / "workspace.db"
+    user_store = UserStore(database)
+    session_store = SessionStore(database)
+    app = create_app(
+        app_lifespan=None,
+        trusted_hosts=("testserver",),
+        forwarded_allow_ips=("testclient",),
+        enable_legacy_routes=False,
+    )
+    app.state.user_store = user_store
+    app.state.session_store = session_store
+    app.state.user_presence_store = UserPresenceStore(database)
+    app.state.group_store = GroupStore(database)
+    app.state.chat_store = ChatStore(database)
+    app.state.research_project_store = ResearchProjectStore(database)
+    app.state.auth = AuthService(user_store, session_store)
+    return app
+
+
+def _register_and_login(
+    client: TestClient,
+    username: str,
+    account_role: str,
+) -> dict[str, str]:
+    # Registration is covered by the email-verification API suite. These
+    # workspace tests seed a verified identity through the domain service.
+    registered = client.app.state.auth.register(
+        username,
+        "correct-password",
+        account_role,
+        email=f"{username}@example.test",
+        email_verified_at="2026-08-12T00:00:00+00:00",
+    )
+    assert registered is not None
+    assert registered.account_role == account_role
+    logged_in = client.post(
+        "/api/auth/login",
+        json={"username": username, "password": "correct-password"},
+    )
+    assert logged_in.status_code == 200
+    payload = logged_in.json()
+    assert payload["account_role"] == account_role
+    return {
+        "Authorization": f"Bearer {payload['session_id']}"
+    }
+
+
+def test_workspace_manifest_uses_backend_role_policy(tmp_path):
+    client = TestClient(_app(tmp_path))
+    student = _register_and_login(client, "student", "student")
+    teacher = _register_and_login(client, "teacher", "teacher")
+
+    student_manifest = client.get("/api/workspaces", headers=student)
+    teacher_manifest = client.get("/api/workspaces", headers=teacher)
+
+    assert student_manifest.status_code == 200
+    assert [
+        item["type"] for item in student_manifest.json()["workspaces"]
+    ] == ["learning", "research"]
+    assert student_manifest.json()["default_workspace"] == "learning"
+
+    assert teacher_manifest.status_code == 200
+    assert [
+        item["type"] for item in teacher_manifest.json()["workspaces"]
+    ] == ["teaching", "research"]
+    assert teacher_manifest.json()["default_workspace"] == "teaching"
+
+
+def test_conversations_are_bound_to_an_authorized_workspace(tmp_path):
+    client = TestClient(_app(tmp_path))
+    student = _register_and_login(client, "student", "student")
+
+    denied = client.post(
+        "/api/conversations",
+        headers=student,
+        json={"title": "教师对话", "workspace_type": "teaching"},
+    )
+    assert denied.status_code == 403
+
+    learning = client.post(
+        "/api/conversations",
+        headers=student,
+        json={"title": "学习对话", "workspace_type": "learning"},
+    )
+    research = client.post(
+        "/api/conversations",
+        headers=student,
+        json={"title": "科研对话", "workspace_type": "research"},
+    )
+    assert learning.status_code == 201
+    assert research.status_code == 201
+    assert learning.json()["workspace_type"] == "learning"
+    assert research.json()["workspace_type"] == "research"
+
+    listed = client.get(
+        "/api/conversations?workspace_type=research",
+        headers=student,
+    )
+    assert listed.status_code == 200
+    assert [item["title"] for item in listed.json()] == ["科研对话"]
+
+
+def test_research_projects_are_user_scoped_and_bind_research_chats(tmp_path):
+    client = TestClient(_app(tmp_path))
+    alice = _register_and_login(client, "alice", "student")
+    bob = _register_and_login(client, "bob", "teacher")
+
+    created = client.post(
+        "/api/research/projects",
+        headers=alice,
+        json={"name": "多智能体科研", "description": "跟踪前沿与写作"},
+    )
+    assert created.status_code == 201
+    project = created.json()
+    assert project["status"] == "active"
+
+    alice_projects = client.get("/api/research/projects", headers=alice)
+    bob_projects = client.get("/api/research/projects", headers=bob)
+    assert [item["project_id"] for item in alice_projects.json()] == [
+        project["project_id"]
+    ]
+    assert bob_projects.json() == []
+
+    bound = client.post(
+        "/api/conversations",
+        headers=alice,
+        json={
+            "title": "项目讨论",
+            "workspace_type": "research",
+            "research_project_id": project["project_id"],
+        },
+    )
+    assert bound.status_code == 201
+    assert bound.json()["research_project_id"] == project["project_id"]
+
+    cross_user = client.post(
+        "/api/conversations",
+        headers=bob,
+        json={
+            "title": "越权项目",
+            "workspace_type": "research",
+            "research_project_id": project["project_id"],
+        },
+    )
+    assert cross_user.status_code == 404
+
+    wrong_workspace = client.post(
+        "/api/conversations",
+        headers=alice,
+        json={
+            "title": "错误绑定",
+            "workspace_type": "learning",
+            "research_project_id": project["project_id"],
+        },
+    )
+    assert wrong_workspace.status_code == 422
+
+    archived = client.patch(
+        f"/api/research/projects/{project['project_id']}",
+        headers=alice,
+        json={"status": "archived"},
+    )
+    assert archived.status_code == 200
+    assert archived.json()["status"] == "archived"
+
+    archived_binding = client.post(
+        "/api/conversations",
+        headers=alice,
+        json={
+            "workspace_type": "research",
+            "research_project_id": project["project_id"],
+        },
+    )
+    assert archived_binding.status_code == 409
+
+
+def test_research_workspace_prompt_does_not_inject_learning_pedagogy():
+    agent = Agent.__new__(Agent)
+    messages, _ = agent._prepare_run(
+        "帮我整理这一领域的研究趋势",
+        "researcher",
+        [],
+        PromptContext(workspace_type="research"),
+    )
+
+    prompt = messages[0]["content"]
+    assert workspace_prompt("research") in prompt
+    assert "# 教学策略路由" not in prompt
+    assert "# 自动启用的策略 Skill" not in prompt
+
+    research_tool_names = {
+        schema["function"]["name"]
+        for schema in tool_schemas_for_workspace("research")
+    }
+    assert "arxiv_search" in research_tool_names
+    assert "web_search" in research_tool_names
+    assert "get_mastery_report" not in research_tool_names
+    assert "retrieve_knowledge" not in research_tool_names
+    assert "unavailable in research workspace" in str(
+        call_workspace_tool("research", "get_mastery_report", {})
+    )

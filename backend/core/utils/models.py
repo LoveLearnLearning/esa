@@ -39,6 +39,7 @@ class UserRecord:
     username: str
     password_hash: str
     status: str
+    account_role: str = "student"
 
     preferred_style: str = "concise"
     preferred_tone: str = "friendly"
@@ -52,6 +53,10 @@ class UserRecord:
 
     learning_profile_enabled: bool = True
     inferred_profile_enabled: bool = True
+
+    # 邮箱身份：新用户注册时必填并已验证；老用户为 None 直至主动绑定
+    email: str | None = None
+    email_verified_at: str | None = None
 
 
 @dataclass
@@ -103,6 +108,8 @@ class PromptContext:
     group_custom_instruction: str = ""
     conversation_summary: str = ""
     conversation_mode: str = "normal"
+    attachment_context: str = ""
+    workspace_type: str = "learning"
 
     # 由 Agent._prepare_run 内部生成，不属于用户可写偏好。
     pedagogy_context: str = ""
@@ -121,3 +128,4 @@ class MessageContext:
     group_custom_instruction: str
     conversation_summary: str = ""
     conversation_mode: str = "normal"
+    workspace_type: str = "learning"

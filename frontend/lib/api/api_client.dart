@@ -1,5 +1,5 @@
 // ESA 后端 REST 客户端 —— 按 API.md 对齐
-// Base URL 可用 --dart-define=ESA_API_BASE=http://x.x.x.x:8000 覆盖
+// Base URL 可用 --dart-define=ESA_API_BASE=https://example.com/api 覆盖
 // 认证：登录拿到 session_id 之后所有请求带 Authorization: Bearer <session_id>
 //
 // 当 config.dart 里 kOfflineMode == true 时 所有方法走本地假数据 完全不发网络请求
@@ -10,6 +10,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../config.dart';
 import '../models/models.dart';
@@ -36,18 +37,28 @@ class ChatStreamEvent {
 
 class ApiClient {
   ApiClient({String? baseUrl})
-    : baseUrl =
-          baseUrl ??
-          const String.fromEnvironment(
-            'ESA_API_BASE',
-            defaultValue: 'http://115.29.197.244:51024',
-          );
+    : baseUrl = _normalizeBaseUrl(baseUrl ?? _defaultBaseUrl);
+
+  static const String _configuredBaseUrl = String.fromEnvironment(
+    'ESA_API_BASE',
+  );
+
+  static String get _defaultBaseUrl {
+    if (_configuredBaseUrl.isNotEmpty) return _configuredBaseUrl;
+    // Web 始终同源访问 Nginx；原生客户端使用同一个 HTTPS 公网入口。
+    return kIsWeb ? '/api' : 'https://esa.lovelearnlearning.cn/api';
+  }
+
+  static String _normalizeBaseUrl(String value) =>
+      value.endsWith('/') ? value.substring(0, value.length - 1) : value;
 
   final String baseUrl;
 
   String? sessionId;
   String? userId;
   String? username;
+  String? email;
+  String accountRole = 'student';
   DateTime? sessionExpiresAt;
 
   bool get isLoggedIn => sessionId != null;
@@ -80,14 +91,64 @@ class ApiClient {
   }
 
   // ---------- 认证 ----------
-  Future<void> register(String username, String password) async {
+  Future<int> sendRegistrationCode(String email) async {
+    if (kOfflineMode) return 60;
+    final r = await http.post(
+      _uri('/auth/email/send-code'),
+      headers: _headers(),
+      body: jsonEncode({'email': email}),
+    );
+    if (r.statusCode != 202) _fail(r);
+    final data = _decode(r) as Map<String, dynamic>;
+    return data['retry_after_seconds'] as int? ?? 60;
+  }
+
+  Future<void> register(
+    String email,
+    String verificationCode,
+    String username,
+    String password,
+    String accountRole,
+  ) async {
     if (kOfflineMode) return; // 离线模式注册直接成功
     final r = await http.post(
       _uri('/auth/register'),
       headers: _headers(),
-      body: jsonEncode({'username': username, 'password': password}),
+      body: jsonEncode({
+        'email': email,
+        'verification_code': verificationCode,
+        'username': username,
+        'password': password,
+        'account_role': accountRole,
+      }),
     );
     if (r.statusCode != 201) _fail(r);
+  }
+
+  Future<int> sendBindEmailCode(String email) async {
+    if (kOfflineMode) return 60;
+    final r = await http.post(
+      _uri('/auth/email/bind/send-code'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'email': email}),
+    );
+    if (r.statusCode != 202) _fail(r);
+    final data = _decode(r) as Map<String, dynamic>;
+    return data['retry_after_seconds'] as int? ?? 60;
+  }
+
+  Future<void> bindEmail(String email, String verificationCode) async {
+    if (kOfflineMode) {
+      this.email = email;
+      return;
+    }
+    final r = await http.post(
+      _uri('/auth/email/bind'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'email': email, 'verification_code': verificationCode}),
+    );
+    if (r.statusCode != 200) _fail(r);
+    this.email = (_decode(r) as Map<String, dynamic>)['email'] as String;
   }
 
   Future<void> login(String username, String password) async {
@@ -105,6 +166,8 @@ class ApiClient {
     sessionId = data['session_id'] as String;
     userId = data['user_id'] as String;
     this.username = data['username'] as String;
+    email = data['email'] as String?;
+    accountRole = data['account_role'] as String? ?? 'student';
     sessionExpiresAt = DateTime.tryParse(data['expires_at'] as String? ?? '');
   }
 
@@ -113,6 +176,7 @@ class ApiClient {
       sessionId = null;
       userId = null;
       username = null;
+      email = null;
       sessionExpiresAt = null;
       return;
     }
@@ -125,6 +189,7 @@ class ApiClient {
       sessionId = null;
       userId = null;
       username = null;
+      email = null;
       sessionExpiresAt = null;
     }
   }
@@ -382,6 +447,14 @@ class ApiClient {
       'webp' => 'image/webp',
       'bmp' => 'image/bmp',
       'heic' || 'heif' => 'image/heic',
+      'gif' => 'image/gif',
+      'tif' || 'tiff' => 'image/tiff',
+      'docx' =>
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'pptx' =>
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'xlsx' =>
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'html' || 'htm' => 'text/html',
       _ => 'application/octet-stream',
     };
@@ -424,10 +497,14 @@ class ApiClient {
         courses: (data['courses'] as List? ?? const [])
             .whereType<Map>()
             .map(
-              (item) => ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
+              (item) =>
+                  ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
             )
             .toList(),
         skippedCount: (data['skipped_count'] as num?)?.toInt() ?? 0,
+        documentPipeline:
+            (data['document'] as Map?)?['pipeline']?.toString() ?? 'legacy',
+        documentId: (data['document'] as Map?)?['document_id']?.toString(),
       );
     } on TimeoutException {
       throw ApiException(0, '课表识别超时，请稍后重试');
@@ -530,16 +607,69 @@ class ApiClient {
   }
 
   // ---------- 对话 ----------
+  Future<WorkspaceManifest> getWorkspaceManifest() async {
+    if (kOfflineMode) {
+      final types = accountRole == 'teacher'
+          ? [WorkspaceType.teaching, WorkspaceType.research]
+          : [WorkspaceType.learning, WorkspaceType.research];
+      return WorkspaceManifest(
+        accountRole: accountRole,
+        defaultWorkspace: types.first,
+        workspaces: types
+            .map(
+              (type) => WorkspaceDescriptor(
+                type: type,
+                name: type.label,
+                description: '',
+                capabilities: const ['chat'],
+              ),
+            )
+            .toList(),
+      );
+    }
+    final response = await http.get(
+      _uri('/workspaces'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return WorkspaceManifest.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
   Future<List<ChatConversation>> listConversations() async {
-    if (kOfflineMode) return List.of(_offConvs);
+    if (kOfflineMode) {
+      return _offConvs
+          .where((item) => item.workspaceType == WorkspaceType.learning)
+          .toList();
+    }
     final r = await http.get(
-      _uri('/conversations'),
+      _uri('/conversations?workspace_type=learning'),
       headers: _headers(auth: true),
     );
     if (r.statusCode != 200) _fail(r);
     final list = _decode(r) as List;
     return list
         .map((e) => ChatConversation.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<ChatConversation>> listWorkspaceConversations(
+    WorkspaceType workspace,
+  ) async {
+    if (kOfflineMode) {
+      return _offConvs
+          .where((item) => item.workspaceType == workspace)
+          .toList();
+    }
+    final response = await http.get(
+      _uri('/conversations?workspace_type=${workspace.wireName}'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    final list = _decode(response) as List;
+    return list
+        .map((item) => ChatConversation.fromJson(item as Map<String, dynamic>))
         .toList();
   }
 
@@ -551,6 +681,266 @@ class ApiClient {
     );
     if (r.statusCode != 201) _fail(r);
     return ChatConversation.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<ChatConversation> createWorkspaceConversation(
+    WorkspaceType workspace, {
+    String? researchProjectId,
+  }) async {
+    if (workspace == WorkspaceType.learning && researchProjectId == null) {
+      return createConversation();
+    }
+    if (kOfflineMode) {
+      return _offlineNewConversation(
+        workspaceType: workspace,
+        researchProjectId: researchProjectId,
+      );
+    }
+    final body = <String, String>{'workspace_type': workspace.wireName};
+    if (researchProjectId case final projectId?) {
+      body['research_project_id'] = projectId;
+    }
+    final response = await http.post(
+      _uri('/conversations'),
+      headers: _headers(auth: true),
+      body: jsonEncode(body),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return ChatConversation.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
+  Future<List<ResearchProject>> listResearchProjects() async {
+    if (kOfflineMode) return List.of(_offResearchProjects);
+    final response = await http.get(
+      _uri('/research/projects'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .map((item) => ResearchProject.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<ResearchProject> createResearchProject(
+    String name,
+    String description,
+  ) async {
+    if (kOfflineMode) {
+      final project = ResearchProject(
+        id: _offId(),
+        name: name,
+        description: description,
+        status: 'active',
+        updatedAt: DateTime.now(),
+      );
+      _offResearchProjects.insert(0, project);
+      return project;
+    }
+    final response = await http.post(
+      _uri('/research/projects'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'name': name, 'description': description}),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return ResearchProject.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
+  Future<void> archiveResearchProject(String id) async {
+    if (kOfflineMode) {
+      _offResearchProjects.removeWhere((item) => item.id == id);
+      return;
+    }
+    final response = await http.patch(
+      _uri('/research/projects/$id'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'status': 'archived'}),
+    );
+    if (response.statusCode != 200) _fail(response);
+  }
+
+  Future<List<FrontierTrackingJob>> listFrontierJobs(String projectId) async {
+    final response = await http.get(
+      _uri('/research/projects/$projectId/frontier-jobs'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map(
+          (item) =>
+              FrontierTrackingJob.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+  }
+
+  Future<FrontierTrackingJob> createFrontierJob(
+    String projectId,
+    String query, {
+    int timeWindowYears = 5,
+    int maxResults = 20,
+  }) async {
+    final response = await http.post(
+      _uri('/research/projects/$projectId/frontier-jobs'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'query': query,
+        'time_window_years': timeWindowYears,
+        'max_results': maxResults,
+      }),
+    );
+    if (response.statusCode != 202) _fail(response);
+    return FrontierTrackingJob.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
+  Future<FrontierTrackingJob> getFrontierJob(String jobId) async {
+    final response = await http.get(
+      _uri('/research/frontier-jobs/$jobId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return FrontierTrackingJob.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
+  Future<List<ResearchDocument>> listResearchDocuments(String projectId) async {
+    final response = await http.get(
+      _uri('/research/projects/$projectId/documents'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map(
+          (item) => ResearchDocument.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+  }
+
+  Future<ResearchDocument> createResearchDocument({
+    required String projectId,
+    required String title,
+    required String type,
+    String content = '',
+  }) async {
+    final response = await http.post(
+      _uri('/research/projects/$projectId/documents'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'title': title,
+        'document_type': type,
+        'content': content,
+      }),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return ResearchDocument.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
+  Future<ResearchDocument> getResearchDocument(String documentId) async {
+    final response = await http.get(
+      _uri('/research/documents/$documentId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return ResearchDocument.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
+  Future<ResearchWritingJob> createWritingJob({
+    required String documentId,
+    required String operation,
+    String instruction = '',
+    String sourceText = '',
+  }) async {
+    final response = await http.post(
+      _uri('/research/documents/$documentId/writing-jobs'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'operation': operation,
+        'instruction': instruction,
+        'source_text': sourceText,
+      }),
+    );
+    if (response.statusCode != 202) _fail(response);
+    return ResearchWritingJob.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
+  Future<ResearchWritingJob> getWritingJob(String jobId) async {
+    final response = await http.get(
+      _uri('/research/writing-jobs/$jobId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return ResearchWritingJob.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
+  Future<List<ResearchDataset>> listResearchDatasets(String projectId) async {
+    final response = await http.get(
+      _uri('/research/projects/$projectId/datasets'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map(
+          (item) => ResearchDataset.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+  }
+
+  Future<ResearchDataset> uploadResearchDataset({
+    required String projectId,
+    required String name,
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      _uri('/research/projects/$projectId/datasets'),
+    );
+    if (sessionId != null) {
+      request.headers['Authorization'] = 'Bearer $sessionId';
+    }
+    request.fields['name'] = name;
+    request.files.add(
+      http.MultipartFile.fromBytes('file', bytes, filename: filename),
+    );
+    final streamed = await request.send().timeout(const Duration(minutes: 2));
+    final response = await http.Response.fromStream(streamed);
+    if (response.statusCode != 201) _fail(response);
+    return ResearchDataset.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
+  Future<ResearchAnalysisJob> createAnalysisJob({
+    required String datasetId,
+    required String type,
+    Map<String, String> parameters = const {},
+  }) async {
+    final response = await http.post(
+      _uri('/research/datasets/$datasetId/analysis-jobs'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'analysis_type': type, 'parameters': parameters}),
+    );
+    if (response.statusCode != 202) _fail(response);
+    return ResearchAnalysisJob.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
+  Future<ResearchAnalysisJob> getAnalysisJob(String jobId) async {
+    final response = await http.get(
+      _uri('/research/analysis-jobs/$jobId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return ResearchAnalysisJob.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
   }
 
   Future<void> renameConversation(String id, String title) async {
@@ -608,6 +998,72 @@ class ApiClient {
         .toList();
   }
 
+  Future<List<ChatMessage>> sendMessageWithAttachments(
+    String id,
+    String content,
+    List<String> attachmentIds,
+  ) async {
+    final r = await http.post(
+      _uri('/conversations/$id/messages'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'content': content, 'attachment_ids': attachmentIds}),
+    );
+    if (r.statusCode != 200) _fail(r);
+    final list = _decode(r) as List;
+    return list
+        .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<DocumentAttachment> uploadConversationAttachment({
+    required String conversationId,
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      _uri('/conversations/$conversationId/attachments'),
+    );
+    if (sessionId != null) {
+      request.headers['Authorization'] = 'Bearer $sessionId';
+    }
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+        contentType: MediaType.parse(_mimeFor(filename, bytes)),
+      ),
+    );
+    try {
+      final streamed = await request.send().timeout(
+        const Duration(minutes: 10),
+      );
+      final response = await http.Response.fromStream(
+        streamed,
+      ).timeout(const Duration(minutes: 2));
+      if (response.statusCode != 201) _fail(response);
+      return DocumentAttachment.fromJson(
+        _decode(response) as Map<String, dynamic>,
+      );
+    } on TimeoutException {
+      throw ApiException(0, 'DocIR 解析超时，请稍后重试');
+    } on http.ClientException {
+      throw ApiException(0, '网络异常，请检查网络后重试');
+    }
+  }
+
+  Future<void> deleteConversationAttachment(
+    String conversationId,
+    String attachmentId,
+  ) async {
+    final r = await http.delete(
+      _uri('/conversations/$conversationId/attachments/$attachmentId'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204 && r.statusCode != 404) _fail(r);
+  }
+
   Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
     if (kOfflineMode) {
       final messages = await _offlineSend(id, content);
@@ -642,13 +1098,35 @@ class ApiClient {
       _fail(http.Response.bytes(bytes, response.statusCode));
     }
 
+    yield* _decodeSse(response.stream);
+  }
+
+  Stream<ChatStreamEvent> streamMessageWithAttachments(
+    String id,
+    String content,
+    List<String> attachmentIds,
+  ) async* {
+    final request =
+        http.Request('POST', _uri('/conversations/$id/messages/stream'))
+          ..headers.addAll(_headers(auth: true))
+          ..body = jsonEncode({
+            'content': content,
+            'attachment_ids': attachmentIds,
+          });
+
+    final response = await request.send();
+    if (response.statusCode != 200) {
+      final bytes = await response.stream.toBytes();
+      _fail(http.Response.bytes(bytes, response.statusCode));
+    }
+    yield* _decodeSse(response.stream);
+  }
+
+  Stream<ChatStreamEvent> _decodeSse(Stream<List<int>> stream) async* {
     String eventName = 'message';
     final dataLines = <String>[];
-
     await for (final line
-        in response.stream
-            .transform(utf8.decoder)
-            .transform(const LineSplitter())) {
+        in stream.transform(utf8.decoder).transform(const LineSplitter())) {
       if (line.isEmpty) {
         if (dataLines.isNotEmpty) {
           final decoded = jsonDecode(dataLines.join('\n'));
@@ -660,7 +1138,6 @@ class ApiClient {
         dataLines.clear();
         continue;
       }
-
       if (line.startsWith(':')) continue;
       if (line.startsWith('event:')) {
         eventName = line.substring('event:'.length).trim();
@@ -668,8 +1145,6 @@ class ApiClient {
         dataLines.add(line.substring('data:'.length).trimLeft());
       }
     }
-
-    // 兼容服务端关闭连接前没有再发送空行的情况。
     if (dataLines.isNotEmpty) {
       final decoded = jsonDecode(dataLines.join('\n'));
       if (decoded is Map<String, dynamic>) {
@@ -680,6 +1155,7 @@ class ApiClient {
 
   // ==================== 离线模式实现 ====================
   final List<ChatConversation> _offConvs = [];
+  final List<ResearchProject> _offResearchProjects = [];
   final Map<String, List<ChatMessage>> _offMsgs = {};
   int _offSeq = 0;
 
@@ -699,6 +1175,7 @@ class ApiClient {
     sessionId = 'offline-session';
     userId = 'offline-user';
     username = name.isEmpty ? '离线用户' : name;
+    email = name.contains('@') ? name : null;
     sessionExpiresAt = DateTime.now().toUtc().add(const Duration(days: 7));
     if (_offConvs.isEmpty) _seedOffline();
   }
@@ -728,11 +1205,16 @@ class ApiClient {
     _offMsgs[c2.id] = [];
   }
 
-  ChatConversation _offlineNewConversation() {
+  ChatConversation _offlineNewConversation({
+    WorkspaceType workspaceType = WorkspaceType.learning,
+    String? researchProjectId,
+  }) {
     final c = ChatConversation(
       id: _offId(),
       title: '新对话',
       updatedAt: DateTime.now(),
+      workspaceType: workspaceType,
+      researchProjectId: researchProjectId,
     );
     _offConvs.insert(0, c);
     _offMsgs[c.id] = [];

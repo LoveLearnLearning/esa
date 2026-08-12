@@ -5,13 +5,17 @@ import base64
 import io
 import json
 import re
+import tempfile
 import warnings
 from dataclasses import dataclass
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
+from backend.agent.DocIR.tools.batch_corpus import SUPPORTED_SOURCE_SUFFIXES
+from backend.agent.mm import MultimodalSessionService, render_document_markdown
 from backend.core.utils.config import AUXILIARY_MODEL_MAX_IMAGES_PER_PROMPT
 
 MAX_PDF_PAGES = AUXILIARY_MODEL_MAX_IMAGES_PER_PROMPT
@@ -26,10 +30,63 @@ class ExtractedScheduleDocument:
 
     text: str = ""
     image_data_urls: tuple[str, ...] = ()
+    pipeline: str = "legacy"
+    docir_document_id: str | None = None
+    docir_validation_status: str | None = None
+    docir_element_count: int = 0
+    docir_page_count: int = 0
 
     @property
     def is_multimodal(self) -> bool:
         return bool(self.image_data_urls)
+
+    @property
+    def metadata(self) -> dict[str, Any]:
+        return {
+            "pipeline": self.pipeline,
+            "document_id": self.docir_document_id,
+            "validation_status": self.docir_validation_status,
+            "element_count": self.docir_element_count,
+            "page_count": self.docir_page_count,
+        }
+
+
+def supports_docir_schedule(filename: str) -> bool:
+    return Path(filename).suffix.lower() in SUPPORTED_SOURCE_SUFFIXES
+
+
+async def extract_schedule_document_via_docir(
+    *,
+    mm_sessions: MultimodalSessionService,
+    session_key: str,
+    filename: str,
+    data: bytes,
+) -> ExtractedScheduleDocument:
+    """用生产 MinerU → DocIR 管线解析课表，再投影成辅助模型输入。"""
+
+    safe_name = Path(filename.replace("\\", "/")).name
+    if not supports_docir_schedule(safe_name):
+        raise ValueError("该课表文件类型不受 DocIR 支持")
+    try:
+        with tempfile.TemporaryDirectory(prefix="esa-schedule-") as temporary:
+            source = Path(temporary) / safe_name
+            source.write_bytes(data)
+            prepared = (await mm_sessions.prepare(session_key, [source]))[0]
+            document = prepared.document
+            text = render_document_markdown(document)
+    finally:
+        await mm_sessions.clear(session_key)
+
+    if not text.strip():
+        raise ValueError("DocIR 没有从文件中解析到可用内容")
+    return ExtractedScheduleDocument(
+        text=text[:120_000],
+        pipeline="docir",
+        docir_document_id=document.document_id,
+        docir_validation_status=document.validation.status.value,
+        docir_element_count=len(document.elements),
+        docir_page_count=document.source_page_count or document.parsed_page_count,
+    )
 
 
 class ExtractedScheduleCourse(BaseModel):

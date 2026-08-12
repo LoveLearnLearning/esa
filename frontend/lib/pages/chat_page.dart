@@ -36,6 +36,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _messagePointerDown = false;
   int _bottomScrollRequest = 0;
   String? _lastActiveId;
+  WorkspaceType? _lastWorkspace;
   TaskMode? _taskMode;
 
   @override
@@ -151,6 +152,10 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    if (_lastWorkspace != app.activeWorkspace) {
+      _lastWorkspace = app.activeWorkspace;
+      _taskMode = null;
+    }
     if (_lastActiveId != app.activeId) {
       _lastActiveId = app.activeId;
       _userScrollInProgress = false;
@@ -172,8 +177,13 @@ class _ChatPageState extends State<ChatPage> {
               title: app.activeConversation?.title ?? 'ESA',
               onMenu: () => _scaffoldKey.currentState?.openDrawer(),
               onNewChat: app.newConversation,
-              onLearning: () => showLearningDashboard(context),
-              onMemory: () => showMemorySheet(context),
+              workspace: app.activeWorkspace,
+              onLearning: app.activeWorkspace == WorkspaceType.learning
+                  ? () => showLearningDashboard(context)
+                  : null,
+              onMemory: app.activeWorkspace == WorkspaceType.learning
+                  ? () => showMemorySheet(context)
+                  : null,
             ),
             Expanded(
               // 触摸消息区/空状态的任意位置都收起键盘（覆盖空状态分支，
@@ -191,6 +201,7 @@ class _ChatPageState extends State<ChatPage> {
                     : app.messages.isEmpty
                     ? _EmptyState(
                         name: app.username,
+                        workspace: app.activeWorkspace,
                         selected: _taskMode,
                         onPick: (mode) => setState(() => _taskMode = mode),
                       )
@@ -199,14 +210,30 @@ class _ChatPageState extends State<ChatPage> {
             ),
             Composer(
               busy: app.busy,
+              conversationId: app.activeId,
               taskMode: _taskMode,
               onClearTaskMode: () => setState(() => _taskMode = null),
+              onUploadAttachment: (filename, bytes) =>
+                  app.uploadConversationAttachment(
+                    filename: filename,
+                    bytes: bytes,
+                  ),
+              onRemoveAttachment: app.removeConversationAttachment,
               onSend: (text, markdown) {
                 _resumeFollowing();
                 app.send(
                   _taskMode?.buildPrompt(text) ?? text,
                   markdown: markdown,
                   displayText: text,
+                );
+              },
+              onSendWithAttachment: (text, markdown, attachment) {
+                _resumeFollowing();
+                app.send(
+                  _taskMode?.buildPrompt(text) ?? text,
+                  markdown: markdown,
+                  displayText: '$text\n\n📎 ${attachment.filename}',
+                  attachmentIds: [attachment.id],
                 );
               },
             ),
@@ -287,6 +314,7 @@ class _TopBar extends StatelessWidget {
     required this.title,
     required this.onMenu,
     required this.onNewChat,
+    required this.workspace,
     required this.onLearning,
     required this.onMemory,
   });
@@ -295,8 +323,9 @@ class _TopBar extends StatelessWidget {
   final String title;
   final VoidCallback onMenu;
   final VoidCallback onNewChat;
-  final VoidCallback onLearning;
-  final VoidCallback onMemory;
+  final WorkspaceType workspace;
+  final VoidCallback? onLearning;
+  final VoidCallback? onMemory;
 
   @override
   Widget build(BuildContext context) {
@@ -327,7 +356,11 @@ class _TopBar extends StatelessWidget {
                   style: context.texts.titleMedium,
                 ),
                 Text(
-                  'ESA · STUDY AGENT',
+                  'ESA · ${workspace == WorkspaceType.learning
+                      ? 'STUDY'
+                      : workspace == WorkspaceType.teaching
+                      ? 'TEACHING'
+                      : 'RESEARCH'} AGENT',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -338,9 +371,12 @@ class _TopBar extends StatelessWidget {
               ],
             ),
           ),
-          _OutlineIconButton(icon: LucideIcons.barChart3, onTap: onLearning),
-          const SizedBox(width: 8),
-          _OutlineIconButton(icon: LucideIcons.brain, onTap: onMemory),
+          if (onLearning != null) ...[
+            _OutlineIconButton(icon: LucideIcons.barChart3, onTap: onLearning!),
+            const SizedBox(width: 8),
+          ],
+          if (onMemory != null)
+            _OutlineIconButton(icon: LucideIcons.brain, onTap: onMemory!),
         ],
       ),
     );
@@ -402,10 +438,12 @@ class _OutlineIconButton extends StatelessWidget {
 class _EmptyState extends StatelessWidget {
   const _EmptyState({
     required this.name,
+    required this.workspace,
     required this.selected,
     required this.onPick,
   });
   final String name;
+  final WorkspaceType workspace;
   final TaskMode? selected;
   final ValueChanged<TaskMode> onPick;
 
@@ -420,8 +458,25 @@ class _EmptyState extends StatelessWidget {
     ('08', TaskMode.academicSearch),
   ];
 
+  static const _researchCards = [
+    ('01', TaskMode.literatureFrontier),
+    ('02', TaskMode.academicWriting),
+    ('03', TaskMode.researchDataAnalysis),
+    ('04', TaskMode.researchPlanning),
+  ];
+
   @override
   Widget build(BuildContext context) {
+    final cards = switch (workspace) {
+      WorkspaceType.learning => _cards,
+      WorkspaceType.research => _researchCards,
+      WorkspaceType.teaching => const <(String, TaskMode)>[],
+    };
+    final introduction = workspace == WorkspaceType.research
+        ? '我是你的科研智能体。选择一个科研任务，再在下方补充项目材料与要求。'
+        : workspace == WorkspaceType.teaching
+        ? '我是你的教学智能体。描述课程、教学对象与需要完成的任务。'
+        : '我是你的学习智能体。选择一个任务模式，再在下方补充内容并发送。';
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 34, 20, 24),
       child: Center(
@@ -441,13 +496,10 @@ class _EmptyState extends StatelessWidget {
               const SizedBox(height: EsaSpace.md),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 520),
-                child: Text(
-                  '我是你的学习智能体。选择一个任务模式，再在下方补充内容并发送。',
-                  style: context.texts.bodyLarge,
-                ),
+                child: Text(introduction, style: context.texts.bodyLarge),
               ),
               const SizedBox(height: EsaSpace.xl),
-              for (final card in _cards) ...[
+              for (final card in cards) ...[
                 _SuggestionCard(
                   index: card.$1,
                   title: card.$2.title,

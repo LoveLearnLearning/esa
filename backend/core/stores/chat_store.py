@@ -24,15 +24,36 @@ class ChatStore(BaseSQLiteStore):
         with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS research_projects (
+                    project_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    CHECK(status IN ('active', 'archived'))
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS conversations (
                     conversation_id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
                     title TEXT NOT NULL,
                     group_id TEXT,
+                    workspace_type TEXT NOT NULL DEFAULT 'learning',
+                    research_project_id TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE SET NULL
+                    FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE SET NULL,
+                    FOREIGN KEY(research_project_id)
+                        REFERENCES research_projects(project_id) ON DELETE SET NULL,
+                    CHECK(workspace_type IN ('learning', 'teaching', 'research')),
+                    CHECK(research_project_id IS NULL OR workspace_type = 'research')
                 )
                 """
             )
@@ -74,6 +95,14 @@ class ChatStore(BaseSQLiteStore):
                 connection.execute(
                     "ALTER TABLE conversations ADD COLUMN group_id TEXT"
                 )
+            if "workspace_type" not in conversation_columns:
+                connection.execute(
+                    "ALTER TABLE conversations ADD COLUMN workspace_type TEXT NOT NULL DEFAULT 'learning'"
+                )
+            if "research_project_id" not in conversation_columns:
+                connection.execute(
+                    "ALTER TABLE conversations ADD COLUMN research_project_id TEXT"
+                )
 
             message_columns = {
                 row["name"]
@@ -103,6 +132,12 @@ class ChatStore(BaseSQLiteStore):
                 """
                 CREATE INDEX IF NOT EXISTS idx_conversations_group
                 ON conversations (user_id, group_id, updated_at)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_conversations_workspace
+                ON conversations (user_id, workspace_type, updated_at)
                 """
             )
             connection.execute(
@@ -159,6 +194,9 @@ class ChatStore(BaseSQLiteStore):
         user_id: str,
         title: str = "新对话",
         group_id: str | None = None,
+        *,
+        workspace_type: str = "learning",
+        research_project_id: str | None = None,
     ) -> dict:
         now = self._now()
         conversation: dict = {
@@ -166,6 +204,8 @@ class ChatStore(BaseSQLiteStore):
             "user_id": user_id,
             "title": title,
             "group_id": group_id,
+            "workspace_type": workspace_type,
+            "research_project_id": research_project_id,
             "created_at": now,
             "updated_at": now,
         }
@@ -176,16 +216,20 @@ class ChatStore(BaseSQLiteStore):
                 user_id,
                 title,
                 group_id,
+                workspace_type,
+                research_project_id,
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 conversation["conversation_id"],
                 conversation["user_id"],
                 conversation["title"],
                 conversation["group_id"],
+                conversation["workspace_type"],
+                conversation["research_project_id"],
                 conversation["created_at"],
                 conversation["updated_at"],
             ),
@@ -198,7 +242,8 @@ class ChatStore(BaseSQLiteStore):
         user_id: str | None = None,
     ) -> dict | None:
         sql = """
-            SELECT conversation_id, user_id, title, group_id, created_at, updated_at
+            SELECT conversation_id, user_id, title, group_id,
+                   workspace_type, research_project_id, created_at, updated_at
             FROM conversations
             WHERE conversation_id = ?
         """
@@ -216,6 +261,7 @@ class ChatStore(BaseSQLiteStore):
         group_id: str | None = None,
         *,
         include_all_groups: bool = True,
+        workspace_type: str | None = None,
     ) -> list[dict]:
         """列出用户对话。
 
@@ -223,7 +269,8 @@ class ChatStore(BaseSQLiteStore):
         传 group_id=None 且 include_all_groups=False。
         """
         sql = """
-            SELECT conversation_id, user_id, title, group_id, created_at, updated_at
+            SELECT conversation_id, user_id, title, group_id,
+                   workspace_type, research_project_id, created_at, updated_at
             FROM conversations
             WHERE user_id = ?
         """
@@ -237,6 +284,9 @@ class ChatStore(BaseSQLiteStore):
         elif group_id is not None:
             sql += " AND group_id = ?"
             params += (group_id,)
+        if workspace_type is not None:
+            sql += " AND workspace_type = ?"
+            params += (workspace_type,)
 
         sql += " ORDER BY updated_at DESC"
         return [dict(row) for row in self.query_all(sql, params)]
