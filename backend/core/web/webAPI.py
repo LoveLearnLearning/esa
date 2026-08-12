@@ -28,13 +28,19 @@ from backend.core.services.email_verification_service import (
     EmailVerificationService,
     VerificationPolicy,
 )
+from backend.core.services.frontier_tracking_service import FrontierTrackingService
+from backend.core.services.research_data_service import ResearchDataService
+from backend.core.services.research_writing_service import ResearchWritingService
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.conversation_summary_store import ConversationSummaryStore
 from backend.core.stores.email_verification_store import EmailVerificationStore
+from backend.core.stores.frontier_tracking_store import FrontierTrackingStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.migrations import run_migrations
 from backend.core.stores.profile_store import ProfileStore
+from backend.core.stores.research_data_store import ResearchDataStore
 from backend.core.stores.research_project_store import ResearchProjectStore
+from backend.core.stores.research_writing_store import ResearchWritingStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_store import UserStore
@@ -87,6 +93,7 @@ from backend.core.web.routers import (
     preferences,
     schedule,
     research,
+    research_capabilities,
     workspaces,
 )
 from backend.core.web.concurrency import ConversationTurnCoordinator
@@ -108,6 +115,17 @@ async def lifespan(app: FastAPI):
     app.state.profile_store = ProfileStore(DB_PATH)
 
     run_migrations(DB_PATH)
+    app.state.research_project_store = ResearchProjectStore(DB_PATH)
+    app.state.frontier_tracking_store = FrontierTrackingStore(DB_PATH)
+    app.state.frontier_tracking_service = FrontierTrackingService(
+        app.state.frontier_tracking_store
+    )
+    app.state.research_writing_store = ResearchWritingStore(DB_PATH)
+    app.state.research_data_store = ResearchDataStore(DB_PATH)
+    app.state.research_data_service = ResearchDataService(
+        app.state.research_data_store,
+        DB_PATH.parent / "research_data",
+    )
     app.state.email_verification_store = EmailVerificationStore(DB_PATH)
     app.state.email_verification_service = None
     if EMAIL_PROVIDER == "service":
@@ -143,6 +161,10 @@ async def lifespan(app: FastAPI):
         logger.warning(
             "辅助 Qwen 服务尚未就绪，课表解析与离线上下文压缩将暂时不可用"
         )
+    app.state.research_writing_service = ResearchWritingService(
+        app.state.research_writing_store,
+        app.state.auxiliary_llm_client,
+    )
 
     synced_points, synced_edges = ensure_knowledge_graph_seeded(kg_store)
     if kg_store.count_points() <= 0:
@@ -196,9 +218,15 @@ async def lifespan(app: FastAPI):
         if mm_config.enabled
         else None
     )
+    app.state.frontier_tracking_service.start()
+    app.state.research_writing_service.start()
+    app.state.research_data_service.start()
     try:
         yield
     finally:
+        await app.state.frontier_tracking_service.stop()
+        await app.state.research_writing_service.stop()
+        await app.state.research_data_service.stop()
         if app.state.email_verification_service is not None:
             await app.state.email_verification_service.close()
         if app.state.mm_sessions is not None:
@@ -221,6 +249,7 @@ business_router.include_router(schedule.router)
 business_router.include_router(memories.router)
 business_router.include_router(workspaces.router)
 business_router.include_router(research.router)
+business_router.include_router(research_capabilities.router)
 
 api_router = APIRouter()
 api_router.include_router(business_router)

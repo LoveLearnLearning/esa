@@ -82,6 +82,7 @@ class AuthService:
         self,
         username: str,
         password: str,
+        account_role: str = "student",
         *,
         email: str | None = None,
         email_verified_at: str | None = None,
@@ -108,6 +109,7 @@ class AuthService:
             username=username,
             password_hash=pwd_hash,
             status="active",
+            account_role=account_role,
             email=email,
             email_verified_at=email_verified_at,
         )

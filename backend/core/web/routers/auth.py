@@ -124,6 +124,7 @@ def register(body: RegisterRequest, request: Request) -> dict[str, str]:
     user: UserRecord | None = auth_service.register(
         body.username,
         body.password,
+        body.account_role,
         email=email,
         email_verified_at=verified_at,
     )
@@ -134,6 +135,7 @@ def register(body: RegisterRequest, request: Request) -> dict[str, str]:
         "user_id": user.id,
         "username": user.username,
         "email": email,
+        "account_role": user.account_role,
     }
 
 
@@ -164,6 +166,7 @@ def login(body: LoginRequest, request: Request) -> LoginResponse:
         user_id=session.user_id,
         username=user.username,
         email=user.email,
+        account_role=user.account_role,
         expires_at=session.expires_at,
     )
 

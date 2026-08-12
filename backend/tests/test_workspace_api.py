@@ -38,16 +38,17 @@ def _register_and_login(
     username: str,
     account_role: str,
 ) -> dict[str, str]:
-    registered = client.post(
-        "/api/auth/register",
-        json={
-            "username": username,
-            "password": "correct-password",
-            "account_role": account_role,
-        },
+    # Registration is covered by the email-verification API suite. These
+    # workspace tests seed a verified identity through the domain service.
+    registered = client.app.state.auth.register(
+        username,
+        "correct-password",
+        account_role,
+        email=f"{username}@example.test",
+        email_verified_at="2026-08-12T00:00:00+00:00",
     )
-    assert registered.status_code == 201
-    assert registered.json()["account_role"] == account_role
+    assert registered is not None
+    assert registered.account_role == account_role
     logged_in = client.post(
         "/api/auth/login",
         json={"username": username, "password": "correct-password"},

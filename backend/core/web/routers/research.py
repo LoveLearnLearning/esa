@@ -5,12 +5,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from backend.core.stores.research_project_store import ResearchProjectStore
+from backend.core.stores.frontier_tracking_store import FrontierTrackingStore
+from backend.core.services.frontier_tracking_service import FrontierTrackingService
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal
 from backend.core.web.deps import get_current_session
 from backend.core.web.schemas import (
     ResearchProjectCreateRequest,
     ResearchProjectUpdateRequest,
+    FrontierTrackingCreateRequest,
 )
 from backend.core.workspaces import WorkspaceAccessPolicy
 
@@ -83,3 +86,68 @@ def update_project(
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "科研项目不存在")
     return project
+
+
+def _load_active_project(
+    project_id: str,
+    request: Request,
+    user_id: str,
+) -> dict:
+    project_store: ResearchProjectStore = request.app.state.research_project_store
+    project = project_store.get_project(project_id, user_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "科研项目不存在")
+    if project["status"] != "active":
+        raise HTTPException(status.HTTP_409_CONFLICT, "科研项目已归档")
+    return project
+
+
+@router.get("/projects/{project_id}/frontier-jobs")
+def list_frontier_jobs(
+    project_id: str,
+    request: Request,
+    session: CurrentSession,
+) -> list[dict]:
+    _require_research_access(request, session.user_id)
+    _load_active_project(project_id, request, session.user_id)
+    store: FrontierTrackingStore = request.app.state.frontier_tracking_store
+    return store.list_jobs(project_id, session.user_id)
+
+
+@router.post(
+    "/projects/{project_id}/frontier-jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_frontier_job(
+    project_id: str,
+    body: FrontierTrackingCreateRequest,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    _require_research_access(request, session.user_id)
+    _load_active_project(project_id, request, session.user_id)
+    store: FrontierTrackingStore = request.app.state.frontier_tracking_store
+    job = store.create_job(
+        project_id=project_id,
+        user_id=session.user_id,
+        query=body.query.strip(),
+        time_window_years=body.time_window_years,
+        max_results=body.max_results,
+    )
+    service: FrontierTrackingService = request.app.state.frontier_tracking_service
+    service.submit(job["job_id"])
+    return job
+
+
+@router.get("/frontier-jobs/{job_id}")
+def get_frontier_job(
+    job_id: str,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    _require_research_access(request, session.user_id)
+    store: FrontierTrackingStore = request.app.state.frontier_tracking_store
+    job = store.get_job(job_id, session.user_id)
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "前沿追踪任务不存在")
+    return job

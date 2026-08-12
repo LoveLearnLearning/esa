@@ -25,6 +25,19 @@ class _WorkspaceApi extends ApiClient {
       List.of(projects);
 
   @override
+  Future<List<FrontierTrackingJob>> listFrontierJobs(String projectId) async =>
+      const [];
+
+  @override
+  Future<List<ResearchDocument>> listResearchDocuments(
+    String projectId,
+  ) async => const [];
+
+  @override
+  Future<List<ResearchDataset>> listResearchDatasets(String projectId) async =>
+      const [];
+
+  @override
   Future<ResearchProject> createResearchProject(
     String name,
     String description,
@@ -98,9 +111,10 @@ void main() {
     expect(find.text('前沿追踪与论文写作'), findsOneWidget);
 
     await tester.tap(find.text('多智能体科研'));
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
     expect(find.text('领域前沿追踪'), findsOneWidget);
-    expect(find.text('学术写作辅助'), findsOneWidget);
+    expect(find.text('学术写作'), findsOneWidget);
+    expect(find.text('数据分析'), findsOneWidget);
     expect(find.text('讲解一道题'), findsNothing);
   });
 }

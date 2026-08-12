@@ -89,7 +89,8 @@ Authorization: Bearer <session_id>
   "email": "user@example.com",
   "verification_code": "123456",
   "username": "feng",
-  "password": "password123"
+  "password": "password123",
+  "account_role": "student"
 }
 ```
 
@@ -98,7 +99,7 @@ Authorization: Bearer <session_id>
 成功响应 `201`:
 
 ```json
-{ "user_id": "服务端生成的uuid", "username": "feng", "email": "user@example.com" }
+{ "user_id": "服务端生成的uuid", "username": "feng", "email": "user@example.com", "account_role": "student" }
 ```
 
 验证码错误或过期返回 `400`，用户名或邮箱已存在返回 `409`。
@@ -121,6 +122,7 @@ Authorization: Bearer <session_id>
     "user_id": "用户uuid",
     "username": "feng",
     "email": "user@example.com",
+    "account_role": "student",
     "expires_at": "2026-07-24T07:22:08.123456+00:00"
 }
 ```
@@ -207,6 +209,34 @@ Authorization: Bearer <session_id>
 ### GET/PATCH /research/projects/{project_id} — 项目详情与更新
 
 PATCH 可传 `name`、`description`、`status`，其中 `status` 为 `active` 或 `archived`。项目不存在或不属于当前用户均返回 `404`。
+
+### 领域前沿追踪
+
+- `GET /research/projects/{project_id}/frontier-jobs`：列出项目的追踪任务。
+- `POST /research/projects/{project_id}/frontier-jobs`：创建任务，返回 `202`。请求体字段为 `query`、`time_window_years`（1–20）和 `max_results`（5–40）。
+- `GET /research/frontier-jobs/{job_id}`：查询任务状态和结果。
+
+后台任务从 arXiv 获取真实论文，输出年度分布、类别、热点词、新兴词和论文样本。热点与增长分值仅作为筛选信号，不等同于正式文献计量结论。单机部署使用 SQLite 持久队列；服务重启后会重新排队未完成任务。
+
+### 学术写作
+
+- `GET/POST /research/projects/{project_id}/documents`：列出或创建项目文档。
+- `GET /research/documents/{document_id}`：获取当前版本。
+- `GET /research/documents/{document_id}/versions`：获取版本历史。
+- `POST /research/documents/{document_id}/writing-jobs`：创建写作任务，返回 `202`。
+- `GET /research/writing-jobs/{job_id}`：查询写作任务状态。
+
+文档类型：`outline`、`literature_review`、`paper`、`notes`。写作操作：`outline`、`literature_review`、`polish`、`format_check`。每次成功任务会写入一个不可覆盖的文档新版本；生成规则禁止虚构来源、数据、实验结果和引用，材料不足处标记 `[待补来源]`。
+
+### 科研数据分析
+
+- `GET /research/projects/{project_id}/datasets`：列出数据集。
+- `POST /research/projects/{project_id}/datasets`：以 multipart 上传，字段为 `name` 和 `file`，返回 `201`。
+- `GET /research/datasets/{dataset_id}`：获取不含服务器文件路径的数据画像。
+- `GET/POST /research/datasets/{dataset_id}/analysis-jobs`：列出或创建分析任务。
+- `GET /research/analysis-jobs/{job_id}`：查询分析结果。
+
+生产形态 demo 采用单机本地文件存储，支持 UTF-8 CSV、JSON、TXT，单文件最多 15 MB，最多读取 100,000 行。分析类型包括 `descriptive`、`correlation`、`group_compare` 和 `text_frequency`。相关分析不代表因果，分组比较暂不进行显著性检验。
 
 ---
 

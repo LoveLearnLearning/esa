@@ -552,7 +552,7 @@ class _ProfileSheetState extends State<_ProfileSheet> {
       });
       return;
     }
-    app.updateProfile(name: _name.text, roleValue: _role);
+    app.updateProfile(name: _name.text);
     Navigator.of(context).pop();
   }
 

@@ -128,6 +128,23 @@ def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
     }
 
 
+def _execute_script_atomically(
+    connection: sqlite3.Connection,
+    script: str,
+) -> None:
+    """Execute a SQL script without sqlite3.executescript's implicit commit."""
+    statement = ""
+    for line in script.splitlines():
+        statement += f"{line}\n"
+        if sqlite3.complete_statement(statement):
+            sql = statement.strip()
+            if sql:
+                connection.execute(sql)
+            statement = ""
+    if statement.strip():
+        raise sqlite3.OperationalError("incomplete SQL statement in migration")
+
+
 def _has_foreign_key(
     connection: sqlite3.Connection,
     table: str,
@@ -658,6 +675,215 @@ def _migrate_email_identity(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_research_capabilities(connection: sqlite3.Connection) -> None:
+    """Repair the V9 merge collision and install the complete research domain."""
+    # V9 existed independently on two branches. Re-running both halves here is
+    # intentional: each operation is idempotent and repairs databases that have
+    # already recorded either historical V9 variant.
+    _migrate_email_identity(connection)
+
+    user_columns = _columns(connection, "users")
+    if "account_role" not in user_columns:
+        connection.execute(
+            "ALTER TABLE users ADD COLUMN account_role TEXT NOT NULL DEFAULT 'student'"
+        )
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS research_projects (
+            project_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(status IN ('active', 'archived'))
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_research_projects_user "
+        "ON research_projects(user_id, status, updated_at)"
+    )
+
+    conversation_columns = _columns(connection, "conversations")
+    if "workspace_type" not in conversation_columns:
+        connection.execute(
+            "ALTER TABLE conversations ADD COLUMN workspace_type "
+            "TEXT NOT NULL DEFAULT 'learning'"
+        )
+    if "research_project_id" not in conversation_columns:
+        connection.execute(
+            "ALTER TABLE conversations ADD COLUMN research_project_id TEXT"
+        )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_conversations_workspace "
+        "ON conversations(user_id, workspace_type, updated_at)"
+    )
+    _execute_script_atomically(
+        connection,
+        """
+        CREATE TRIGGER IF NOT EXISTS conversations_workspace_insert
+        BEFORE INSERT ON conversations
+        FOR EACH ROW
+        WHEN NEW.workspace_type NOT IN ('learning', 'teaching', 'research')
+          OR (NEW.research_project_id IS NOT NULL AND NEW.workspace_type != 'research')
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid conversation workspace binding');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS conversations_research_project_insert
+        BEFORE INSERT ON conversations
+        FOR EACH ROW
+        WHEN NEW.research_project_id IS NOT NULL
+         AND NOT EXISTS (
+             SELECT 1 FROM research_projects
+             WHERE project_id = NEW.research_project_id
+               AND user_id = NEW.user_id
+         )
+        BEGIN
+            SELECT RAISE(ABORT, 'research project must belong to conversation user');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS conversations_workspace_update
+        BEFORE UPDATE OF workspace_type, research_project_id, user_id ON conversations
+        FOR EACH ROW
+        WHEN NEW.workspace_type NOT IN ('learning', 'teaching', 'research')
+          OR (NEW.research_project_id IS NOT NULL AND NEW.workspace_type != 'research')
+          OR (
+              NEW.research_project_id IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM research_projects
+                  WHERE project_id = NEW.research_project_id
+                    AND user_id = NEW.user_id
+              )
+          )
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid conversation workspace binding');
+        END;
+
+        CREATE TABLE IF NOT EXISTS research_frontier_jobs (
+            job_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            query TEXT NOT NULL,
+            time_window_years INTEGER NOT NULL DEFAULT 5,
+            max_results INTEGER NOT NULL DEFAULT 20,
+            status TEXT NOT NULL DEFAULT 'queued',
+            result_json TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY(project_id) REFERENCES research_projects(project_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(status IN ('queued', 'running', 'succeeded', 'failed')),
+            CHECK(time_window_years BETWEEN 1 AND 20),
+            CHECK(max_results BETWEEN 5 AND 40)
+        );
+        CREATE INDEX IF NOT EXISTS idx_frontier_jobs_project
+        ON research_frontier_jobs(user_id, project_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS research_documents (
+            document_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            document_type TEXT NOT NULL,
+            content TEXT NOT NULL DEFAULT '',
+            version INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES research_projects(project_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(document_type IN ('outline', 'literature_review', 'paper', 'notes')),
+            CHECK(status IN ('active', 'archived'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_documents_project
+        ON research_documents(user_id, project_id, updated_at DESC);
+        CREATE TABLE IF NOT EXISTS research_document_versions (
+            document_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(document_id, version),
+            FOREIGN KEY(document_id) REFERENCES research_documents(document_id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS research_writing_jobs (
+            job_id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            instruction TEXT NOT NULL DEFAULT '',
+            source_text TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'queued',
+            error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY(document_id) REFERENCES research_documents(document_id) ON DELETE CASCADE,
+            FOREIGN KEY(project_id) REFERENCES research_projects(project_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(operation IN ('outline', 'literature_review', 'polish', 'format_check')),
+            CHECK(status IN ('queued', 'running', 'succeeded', 'failed'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_writing_jobs_document
+        ON research_writing_jobs(user_id, document_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS research_datasets (
+            dataset_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            row_count INTEGER NOT NULL DEFAULT 0,
+            column_count INTEGER NOT NULL DEFAULT 0,
+            profile_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'ready',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES research_projects(project_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(status IN ('ready', 'invalid', 'archived'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_datasets_project
+        ON research_datasets(user_id, project_id, created_at DESC);
+        CREATE TABLE IF NOT EXISTS research_analysis_jobs (
+            job_id TEXT PRIMARY KEY,
+            dataset_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            analysis_type TEXT NOT NULL,
+            parameters_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'queued',
+            result_json TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY(dataset_id) REFERENCES research_datasets(dataset_id) ON DELETE CASCADE,
+            FOREIGN KEY(project_id) REFERENCES research_projects(project_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(analysis_type IN ('descriptive', 'correlation', 'group_compare', 'text_frequency')),
+            CHECK(status IN ('queued', 'running', 'succeeded', 'failed'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_analysis_jobs_dataset
+        ON research_analysis_jobs(user_id, dataset_id, created_at DESC);
+        """,
+    )
+
+
 MIGRATIONS: list[MigrationDef] = [
     (
         1,
@@ -846,6 +1072,11 @@ MIGRATIONS: list[MigrationDef] = [
     9,
         "create_email_identity_and_verification_codes",
         _migrate_email_identity,
+    ),
+    (
+        10,
+        "repair_v9_and_create_research_capabilities",
+        _migrate_research_capabilities,
     ),
 ]
 

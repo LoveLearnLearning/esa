@@ -58,6 +58,7 @@ class ApiClient {
   String? userId;
   String? username;
   String? email;
+  String accountRole = 'student';
   DateTime? sessionExpiresAt;
 
   bool get isLoggedIn => sessionId != null;
@@ -107,6 +108,7 @@ class ApiClient {
     String verificationCode,
     String username,
     String password,
+    String accountRole,
   ) async {
     if (kOfflineMode) return; // 离线模式注册直接成功
     final r = await http.post(
@@ -117,6 +119,7 @@ class ApiClient {
         'verification_code': verificationCode,
         'username': username,
         'password': password,
+        'account_role': accountRole,
       }),
     );
     if (r.statusCode != 201) _fail(r);
@@ -164,6 +167,7 @@ class ApiClient {
     userId = data['user_id'] as String;
     this.username = data['username'] as String;
     email = data['email'] as String?;
+    accountRole = data['account_role'] as String? ?? 'student';
     sessionExpiresAt = DateTime.tryParse(data['expires_at'] as String? ?? '');
   }
 
@@ -752,6 +756,191 @@ class ApiClient {
       body: jsonEncode({'status': 'archived'}),
     );
     if (response.statusCode != 200) _fail(response);
+  }
+
+  Future<List<FrontierTrackingJob>> listFrontierJobs(String projectId) async {
+    final response = await http.get(
+      _uri('/research/projects/$projectId/frontier-jobs'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map(
+          (item) =>
+              FrontierTrackingJob.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+  }
+
+  Future<FrontierTrackingJob> createFrontierJob(
+    String projectId,
+    String query, {
+    int timeWindowYears = 5,
+    int maxResults = 20,
+  }) async {
+    final response = await http.post(
+      _uri('/research/projects/$projectId/frontier-jobs'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'query': query,
+        'time_window_years': timeWindowYears,
+        'max_results': maxResults,
+      }),
+    );
+    if (response.statusCode != 202) _fail(response);
+    return FrontierTrackingJob.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
+  Future<FrontierTrackingJob> getFrontierJob(String jobId) async {
+    final response = await http.get(
+      _uri('/research/frontier-jobs/$jobId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return FrontierTrackingJob.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
+  Future<List<ResearchDocument>> listResearchDocuments(String projectId) async {
+    final response = await http.get(
+      _uri('/research/projects/$projectId/documents'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map(
+          (item) => ResearchDocument.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+  }
+
+  Future<ResearchDocument> createResearchDocument({
+    required String projectId,
+    required String title,
+    required String type,
+    String content = '',
+  }) async {
+    final response = await http.post(
+      _uri('/research/projects/$projectId/documents'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'title': title,
+        'document_type': type,
+        'content': content,
+      }),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return ResearchDocument.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
+  Future<ResearchDocument> getResearchDocument(String documentId) async {
+    final response = await http.get(
+      _uri('/research/documents/$documentId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return ResearchDocument.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
+  Future<ResearchWritingJob> createWritingJob({
+    required String documentId,
+    required String operation,
+    String instruction = '',
+    String sourceText = '',
+  }) async {
+    final response = await http.post(
+      _uri('/research/documents/$documentId/writing-jobs'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'operation': operation,
+        'instruction': instruction,
+        'source_text': sourceText,
+      }),
+    );
+    if (response.statusCode != 202) _fail(response);
+    return ResearchWritingJob.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
+  Future<ResearchWritingJob> getWritingJob(String jobId) async {
+    final response = await http.get(
+      _uri('/research/writing-jobs/$jobId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return ResearchWritingJob.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
+  Future<List<ResearchDataset>> listResearchDatasets(String projectId) async {
+    final response = await http.get(
+      _uri('/research/projects/$projectId/datasets'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map(
+          (item) => ResearchDataset.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+  }
+
+  Future<ResearchDataset> uploadResearchDataset({
+    required String projectId,
+    required String name,
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      _uri('/research/projects/$projectId/datasets'),
+    );
+    if (sessionId != null) {
+      request.headers['Authorization'] = 'Bearer $sessionId';
+    }
+    request.fields['name'] = name;
+    request.files.add(
+      http.MultipartFile.fromBytes('file', bytes, filename: filename),
+    );
+    final streamed = await request.send().timeout(const Duration(minutes: 2));
+    final response = await http.Response.fromStream(streamed);
+    if (response.statusCode != 201) _fail(response);
+    return ResearchDataset.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
+  Future<ResearchAnalysisJob> createAnalysisJob({
+    required String datasetId,
+    required String type,
+    Map<String, String> parameters = const {},
+  }) async {
+    final response = await http.post(
+      _uri('/research/datasets/$datasetId/analysis-jobs'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'analysis_type': type, 'parameters': parameters}),
+    );
+    if (response.statusCode != 202) _fail(response);
+    return ResearchAnalysisJob.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
+  Future<ResearchAnalysisJob> getAnalysisJob(String jobId) async {
+    final response = await http.get(
+      _uri('/research/analysis-jobs/$jobId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return ResearchAnalysisJob.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
   }
 
   Future<void> renameConversation(String id, String title) async {

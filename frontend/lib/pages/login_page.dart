@@ -148,7 +148,13 @@ class _LoginPageState extends State<LoginPage> {
     });
     final app = AppScope.of(context);
     final err = _isRegister
-        ? await app.register(email, verificationCode, username, password)
+        ? await app.register(
+            email,
+            verificationCode,
+            username,
+            password,
+            _accountRole,
+          )
         : await app.login(username, password, rememberLogin: _rememberLogin);
     if (!mounted) return;
     if (err == null) TextInput.finishAutofillContext(shouldSave: true);
@@ -228,6 +234,17 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: EsaSpace.xl),
                 if (_isRegister) ...[
+                  _fieldLabel(context, '账号类型'),
+                  const SizedBox(height: EsaSpace.sm),
+                  EsaSegmented<String>(
+                    value: _accountRole,
+                    segments: const [
+                      EsaSegment('student', '学生'),
+                      EsaSegment('teacher', '教师'),
+                    ],
+                    onChanged: (value) => setState(() => _accountRole = value),
+                  ),
+                  const SizedBox(height: EsaSpace.lg),
                   _field(
                     context,
                     label: '邮箱',

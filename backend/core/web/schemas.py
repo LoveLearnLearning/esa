@@ -78,6 +78,31 @@ class ResearchProjectUpdateRequest(BaseModel):
         return self
 
 
+class FrontierTrackingCreateRequest(BaseModel):
+    query: str = Field(min_length=2, max_length=300)
+    time_window_years: int = Field(default=5, ge=1, le=20)
+    max_results: int = Field(default=20, ge=5, le=40)
+
+
+class ResearchDocumentCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    document_type: Literal["outline", "literature_review", "paper", "notes"]
+    content: str = Field(default="", max_length=200_000)
+
+
+class ResearchWritingJobCreateRequest(BaseModel):
+    operation: Literal["outline", "literature_review", "polish", "format_check"]
+    instruction: str = Field(default="", max_length=4000)
+    source_text: str = Field(default="", max_length=200_000)
+
+
+class ResearchAnalysisJobCreateRequest(BaseModel):
+    analysis_type: Literal[
+        "descriptive", "correlation", "group_compare", "text_frequency"
+    ]
+    parameters: dict[str, str] = Field(default_factory=dict)
+
+
 class ConversationPatchRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=64)
     group_id: str | None = Field(default=None)
@@ -207,6 +232,7 @@ class LoginResponse(BaseModel):
     user_id: str
     username: str
     email: str | None = None
+    account_role: Literal["student", "teacher"]
     expires_at: datetime
 
 

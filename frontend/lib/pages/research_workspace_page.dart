@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
+import 'research_project_page.dart';
 
 class ResearchWorkspacePage extends StatefulWidget {
   const ResearchWorkspacePage({super.key, required this.onOpenChat});
@@ -152,8 +153,17 @@ class _ResearchWorkspacePageState extends State<ResearchWorkspacePage> {
                 itemBuilder: (context, index) => _ProjectCard(
                   project: app.researchProjects[index],
                   onOpen: () async {
-                    await app.openResearchProject(app.researchProjects[index]);
-                    widget.onOpenChat();
+                    await Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => AppScope(
+                          state: app,
+                          child: ResearchProjectPage(
+                            project: app.researchProjects[index],
+                            onOpenChat: widget.onOpenChat,
+                          ),
+                        ),
+                      ),
+                    );
                   },
                   onArchive: () => app.archiveResearchProject(
                     app.researchProjects[index].id,

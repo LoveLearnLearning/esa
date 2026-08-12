@@ -129,9 +129,16 @@ class AppState extends ChangeNotifier {
     String verificationCode,
     String username,
     String password,
+    String accountRole,
   ) async {
     try {
-      await api.register(emailAddress, verificationCode, username, password);
+      await api.register(
+        emailAddress,
+        verificationCode,
+        username,
+        password,
+        accountRole,
+      );
       await api.login(emailAddress, password);
       email = api.email ?? emailAddress;
       await _afterLogin();

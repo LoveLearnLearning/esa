@@ -239,7 +239,7 @@ def test_legacy_migration_quarantines_orphans_and_preserves_valid_rows(tmp_path)
     # 引用 groups 的归属触发器。迁移必须能安全拆除并重建它们。
     ChatStore(database_path)
 
-    assert run_migrations(database_path) == 9
+    assert run_migrations(database_path) == 10
     assert run_migrations(database_path) == 0
 
     connection = sqlite3.connect(database_path)
@@ -270,5 +270,69 @@ def test_legacy_migration_quarantines_orphans_and_preserves_valid_rows(tmp_path)
             row[2] == "conversations" and row[3] == "conversation_id"
             for row in foreign_keys
         )
+    finally:
+        connection.close()
+
+
+def test_v10_repairs_databases_that_already_recorded_a_conflicting_v9(tmp_path):
+    database_path = tmp_path / "v9-collision.db"
+    connection = sqlite3.connect(database_path)
+    connection.executescript(
+        """
+        CREATE TABLE users (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active'
+        );
+        CREATE TABLE conversations (
+            conversation_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            group_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL,
+            description TEXT
+        );
+        """
+    )
+    connection.executemany(
+        "INSERT INTO schema_migrations VALUES (?, 'now', 'legacy')",
+        [(version,) for version in range(1, 10)],
+    )
+    connection.commit()
+    connection.close()
+
+    assert run_migrations(database_path) == 1
+    connection = sqlite3.connect(database_path)
+    try:
+        user_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(users)")
+        }
+        conversation_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(conversations)")
+        }
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        assert {"email", "email_verified_at", "account_role"} <= user_columns
+        assert {"workspace_type", "research_project_id"} <= conversation_columns
+        assert {
+            "research_projects",
+            "research_frontier_jobs",
+            "research_documents",
+            "research_datasets",
+            "research_analysis_jobs",
+            "email_verification_codes",
+        } <= tables
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         connection.close()

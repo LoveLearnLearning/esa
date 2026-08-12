@@ -2,7 +2,6 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from backend.core.services.email_verification_service import (
-    EmailDeliveryError,
     EmailVerificationService,
     VerificationPolicy,
 )
@@ -83,6 +82,7 @@ def test_api_auth_contract_and_health(tmp_path):
             "verification_code": code,
             "username": "alice",
             "password": "correct-password",
+            "account_role": "teacher",
         },
     )
     logged_in = client.post(
@@ -100,8 +100,10 @@ def test_api_auth_contract_and_health(tmp_path):
     assert sent.status_code == 202
     assert registered.status_code == 201
     assert registered.json()["email"] == "alice@example.com"
+    assert registered.json()["account_role"] == "teacher"
     assert logged_in.status_code == 200
     assert logged_in.json()["email"] == "alice@example.com"
+    assert logged_in.json()["account_role"] == "teacher"
     assert rejected.status_code == 401
     assert wrong_method.status_code == 405
     assert all(path.startswith("/api/") for path in app.openapi()["paths"])

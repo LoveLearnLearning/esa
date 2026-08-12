@@ -137,6 +137,7 @@ class UserStore(BaseSQLiteStore):
             username=row["username"],
             password_hash=row["password_hash"],
             status=row["status"],
+            account_role=row["account_role"],
             email=row["email"],
             email_verified_at=row["email_verified_at"],
             preferred_style=row["preferred_style"],
@@ -164,6 +165,7 @@ class UserStore(BaseSQLiteStore):
         row = self.query_one(
             """
             SELECT id, username, email, email_verified_at, password_hash, status,
+                   account_role,
                    preferred_style, preferred_tone, custom_instruction,
                    major, grade, current_week, total_weeks, profile_enabled
             FROM users
@@ -190,6 +192,7 @@ class UserStore(BaseSQLiteStore):
         row = self.query_one(
             """
             SELECT id, username, email, email_verified_at, password_hash, status,
+                   account_role,
                    preferred_style, preferred_tone, custom_instruction,
                    major, grade, current_week, total_weeks, profile_enabled
             FROM users
@@ -208,6 +211,7 @@ class UserStore(BaseSQLiteStore):
         row = self.query_one(
             """
             SELECT id, username, email, email_verified_at, password_hash, status,
+                   account_role,
                    preferred_style, preferred_tone, custom_instruction,
                    major, grade, current_week, total_weeks, profile_enabled
             FROM users
@@ -230,10 +234,11 @@ class UserStore(BaseSQLiteStore):
                 """
                 INSERT INTO users (
                     id, username, email, email_verified_at, password_hash, status,
+                    account_role,
                     preferred_style, preferred_tone, custom_instruction,
                     major, grade, current_week, total_weeks, profile_enabled
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user.id,
