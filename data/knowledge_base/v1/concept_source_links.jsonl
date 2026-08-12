@@ -1,0 +1,215 @@
+{"course": "程序设计基础", "kp_id": "数据类型", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "变量与常量", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "运算符与表达式", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "输入输出", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "选择结构", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "循环结构", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "数组", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "函数", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "指针", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "结构体", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "联合体与枚举", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "位运算", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "预处理指令", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "动态内存管理", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "程序设计基础", "kp_id": "文件操作", "source_refs": ["programming_fundamentals_modular_structured_cpp_cc_by_3_0", "oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "面向对象程序设计", "kp_id": "类与对象", "source_refs": ["oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "面向对象程序设计", "kp_id": "构造函数与析构函数", "source_refs": ["oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "面向对象程序设计", "kp_id": "封装", "source_refs": ["oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "面向对象程序设计", "kp_id": "继承", "source_refs": ["oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "面向对象程序设计", "kp_id": "多态", "source_refs": ["oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "面向对象程序设计", "kp_id": "抽象类与接口", "source_refs": ["oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "面向对象程序设计", "kp_id": "运算符重载", "source_refs": ["oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "面向对象程序设计", "kp_id": "泛型", "source_refs": ["oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "面向对象程序设计", "kp_id": "异常处理", "source_refs": ["oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "面向对象程序设计", "kp_id": "集合框架", "source_refs": ["oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "面向对象程序设计", "kp_id": "输入输出流", "source_refs": ["oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "面向对象程序设计", "kp_id": "多线程编程", "source_refs": ["oop_java_java_java_3e_cc_by_4_0"]}
+{"course": "离散数学", "kp_id": "命题逻辑", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "formal_languages_sets_logic_computation_cc_by_4_0"]}
+{"course": "离散数学", "kp_id": "谓词逻辑", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "formal_languages_sets_logic_computation_cc_by_4_0"]}
+{"course": "离散数学", "kp_id": "集合论", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "formal_languages_sets_logic_computation_cc_by_4_0"]}
+{"course": "离散数学", "kp_id": "关系", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "formal_languages_sets_logic_computation_cc_by_4_0"]}
+{"course": "离散数学", "kp_id": "函数(离散数学)", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "formal_languages_sets_logic_computation_cc_by_4_0"]}
+{"course": "离散数学", "kp_id": "图的基本概念", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "formal_languages_sets_logic_computation_cc_by_4_0"]}
+{"course": "离散数学", "kp_id": "图的遍历(离散数学)", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "formal_languages_sets_logic_computation_cc_by_4_0"]}
+{"course": "离散数学", "kp_id": "树(离散数学)", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "formal_languages_sets_logic_computation_cc_by_4_0"]}
+{"course": "离散数学", "kp_id": "欧拉图与哈密顿图", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "formal_languages_sets_logic_computation_cc_by_4_0"]}
+{"course": "离散数学", "kp_id": "代数系统", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "formal_languages_sets_logic_computation_cc_by_4_0"]}
+{"course": "离散数学", "kp_id": "布尔代数", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "formal_languages_sets_logic_computation_cc_by_4_0"]}
+{"course": "离散数学", "kp_id": "组合数学初步", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "formal_languages_sets_logic_computation_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "算法复杂度", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "线性表", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "顺序表", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "链表", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "栈", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "队列", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "串", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "二叉树", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "二叉树遍历", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "二叉搜索树", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "哈夫曼树", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "堆", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "优先队列", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "图", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "图的遍历", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "深度优先搜索", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "广度优先搜索", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "最小生成树", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "并查集", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "查找", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "哈希表", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "数据结构", "kp_id": "排序算法", "source_refs": ["data_structures_open_data_structures_cpp_cc_by", "algorithms_jeff_erickson_cc_by_4_0"]}
+{"course": "算法设计与分析", "kp_id": "递归", "source_refs": ["algorithms_jeff_erickson_cc_by_4_0", "data_structures_open_data_structures_cpp_cc_by"]}
+{"course": "算法设计与分析", "kp_id": "分治法", "source_refs": ["algorithms_jeff_erickson_cc_by_4_0", "data_structures_open_data_structures_cpp_cc_by"]}
+{"course": "算法设计与分析", "kp_id": "动态规划", "source_refs": ["algorithms_jeff_erickson_cc_by_4_0", "data_structures_open_data_structures_cpp_cc_by"]}
+{"course": "算法设计与分析", "kp_id": "贪心算法", "source_refs": ["algorithms_jeff_erickson_cc_by_4_0", "data_structures_open_data_structures_cpp_cc_by"]}
+{"course": "算法设计与分析", "kp_id": "回溯法", "source_refs": ["algorithms_jeff_erickson_cc_by_4_0", "data_structures_open_data_structures_cpp_cc_by"]}
+{"course": "算法设计与分析", "kp_id": "分支限界法", "source_refs": ["algorithms_jeff_erickson_cc_by_4_0", "data_structures_open_data_structures_cpp_cc_by"]}
+{"course": "算法设计与分析", "kp_id": "渐进复杂度分析", "source_refs": ["algorithms_jeff_erickson_cc_by_4_0", "data_structures_open_data_structures_cpp_cc_by"]}
+{"course": "算法设计与分析", "kp_id": "摊还分析", "source_refs": ["algorithms_jeff_erickson_cc_by_4_0", "data_structures_open_data_structures_cpp_cc_by"]}
+{"course": "算法设计与分析", "kp_id": "最短路径", "source_refs": ["algorithms_jeff_erickson_cc_by_4_0", "data_structures_open_data_structures_cpp_cc_by"]}
+{"course": "算法设计与分析", "kp_id": "最大流", "source_refs": ["algorithms_jeff_erickson_cc_by_4_0", "data_structures_open_data_structures_cpp_cc_by"]}
+{"course": "算法设计与分析", "kp_id": "拓扑排序", "source_refs": ["algorithms_jeff_erickson_cc_by_4_0", "data_structures_open_data_structures_cpp_cc_by"]}
+{"course": "算法设计与分析", "kp_id": "NP完全理论", "source_refs": ["algorithms_jeff_erickson_cc_by_4_0", "data_structures_open_data_structures_cpp_cc_by"]}
+{"course": "数字逻辑与数字电路", "kp_id": "数制转换", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "digital_logic_carpinelli_reference_only"]}
+{"course": "数字逻辑与数字电路", "kp_id": "布尔代数(数字逻辑)", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "digital_logic_carpinelli_reference_only"]}
+{"course": "数字逻辑与数字电路", "kp_id": "逻辑门", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "digital_logic_carpinelli_reference_only"]}
+{"course": "数字逻辑与数字电路", "kp_id": "组合逻辑电路", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "digital_logic_carpinelli_reference_only"]}
+{"course": "数字逻辑与数字电路", "kp_id": "译码器与编码器", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "digital_logic_carpinelli_reference_only"]}
+{"course": "数字逻辑与数字电路", "kp_id": "多路选择器", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "digital_logic_carpinelli_reference_only"]}
+{"course": "数字逻辑与数字电路", "kp_id": "触发器", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "digital_logic_carpinelli_reference_only"]}
+{"course": "数字逻辑与数字电路", "kp_id": "时序逻辑电路", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "digital_logic_carpinelli_reference_only"]}
+{"course": "数字逻辑与数字电路", "kp_id": "寄存器", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "digital_logic_carpinelli_reference_only"]}
+{"course": "数字逻辑与数字电路", "kp_id": "计数器", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "digital_logic_carpinelli_reference_only"]}
+{"course": "数字逻辑与数字电路", "kp_id": "有限状态机", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "digital_logic_carpinelli_reference_only"]}
+{"course": "数字逻辑与数字电路", "kp_id": "Verilog基础", "source_refs": ["discrete_math_discrete_math_with_sagemath_2025_cc_by", "digital_logic_carpinelli_reference_only"]}
+{"course": "计算机组成原理", "kp_id": "冯诺依曼结构", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "数制与编码", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "原码反码补码", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "定点数运算", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "浮点数表示", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "指令系统", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "寻址方式", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "CPU数据通路", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "控制器", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "中断系统", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "存储器层次", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "Cache", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "主存储器", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "总线", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机组成原理", "kp_id": "I/O方式", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机系统基础", "kp_id": "信息表示与存储", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0", "operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0"]}
+{"course": "计算机系统基础", "kp_id": "程序机器级表示", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0", "operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0"]}
+{"course": "计算机系统基础", "kp_id": "汇编语言", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0", "operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0"]}
+{"course": "计算机系统基础", "kp_id": "链接", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0", "operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0"]}
+{"course": "计算机系统基础", "kp_id": "异常控制流", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0", "operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0"]}
+{"course": "计算机系统基础", "kp_id": "存储器层次(系统)", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0", "operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0"]}
+{"course": "计算机系统基础", "kp_id": "Cache设计", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0", "operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0"]}
+{"course": "计算机系统基础", "kp_id": "虚拟内存(系统)", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0", "operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0"]}
+{"course": "计算机系统基础", "kp_id": "系统级I/O", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0", "operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0"]}
+{"course": "计算机系统基础", "kp_id": "并发编程基础", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0", "operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0"]}
+{"course": "计算机系统基础", "kp_id": "GDB调试", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0", "operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0"]}
+{"course": "计算机系统基础", "kp_id": "性能优化", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0", "operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0"]}
+{"course": "计算机体系结构", "kp_id": "指令集设计", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机体系结构", "kp_id": "RISC与CISC", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机体系结构", "kp_id": "流水线技术", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机体系结构", "kp_id": "数据冒险与转发", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机体系结构", "kp_id": "控制冒险与分支预测", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机体系结构", "kp_id": "乱序执行", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机体系结构", "kp_id": "超标量处理器", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机体系结构", "kp_id": "存储层次设计", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机体系结构", "kp_id": "多核处理器", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机体系结构", "kp_id": "GPU体系结构", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机体系结构", "kp_id": "并行体系结构", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机体系结构", "kp_id": "能耗优化", "source_refs": ["computer_architecture_riscv_unprivileged_20260120_cc_by_4_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "操作系统概述", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "进程与线程", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "进程调度", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "进程同步", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "信号量", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "经典同步问题", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "进程通信", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "死锁", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "内存管理", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "分页", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "分段", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "虚拟内存", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "页面置换算法", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "文件系统", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "操作系统", "kp_id": "设备管理", "source_refs": ["operating_systems_hailperin_os_middleware_rev1_3_1_cc_by_sa_3_0", "computer_architecture_riscv_privileged_20260120_cc_by_4_0"]}
+{"course": "计算机网络", "kp_id": "网络体系结构", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "OSI参考模型", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "TCP/IP协议栈", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "物理层", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "数据链路层", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "差错控制", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "MAC协议", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "IP编址", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "子网划分", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "路由算法", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "ARP", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "ICMP", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "UDP协议", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "TCP协议", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "拥塞控制", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "计算机网络", "kp_id": "应用层协议", "source_refs": ["networking_bonaventure_cnp3_release_0_25_cc_by"]}
+{"course": "数据库原理", "kp_id": "关系模型", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "数据库原理", "kp_id": "关系代数", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "数据库原理", "kp_id": "SQL语言", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "数据库原理", "kp_id": "数据完整性", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "数据库原理", "kp_id": "函数依赖", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "数据库原理", "kp_id": "范式", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "数据库原理", "kp_id": "ER模型", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "数据库原理", "kp_id": "数据库设计", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "数据库原理", "kp_id": "索引", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "数据库原理", "kp_id": "事务", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "数据库原理", "kp_id": "并发控制", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "数据库原理", "kp_id": "封锁协议", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "数据库原理", "kp_id": "数据库恢复", "source_refs": ["database_database_design_2e_cc_by_4_0"]}
+{"course": "编译原理", "kp_id": "词法分析", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "编译原理", "kp_id": "正规表达式", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "编译原理", "kp_id": "有限自动机", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "编译原理", "kp_id": "语法分析", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "编译原理", "kp_id": "LL分析", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "编译原理", "kp_id": "LR分析", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "编译原理", "kp_id": "语法树", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "编译原理", "kp_id": "语法制导翻译", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "编译原理", "kp_id": "语义分析", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "编译原理", "kp_id": "符号表", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "编译原理", "kp_id": "中间代码", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "编译原理", "kp_id": "代码优化", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "编译原理", "kp_id": "目标代码生成", "source_refs": ["compiler_construction_wikibooks", "opendsa_dynamic"]}
+{"course": "形式语言与自动机", "kp_id": "文法与形式语言", "source_refs": ["formal_languages_sets_logic_computation_cc_by_4_0", "opendsa_dynamic"]}
+{"course": "形式语言与自动机", "kp_id": "正则语言", "source_refs": ["formal_languages_sets_logic_computation_cc_by_4_0", "opendsa_dynamic"]}
+{"course": "形式语言与自动机", "kp_id": "上下文无关文法", "source_refs": ["formal_languages_sets_logic_computation_cc_by_4_0", "opendsa_dynamic"]}
+{"course": "形式语言与自动机", "kp_id": "下推自动机", "source_refs": ["formal_languages_sets_logic_computation_cc_by_4_0", "opendsa_dynamic"]}
+{"course": "形式语言与自动机", "kp_id": "图灵机", "source_refs": ["formal_languages_sets_logic_computation_cc_by_4_0", "opendsa_dynamic"]}
+{"course": "形式语言与自动机", "kp_id": "可计算性", "source_refs": ["formal_languages_sets_logic_computation_cc_by_4_0", "opendsa_dynamic"]}
+{"course": "形式语言与自动机", "kp_id": "不可判定性", "source_refs": ["formal_languages_sets_logic_computation_cc_by_4_0", "opendsa_dynamic"]}
+{"course": "形式语言与自动机", "kp_id": "Chomsky层级", "source_refs": ["formal_languages_sets_logic_computation_cc_by_4_0", "opendsa_dynamic"]}
+{"course": "形式语言与自动机", "kp_id": "正则语言性质", "source_refs": ["formal_languages_sets_logic_computation_cc_by_4_0", "opendsa_dynamic"]}
+{"course": "形式语言与自动机", "kp_id": "上下文无关语言性质", "source_refs": ["formal_languages_sets_logic_computation_cc_by_4_0", "opendsa_dynamic"]}
+{"course": "软件工程", "kp_id": "软件过程模型", "source_refs": ["software_engineering_standing_on_shoulders_of_giants_2026_cc_by_sa_4_0"]}
+{"course": "软件工程", "kp_id": "敏捷开发", "source_refs": ["software_engineering_standing_on_shoulders_of_giants_2026_cc_by_sa_4_0"]}
+{"course": "软件工程", "kp_id": "需求工程", "source_refs": ["software_engineering_standing_on_shoulders_of_giants_2026_cc_by_sa_4_0"]}
+{"course": "软件工程", "kp_id": "软件设计", "source_refs": ["software_engineering_standing_on_shoulders_of_giants_2026_cc_by_sa_4_0"]}
+{"course": "软件工程", "kp_id": "模块化", "source_refs": ["software_engineering_standing_on_shoulders_of_giants_2026_cc_by_sa_4_0"]}
+{"course": "软件工程", "kp_id": "UML", "source_refs": ["software_engineering_standing_on_shoulders_of_giants_2026_cc_by_sa_4_0"]}
+{"course": "软件工程", "kp_id": "软件体系结构", "source_refs": ["software_engineering_standing_on_shoulders_of_giants_2026_cc_by_sa_4_0"]}
+{"course": "软件工程", "kp_id": "软件测试", "source_refs": ["software_engineering_standing_on_shoulders_of_giants_2026_cc_by_sa_4_0"]}
+{"course": "软件工程", "kp_id": "白盒测试", "source_refs": ["software_engineering_standing_on_shoulders_of_giants_2026_cc_by_sa_4_0"]}
+{"course": "软件工程", "kp_id": "黑盒测试", "source_refs": ["software_engineering_standing_on_shoulders_of_giants_2026_cc_by_sa_4_0"]}
+{"course": "软件工程", "kp_id": "软件维护", "source_refs": ["software_engineering_standing_on_shoulders_of_giants_2026_cc_by_sa_4_0"]}
+{"course": "软件工程", "kp_id": "项目管理", "source_refs": ["software_engineering_standing_on_shoulders_of_giants_2026_cc_by_sa_4_0"]}
+{"course": "人工智能导论", "kp_id": "人工智能概述", "source_refs": ["ai_latin_textbook_dynamic", "opendsa_dynamic"]}
+{"course": "人工智能导论", "kp_id": "问题求解与搜索", "source_refs": ["ai_latin_textbook_dynamic", "opendsa_dynamic"]}
+{"course": "人工智能导论", "kp_id": "启发式搜索", "source_refs": ["ai_latin_textbook_dynamic", "opendsa_dynamic"]}
+{"course": "人工智能导论", "kp_id": "博弈搜索", "source_refs": ["ai_latin_textbook_dynamic", "opendsa_dynamic"]}
+{"course": "人工智能导论", "kp_id": "知识表示", "source_refs": ["ai_latin_textbook_dynamic", "opendsa_dynamic"]}
+{"course": "人工智能导论", "kp_id": "推理机制", "source_refs": ["ai_latin_textbook_dynamic", "opendsa_dynamic"]}
+{"course": "人工智能导论", "kp_id": "机器学习基础", "source_refs": ["ai_latin_textbook_dynamic", "opendsa_dynamic"]}
+{"course": "人工智能导论", "kp_id": "神经网络基础", "source_refs": ["ai_latin_textbook_dynamic", "opendsa_dynamic"]}
+{"course": "人工智能导论", "kp_id": "强化学习基础", "source_refs": ["ai_latin_textbook_dynamic", "opendsa_dynamic"]}
+{"course": "人工智能导论", "kp_id": "自然语言处理基础", "source_refs": ["ai_latin_textbook_dynamic", "opendsa_dynamic"]}
+{"course": "人工智能导论", "kp_id": "计算机视觉基础", "source_refs": ["ai_latin_textbook_dynamic", "opendsa_dynamic"]}
+{"course": "人工智能导论", "kp_id": "智能体", "source_refs": ["ai_latin_textbook_dynamic", "opendsa_dynamic"]}
