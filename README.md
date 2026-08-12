@@ -114,10 +114,11 @@ flutter run --dart-define=ESA_API_BASE=http://127.0.0.1:51024/api
 
 ```bash
 cd frontend
-flutter build web --release --dart-define=ESA_API_BASE=/api
+flutter build web --release --pwa-strategy=none --dart-define=ESA_API_BASE=/api
 ```
 
-构建产物位于 `frontend/build/web/`。根目录的 `frontend-web.tar.gz` 是本地部署包，已被 Git 忽略。
+构建产物位于 `frontend/build/web/`。禁用 Flutter PWA 缓存可避免替换静态文件后浏览器
+继续运行旧版 `main.dart.js`。根目录的 `frontend-web.tar.gz` 是本地部署包，已被 Git 忽略。
 
 ## 开发约定
 
