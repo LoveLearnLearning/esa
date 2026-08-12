@@ -57,6 +57,7 @@ class ApiClient {
   String? sessionId;
   String? userId;
   String? username;
+  String? email;
   DateTime? sessionExpiresAt;
 
   bool get isLoggedIn => sessionId != null;
@@ -89,14 +90,62 @@ class ApiClient {
   }
 
   // ---------- 认证 ----------
-  Future<void> register(String username, String password) async {
+  Future<int> sendRegistrationCode(String email) async {
+    if (kOfflineMode) return 60;
+    final r = await http.post(
+      _uri('/auth/email/send-code'),
+      headers: _headers(),
+      body: jsonEncode({'email': email}),
+    );
+    if (r.statusCode != 202) _fail(r);
+    final data = _decode(r) as Map<String, dynamic>;
+    return data['retry_after_seconds'] as int? ?? 60;
+  }
+
+  Future<void> register(
+    String email,
+    String verificationCode,
+    String username,
+    String password,
+  ) async {
     if (kOfflineMode) return; // 离线模式注册直接成功
     final r = await http.post(
       _uri('/auth/register'),
       headers: _headers(),
-      body: jsonEncode({'username': username, 'password': password}),
+      body: jsonEncode({
+        'email': email,
+        'verification_code': verificationCode,
+        'username': username,
+        'password': password,
+      }),
     );
     if (r.statusCode != 201) _fail(r);
+  }
+
+  Future<int> sendBindEmailCode(String email) async {
+    if (kOfflineMode) return 60;
+    final r = await http.post(
+      _uri('/auth/email/bind/send-code'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'email': email}),
+    );
+    if (r.statusCode != 202) _fail(r);
+    final data = _decode(r) as Map<String, dynamic>;
+    return data['retry_after_seconds'] as int? ?? 60;
+  }
+
+  Future<void> bindEmail(String email, String verificationCode) async {
+    if (kOfflineMode) {
+      this.email = email;
+      return;
+    }
+    final r = await http.post(
+      _uri('/auth/email/bind'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'email': email, 'verification_code': verificationCode}),
+    );
+    if (r.statusCode != 200) _fail(r);
+    this.email = (_decode(r) as Map<String, dynamic>)['email'] as String;
   }
 
   Future<void> login(String username, String password) async {
@@ -114,6 +163,7 @@ class ApiClient {
     sessionId = data['session_id'] as String;
     userId = data['user_id'] as String;
     this.username = data['username'] as String;
+    email = data['email'] as String?;
     sessionExpiresAt = DateTime.tryParse(data['expires_at'] as String? ?? '');
   }
 
@@ -122,6 +172,7 @@ class ApiClient {
       sessionId = null;
       userId = null;
       username = null;
+      email = null;
       sessionExpiresAt = null;
       return;
     }
@@ -134,6 +185,7 @@ class ApiClient {
       sessionId = null;
       userId = null;
       username = null;
+      email = null;
       sessionExpiresAt = null;
     }
   }
@@ -805,6 +857,7 @@ class ApiClient {
     sessionId = 'offline-session';
     userId = 'offline-user';
     username = name.isEmpty ? '离线用户' : name;
+    email = name.contains('@') ? name : null;
     sessionExpiresAt = DateTime.now().toUtc().add(const Duration(days: 7));
     if (_offConvs.isEmpty) _seedOffline();
   }

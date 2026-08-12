@@ -8,7 +8,7 @@ ESA 是一个面向学习场景的多用户 Agent 项目，由 FastAPI 后端、
 
 ## 当前能力
 
-- 用户注册、登录、退出、修改密码和 7 天会话保持
+- 邮箱验证码注册、邮箱或用户名登录、老用户绑定邮箱、修改密码和 7 天会话保持
 - Qwen3.5-122B 主模型通过 vLLM 异步引擎提供推理
 - 独占第 5 张 GPU 的 Qwen3.5-9B 辅助服务负责课表解析和离线对话压缩
 - 对话与消息持久化、同步回复和 SSE 流式回复
@@ -63,6 +63,25 @@ cd frontend
 flutter pub get
 flutter run
 ```
+
+## 配置验证邮件
+
+验证码由 ESA 后端生成和校验，Resend 只负责投递。先在 Resend 添加独立发信子域名
+`notify.lovelearnlearning.cn`，再按 Resend 控制台给出的值到域名 DNS 控制台添加
+SPF、DKIM 记录并等待域名状态变为 Verified。不要自行猜测 DNS 记录值。
+
+在服务器环境文件中设置：
+
+```bash
+ESA_EMAIL_PROVIDER=resend
+RESEND_API_KEY=re_xxxxxxxxx
+ESA_EMAIL_FROM=星知智链 <verify@notify.lovelearnlearning.cn>
+ESA_EMAIL_VERIFICATION_SECRET=<至少32字符的随机密钥>
+```
+
+随机密钥可用 `openssl rand -hex 32` 生成。配置完成后重启后端，通过注册页发送一封
+验证码邮件完成联调。密钥只放服务器环境变量，不要提交到仓库。未配置时发送验证码
+接口会返回 `503`，不会在日志或响应中暴露验证码。
 
 通过编译参数覆盖 API 地址：
 

@@ -608,6 +608,50 @@ def _migrate_schedule_tables(connection: sqlite3.Connection) -> None:
     ensure_schedule_tables_schema(connection)
 
 
+def _migrate_email_identity(connection: sqlite3.Connection) -> None:
+    columns = _columns(connection, "users")
+    if "email" not in columns:
+        connection.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    if "email_verified_at" not in columns:
+        connection.execute("ALTER TABLE users ADD COLUMN email_verified_at TEXT")
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique
+        ON users (email COLLATE NOCASE)
+        WHERE email IS NOT NULL
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS email_verification_codes (
+            verification_id TEXT PRIMARY KEY,
+            email TEXT NOT NULL COLLATE NOCASE,
+            purpose TEXT NOT NULL,
+            code_digest TEXT NOT NULL,
+            requested_ip TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            consumed_at TEXT,
+            CHECK(purpose IN ('register', 'bind'))
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_email_codes_email_created
+        ON email_verification_codes(email, purpose, created_at)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_email_codes_ip_created
+        ON email_verification_codes(requested_ip, created_at)
+        """
+    )
+
+
 MIGRATIONS: list[MigrationDef] = [
     (
         1,
@@ -791,6 +835,11 @@ MIGRATIONS: list[MigrationDef] = [
             ON conversation_summaries(updated_at)
             """,
         ],
+    ),
+    (
+    9,
+        "create_email_identity_and_verification_codes",
+        _migrate_email_identity,
     ),
 ]
 

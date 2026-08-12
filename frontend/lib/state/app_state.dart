@@ -24,6 +24,7 @@ class AppState extends ChangeNotifier {
   static const _rememberSessionKey = 'esa.remember.session_id';
   static const _rememberUserIdKey = 'esa.remember.user_id';
   static const _rememberUsernameKey = 'esa.remember.username';
+  static const _rememberEmailKey = 'esa.remember.email';
   static const _rememberExpiresAtKey = 'esa.remember.expires_at';
   static const _scheduleStoragePrefix = 'esa.schedule.';
   static const _scheduleSettingsStoragePrefix = 'esa.schedule.settings.';
@@ -77,7 +78,7 @@ class AppState extends ChangeNotifier {
   }) async {
     try {
       await api.login(username, password);
-      email = '$username@esa.study';
+      email = api.email ?? '';
       await _afterLogin();
       if (rememberLogin) {
         await _rememberCurrentSession();
@@ -93,11 +94,27 @@ class AppState extends ChangeNotifier {
   }
 
   /// 注册并自动登录 返回 null 表示成功 否则返回错误文案
-  Future<String?> register(String username, String password) async {
+  Future<String?> sendRegistrationCode(String emailAddress) async {
     try {
-      await api.register(username, password);
-      await api.login(username, password);
-      email = '$username@esa.study';
+      final seconds = await api.sendRegistrationCode(emailAddress);
+      return seconds.toString();
+    } on ApiException catch (e) {
+      return e.detail;
+    } catch (_) {
+      return '无法连接服务器 请检查后端是否启动';
+    }
+  }
+
+  Future<String?> register(
+    String emailAddress,
+    String verificationCode,
+    String username,
+    String password,
+  ) async {
+    try {
+      await api.register(emailAddress, verificationCode, username, password);
+      await api.login(emailAddress, password);
+      email = api.email ?? emailAddress;
       await _afterLogin();
       return null;
     } on ApiException catch (e) {
@@ -128,6 +145,7 @@ class AppState extends ChangeNotifier {
     final sessionId = localPreferences.getString(_rememberSessionKey);
     final userId = localPreferences.getString(_rememberUserIdKey);
     final username = localPreferences.getString(_rememberUsernameKey);
+    final rememberedEmail = localPreferences.getString(_rememberEmailKey);
     final expiresAtValue = localPreferences.getString(_rememberExpiresAtKey);
     final expiresAt = DateTime.tryParse(expiresAtValue ?? '');
 
@@ -143,8 +161,9 @@ class AppState extends ChangeNotifier {
     api.sessionId = sessionId;
     api.userId = userId;
     api.username = username;
+    api.email = rememberedEmail;
     api.sessionExpiresAt = expiresAt;
-    email = '$username@esa.study';
+    email = rememberedEmail ?? '';
 
     try {
       await _afterLogin();
@@ -169,6 +188,11 @@ class AppState extends ChangeNotifier {
     await localPreferences.setString(_rememberSessionKey, sessionId);
     await localPreferences.setString(_rememberUserIdKey, userId);
     await localPreferences.setString(_rememberUsernameKey, username);
+    if (api.email case final rememberedEmail?) {
+      await localPreferences.setString(_rememberEmailKey, rememberedEmail);
+    } else {
+      await localPreferences.remove(_rememberEmailKey);
+    }
     await localPreferences.setString(
       _rememberExpiresAtKey,
       expiresAt.toUtc().toIso8601String(),
@@ -182,6 +206,7 @@ class AppState extends ChangeNotifier {
       localPreferences.remove(_rememberSessionKey),
       localPreferences.remove(_rememberUserIdKey),
       localPreferences.remove(_rememberUsernameKey),
+      localPreferences.remove(_rememberEmailKey),
       localPreferences.remove(_rememberExpiresAtKey),
     ]);
   }
@@ -211,10 +236,40 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<String?> sendBindEmailCode(String emailAddress) async {
+    try {
+      return (await api.sendBindEmailCode(emailAddress)).toString();
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) _clearSession();
+      return e.detail;
+    } catch (_) {
+      return '无法连接服务器 请稍后重试';
+    }
+  }
+
+  Future<String?> bindEmail(
+    String emailAddress,
+    String verificationCode,
+  ) async {
+    try {
+      await api.bindEmail(emailAddress, verificationCode);
+      email = api.email ?? emailAddress;
+      await _rememberCurrentSession();
+      notifyListeners();
+      return null;
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) _clearSession();
+      return e.detail;
+    } catch (_) {
+      return '无法连接服务器 请稍后重试';
+    }
+  }
+
   void _clearSession() {
     api.sessionId = null;
     api.userId = null;
     api.username = null;
+    api.email = null;
     api.sessionExpiresAt = null;
     unawaited(_forgetRememberedSession());
     conversations.clear();
@@ -229,6 +284,7 @@ class AppState extends ChangeNotifier {
     busy = false;
     preferences = const UserPreferences();
     userProfile = const UserProfile();
+    email = '';
     notifyListeners();
   }
 

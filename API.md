@@ -36,9 +36,10 @@ Authorization: Bearer <session_id>
 
 | 状态码 | 含义                                                           |
 | ------ | -------------------------------------------------------------- |
-| 401    | 未登录 / 会话无效 / 会话过期 / 用户名或密码错误                |
+| 401    | 未登录 / 会话无效 / 会话过期 / 邮箱、用户名或密码错误          |
 | 404    | 资源不存在或不属于当前用户                                     |
-| 409    | 资源冲突，如用户名已存在、分组达到上限或同一对话上一轮仍在生成 |
+| 409    | 资源冲突，如用户名或邮箱已存在、分组达到上限                    |
+| 429    | 验证码发送过于频繁，按 `Retry-After` 响应头稍后重试             |
 | 422    | 请求体校验不通过 由 pydantic 自动返回                          |
 
 ---
@@ -59,14 +60,36 @@ Authorization: Bearer <session_id>
 
 ## 已实现接口
 
-### POST /auth/register — 注册
+### POST /auth/email/send-code — 发送注册验证码
+
+无需认证。请求体：
+
+```json
+{ "email": "user@example.com" }
+```
+
+成功响应 `202`：
+
+```json
+{ "status": "accepted", "retry_after_seconds": 60 }
+```
+
+验证码默认 10 分钟有效、同一邮箱 60 秒内不可重发。邮箱已注册返回 `409`，
+邮件服务未配置返回 `503`，投递失败返回 `502`。
+
+### POST /auth/register — 邮箱注册
 
 无需认证
 
 请求体:
 
 ```json
-{ "username": "feng", "password": "password123" }
+{
+  "email": "user@example.com",
+  "verification_code": "123456",
+  "username": "feng",
+  "password": "password123"
+}
 ```
 
 校验规则: `username` 1-32 位 `password` 8-128 位 不符合返回 422
@@ -74,10 +97,10 @@ Authorization: Bearer <session_id>
 成功响应 `201`:
 
 ```json
-{ "user_id": "服务端生成的uuid", "username": "feng" }
+{ "user_id": "服务端生成的uuid", "username": "feng", "email": "user@example.com" }
 ```
 
-失败: `409` 用户名已存在
+验证码错误或过期返回 `400`，用户名或邮箱已存在返回 `409`。
 
 ### POST /auth/login — 登录
 
@@ -86,7 +109,7 @@ Authorization: Bearer <session_id>
 请求体:
 
 ```json
-{ "username": "feng", "password": "password123" }
+{ "username": "user@example.com", "password": "password123" }
 ```
 
 成功响应 `200`:
@@ -96,13 +119,29 @@ Authorization: Bearer <session_id>
     "session_id": "uuid 作为后续请求的 Bearer token",
     "user_id": "用户uuid",
     "username": "feng",
+    "email": "user@example.com",
     "expires_at": "2026-07-24T07:22:08.123456+00:00"
 }
 ```
 
-失败: `401` 用户名或密码错误(不区分具体原因)
+`username` 字段兼容邮箱和用户名。老用户可继续用用户名登录；已绑定邮箱的用户也可
+使用邮箱登录。失败返回 `401`，不区分具体原因。
 
 注意: 密码原样发送 前端不要对密码做 trim 或其他改动
+
+### POST /auth/email/bind/send-code — 发送绑定邮箱验证码
+
+需要认证，请求和响应与发送注册验证码相同。邮箱已被使用返回 `409`。
+
+### POST /auth/email/bind — 绑定或更换邮箱
+
+需要认证。请求体：
+
+```json
+{ "email": "user@example.com", "verification_code": "123456" }
+```
+
+成功响应 `200`：`{ "email": "user@example.com" }`。
 
 ### POST /auth/logout — 登出
 

@@ -23,8 +23,14 @@ from backend.core.services.auxiliary_llm_service import AuxiliaryLLMClient
 from backend.core.services.conversation_compression_service import (
     ConversationCompressionService,
 )
+from backend.core.services.email_verification_service import (
+    EmailVerificationService,
+    ResendEmailSender,
+    VerificationPolicy,
+)
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.conversation_summary_store import ConversationSummaryStore
+from backend.core.stores.email_verification_store import EmailVerificationStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.migrations import run_migrations
 from backend.core.stores.profile_store import ProfileStore
@@ -49,6 +55,14 @@ from backend.core.utils.config import (
     CONVERSATION_OFFLINE_AFTER_SECONDS,
     CORS_ALLOWED_ORIGINS,
     ENABLE_LEGACY_API_ROUTES,
+    EMAIL_CODE_COOLDOWN_SECONDS,
+    EMAIL_CODE_EMAIL_HOURLY_LIMIT,
+    EMAIL_CODE_IP_HOURLY_LIMIT,
+    EMAIL_CODE_MAX_ATTEMPTS,
+    EMAIL_CODE_TTL_SECONDS,
+    EMAIL_FROM,
+    EMAIL_PROVIDER,
+    EMAIL_VERIFICATION_SECRET,
     FORWARDED_ALLOW_IPS,
     MODEL_DTYPE,
     MODEL_GPU_MEMORY_UTILIZATION,
@@ -59,6 +73,8 @@ from backend.core.utils.config import (
     MODEL_PATH,
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
+    RESEND_API_KEY,
+    RESEND_BASE_URL,
     TRUSTED_HOSTS,
     validate_startup_config,
 )
@@ -90,6 +106,28 @@ async def lifespan(app: FastAPI):
     app.state.profile_store = ProfileStore(DB_PATH)
 
     run_migrations(DB_PATH)
+    app.state.email_verification_store = EmailVerificationStore(DB_PATH)
+    app.state.email_verification_service = None
+    if EMAIL_PROVIDER == "resend":
+        # validate_startup_config has already guaranteed these values.
+        if RESEND_API_KEY is None or EMAIL_VERIFICATION_SECRET is None:
+            raise RuntimeError("邮件服务配置不完整")
+        app.state.email_verification_service = EmailVerificationService(
+            store=app.state.email_verification_store,
+            sender=ResendEmailSender(
+                api_key=RESEND_API_KEY,
+                from_address=EMAIL_FROM,
+                base_url=RESEND_BASE_URL,
+            ),
+            digest_secret=EMAIL_VERIFICATION_SECRET,
+            policy=VerificationPolicy(
+                ttl_seconds=EMAIL_CODE_TTL_SECONDS,
+                cooldown_seconds=EMAIL_CODE_COOLDOWN_SECONDS,
+                email_hourly_limit=EMAIL_CODE_EMAIL_HOURLY_LIMIT,
+                ip_hourly_limit=EMAIL_CODE_IP_HOURLY_LIMIT,
+                max_attempts=EMAIL_CODE_MAX_ATTEMPTS,
+            ),
+        )
     app.state.user_course_store = UserCourseStore(DB_PATH)
     app.state.schedule_store = ScheduleStore(DB_PATH)
     app.state.user_presence_store = UserPresenceStore(DB_PATH)
@@ -160,6 +198,8 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        if app.state.email_verification_service is not None:
+            await app.state.email_verification_service.close()
         if app.state.mm_sessions is not None:
             await app.state.mm_sessions.close()
         app.state.rag_lifecycle.close()

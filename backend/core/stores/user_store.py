@@ -27,6 +27,8 @@ class UserStore(BaseSQLiteStore):
                 CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
                     username TEXT NOT NULL UNIQUE,
+                    email TEXT COLLATE NOCASE,
+                    email_verified_at TEXT,
                     password_hash TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'active',
                     preferred_style TEXT NOT NULL DEFAULT 'concise',
@@ -80,6 +82,19 @@ class UserStore(BaseSQLiteStore):
                 connection.execute(
                     "ALTER TABLE users ADD COLUMN profile_enabled INTEGER NOT NULL DEFAULT 1"
                 )
+            if "email" not in columns:
+                connection.execute("ALTER TABLE users ADD COLUMN email TEXT")
+            if "email_verified_at" not in columns:
+                connection.execute(
+                    "ALTER TABLE users ADD COLUMN email_verified_at TEXT"
+                )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique
+                ON users (email COLLATE NOCASE)
+                WHERE email IS NOT NULL
+                """
+            )
 
             # 记忆与画像开关表 (spec Task 4) 实际存储细粒度开关
             # profile_enabled 已迁移到此表 拆分为 learning_profile_enabled + inferred_profile_enabled
@@ -117,6 +132,8 @@ class UserStore(BaseSQLiteStore):
             username=row["username"],
             password_hash=row["password_hash"],
             status=row["status"],
+            email=row["email"],
+            email_verified_at=row["email_verified_at"],
             preferred_style=row["preferred_style"],
             preferred_tone=row["preferred_tone"],
             custom_instruction=row["custom_instruction"],
@@ -141,7 +158,7 @@ class UserStore(BaseSQLiteStore):
         """
         row = self.query_one(
             """
-            SELECT id, username, password_hash, status,
+            SELECT id, username, email, email_verified_at, password_hash, status,
                    preferred_style, preferred_tone, custom_instruction,
                    major, grade, current_week, total_weeks, profile_enabled
             FROM users
@@ -167,7 +184,7 @@ class UserStore(BaseSQLiteStore):
         """
         row = self.query_one(
             """
-            SELECT id, username, password_hash, status,
+            SELECT id, username, email, email_verified_at, password_hash, status,
                    preferred_style, preferred_tone, custom_instruction,
                    major, grade, current_week, total_weeks, profile_enabled
             FROM users
@@ -181,6 +198,20 @@ class UserStore(BaseSQLiteStore):
 
         return self.to_model(row)
 
+    def get_by_email(self, email: str) -> UserRecord | None:
+        """按已规范化的邮箱地址查找用户（大小写不敏感）。"""
+        row = self.query_one(
+            """
+            SELECT id, username, email, email_verified_at, password_hash, status,
+                   preferred_style, preferred_tone, custom_instruction,
+                   major, grade, current_week, total_weeks, profile_enabled
+            FROM users
+            WHERE email = ? COLLATE NOCASE
+            """,
+            (email,),
+        )
+        return self.to_model(row) if row is not None else None
+
     def create(self, user: UserRecord) -> bool:
         """创建新用户
         Args:
@@ -193,15 +224,17 @@ class UserStore(BaseSQLiteStore):
             self.execute(
                 """
                 INSERT INTO users (
-                    id, username, password_hash, status,
+                    id, username, email, email_verified_at, password_hash, status,
                     preferred_style, preferred_tone, custom_instruction,
                     major, grade, current_week, total_weeks, profile_enabled
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user.id,
                     user.username,
+                    user.email,
+                    user.email_verified_at,
                     user.password_hash,
                     user.status,
                     user.preferred_style,
@@ -218,6 +251,26 @@ class UserStore(BaseSQLiteStore):
             return False
 
         return True
+
+    def bind_email(
+        self,
+        user_id: str,
+        email: str,
+        verified_at: str,
+    ) -> bool:
+        """给老用户绑定已验证邮箱；邮箱唯一性由数据库保证。"""
+        try:
+            count = self.execute(
+                """
+                UPDATE users
+                SET email = ?, email_verified_at = ?
+                WHERE id = ?
+                """,
+                (email, verified_at, user_id),
+            )
+        except sqlite3.IntegrityError:
+            return False
+        return count > 0
 
     def update_password(self, user_id: str, password_hash: str) -> bool:
         """更新用户密码的哈希值
