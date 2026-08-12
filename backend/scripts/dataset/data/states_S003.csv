@@ -1,0 +1,6 @@
+﻿state_id,scenario_id,primary_rule_id,state_name,required_param_state,missing_parameters,context_state,user_revision_state,tool_result_state,gate_condition,gate_state,expected_action,expected_tool,argument_rule,ask_for,gold_behavior,case_type,generation_budget,keep
+S003_A001,S003,,,无required参数,,无相关上下文,未修改,未调用,,不适用,CALL_TOOL,,,,,,,
+S003_A002,S003,,,无required参数,,无相关上下文,未修改,成功,,不适用,RESPOND_TOOL_RESULT,,,,,,,
+S003_A003,S003,,,无required参数,,无相关上下文,未修改,空结果,,不适用,RECOVER_TOOL_ERROR,,,,,,,
+S003_A004,S003,,,无required参数,,无相关上下文,未修改,工具报错,,不适用,RECOVER_TOOL_ERROR,,,,,,,
+S003_A005,S003,,,无required参数,,参数全部在当前轮,未修改,未调用,,不适用,CALL_TOOL,,,,,,,
