@@ -882,6 +882,7 @@ class ChatConversation {
     this.pinned = false,
     this.workspaceType = WorkspaceType.learning,
     this.researchProjectId,
+    this.groupId,
   });
 
   final String id;
@@ -889,6 +890,7 @@ class ChatConversation {
   DateTime updatedAt;
   final WorkspaceType workspaceType;
   final String? researchProjectId;
+  String? groupId;
   bool pinned; // 置顶 后端暂无字段 仅前端本地状态
 
   factory ChatConversation.fromJson(Map<String, dynamic> j) {
@@ -900,6 +902,57 @@ class ChatConversation {
           DateTime.now(),
       workspaceType: WorkspaceType.fromWire(j['workspace_type'] as String?),
       researchProjectId: j['research_project_id'] as String?,
+      groupId: j['group_id'] as String?,
     );
   }
+}
+
+/// 用于区分“未提供字段”和“显式传 null”的分组更新哨兵值。
+class GroupFieldUnset {
+  const GroupFieldUnset();
+}
+
+const groupFieldUnset = GroupFieldUnset();
+
+class ChatGroup {
+  const ChatGroup({
+    required this.id,
+    required this.userId,
+    required this.name,
+    required this.description,
+    required this.customInstruction,
+    required this.conversationCount,
+    required this.createdAt,
+    required this.updatedAt,
+    this.style,
+    this.tone,
+  });
+
+  final String id;
+  final String userId;
+  final String name;
+  final String description;
+  final String customInstruction;
+  final String? style;
+  final String? tone;
+  final int conversationCount;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  factory ChatGroup.fromJson(Map<String, dynamic> json) => ChatGroup(
+    id: json['group_id'] as String? ?? '',
+    userId: json['user_id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    description: json['description'] as String? ?? '',
+    customInstruction: json['custom_instruction'] as String? ?? '',
+    style: json['style'] as String?,
+    tone: json['tone'] as String?,
+    conversationCount: (json['conversation_count'] as num?)?.toInt() ?? 0,
+    createdAt:
+        DateTime.tryParse(json['created_at'] as String? ?? '')?.toLocal() ??
+        DateTime.now(),
+    updatedAt:
+        DateTime.tryParse(json['updated_at'] as String? ?? '')?.toLocal() ??
+        DateTime.now(),
+  );
 }

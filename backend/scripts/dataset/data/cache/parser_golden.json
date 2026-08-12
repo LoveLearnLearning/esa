@@ -1,8 +1,8 @@
 {
  "_meta": {
-  "captured_at": "2026-08-12T06:51:55+00:00",
+  "captured_at": "2026-08-12T15:18:18+00:00",
   "source": "github.com/LoveLearnLearning/esa",
-  "source_repo": "local-clone@d9fd971",
+  "source_repo": "local-clone@21da1e5",
   "source_sha256": {
    "backend/core/utils/parser.py": "ae0fa1d7118bbe6e",
    "backend/core/utils/tool_arguments.py": "a053ec4dee58905d"
@@ -2242,10 +2242,10 @@
    }
   },
   {
-   "input": "<think>\n\n</think>\n\n得先有图的存储和遍历基础，再理解贪心和松弛操作。Dijkstra 依赖贪心选择性质，所以负权边会破坏它的正确性。",
+   "input": "<think>\n\n</think>\n\n得先有图的存储和遍历基础，再理解贪心和松弛操作 —— 这两个正是 Dijkstra 的骨架。松弛没吃透，就看不懂它怎么一步步把估计值收敛成最短距离；贪心没吃透，就想不通它为什么怕负权边。",
    "expected": {
     "reasoning": "",
-    "content": "得先有图的存储和遍历基础，再理解贪心和松弛操作。Dijkstra 依赖贪心选择性质，所以负权边会破坏它的正确性。",
+    "content": "得先有图的存储和遍历基础，再理解贪心和松弛操作 —— 这两个正是 Dijkstra 的骨架。松弛没吃透，就看不懂它怎么一步步把估计值收敛成最短距离；贪心没吃透，就想不通它为什么怕负权边。",
     "tool_calls": []
    }
   },
@@ -10287,10 +10287,10 @@
    }
   },
   {
-   "input": "<think>\n\n</think>\n\n错在把蕴含关系反过来用了。「树是图」说的是树属于图的一个子集，反过来不成立 —— 图里有环就不是树。这类错误叫肯定后件。",
+   "input": "<think>\n\n</think>\n\n错在把蕴含关系反过来用了。「所有树都是图」只说树是图的一个子集，它的逆命题不跟着成立 —— 图里有环就不是树。这叫**换位谬误**（全称肯定命题不能直接把主谓对调）；它和「肯定后件」不是一回事，后者是「若 P 则 Q，Q 成立，故 P 成立」，要有一个具体前提才谈得上。",
    "expected": {
     "reasoning": "",
-    "content": "错在把蕴含关系反过来用了。「树是图」说的是树属于图的一个子集，反过来不成立 —— 图里有环就不是树。这类错误叫肯定后件。",
+    "content": "错在把蕴含关系反过来用了。「所有树都是图」只说树是图的一个子集，它的逆命题不跟着成立 —— 图里有环就不是树。这叫**换位谬误**（全称肯定命题不能直接把主谓对调）；它和「肯定后件」不是一回事，后者是「若 P 则 Q，Q 成立，故 P 成立」，要有一个具体前提才谈得上。",
     "tool_calls": []
    }
   },
@@ -10847,18 +10847,18 @@
    }
   },
   {
-   "input": "<think>\n\n</think>\n\n先确认一下：操作系统还有几周考试？我需要这个来判断该铺开练还是抓重点。",
-   "expected": {
-    "reasoning": "",
-    "content": "先确认一下：操作系统还有几周考试？我需要这个来判断该铺开练还是抓重点。",
-    "tool_calls": []
-   }
-  },
-  {
    "input": "<think>\n\n</think>\n\n好的。请问操作系统的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
    "expected": {
     "reasoning": "",
     "content": "好的。请问操作系统的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n先确认一下：操作系统还有几周考试？我需要这个来判断该铺开练还是抓重点。",
+   "expected": {
+    "reasoning": "",
+    "content": "先确认一下：操作系统还有几周考试？我需要这个来判断该铺开练还是抓重点。",
     "tool_calls": []
    }
   },
@@ -10879,14 +10879,6 @@
    }
   },
   {
-   "input": "<think>\n\n</think>\n\n没问题。距离计算机网络考试还有多长时间呢？剩几周直接决定了是全面复习还是重点突破。",
-   "expected": {
-    "reasoning": "",
-    "content": "没问题。距离计算机网络考试还有多长时间呢？剩几周直接决定了是全面复习还是重点突破。",
-    "tool_calls": []
-   }
-  },
-  {
    "input": "<think>\n\n</think>\n\n好的。请问计算机网络的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
    "expected": {
     "reasoning": "",
@@ -10903,26 +10895,18 @@
    }
   },
   {
+   "input": "<think>\n\n</think>\n\n没问题。距离计算机网络考试还有多长时间呢？剩几周直接决定了是全面复习还是重点突破。",
+   "expected": {
+    "reasoning": "",
+    "content": "没问题。距离计算机网络考试还有多长时间呢？剩几周直接决定了是全面复习还是重点突破。",
+    "tool_calls": []
+   }
+  },
+  {
    "input": "<think>\n\n</think>\n\n先确认一下：计算机网络还有几周考试？我需要这个来判断该铺开练还是抓重点。",
    "expected": {
     "reasoning": "",
     "content": "先确认一下：计算机网络还有几周考试？我需要这个来判断该铺开练还是抓重点。",
-    "tool_calls": []
-   }
-  },
-  {
-   "input": "<think>\n\n</think>\n\n好的。请问计算机组成原理的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
-   "expected": {
-    "reasoning": "",
-    "content": "好的。请问计算机组成原理的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
-    "tool_calls": []
-   }
-  },
-  {
-   "input": "<think>\n\n</think>\n\n先确认一下：计算机组成原理还有几周考试？我需要这个来判断该铺开练还是抓重点。",
-   "expected": {
-    "reasoning": "",
-    "content": "先确认一下：计算机组成原理还有几周考试？我需要这个来判断该铺开练还是抓重点。",
     "tool_calls": []
    }
   },
@@ -10935,6 +10919,22 @@
    }
   },
   {
+   "input": "<think>\n\n</think>\n\n先确认一下：计算机组成原理还有几周考试？我需要这个来判断该铺开练还是抓重点。",
+   "expected": {
+    "reasoning": "",
+    "content": "先确认一下：计算机组成原理还有几周考试？我需要这个来判断该铺开练还是抓重点。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n好的。请问计算机组成原理的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
+   "expected": {
+    "reasoning": "",
+    "content": "好的。请问计算机组成原理的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
+    "tool_calls": []
+   }
+  },
+  {
    "input": "<think>\n\n</think>\n\n可以。你计算机组成原理的考试大概在几周后？时间不同，练习的取舍会差很多。",
    "expected": {
     "reasoning": "",
@@ -10943,10 +10943,10 @@
    }
   },
   {
-   "input": "<think>\n\n</think>\n\n好的。请问数据库原理的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
+   "input": "<think>\n\n</think>\n\n可以。你数据库原理的考试大概在几周后？时间不同，练习的取舍会差很多。",
    "expected": {
     "reasoning": "",
-    "content": "好的。请问数据库原理的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
+    "content": "可以。你数据库原理的考试大概在几周后？时间不同，练习的取舍会差很多。",
     "tool_calls": []
    }
   },
@@ -10967,34 +10967,10 @@
    }
   },
   {
-   "input": "<think>\n\n</think>\n\n可以。你数据库原理的考试大概在几周后？时间不同，练习的取舍会差很多。",
+   "input": "<think>\n\n</think>\n\n好的。请问数据库原理的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
    "expected": {
     "reasoning": "",
-    "content": "可以。你数据库原理的考试大概在几周后？时间不同，练习的取舍会差很多。",
-    "tool_calls": []
-   }
-  },
-  {
-   "input": "<think>\n\n</think>\n\n先确认一下：算法设计与分析还有几周考试？我需要这个来判断该铺开练还是抓重点。",
-   "expected": {
-    "reasoning": "",
-    "content": "先确认一下：算法设计与分析还有几周考试？我需要这个来判断该铺开练还是抓重点。",
-    "tool_calls": []
-   }
-  },
-  {
-   "input": "<think>\n\n</think>\n\n没问题。距离算法设计与分析考试还有多长时间呢？剩几周直接决定了是全面复习还是重点突破。",
-   "expected": {
-    "reasoning": "",
-    "content": "没问题。距离算法设计与分析考试还有多长时间呢？剩几周直接决定了是全面复习还是重点突破。",
-    "tool_calls": []
-   }
-  },
-  {
-   "input": "<think>\n\n</think>\n\n好的。请问算法设计与分析的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
-   "expected": {
-    "reasoning": "",
-    "content": "好的。请问算法设计与分析的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
+    "content": "好的。请问数据库原理的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
     "tool_calls": []
    }
   },
@@ -11007,18 +10983,26 @@
    }
   },
   {
-   "input": "<think>\n\n</think>\n\n好的。你想针对哪门课程制定计划？比如数据结构、操作系统、计算机网络这些。",
+   "input": "<think>\n\n</think>\n\n先确认一下：算法设计与分析还有几周考试？我需要这个来判断该铺开练还是抓重点。",
    "expected": {
     "reasoning": "",
-    "content": "好的。你想针对哪门课程制定计划？比如数据结构、操作系统、计算机网络这些。",
+    "content": "先确认一下：算法设计与分析还有几周考试？我需要这个来判断该铺开练还是抓重点。",
     "tool_calls": []
    }
   },
   {
-   "input": "<think>\n\n</think>\n\n没问题。请问是哪门课？不同课程的知识点权重不一样，我需要先确定范围。",
+   "input": "<think>\n\n</think>\n\n好的。请问算法设计与分析的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
    "expected": {
     "reasoning": "",
-    "content": "没问题。请问是哪门课？不同课程的知识点权重不一样，我需要先确定范围。",
+    "content": "好的。请问算法设计与分析的期末考试还有几周？知道时间我才能按紧急程度排优先级。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n没问题。距离算法设计与分析考试还有多长时间呢？剩几周直接决定了是全面复习还是重点突破。",
+   "expected": {
+    "reasoning": "",
+    "content": "没问题。距离算法设计与分析考试还有多长时间呢？剩几周直接决定了是全面复习还是重点突破。",
     "tool_calls": []
    }
   },
@@ -11031,10 +11015,18 @@
    }
   },
   {
-   "input": "<think>\n\n</think>\n\n好的，我需要两个信息：一是哪门课程，二是距离考试还有几周。有了这两个才能排出优先级。",
+   "input": "<think>\n\n</think>\n\n没问题。请问是哪门课？不同课程的知识点权重不一样，我需要先确定范围。",
    "expected": {
     "reasoning": "",
-    "content": "好的，我需要两个信息：一是哪门课程，二是距离考试还有几周。有了这两个才能排出优先级。",
+    "content": "没问题。请问是哪门课？不同课程的知识点权重不一样，我需要先确定范围。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n好的。你想针对哪门课程制定计划？比如数据结构、操作系统、计算机网络这些。",
+   "expected": {
+    "reasoning": "",
+    "content": "好的。你想针对哪门课程制定计划？比如数据结构、操作系统、计算机网络这些。",
     "tool_calls": []
    }
   },
@@ -11043,6 +11035,14 @@
    "expected": {
     "reasoning": "",
     "content": "没问题。请告诉我课程名和距离考试的周数，我再给你列练习重点。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n好的，我需要两个信息：一是哪门课程，二是距离考试还有几周。有了这两个才能排出优先级。",
+   "expected": {
+    "reasoning": "",
+    "content": "好的，我需要两个信息：一是哪门课程，二是距离考试还有几周。有了这两个才能排出优先级。",
     "tool_calls": []
    }
   },
@@ -11071,14 +11071,6 @@
    }
   },
   {
-   "input": "<think>\n\n</think>\n\n你在**数据结构**上的学习情况：\n\n- 覆盖知识点 20 个，平均掌握度 **47.99**\n- 最薄弱的三个：查找（10.52）、二叉搜索树（15.84）、哈夫曼树（15.97）\n- 需要复习的有 5 个，记忆保持率最低的是「算法复杂度」，已降到 0.033\n\n建议从「查找」入手，目前只有 10.52，提升空间最大。",
-   "expected": {
-    "reasoning": "",
-    "content": "你在**数据结构**上的学习情况：\n\n- 覆盖知识点 20 个，平均掌握度 **47.99**\n- 最薄弱的三个：查找（10.52）、二叉搜索树（15.84）、哈夫曼树（15.97）\n- 需要复习的有 5 个，记忆保持率最低的是「算法复杂度」，已降到 0.033\n\n建议从「查找」入手，目前只有 10.52，提升空间最大。",
-    "tool_calls": []
-   }
-  },
-  {
    "input": "<think>\n\n</think>\n\n<tool_call>\n<function=get_mastery_report>\n<parameter=course>\n操作系统\n</parameter>\n</function>\n</tool_call>",
    "expected": {
     "reasoning": "",
@@ -11103,68 +11095,6 @@
   },
   {
    "input": "<think>\n\n</think>\n\n<tool_call>\n{\"name\": \"get_mastery_report\", \"arguments\": {\"course\": \"操作系统\"}}\n</tool_call>",
-   "expected": {
-    "reasoning": "",
-    "content": null,
-    "tool_calls": []
-   }
-  },
-  {
-   "input": "<think>\n\n</think>\n\n<tool_call>\n<function=get_mastery_report>\n<parameter=course>\n计算机网络\n</parameter>\n</function>\n</tool_call>",
-   "expected": {
-    "reasoning": "",
-    "content": null,
-    "tool_calls": [
-     {
-      "name": "get_mastery_report",
-      "arguments": {
-       "course": "计算机网络"
-      }
-     }
-    ]
-   }
-  },
-  {
-   "input": "<think>\n\n</think>\n\n你在**计算机网络**上的学习情况：\n\n- 覆盖知识点 14 个，平均掌握度 **60.89**\n- 最薄弱的三个：TCP协议（7.8）、拥塞控制（18.4）、物理层（25.86）\n- 需要复习的有 5 个，记忆保持率最低的是「应用层协议」，已降到 0.012\n\n建议从「TCP协议」入手，目前只有 7.8，提升空间最大。",
-   "expected": {
-    "reasoning": "",
-    "content": "你在**计算机网络**上的学习情况：\n\n- 覆盖知识点 14 个，平均掌握度 **60.89**\n- 最薄弱的三个：TCP协议（7.8）、拥塞控制（18.4）、物理层（25.86）\n- 需要复习的有 5 个，记忆保持率最低的是「应用层协议」，已降到 0.012\n\n建议从「TCP协议」入手，目前只有 7.8，提升空间最大。",
-    "tool_calls": []
-   }
-  },
-  {
-   "input": "<think>\n\n</think>\n\n<tool_call>\n{\"name\": \"get_mastery_report\", \"arguments\": {\"course\": \"计算机网络\"}}\n</tool_call>",
-   "expected": {
-    "reasoning": "",
-    "content": null,
-    "tool_calls": []
-   }
-  },
-  {
-   "input": "<think>\n\n</think>\n\n<tool_call>\n<function=get_mastery_report>\n<parameter=course>\n计算机组成原理\n</parameter>\n</function>\n</tool_call>",
-   "expected": {
-    "reasoning": "",
-    "content": null,
-    "tool_calls": [
-     {
-      "name": "get_mastery_report",
-      "arguments": {
-       "course": "计算机组成原理"
-      }
-     }
-    ]
-   }
-  },
-  {
-   "input": "<think>\n\n</think>\n\n你在**计算机组成原理**上的学习情况：\n\n- 覆盖知识点 13 个，平均掌握度 **41.14**\n- 最薄弱的三个：I/O方式（11.46）、冯诺依曼结构（14.63）、CPU数据通路（15.9）\n- 需要复习的有 5 个，记忆保持率最低的是「原码反码补码」，已降到 0.016\n\n建议从「I/O方式」入手，目前只有 11.46，提升空间最大。",
-   "expected": {
-    "reasoning": "",
-    "content": "你在**计算机组成原理**上的学习情况：\n\n- 覆盖知识点 13 个，平均掌握度 **41.14**\n- 最薄弱的三个：I/O方式（11.46）、冯诺依曼结构（14.63）、CPU数据通路（15.9）\n- 需要复习的有 5 个，记忆保持率最低的是「原码反码补码」，已降到 0.016\n\n建议从「I/O方式」入手，目前只有 11.46，提升空间最大。",
-    "tool_calls": []
-   }
-  },
-  {
-   "input": "<think>\n\n</think>\n\n<tool_call>\n{\"name\": \"get_mastery_report\", \"arguments\": {\"course\": \"计算机组成原理\"}}\n</tool_call>",
    "expected": {
     "reasoning": "",
     "content": null,
@@ -11203,6 +11133,14 @@
    }
   },
   {
+   "input": "<think>\n\n</think>\n\n你在**数据结构**上的学习情况：\n\n- 覆盖知识点 20 个，平均掌握度 **47.99**\n- 最薄弱的三个：查找（10.52）、二叉搜索树（15.84）、哈夫曼树（15.97）\n- 需要复习的有 5 个，记忆保持率最低的是「算法复杂度」，已降到 0.033\n\n建议从「查找」入手，目前只有 10.52，提升空间最大。",
+   "expected": {
+    "reasoning": "",
+    "content": "你在**数据结构**上的学习情况：\n\n- 覆盖知识点 20 个，平均掌握度 **47.99**\n- 最薄弱的三个：查找（10.52）、二叉搜索树（15.84）、哈夫曼树（15.97）\n- 需要复习的有 5 个，记忆保持率最低的是「算法复杂度」，已降到 0.033\n\n建议从「查找」入手，目前只有 10.52，提升空间最大。",
+    "tool_calls": []
+   }
+  },
+  {
    "input": "<think>\n\n</think>\n\n<tool_call>\n<function=get_mastery_report>\n<parameter=course>\n算法设计与分析\n</parameter>\n</function>\n</tool_call>",
    "expected": {
     "reasoning": "",
@@ -11227,6 +11165,68 @@
   },
   {
    "input": "<think>\n\n</think>\n\n<tool_call>\n{\"name\": \"get_mastery_report\", \"arguments\": {\"course\": \"算法设计与分析\"}}\n</tool_call>",
+   "expected": {
+    "reasoning": "",
+    "content": null,
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n<tool_call>\n<function=get_mastery_report>\n<parameter=course>\n计算机组成原理\n</parameter>\n</function>\n</tool_call>",
+   "expected": {
+    "reasoning": "",
+    "content": null,
+    "tool_calls": [
+     {
+      "name": "get_mastery_report",
+      "arguments": {
+       "course": "计算机组成原理"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n你在**计算机组成原理**上的学习情况：\n\n- 覆盖知识点 13 个，平均掌握度 **41.14**\n- 最薄弱的三个：I/O方式（11.46）、冯诺依曼结构（14.63）、CPU数据通路（15.9）\n- 需要复习的有 5 个，记忆保持率最低的是「原码反码补码」，已降到 0.016\n\n建议从「I/O方式」入手，目前只有 11.46，提升空间最大。",
+   "expected": {
+    "reasoning": "",
+    "content": "你在**计算机组成原理**上的学习情况：\n\n- 覆盖知识点 13 个，平均掌握度 **41.14**\n- 最薄弱的三个：I/O方式（11.46）、冯诺依曼结构（14.63）、CPU数据通路（15.9）\n- 需要复习的有 5 个，记忆保持率最低的是「原码反码补码」，已降到 0.016\n\n建议从「I/O方式」入手，目前只有 11.46，提升空间最大。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n<tool_call>\n{\"name\": \"get_mastery_report\", \"arguments\": {\"course\": \"计算机组成原理\"}}\n</tool_call>",
+   "expected": {
+    "reasoning": "",
+    "content": null,
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n<tool_call>\n<function=get_mastery_report>\n<parameter=course>\n计算机网络\n</parameter>\n</function>\n</tool_call>",
+   "expected": {
+    "reasoning": "",
+    "content": null,
+    "tool_calls": [
+     {
+      "name": "get_mastery_report",
+      "arguments": {
+       "course": "计算机网络"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n你在**计算机网络**上的学习情况：\n\n- 覆盖知识点 14 个，平均掌握度 **60.89**\n- 最薄弱的三个：TCP协议（7.8）、拥塞控制（18.4）、物理层（25.86）\n- 需要复习的有 5 个，记忆保持率最低的是「应用层协议」，已降到 0.012\n\n建议从「TCP协议」入手，目前只有 7.8，提升空间最大。",
+   "expected": {
+    "reasoning": "",
+    "content": "你在**计算机网络**上的学习情况：\n\n- 覆盖知识点 14 个，平均掌握度 **60.89**\n- 最薄弱的三个：TCP协议（7.8）、拥塞控制（18.4）、物理层（25.86）\n- 需要复习的有 5 个，记忆保持率最低的是「应用层协议」，已降到 0.012\n\n建议从「TCP协议」入手，目前只有 7.8，提升空间最大。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n<tool_call>\n{\"name\": \"get_mastery_report\", \"arguments\": {\"course\": \"计算机网络\"}}\n</tool_call>",
    "expected": {
     "reasoning": "",
     "content": null,
@@ -11263,14 +11263,6 @@
    }
   },
   {
-   "input": "<think>\n\n</think>\n\n目标定高一点不是坏事，关键是拆得够细。要不要一起看看怎么分阶段？需要我改动记录的话你说。",
-   "expected": {
-    "reasoning": "",
-    "content": "目标定高一点不是坏事，关键是拆得够细。要不要一起看看怎么分阶段？需要我改动记录的话你说。",
-    "tool_calls": []
-   }
-  },
-  {
    "input": "<think>\n\n</think>\n\n你之前设的目标我这边还留着。要调整或者删掉的话跟我说一声，我不会自己动它。",
    "expected": {
     "reasoning": "",
@@ -11283,6 +11275,14 @@
    "expected": {
     "reasoning": "",
     "content": "记忆我保留着没变。如果想改或者清掉，明确告诉我一声就行。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n目标定高一点不是坏事，关键是拆得够细。要不要一起看看怎么分阶段？需要我改动记录的话你说。",
+   "expected": {
+    "reasoning": "",
+    "content": "目标定高一点不是坏事，关键是拆得够细。要不要一起看看怎么分阶段？需要我改动记录的话你说。",
     "tool_calls": []
    }
   },

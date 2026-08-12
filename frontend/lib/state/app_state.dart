@@ -64,6 +64,10 @@ class AppState extends ChangeNotifier {
   final List<ChatConversation> conversations = [];
   final Map<String, List<ChatMessage>> _messages = {};
   final Set<String> _pinned = {}; // 本地置顶集合
+  final List<ChatGroup> groups = [];
+  String? activeGroupId;
+  bool loadingGroups = false;
+  bool groupsLoaded = false;
   String? activeId;
   Future<void>? _conversationCreation;
 
@@ -86,6 +90,23 @@ class AppState extends ChangeNotifier {
     if (activeId == null) return null;
     for (final c in conversations) {
       if (c.id == activeId) return c;
+    }
+    return null;
+  }
+
+  List<ChatConversation> get groupedConversations =>
+      conversations.where((c) => c.groupId != null).toList();
+
+  List<ChatConversation> get ungroupedConversations =>
+      conversations.where((c) => c.groupId == null).toList();
+
+  List<ChatConversation> conversationsInGroup(String groupId) =>
+      conversations.where((c) => c.groupId == groupId).toList();
+
+  ChatGroup? get activeGroup {
+    if (activeGroupId == null) return null;
+    for (final group in groups) {
+      if (group.id == activeGroupId) return group;
     }
     return null;
   }
@@ -161,7 +182,11 @@ class AppState extends ChangeNotifier {
     if (!availableWorkspaces.any((item) => item.type == activeWorkspace)) {
       activeWorkspace = manifest.defaultWorkspace;
     }
-    await Future.wait([loadConversations(), loadPreferencesAndProfile()]);
+    await Future.wait([
+      loadConversations(),
+      loadGroups(),
+      loadPreferencesAndProfile(),
+    ]);
     if (conversations.isNotEmpty) {
       await setActive(conversations.first.id);
     } else {
@@ -173,6 +198,13 @@ class AppState extends ChangeNotifier {
   Future<void> logout() async {
     await api.logout();
     _clearSession();
+  }
+
+  /// 游客模式：纯本地进入主界面，不创建后端会话。
+  void enterAsGuest() {
+    _clearSession();
+    api.username = '游客';
+    notifyListeners();
   }
 
   Future<void> restoreSession() async {
@@ -322,6 +354,10 @@ class AppState extends ChangeNotifier {
     conversations.clear();
     _messages.clear();
     _pinned.clear();
+    groups.clear();
+    activeGroupId = null;
+    groupsLoaded = false;
+    loadingGroups = false;
     scheduleCourses.clear();
     scheduleTables.clear();
     activeScheduleTableId = '';
@@ -598,6 +634,131 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // ============ 对话分组 ============
+  Future<void> loadGroups({bool force = false}) async {
+    if (loadingGroups || (groupsLoaded && !force)) return;
+    loadingGroups = true;
+    notifyListeners();
+    try {
+      groups
+        ..clear()
+        ..addAll(await api.listGroups());
+      groupsLoaded = true;
+    } catch (error) {
+      if (!_handled401(error)) rethrow;
+    } finally {
+      loadingGroups = false;
+      notifyListeners();
+    }
+  }
+
+  Future<ChatGroup> createGroup({
+    required String name,
+    String description = '',
+    String customInstruction = '',
+    String? style,
+    String? tone,
+  }) async {
+    final group = await api.createGroup(
+      name: name.trim(),
+      description: description,
+      customInstruction: customInstruction,
+      style: style,
+      tone: tone,
+    );
+    groups.insert(0, group);
+    activeGroupId = group.id;
+    notifyListeners();
+    return group;
+  }
+
+  void setActiveGroup(String? groupId) {
+    if (activeGroupId == groupId) return;
+    activeGroupId = groupId;
+    notifyListeners();
+  }
+
+  Future<ChatGroup> updateGroup(
+    String groupId, {
+    String? name,
+    String? description,
+    String? customInstruction,
+    Object? style = groupFieldUnset,
+    Object? tone = groupFieldUnset,
+  }) async {
+    final updated = await api.updateGroup(
+      groupId,
+      name: name?.trim(),
+      description: description,
+      customInstruction: customInstruction,
+      style: style,
+      tone: tone,
+    );
+    final index = groups.indexWhere((group) => group.id == groupId);
+    if (index >= 0) {
+      groups.removeAt(index);
+    }
+    groups.insert(0, updated);
+    notifyListeners();
+    return updated;
+  }
+
+  Future<void> deleteGroup(String groupId) async {
+    await api.deleteGroup(groupId);
+    groups.removeWhere((group) => group.id == groupId);
+    if (activeGroupId == groupId) activeGroupId = null;
+    for (final conversation in conversations) {
+      if (conversation.groupId == groupId) conversation.groupId = null;
+    }
+    notifyListeners();
+    await loadConversations();
+  }
+
+  Future<void> moveConversationToGroup(
+    String conversationId,
+    String? groupId,
+  ) async {
+    final index = conversations.indexWhere(
+      (conversation) => conversation.id == conversationId,
+    );
+    if (index < 0) throw ApiException(404, '对话不存在');
+    final previousGroupId = conversations[index].groupId;
+    if (previousGroupId == groupId) return;
+    await api.moveConversation(conversationId, groupId);
+    conversations[index].groupId = groupId;
+    _adjustGroupCounts(previousGroupId, groupId);
+    notifyListeners();
+  }
+
+  void _adjustGroupCounts(String? fromGroupId, String? toGroupId) {
+    if (fromGroupId == toGroupId) return;
+
+    void adjust(String? groupId, int delta) {
+      if (groupId == null) return;
+      final index = groups.indexWhere((group) => group.id == groupId);
+      if (index < 0) return;
+      final group = groups[index];
+      groups[index] = ChatGroup(
+        id: group.id,
+        userId: group.userId,
+        name: group.name,
+        description: group.description,
+        customInstruction: group.customInstruction,
+        style: group.style,
+        tone: group.tone,
+        conversationCount: (group.conversationCount + delta).clamp(
+          0,
+          1 << 30,
+        ).toInt(),
+        createdAt: group.createdAt,
+        updatedAt: group.updatedAt,
+      );
+    }
+
+    adjust(fromGroupId, -1);
+    adjust(toGroupId, 1);
+  }
+
   Future<void> switchWorkspace(WorkspaceType workspace) async {
     if (workspace == activeWorkspace ||
         !availableWorkspaces.any((item) => item.type == workspace)) {
@@ -719,8 +880,11 @@ class AppState extends ChangeNotifier {
   Future<void> _createConversationImpl() async {
     try {
       final conv = activeWorkspace == WorkspaceType.learning
-          ? await api.createConversation()
-          : await api.createWorkspaceConversation(activeWorkspace);
+          ? await api.createConversation(groupId: activeGroupId)
+          : await api.createWorkspaceConversation(
+              activeWorkspace,
+              groupId: activeGroupId,
+            );
       conversations.insert(0, conv);
       _messages[conv.id] = [];
       activeId = conv.id;
@@ -745,6 +909,8 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> deleteConversation(String id) async {
+    final index = conversations.indexWhere((c) => c.id == id);
+    final removedGroupId = index >= 0 ? conversations[index].groupId : null;
     try {
       await api.deleteConversation(id);
     } catch (e) {
@@ -754,6 +920,7 @@ class AppState extends ChangeNotifier {
     conversations.removeWhere((c) => c.id == id);
     _messages.remove(id);
     _pinned.remove(id);
+    _adjustGroupCounts(removedGroupId, null);
     if (activeId == id) {
       activeId = conversations.isNotEmpty ? conversations.first.id : null;
       if (activeId != null && !_messages.containsKey(activeId)) {

@@ -32,7 +32,7 @@ from backend.core.services.email_verification_service import (
 from backend.core.services.frontier_tracking_service import FrontierTrackingService
 from backend.core.services.research_data_service import ResearchDataService
 from backend.core.services.research_writing_service import ResearchWritingService
-from backend.core.services.user_attachment_service import UserAttachmentStore
+from backend.core.services.teaching_analysis_service import TeachingAnalysisService
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.conversation_summary_store import ConversationSummaryStore
 from backend.core.stores.email_verification_store import EmailVerificationStore
@@ -48,6 +48,7 @@ from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_store import UserStore
 from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.stores.user_presence_store import UserPresenceStore
+from backend.core.stores.teaching_store import TeachingStore
 from backend.core.utils.config import (
     AGENT_LOOP_TIME,
     API_PREFIX,
@@ -98,6 +99,8 @@ from backend.core.web.routers import (
     schedule,
     research,
     research_capabilities,
+    student_teaching,
+    teaching,
     workspaces,
 )
 from backend.core.web.concurrency import ConversationTurnCoordinator
@@ -117,10 +120,14 @@ async def lifespan(app: FastAPI):
     app.state.chat_store = ChatStore(DB_PATH)
     app.state.session_store = SessionStore(DB_PATH)
     app.state.profile_store = ProfileStore(DB_PATH)
+<<<<<<< HEAD
     app.state.user_attachment_store = UserAttachmentStore(
         USER_ATTACHMENT_ROOT,
         max_bytes=USER_ATTACHMENT_MAX_BYTES,
     )
+=======
+    app.state.teaching_store = TeachingStore(DB_PATH)
+>>>>>>> b3f476f15bc13d437df12bb1a0ce673baf5bec37
 
     run_migrations(DB_PATH)
     app.state.research_project_store = ResearchProjectStore(DB_PATH)
@@ -171,6 +178,10 @@ async def lifespan(app: FastAPI):
         )
     app.state.research_writing_service = ResearchWritingService(
         app.state.research_writing_store,
+        app.state.auxiliary_llm_client,
+    )
+    app.state.teaching_analysis_service = TeachingAnalysisService(
+        app.state.teaching_store,
         app.state.auxiliary_llm_client,
     )
 
@@ -268,6 +279,8 @@ business_router.include_router(memories.router)
 business_router.include_router(workspaces.router)
 business_router.include_router(research.router)
 business_router.include_router(research_capabilities.router)
+business_router.include_router(teaching.router)
+business_router.include_router(student_teaching.router)
 
 api_router = APIRouter()
 api_router.include_router(business_router)

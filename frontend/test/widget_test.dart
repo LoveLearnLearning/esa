@@ -8,9 +8,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend/api/api_client.dart';
 import 'package:frontend/main.dart';
 import 'package:frontend/state/app_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _GuestTestApi extends ApiClient {
+  _GuestTestApi() : super(baseUrl: 'http://test.invalid');
+
+  @override
+  Future<ScheduleSnapshot> getSchedule() async =>
+      const ScheduleSnapshot(courses: [], settings: ScheduleSettings());
+
+  @override
+  Future<List<LearningCourseSummary>> getLearningCourses() async => const [];
+}
 
 void main() {
   setUp(() {
@@ -27,6 +39,7 @@ void main() {
     expect(find.text('记住登录'), findsOneWidget);
   });
 
+<<<<<<< HEAD
   testWidgets('renders a startup page while the remembered session loads', (
     tester,
   ) async {
@@ -41,6 +54,22 @@ void main() {
     await tester.pump();
 
     expect(find.text('邮箱或用户名'), findsOneWidget);
+=======
+  testWidgets('guest login enters the main shell without a backend session', (
+    tester,
+  ) async {
+    final state = AppState(api: _GuestTestApi());
+    addTearDown(state.dispose);
+    await tester.pumpWidget(EsaApp(state: state));
+    await tester.pump();
+
+    expect(find.text('游客登录'), findsOneWidget);
+    await tester.tap(find.text('游客登录'));
+    await tester.pumpAndSettle();
+
+    expect(state.username, '游客');
+    expect(find.text('你好，游客'), findsOneWidget);
+>>>>>>> b3f476f15bc13d437df12bb1a0ce673baf5bec37
   });
 
   testWidgets('submits login form from password keyboard action', (

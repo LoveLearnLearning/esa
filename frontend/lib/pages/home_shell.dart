@@ -9,6 +9,8 @@ import 'chat_page.dart';
 import 'knowledge_map_page.dart';
 import 'research_workspace_page.dart';
 import 'schedule_page.dart';
+import 'student_assignments_page.dart';
+import 'teaching_workspace_page.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -133,23 +135,25 @@ class _HomeShellState extends State<HomeShell> {
   List<Widget> _pages(WorkspaceType workspace) => switch (workspace) {
     WorkspaceType.learning => [
       const ChatPage(),
+      StudentAssignmentsPage(onOpenChat: () => _select(0)),
       const SchedulePage(),
       KnowledgeMapPage(
         onOpenChat: () => _select(0),
-        onOpenSchedule: () => _select(1),
+        onOpenSchedule: () => _select(2),
       ),
     ],
     WorkspaceType.research => [
       ResearchWorkspacePage(onOpenChat: () => _select(1)),
       const ChatPage(),
     ],
-    WorkspaceType.teaching => const [ChatPage(), _TeachingOverview()],
+    WorkspaceType.teaching => const [TeachingWorkspacePage(), ChatPage()],
   };
 
   List<_Destination> _destinations(WorkspaceType workspace) =>
       switch (workspace) {
         WorkspaceType.learning => const [
           _Destination('学习助手', LucideIcons.messageCircle),
+          _Destination('作业', LucideIcons.clipboardCheck),
           _Destination('课表', LucideIcons.calendarDays),
           _Destination('知识地图', LucideIcons.gitBranch),
         ],
@@ -158,8 +162,8 @@ class _HomeShellState extends State<HomeShell> {
           _Destination('科研对话', LucideIcons.messageCircle),
         ],
         WorkspaceType.teaching => const [
-          _Destination('教学助手', LucideIcons.messageCircle),
           _Destination('教学工作台', LucideIcons.layoutDashboard),
+          _Destination('教学助手', LucideIcons.messageCircle),
         ],
       };
 }
@@ -169,22 +173,4 @@ class _Destination {
 
   final String label;
   final IconData icon;
-}
-
-class _TeachingOverview extends StatelessWidget {
-  const _TeachingOverview();
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(LucideIcons.presentation, size: 42),
-        const SizedBox(height: 16),
-        Text('教学工作台', style: context.texts.headlineSmall),
-        const SizedBox(height: 8),
-        const Text('教学场景的独立模块将在后续垂直切片中接入。'),
-      ],
-    ),
-  );
 }

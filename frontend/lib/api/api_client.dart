@@ -606,6 +606,119 @@ class ApiClient {
     if (r.statusCode != 204) _fail(r);
   }
 
+  // ---------- 对话分组 ----------
+  Future<List<ChatGroup>> listGroups() async {
+    if (kOfflineMode) return List.of(_offGroups);
+    final r = await http.get(
+      _uri('/groups'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    final list = _decode(r) as List;
+    return list
+        .map((e) => ChatGroup.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<ChatGroup> createGroup({
+    required String name,
+    String description = '',
+    String customInstruction = '',
+    String? style,
+    String? tone,
+  }) async {
+    if (kOfflineMode) {
+      final now = DateTime.now();
+      final group = ChatGroup(
+        id: _offGroupId(),
+        userId: userId ?? 'offline-user',
+        name: name,
+        description: description,
+        customInstruction: customInstruction,
+        style: style,
+        tone: tone,
+        conversationCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      );
+      _offGroups.insert(0, group);
+      return group;
+    }
+    final r = await http.post(
+      _uri('/groups'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'name': name,
+        'description': description,
+        'custom_instruction': customInstruction,
+        if (style != null) 'style': style,
+        if (tone != null) 'tone': tone,
+      }),
+    );
+    if (r.statusCode != 201) _fail(r);
+    return ChatGroup.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  /// 传 null 给 [style] / [tone] 表示恢复为用户级继承；不传则不修改。
+  Future<ChatGroup> updateGroup(
+    String groupId, {
+    String? name,
+    String? description,
+    String? customInstruction,
+    Object? style = groupFieldUnset,
+    Object? tone = groupFieldUnset,
+  }) async {
+    if (kOfflineMode) {
+      final index = _offGroups.indexWhere((group) => group.id == groupId);
+      if (index < 0) throw ApiException(404, '分组不存在');
+      final current = _offGroups[index];
+      final updated = ChatGroup(
+        id: current.id,
+        userId: current.userId,
+        name: name ?? current.name,
+        description: description ?? current.description,
+        customInstruction: customInstruction ?? current.customInstruction,
+        style: identical(style, groupFieldUnset)
+            ? current.style
+            : style as String?,
+        tone: identical(tone, groupFieldUnset)
+            ? current.tone
+            : tone as String?,
+        conversationCount: current.conversationCount,
+        createdAt: current.createdAt,
+        updatedAt: DateTime.now(),
+      );
+      _offGroups[index] = updated;
+      return updated;
+    }
+    final body = <String, dynamic>{
+      if (name != null) 'name': name,
+      if (description != null) 'description': description,
+      if (customInstruction != null) 'custom_instruction': customInstruction,
+      if (!identical(style, groupFieldUnset)) 'style': style as String?,
+      if (!identical(tone, groupFieldUnset)) 'tone': tone as String?,
+    };
+    final r = await http.patch(
+      _uri('/groups/${Uri.encodeComponent(groupId)}'),
+      headers: _headers(auth: true),
+      body: jsonEncode(body),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ChatGroup.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteGroup(String groupId) async {
+    if (kOfflineMode) {
+      _offGroups.removeWhere((group) => group.id == groupId);
+      return;
+    }
+    final r = await http.delete(
+      _uri('/groups/${Uri.encodeComponent(groupId)}'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204) _fail(r);
+  }
+
   // ---------- 对话 ----------
   Future<WorkspaceManifest> getWorkspaceManifest() async {
     if (kOfflineMode) {
@@ -673,11 +786,14 @@ class ApiClient {
         .toList();
   }
 
-  Future<ChatConversation> createConversation() async {
-    if (kOfflineMode) return _offlineNewConversation();
+  Future<ChatConversation> createConversation({String? groupId}) async {
+    if (kOfflineMode) return _offlineNewConversation(groupId: groupId);
     final r = await http.post(
       _uri('/conversations'),
       headers: _headers(auth: true),
+      body: jsonEncode({
+        if (groupId != null) 'group_id': groupId,
+      }),
     );
     if (r.statusCode != 201) _fail(r);
     return ChatConversation.fromJson(_decode(r) as Map<String, dynamic>);
@@ -686,19 +802,24 @@ class ApiClient {
   Future<ChatConversation> createWorkspaceConversation(
     WorkspaceType workspace, {
     String? researchProjectId,
+    String? groupId,
   }) async {
     if (workspace == WorkspaceType.learning && researchProjectId == null) {
-      return createConversation();
+      return createConversation(groupId: groupId);
     }
     if (kOfflineMode) {
       return _offlineNewConversation(
         workspaceType: workspace,
         researchProjectId: researchProjectId,
+        groupId: groupId,
       );
     }
     final body = <String, String>{'workspace_type': workspace.wireName};
     if (researchProjectId case final projectId?) {
       body['research_project_id'] = projectId;
+    }
+    if (groupId case final selectedGroupId?) {
+      body['group_id'] = selectedGroupId;
     }
     final response = await http.post(
       _uri('/conversations'),
@@ -958,6 +1079,20 @@ class ApiClient {
     if (r.statusCode != 204) _fail(r);
   }
 
+  Future<void> moveConversation(String id, String? groupId) async {
+    if (kOfflineMode) {
+      final index = _offConvs.indexWhere((c) => c.id == id);
+      if (index >= 0) _offConvs[index].groupId = groupId;
+      return;
+    }
+    final r = await http.patch(
+      _uri('/conversations/${Uri.encodeComponent(id)}'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'group_id': groupId}),
+    );
+    if (r.statusCode != 204) _fail(r);
+  }
+
   Future<void> deleteConversation(String id) async {
     if (kOfflineMode) {
       _offConvs.removeWhere((c) => c.id == id);
@@ -1155,13 +1290,259 @@ class ApiClient {
     }
   }
 
+  // ---------- 教师端与学生端 ----------
+  Future<Map<String, dynamic>> getTeachingOverview() async {
+    final response = await http.get(
+      _uri('/teaching/overview'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return Map<String, dynamic>.from(_decode(response) as Map);
+  }
+
+  Future<TeachingClass> createTeachingClass({
+    required String name,
+    required String course,
+    String term = '',
+    String description = '',
+  }) async {
+    final response = await http.post(
+      _uri('/teaching/classes'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'name': name,
+        'canonical_course': course,
+        'term': term,
+        'description': description,
+      }),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return TeachingClass.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<Map<String, dynamic>> getTeachingClass(String classId) async {
+    final response = await http.get(
+      _uri('/teaching/classes/$classId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return Map<String, dynamic>.from(_decode(response) as Map);
+  }
+
+  Future<void> inviteStudent(String classId, String username) async {
+    final response = await http.post(
+      _uri('/teaching/classes/$classId/invitations'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'username': username}),
+    );
+    if (response.statusCode != 201) _fail(response);
+  }
+
+  Future<TeachingAssignment> createTeachingAssignment({
+    required String classId,
+    required String title,
+    required String instructions,
+    required List<Map<String, dynamic>> questions,
+    DateTime? dueAt,
+  }) async {
+    final response = await http.post(
+      _uri('/teaching/classes/$classId/assignments'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'title': title,
+        'instructions': instructions,
+        'due_at': dueAt?.toUtc().toIso8601String(),
+        'questions': questions,
+      }),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return TeachingAssignment.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<TeachingAssignment> publishTeachingAssignment(String id) async {
+    final response = await http.post(
+      _uri('/teaching/assignments/$id/publish'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingAssignment.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<List<TeachingSubmission>> listTeachingSubmissions(String id) async {
+    final response = await http.get(
+      _uri('/teaching/assignments/$id/submissions'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map(
+          (item) => TeachingSubmission.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList();
+  }
+
+  Future<TeachingSubmission> getTeachingSubmission(String id) async {
+    final response = await http.get(
+      _uri('/teaching/submissions/$id'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingSubmission.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<TeachingSubmission> analyzeTeachingSubmission(String id) async {
+    final response = await http.post(
+      _uri('/teaching/submissions/$id/analyze'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingSubmission.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<Map<String, dynamic>> analyzeTeachingAssignment(String id) async {
+    final response = await http.post(
+      _uri('/teaching/assignments/$id/analyze'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return Map<String, dynamic>.from(_decode(response) as Map);
+  }
+
+  Future<TeachingSubmission> reviewTeachingSubmission(
+    String id,
+    List<Map<String, dynamic>> reviews,
+  ) async {
+    final response = await http.post(
+      _uri('/teaching/submissions/$id/review'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'reviews': reviews}),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingSubmission.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<TeachingSubmission> publishTeachingFeedback(String id) async {
+    final response = await http.post(
+      _uri('/teaching/submissions/$id/publish-feedback'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingSubmission.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<Map<String, dynamic>> getClassDashboard(String classId) async {
+    final response = await http.get(
+      _uri('/teaching/classes/$classId/dashboard'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return Map<String, dynamic>.from(_decode(response) as Map);
+  }
+
+  Future<List<TeachingClass>> listStudentClasses() async {
+    final response = await http.get(
+      _uri('/student/classes'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map((item) => TeachingClass.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  Future<void> respondClassInvitation(String membershipId, bool accept) async {
+    final response = await http.post(
+      _uri('/student/invitations/$membershipId/respond'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'accept': accept}),
+    );
+    if (response.statusCode != 200) _fail(response);
+  }
+
+  Future<List<TeachingAssignment>> listStudentAssignments() async {
+    final response = await http.get(
+      _uri('/student/assignments'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map(
+          (item) => TeachingAssignment.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList();
+  }
+
+  Future<TeachingAssignment> getStudentAssignment(String id) async {
+    final response = await http.get(
+      _uri('/student/assignments/$id'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingAssignment.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<TeachingSubmission> submitAssignment(
+    String id,
+    Map<String, String> answers,
+  ) async {
+    final response = await http.post(
+      _uri('/student/assignments/$id/submissions'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'answers': answers.entries
+            .map((item) => {'question_id': item.key, 'answer_text': item.value})
+            .toList(),
+      }),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return TeachingSubmission.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<TeachingSubmission> getStudentSubmission(String id) async {
+    final response = await http.get(
+      _uri('/student/submissions/$id'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingSubmission.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
   // ==================== 离线模式实现 ====================
   final List<ChatConversation> _offConvs = [];
+  final List<ChatGroup> _offGroups = [];
   final List<ResearchProject> _offResearchProjects = [];
   final Map<String, List<ChatMessage>> _offMsgs = {};
   int _offSeq = 0;
 
   String _offId() => 'off${_offSeq++}';
+  String _offGroupId() => 'grp${_offSeq++}';
 
   ChatMessage _um(String t) =>
       ChatMessage.fromJson({'role': 'user', 'content': t});
@@ -1210,6 +1591,7 @@ class ApiClient {
   ChatConversation _offlineNewConversation({
     WorkspaceType workspaceType = WorkspaceType.learning,
     String? researchProjectId,
+    String? groupId,
   }) {
     final c = ChatConversation(
       id: _offId(),
@@ -1217,6 +1599,7 @@ class ApiClient {
       updatedAt: DateTime.now(),
       workspaceType: workspaceType,
       researchProjectId: researchProjectId,
+      groupId: groupId,
     );
     _offConvs.insert(0, c);
     _offMsgs[c.id] = [];

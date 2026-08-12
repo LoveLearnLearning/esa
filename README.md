@@ -19,6 +19,8 @@ ESA 是一个面向学习场景的多用户 Agent 项目，由 FastAPI 后端、
 - 多用户课表、第一周日期自动定位、PDF/图片/HTML 智能导入和移动端磁贴课表
 - 数值计算、位运算、符号计算、Web 搜索和 arXiv 搜索等工具
 - 对话分组与分组内自定义指令（后端已实现，含分组级风格/语调/指令覆盖用户级，前端待对接）
+- 教师班级、精确用户名邀请、简答/代码作业、学生提交、AI 批量分析、教师复核与反馈发布
+- 作业证据写入个人掌握度、班级薄弱知识点、前置根因与规则预警；完整 Demo 见 [TEACHING_STUDENT_DEMO.md](TEACHING_STUDENT_DEMO.md)
 - Flutter Web、macOS、iOS 等多端构建基础
 
 ## 目录
@@ -30,6 +32,7 @@ API.md                   前后端接口约定
 TODO.md                  当前待办
 DATASET_GENERATION.md    Qwen3.5/LLaMA-Factory 数据集方案
 GROUP_FEATURE.md         对话分组功能设计
+TEACHING_STUDENT_DEMO.md 教师端与学生端完整 Demo 说明
 MEMORY_PROMPT_ANALYSIS.md 记忆与提示词评估
 OPTIMIZATION_NOTES.md    已完成的工程优化、修复与验证记录
 REQUEST.md               项目需求和阶段状态

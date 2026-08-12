@@ -725,6 +725,212 @@ Profile V2 的显式字段统一更新入口，可部分更新：
 
 成功时返回最新设置；该接口每个用户每分钟最多 10 次。
 
+## 教师端与学生端教学接口
+
+以下接口均需要认证，并根据注册时固定的 `account_role` 限制入口。教师接口要求
+`teacher`，学生接口要求 `student`；角色不匹配返回 `403`。资源不存在或不属于当前
+用户统一返回 `404`，避免泄露班级、作业和提交是否存在。
+
+班级加入不使用邀请码。教师必须输入学生的精确用户名发出邀请，学生本人确认后才成为
+活动成员。班级课程只用于关联教学内容，不会限制学生原有课程和知识图谱的查看范围。
+
+### 教师接口
+
+#### GET /teaching/overview
+
+返回当前教师的教学工作台统计和 `classes` 列表，包括班级数、活动学生数、待复核提交数
+和待发布反馈数。
+
+#### GET /teaching/classes
+
+返回当前教师创建的班级。每项包含 `class_id`、班级名称、`canonical_course`、学期、状态、
+活动学生数和已发布作业数。
+
+#### POST /teaching/classes
+
+创建班级：
+
+```json
+{
+  "name": "数据结构 1 班",
+  "canonical_course": "数据结构",
+  "term": "2026 秋",
+  "description": "演示班级"
+}
+```
+
+`canonical_course` 必须能映射到已有知识图谱课程。成功返回 `201`；课程不存在返回
+`422`；当前教师已有同名活动班级返回 `409`。
+
+#### GET /teaching/classes/{class_id}
+
+返回班级详情、`members` 和 `assignments`。仅班级创建者可访问。
+
+#### POST /teaching/classes/{class_id}/invitations
+
+按精确用户名邀请学生：
+
+```json
+{ "username": "student" }
+```
+
+成功返回 `201` 和状态为 `pending` 的成员关系；学生账号不存在返回 `404`；归档班级
+返回 `409`。重复邀请会把原成员关系重新置为待确认，不产生邀请码。
+
+#### DELETE /teaching/classes/{class_id}/members/{student_id}
+
+移除班级成员，成功返回 `204`。被移除学生不能查看或提交之后发布的新作业，只保留本人
+已有且反馈已发布的历史作业和提交。
+
+#### POST /teaching/classes/{class_id}/assignments
+
+创建作业草稿：
+
+```json
+{
+  "title": "二分查找诊断",
+  "instructions": "说明推理过程",
+  "due_at": "2026-08-20T12:00:00+00:00",
+  "questions": [
+    {
+      "question_type": "short_answer",
+      "prompt": "为什么时间复杂度是 O(log n)？",
+      "max_points": 10,
+      "rubric": "说明搜索区间每轮减半",
+      "reference_answer": "搜索区间每轮减半",
+      "kp_id": "binary_search"
+    }
+  ]
+}
+```
+
+`question_type` 当前支持 `short_answer` 和 `code`；`code` 仅按文本分析，不执行代码。
+关联知识点必须属于班级课程。成功返回 `201`；知识点无效返回 `422`。
+
+#### POST /teaching/assignments/{assignment_id}/publish
+
+发布草稿作业。成功返回完整作业；非草稿状态返回 `409`。
+
+#### GET /teaching/assignments/{assignment_id}/submissions
+
+返回每名学生的最新提交版本及分析、复核和反馈状态。
+
+#### POST /teaching/assignments/{assignment_id}/analyze
+
+批量分析当前作业中每名学生的最新提交，返回：
+
+```json
+{
+  "assignment_id": "...",
+  "total": 20,
+  "completed": 19,
+  "failed": 1,
+  "status": "partial"
+}
+```
+
+#### GET /teaching/submissions/{submission_id}
+
+返回提交、逐题答案、AI 建议和教师最终复核字段。仅作业所属班级的创建者可访问。
+
+#### POST /teaching/submissions/{submission_id}/analyze
+
+分析单个提交。辅助 Qwen 可用时生成受约束的结构化建议；服务不可用或输出无效时返回
+低置信度确定性结果，要求教师复核，不自动发布成绩。分析结果中的分数、错因、反馈、
+知识点和 `ai_confidence` 仅教师可见。
+
+#### POST /teaching/submissions/{submission_id}/review
+
+教师必须一次复核提交中的全部答案：
+
+```json
+{
+  "reviews": [
+    {
+      "answer_id": "...",
+      "score": 9,
+      "error_type": "procedural",
+      "feedback": "结论正确，请补充递推关系。",
+      "kp_id": "binary_search"
+    }
+  ]
+}
+```
+
+得分不能超过题目满分，知识点必须存在；校验失败返回 `422`。
+
+#### POST /teaching/submissions/{submission_id}/publish-feedback
+
+发布教师已复核的反馈。发布后学生才能看到最终分数、错因、评语和最终知识点。有关联
+知识点的答案会幂等写入 `homework` 学习证据，并更新该学生的个人掌握度；重复调用不会
+重复写入证据。
+
+#### GET /teaching/classes/{class_id}/dashboard
+
+实时聚合已发布反馈，返回知识点平均得分率、薄弱人数、前置根因候选和关注学生。当前
+Demo 没有预计算快照；无直接证据的前置点标记为 `needs_diagnosis`，不表示确定因果。
+
+#### GET /teaching/classes/{class_id}/students/{student_id}
+
+返回该学生在本班作业形成的受限摘要，并记录审计日志。该接口不会读取或返回学生私人
+对话、长期记忆、科研项目、无关附件或其他班级数据。
+
+### 学生接口
+
+#### GET /student/classes
+
+返回当前学生收到的班级邀请和成员状态，包括 `pending`、`active`、`declined`、
+`removed` 或 `left`。
+
+#### POST /student/invitations/{membership_id}/respond
+
+确认或拒绝待处理邀请：
+
+```json
+{ "accept": true }
+```
+
+只能由被邀请学生本人操作。邀请不存在、已处理或不属于当前学生返回 `404`。
+
+#### GET /student/assignments
+
+活动成员可查看班级全部已发布、已关闭或已归档作业。被移除或已退出成员只会看到本人
+已有提交且教师已发布反馈的历史作业，不会看到移除或退出后发布的新作业。
+
+#### GET /student/assignments/{assignment_id}
+
+返回学生可访问的作业和题目。学生响应始终移除 `reference_answer` 和 `rubric`，即使
+反馈已经发布也不会暴露。活动成员可访问开放作业；非活动成员仅可访问本人已有且反馈
+已发布的历史作业。
+
+#### POST /student/assignments/{assignment_id}/submissions
+
+活动成员向已发布作业提交全部题目答案：
+
+```json
+{
+  "answers": [
+    { "question_id": "...", "answer_text": "搜索区间每轮减半" }
+  ]
+}
+```
+
+成功返回 `201` 并生成递增版本。必须恰好覆盖全部题目，重复或缺失题目返回 `422`；非
+活动成员或不可访问作业返回 `404`。响应不会包含参考答案、评分细则或 AI 中间建议。
+
+#### GET /student/submissions/{submission_id}
+
+只允许读取本人提交。反馈发布前仅返回题目、本人答案和流程状态，`total_score` 为
+`null`；发布后增加教师最终分数、错因、评语和知识点。AI 中间建议、参考答案和评分
+细则始终不返回。非活动成员只能读取反馈已发布的本人历史提交。
+
+### 教学隐私与审计
+
+- 邀请、提交、AI 分析、教师复核、反馈发布、移除成员和学生详情访问会写入追加式审计
+  日志；摘要不保存完整答案或敏感凭证。
+- AI 分析只是教师决策支持，不能自动发布成绩或在教师确认前写入学生掌握度。
+- 教学班级关联是附加关系，不改变学生对原有全部知识点、个人课程和学习空间的访问。
+
 ## Web 部署约定
 
 Flutter Web 默认使用同源 `/api`。Nginx 必须把 `/api` 前缀原样转发到后端；
