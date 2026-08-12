@@ -15,7 +15,10 @@ if TYPE_CHECKING:
     from vllm.model_executor.layers.quantization import QuantizationMethods
 
 DEBUG_MODE: bool = os.environ.get("ESA_DEBUG", "false").strip().lower() in {
-    "1", "true", "yes", "on"
+    "1",
+    "true",
+    "yes",
+    "on",
 }
 
 SEARXNG_BASE_URL = os.environ.get("SEARXNG_BASE_URL", "http://127.0.0.1:8888")
@@ -210,8 +213,12 @@ ENABLE_LEGACY_API_ROUTES: bool = _bool_from_env(
 # deployment copy of this file; the standalone mail server has its own config.
 EMAIL_PROVIDER: Literal["disabled", "service"] = "disabled"
 EMAIL_SERVICE_URL: str = "https://mail-api.lovelearnlearning.cn"
-EMAIL_SERVICE_TOKEN: str = ""
-EMAIL_VERIFICATION_SECRET: str = ""
+EMAIL_SERVICE_TOKEN: str = (
+    "e9493dca7a911f60226ec698e90678add37d8d28eb3f02271706026d7ba491d5"
+)
+EMAIL_VERIFICATION_SECRET: str = (
+    "22d6394ed15a7dec1b3bac78e3f5cf2739386483aeca3c88d4cafad40e4d0da2"
+)
 EMAIL_CODE_TTL_SECONDS: int = 600
 EMAIL_CODE_COOLDOWN_SECONDS: int = 60
 EMAIL_CODE_MAX_ATTEMPTS: int = 5
@@ -233,18 +240,12 @@ RAG_INDEX_DEPLOYMENT_ROOT: Path = _path_from_env(
 )
 
 # qdrant
-RAG_QDRANT_BASE_URL: str = _str_from_env(
-    "RAG_QDRANT_BASE_URL", "http://127.0.0.1:6333"
-)
+RAG_QDRANT_BASE_URL: str = _str_from_env("RAG_QDRANT_BASE_URL", "http://127.0.0.1:6333")
 RAG_QDRANT_COLLECTION: str = _str_from_env(
     "RAG_QDRANT_COLLECTION", "rag_qwen3_embedding_4b_v2"
 )
-RAG_QDRANT_TIMEOUT: float = _float_from_env(
-    "RAG_QDRANT_TIMEOUT", 30.0, minimum=0.001
-)
-RAG_QDRANT_UPSERT_BATCH_SIZE: int = _int_from_env(
-    "RAG_QDRANT_UPSERT_BATCH_SIZE", 64
-)
+RAG_QDRANT_TIMEOUT: float = _float_from_env("RAG_QDRANT_TIMEOUT", 30.0, minimum=0.001)
+RAG_QDRANT_UPSERT_BATCH_SIZE: int = _int_from_env("RAG_QDRANT_UPSERT_BATCH_SIZE", 64)
 
 # embedding
 EmbeddingBackend = Literal["reference", "transformers", "vllm"]
@@ -256,9 +257,7 @@ RAG_EMBEDDING_BACKEND: EmbeddingBackend = _choice_from_env(
 RAG_EMBEDDING_MODEL_PATH: str = _str_from_env(
     "RAG_EMBEDDING_MODEL_PATH", "Qwen/Qwen3-Embedding-4B"
 )
-RAG_EMBEDDING_BASE_URL: str | None = _optional_str_from_env(
-    "RAG_EMBEDDING_BASE_URL"
-)
+RAG_EMBEDDING_BASE_URL: str | None = _optional_str_from_env("RAG_EMBEDDING_BASE_URL")
 RAG_EMBEDDING_DEVICE: str = _str_from_env("RAG_EMBEDDING_DEVICE", "cuda")
 RAG_EMBEDDING_RUNTIME_DEVICE: str | None = _optional_str_from_env(
     "RAG_EMBEDDING_RUNTIME_DEVICE"
@@ -281,9 +280,7 @@ RAG_RERANKER_BACKEND: RerankerBackend = _choice_from_env(
 RAG_RERANKER_MODEL_PATH: str = _str_from_env(
     "RAG_RERANKER_MODEL_PATH", "Qwen/Qwen3-Reranker-4B"
 )
-RAG_RERANKER_BASE_URL: str | None = _optional_str_from_env(
-    "RAG_RERANKER_BASE_URL"
-)
+RAG_RERANKER_BASE_URL: str | None = _optional_str_from_env("RAG_RERANKER_BASE_URL")
 RAG_RERANKER_DEVICE: str = _str_from_env("RAG_RERANKER_DEVICE", "cuda")
 RAG_RERANKER_MAX_LENGTH: int = _int_from_env("RAG_RERANKER_MAX_LENGTH", 8192)
 RAG_RERANKER_TIMEOUT: float = _float_from_env(
@@ -318,9 +315,7 @@ RAG_DENSE_WEIGHT: float = _float_from_env(
 RAG_LEXICAL_BODY_WEIGHT: float = _float_from_env(
     "RAG_LEXICAL_BODY_WEIGHT", 0.75, minimum=0.0, maximum=1.0
 )
-RAG_LEXICAL_GATE_ENABLED: bool = _bool_from_env(
-    "RAG_LEXICAL_GATE_ENABLED", True
-)
+RAG_LEXICAL_GATE_ENABLED: bool = _bool_from_env("RAG_LEXICAL_GATE_ENABLED", True)
 # prior_weight 是融合排序先验的权重；其余权重交给 Reranker 分数。
 RAG_RERANKER_PRIOR_WEIGHT: float = _float_from_env(
     "RAG_RERANKER_PRIOR_WEIGHT", 0.90, minimum=0.0, maximum=1.0
