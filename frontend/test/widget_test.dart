@@ -40,6 +40,24 @@ void main() {
     expect(find.text('密码至少 8 位'), findsOneWidget);
   });
 
+  testWidgets('hides the input hint as soon as the field is focused', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const EsaApp());
+    await tester.pump();
+
+    final accountField = find.byType(TextField).first;
+    expect(
+      tester.widget<TextField>(accountField).decoration?.hintText,
+      'name@example.com',
+    );
+
+    await tester.tap(accountField);
+    await tester.pump();
+
+    expect(tester.widget<TextField>(accountField).decoration?.hintText, isNull);
+  });
+
   testWidgets('registration requires email and verification code', (
     tester,
   ) async {
@@ -54,5 +72,33 @@ void main() {
     expect(find.text('获取验证码'), findsOneWidget);
     expect(find.text('用户名'), findsOneWidget);
     expect(find.text('确认密码'), findsOneWidget);
+  });
+
+  testWidgets('auth page renders without overflow on desktop', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const EsaApp());
+    await tester.pump();
+
+    expect(find.text('Your knowledge\nis a network.'), findsOneWidget);
+    expect(find.text('欢迎回来'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('auth page renders without overflow on mobile', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const EsaApp());
+    await tester.pump();
+
+    expect(find.text('Your knowledge is a network.'), findsOneWidget);
+    expect(find.text('进入 ESA'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

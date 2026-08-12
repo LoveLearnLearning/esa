@@ -211,7 +211,7 @@ ENABLE_LEGACY_API_ROUTES: bool = _bool_from_env(
 
 # Email verification on the supercomputer. Fill these constants in the private
 # deployment copy of this file; the standalone mail server has its own config.
-EMAIL_PROVIDER: Literal["disabled", "service"] = "disabled"
+EMAIL_PROVIDER: Literal["disabled", "service"] = "service"
 EMAIL_SERVICE_URL: str = "https://mail-api.lovelearnlearning.cn"
 EMAIL_SERVICE_TOKEN: str = (
     "e9493dca7a911f60226ec698e90678add37d8d28eb3f02271706026d7ba491d5"

@@ -166,6 +166,16 @@ async def lifespan(app: FastAPI):
         app.state.auxiliary_llm_client,
     )
 
+    # Recover durable SQLite queues before vLLM forks its worker processes.
+    # Performing these writes after the GPU workers exist can leave the shared
+    # NFS-backed database waiting on inherited SQLite locks during startup.
+    for job_id in app.state.frontier_tracking_store.requeue_interrupted():
+        app.state.frontier_tracking_service.submit(job_id)
+    for job_id in app.state.research_writing_store.requeue_interrupted():
+        app.state.research_writing_service.submit(job_id)
+    for job_id in app.state.research_data_store.requeue_interrupted():
+        app.state.research_data_service.submit(job_id)
+
     synced_points, synced_edges = ensure_knowledge_graph_seeded(kg_store)
     if kg_store.count_points() <= 0:
         raise RuntimeError("Knowledge Graph 初始化失败：未从 YAML 加载任何知识点")
@@ -218,9 +228,9 @@ async def lifespan(app: FastAPI):
         if mm_config.enabled
         else None
     )
-    app.state.frontier_tracking_service.start()
-    app.state.research_writing_service.start()
-    app.state.research_data_service.start()
+    app.state.frontier_tracking_service.start(recover_interrupted=False)
+    app.state.research_writing_service.start(recover_interrupted=False)
+    app.state.research_data_service.start(recover_interrupted=False)
     try:
         yield
     finally:

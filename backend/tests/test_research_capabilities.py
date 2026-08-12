@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
@@ -14,6 +16,7 @@ from backend.core.stores.research_data_store import ResearchDataStore
 from backend.core.stores.research_project_store import ResearchProjectStore
 from backend.core.stores.research_writing_store import ResearchWritingStore
 from backend.core.stores.session_store import SessionStore
+from backend.core.stores.sqlite_connection import connect_sqlite
 from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.stores.user_store import UserStore
 from backend.core.web.webAPI import create_app
@@ -87,6 +90,32 @@ def _project(client: TestClient, headers: dict[str, str]) -> dict:
     )
     assert response.status_code == 201
     return response.json()
+
+
+def test_queue_recovery_stays_read_only_when_no_job_was_interrupted(tmp_path):
+    database = tmp_path / "research.db"
+    store = FrontierTrackingStore(database)
+    job_id = "queued-job"
+    now = datetime.now(timezone.utc).isoformat()
+    with closing(sqlite3.connect(database)) as connection, connection:
+        connection.execute(
+            """
+            INSERT INTO research_frontier_jobs (
+                job_id, project_id, user_id, query, status,
+                created_at, updated_at
+            ) VALUES (?, 'project', 'user', 'query', 'queued', ?, ?)
+            """,
+            (job_id, now, now),
+        )
+
+    reader = sqlite3.connect(database)
+    reader.execute("BEGIN")
+    reader.execute("SELECT * FROM research_frontier_jobs").fetchall()
+    store._connect = lambda: connect_sqlite(database, timeout=0.05)
+    try:
+        assert store.requeue_interrupted() == [job_id]
+    finally:
+        reader.close()
 
 
 def test_frontier_job_is_user_scoped_and_uses_real_search_results(tmp_path):
