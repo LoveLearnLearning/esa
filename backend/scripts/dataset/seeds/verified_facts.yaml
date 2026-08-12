@@ -1,0 +1,88 @@
+# 可机器核验的事实登记表。
+#
+# 概念讲解类数据是整个数据集里唯一没有结构性防线的部分 —— 结构校验只能查
+# JSON 合不合法、角色顺序对不对，查不出「快速排序平均时间复杂度是 O(n)」这种错。
+# 而复杂度写错恰恰是生成模型最常见的一类幻觉。
+#
+# 这张表把这类断言变成可判定的：每个知识点声明它**允许出现**的复杂度集合
+# （含最好 / 平均 / 最坏 / 空间，以及讲解中会顺带提到的对比项）。
+# 正文里出现集合之外的复杂度，validate.py 直接报错。
+#
+# 维护约定：
+#   - 这张表是人工审核的对象，不是生成物。120 个知识点里只有涉及复杂度的需要登记。
+#   - 宁可多登记几个（避免误伤正常的对比表述），也不要漏登记真正正确的值。
+#   - 新增知识点的讲解若涉及复杂度，必须先在这里登记再生成数据。
+#
+# ⚠️ key 是样本的 `topic`，而 `topic` 混着**两套**知识点命名空间，两套都是真的：
+#   - `seeds/knowledge_points.yaml` 的 snake_case id（120 个）—— 下面绝大多数是这一套
+#   - 根目录知识图谱的中文 id（479 个）—— 线上工具校验 kp_id 用的就是它，
+#     `gen_negatives.py` 的 traps 写的是这一套（见文件末尾那一组）
+# 匹配是**逐字**的，写成另一套里的名字就等于没登记 —— `check_verified_facts`
+# 查不到 key 会直接 continue，不报错。`check_topic_known` 拦的是拼错，
+# 拦不住"拼对了但没登记"，所以新增带复杂度断言的样本时必须自己来这里加一条。
+
+complexity:
+  # ---- 排序 ----
+  sorting_comparison:
+    [O(n), O(n log n), O(n^2), O(log n), O(1), O(n + k), O(nk), O(d(n+k))]
+  quicksort_analysis:
+    [O(n log n), O(n^2), O(log n), O(n), O(1)]
+  mergesort_analysis:
+    [O(n log n), O(n), O(1)]
+
+  # ---- 查找与树 ----
+  binary_search: [O(log n), O(1), O(n)]
+  binary_search_tree: [O(log n), O(n), O(h), O(1)]
+  avl_tree: [O(log n), O(n), O(1)]
+  b_tree_and_bplus: [O(log n), O(logt n), O(h), O(n)]
+  hash_table: [O(1), O(n), O(log n)]
+  binary_tree_traversal: [O(n), O(h), O(log n), O(1)]
+  huffman_tree: [O(n log n), O(n)]
+
+  # ---- 图 ----
+  graph_traversal: [O(V + E), O(V^2), O(n^2), O(n + e), O(V), O(E)]
+  minimum_spanning_tree: [O(E log V), O(V^2), O(E log E), O(n^2), O(e log e)]
+  shortest_path: [O(V^2), O(E log V), O(V^3), O(n^2), O(n^3), O(VE)]
+  topological_sort: [O(V + E), O(n + e)]
+  dijkstra_correctness: [O(V^2), O(E log V), O(VE), O(n^2)]
+
+  # ---- 线性结构与串 ----
+  linear_list_seq_vs_linked: [O(1), O(n)]
+  linked_list_operations: [O(1), O(n)]
+  stack_basics: [O(1), O(n)]
+  queue_basics: [O(1), O(n)]
+  circular_queue: [O(1)]
+  string_kmp: [O(n + m), O(m), O(n), O(nm)]
+
+  # ---- 算法设计 ----
+  asymptotic_notation: [O(1), O(log n), O(n), O(n log n), O(n^2), O(n^3), O(2^n), O(n!)]
+  master_theorem: [O(n log n), O(n^2), O(n), O(log n), O(n^logb a)]
+  divide_and_conquer: [O(n log n), O(log n), O(n), O(n^2)]
+  dp_basics: [O(n^2), O(n), O(nm), O(n log n), O(1)]
+  dp_knapsack: [O(nW), O(nc), O(W), O(n)]
+  dp_lcs: [O(mn), O(nm), O(min(m,n)), O(m + n)]
+  dp_lis: [O(n^2), O(n log n), O(n)]
+  dp_edit_distance: [O(mn), O(nm), O(min(m,n))]
+  greedy_basics: [O(n log n), O(n)]
+  activity_selection: [O(n log n), O(n)]
+  huffman_greedy: [O(n log n), O(n)]
+  backtracking: [O(2^n), O(n!), O(n), O(n^2)]
+  branch_and_bound: [O(2^n), O(n!)]
+  np_completeness: [O(n^k), O(2^n), O(n!)]
+  amortized_analysis: [O(1), O(n), O(log n)]
+  recurrence_solving: [O(n log n), O(n), O(n^2), O(log n)]
+
+  # ---- 操作系统 / 组成原理里涉及复杂度的 ----
+  page_replacement: [O(1), O(n)]
+  disk_scheduling: [O(n log n), O(n)]
+  bankers_algorithm: [O(mn^2), O(n^2 m), O(n^2)]
+
+  # ---- 用根目录知识图谱中文 id 登记的（gen_negatives.py 的 traps 用这一套）----
+  #
+  # 这两条是 2026-08-12 复核补的。补之前 trap_004 的 O(log n) 和 trap_011 的 O(1)
+  # 从来没被校验过 —— 不是因为写错了，而是因为 traps 的 topic 用的是中文命名空间，
+  # 而这张表当时只有 snake_case 的 key，查不到就静默跳过。
+  # 两条断言我已人工核对：二叉堆插入/删除 O(log n)；并查集路径压缩 + 按秩合并
+  # 单次操作摊还 O(α(n))，工程上说成"接近 O(1)"。
+  优先队列: [O(log n), O(1), O(n), O(n log n)]
+  并查集: [O(1), O(log n), O(n)]

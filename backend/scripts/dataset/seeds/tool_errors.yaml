@@ -1,0 +1,475 @@
+# 工具失败恢复（tool_error）种子库
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 一、这批数据要教什么
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 这个 Agent 里**同时存在三种失败表示**，模型必须都认得：
+#
+#   ① 抛异常被包装成字符串    "[Error]: 搜索请求超时"
+#                             tool_register.call 捕获 ValueError/TypeError/RuntimeError
+#                             后 `return f"[Error]: {e}"`（tool_register.py:79-80）
+#
+#   ② 正常返回但带 error 键    {'expression': '1024/(10-10)', 'result': None, 'error': '除零错误'}
+#                             三个计算器不抛异常，失败也走正常返回
+#                             （calculator.py:145-150 / bitwise_calculator.py:157-162 /
+#                              math_solver.py:298-304）
+#
+#   ③ 正常返回但被拒绝/为空    {'allowed': False, ..., 'reason': '当前会话为 isolated 模式…'}
+#                             {'count': 0, ..., 'note': "未找到课程 '高等数学' 的知识点…"}
+#                             （memory_tools.py / mastery_tools.py 的阻断与空结果分支）
+#
+# 三种长得完全不一样，而恢复动作是同一个：**如实说明，绝不编一个结果出来**。
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 二、一条硬规矩：第一次调用必须是「换成谁都会这么调」的
+# ══════════════════════════════════════════════════════════════════════════
+#
+# tool_error 样本里，助手发出的**每一条**消息都会算 loss —— 包括那次失败的调用。
+# 所以如果第一次调用本身就是模型的低级错误（比如 required 参数漏填），
+# 这条样本等于在教模型犯那个错，再教它擦屁股。净效果是负的。
+#
+# 因此本文件里每一条的第一次调用都必须属于下面三种之一：
+#   (a) 失败源于外部世界   —— arXiv 超时、检索服务没配置
+#   (b) 失败源于用户给的输入 —— 用户自己写的表达式除零 / 拼错函数名 / 带未知变量
+#   (c) 失败源于 schema 没说清 —— binomial 的 expression 要写成 'n, r'，
+#                                schema 描述里一个例子都没有，模型第一次写 '5' 完全合理
+#
+# 「用户明确要求了某个参数、照做才报错」也算 (b)：模型是在服从用户当前消息。
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 三、报错文案一律逐字取自后端，每条带 src
+# ══════════════════════════════════════════════════════════════════════════
+#
+# validate.py 的 check_error_texts_registered 会核对：数据里出现的报错文案
+# 必须在本文件登记过。这样以后没人能顺手编一句「[Error]: 服务暂时不可用」进去。
+#
+# 只登记**完全字面量**的报错。像 `无法连接到 arXiv API：{exc}` 这种把第三方异常
+# 内插进来的，我们无法确知 {exc} 长什么样，就不做 —— 编一段 requests 的异常文本
+# 和编一篇论文是同一类问题。
+#
+# calculators 段的观测值不写在这里，而是由 tools/capture_math_outputs.py
+# 跑后端真实函数抓进 data/cache/math_real.json。本文件只登记「调什么、说什么」。
+
+# ---------------------------------------------------------------------------
+# ① [Error]: 包装类 —— 外部服务失败，模型无过错
+# ---------------------------------------------------------------------------
+wrapped:
+  - id: arxiv_timeout
+    tool: arxiv_search
+    args: { query: "knowledge tracing", max_results: 3 }
+    err: "arXiv API 请求超时（已重试 5 次）"
+    src: backend/agent/tools/arxiv_search.py:295
+    lures: [arxiv_search, web_search, retrieve_knowledge]
+    q: "帮我找几篇知识追踪方向的论文，我想看看最近的进展"
+    a: |
+      arXiv 那边没响应（[Error]: arXiv API 请求超时（已重试 5 次）），这次检索没拿到结果。
+
+      我不会凭印象报几个标题给你——论文的题目、作者和编号我编不得。两个选择：稍后我再检索一次，
+      或者你先说说你关心知识追踪的哪一面（模型结构？数据集？评测指标？），我先把这块的基础脉络讲清楚，
+      等检索通了再补具体文献。
+
+  - id: arxiv_http_503
+    tool: arxiv_search
+    args: { query: "retrieval augmented generation", max_results: 3 }
+    err: "arXiv API 返回 HTTP 503"
+    src: backend/agent/tools/arxiv_search.py:290
+    lures: [arxiv_search, web_search]
+    q: "检索增强生成方向有哪些值得读的论文"
+    a: |
+      arXiv 返回了 503（[Error]: arXiv API 返回 HTTP 503），服务端暂时不可用，这次没检索到东西。
+
+      503 通常是临时的，过几分钟就好。要我等会儿再试一次吗？在那之前我可以先讲 RAG 的基本组成
+      （检索器、重排、生成器怎么串起来），这部分不依赖检索。
+
+  - id: arxiv_http_429
+    tool: arxiv_search
+    args: { query: "graph neural network", max_results: 3 }
+    err: "arXiv API 返回 HTTP 429"
+    src: backend/agent/tools/arxiv_search.py:290
+    lures: [arxiv_search, web_search]
+    q: "图神经网络这块有什么经典工作，帮我搜一下"
+    a: |
+      被 arXiv 限流了（[Error]: arXiv API 返回 HTTP 429），短时间请求太多，这次没返回结果。
+
+      429 要等一会儿才能恢复，硬重试只会继续被挡。我们缓一缓再搜；你要是急，可以先告诉我你想解决的
+      具体问题，我按印象给你指方向——但**具体的论文标题和编号我不会给**，那种东西一编就是假引用。
+
+  - id: arxiv_timeout_author
+    tool: arxiv_search
+    args: { query: "Yann LeCun", search_field: author, max_results: 3 }
+    err: "arXiv API 请求超时（已重试 5 次）"
+    src: backend/agent/tools/arxiv_search.py:295
+    lures: [arxiv_search, web_search]
+    q: "按作者搜一下 Yann LeCun 都发过什么"
+    a: |
+      按作者检索没跑通，arXiv 超时了（[Error]: arXiv API 请求超时（已重试 5 次））。
+
+      作者检索这件事尤其不能靠记忆凑——把不是他的论文安到他名下，比没查到还糟。等服务恢复我再查一次，
+      或者你直接给我一篇具体的论文名，我们从那一篇往下聊。
+
+  - id: rag_service_not_configured
+    tool: retrieve_knowledge
+    args: { query: "红黑树的删除操作", top_k: 5 }
+    err: "RAG retrieval service is not configured; configure it during the ESA application lifespan"
+    src: backend/agent/rag/agent_api.py:41-44
+    lures: [retrieve_knowledge, get_knowledge_base_stats, load_skill]
+    q: "从知识库里查一下红黑树删除操作的完整步骤"
+    a: |
+      知识库这次没接上（[Error]: RAG retrieval service is not configured; configure it during the ESA
+      application lifespan），检索服务还没在本次会话里初始化，所以我拿不到你们课程资料里的原文。
+
+      我可以按通用教材讲一遍红黑树删除（双黑节点的四种情况怎么调），但要注意：**这不是你们课件里的版本**，
+      符号和步骤划分可能不一样，考试以课件为准。要不要我先讲通用版？
+
+  - id: rag_threshold_out_of_range
+    tool: retrieve_knowledge
+    args: { query: "TCP 拥塞控制", top_k: 5, similarity_threshold: 1.5 }
+    err: "similarity_threshold must be between 0 and 1"
+    src: backend/agent/rag/agent_api.py:57-58
+    lures: [retrieve_knowledge, get_knowledge_base_stats]
+    q: "查一下知识库里 TCP 拥塞控制的内容，相似度阈值给我调到 1.5，我只要最准的"
+    a: |
+      1.5 这个值不合法：[Error]: similarity_threshold must be between 0 and 1，阈值是个 0 到 1 的概率，
+      不是倍数。
+
+      顺带说一句，调高阈值不等于「更准」，只是把低于线的结果全丢掉，很容易一条都不剩。
+      我建议先不设阈值检索一次，看看结果够不够聚焦，不够再收紧——要我这么做吗？
+
+  - id: rag_threshold_needs_reranker
+    tool: retrieve_knowledge
+    args: { query: "死锁的四个必要条件", top_k: 5, similarity_threshold: 0.9 }
+    err: "similarity_threshold requires an active reranker; RRF scores are rank-fusion scores, not probabilities"
+    src: backend/agent/rag/agent_api.py:104-107
+    lures: [retrieve_knowledge, get_knowledge_base_stats]
+    q: "知识库里搜死锁的四个必要条件，阈值设 0.9 只要最相关的"
+    a: |
+      这个阈值用不了：[Error]: similarity_threshold requires an active reranker; RRF scores are
+      rank-fusion scores, not probabilities。当前没启用 Reranker，系统给出的是排序融合分不是概率，
+      拿 0.9 去卡它没有意义。
+
+      想达到「只要最相关的」，正确做法是把返回条数调小，而不是卡阈值。我改成只取前 2 条重新检索，行吗？
+
+# ---------------------------------------------------------------------------
+# ② error 键类 —— 三个计算器。失败源于用户自己给的表达式 / schema 没写清楚
+#
+# 观测值由 tools/capture_math_outputs.py 跑真实后端函数抓取，这里只写调用与话术。
+# retry_args 非空表示这是「读懂报错 → 改对参数 → 重试成功」的多轮样本。
+# ---------------------------------------------------------------------------
+calculators:
+  - id: calc_div_zero
+    tool: calculator
+    args: { expression: "1024/(10-10)" }
+    src: backend/agent/tools/math_tools/_base_evaluator.py:63-64
+    lures: [calculator, math_solver, bitwise_calculator]
+    q: "帮我算一下 1024/(10-10)"
+    a: |
+      这个式子算不出来：分母 `10-10` 等于 0，计算器返回了「除零错误」。
+
+      数学上除以零是没有定义的，不是「结果很大」也不是无穷大。你是不是括号里的数写错了？
+      告诉我正确的分母我再算一遍。
+
+  - id: calc_unknown_symbol
+    tool: calculator
+    args: { expression: "n*log(n)" }
+    src: backend/agent/tools/math_tools/_base_evaluator.py:52-53
+    lures: [calculator, math_solver]
+    q: "算一下 n*log(n) 等于多少"
+    a: |
+      算不了，计算器报的是「未知的变量或常量: 'n'」——它只做数值计算，`n` 没有具体取值就无从算起。
+
+      看你这个式子，多半是在估算复杂度。那有两条路：
+      - 想要**具体数字**：告诉我 n 是多少，比如 n=1024 我就能算出来；
+      - 想要**符号推导**：那该用符号计算，不是这个计算器。
+
+      你要哪种？
+
+  - id: calc_unknown_function
+    tool: calculator
+    args: { expression: "arcsin(0.5)" }
+    src: backend/agent/tools/math_tools/_base_evaluator.py:79-80
+    lures: [calculator, math_solver]
+    q: "帮我算 arcsin(0.5)"
+    a: |
+      函数名不对，计算器返回「未知的函数: 'arcsin'」。这个计算器里反正弦写作 `asin`，不是 `arcsin`。
+    retry_args: { expression: "asin(0.5)" }
+    a_retry: |
+      函数名写法不一样：这个计算器里反正弦是 `asin` 不是 `arcsin`，换过来就算出来了。
+
+      $\arcsin(0.5) = {value}$ 弧度，也就是 30°。
+
+  - id: calc_syntax_error
+    tool: calculator
+    args: { expression: "2 +* 3" }
+    src: backend/agent/tools/math_tools/_base_evaluator.py:120-121
+    lures: [calculator, bitwise_calculator]
+    q: "算一下 2 +* 3"
+    a: |
+      式子有语法错误（计算器返回「语法错误: invalid syntax」）：`+*` 两个运算符连在一起了。
+
+      你是想算 `2 + 3`（等于 5）还是 `2 * 3`（等于 6）？说一声我马上算。
+
+  - id: calc_nan
+    tool: calculator
+    args: { expression: "inf - inf" }
+    src: backend/agent/tools/math_tools/calculator.py:154-161
+    lures: [calculator, math_solver]
+    q: "无穷大减无穷大等于多少，算一下 inf - inf"
+    a: |
+      计算器返回的是「计算结果为 NaN（非数字）」。
+
+      这不是计算器算不动，而是 $\infty - \infty$ 本身就是**未定式**：它的值取决于两个无穷大是怎么趋近的。
+      $\lim(x - x) = 0$，但 $\lim(2x - x) = \infty$，同样是「无穷减无穷」，结果完全不同。
+      所以只有放进具体极限里才有答案。你有具体的式子吗？
+
+  - id: bitwise_popcount_negative
+    tool: bitwise_calculator
+    args: { expression: "popcount(-3)" }
+    src: backend/agent/tools/math_tools/bitwise_calculator.py:19-20
+    lures: [bitwise_calculator, calculator]
+    q: "算一下 -3 的二进制里有几个 1，popcount(-3)"
+    a: |
+      算不了，工具返回「函数 'popcount' 调用错误: popcount 仅支持非负整数，负数在任意精度下无确定补码表示」。
+
+      原因是负数的补码位数取决于字长：-3 在 8 位下是 `11111101`（7 个 1），在 32 位下是 29 个 1。
+      不指定字长就没有唯一答案。你要按几位算？给我位数，我用 `-3 & 0xFF` 这种方式先截断再数。
+
+  - id: bitwise_syntax_error
+    tool: bitwise_calculator
+    args: { expression: "0xFF & 0xGG" }
+    src: backend/agent/tools/math_tools/_base_evaluator.py:120-121
+    lures: [bitwise_calculator, calculator]
+    q: "算一下 0xFF & 0xGG"
+    a: |
+      `0xGG` 不是合法的十六进制（工具返回「语法错误: invalid hexadecimal literal」）——十六进制只有 0-9 和 A-F，没有 G。
+
+      你是想写 `0xFF & 0xF0` 还是别的？把正确的数给我，我再算。
+
+  - id: bitwise_unknown_function
+    tool: bitwise_calculator
+    args: { expression: "rotate(5, 1)" }
+    src: backend/agent/tools/math_tools/_base_evaluator.py:79-80
+    lures: [bitwise_calculator, calculator]
+    q: "帮我算 rotate(5, 1)，就是循环左移一位"
+    a: |
+      工具里没有这个函数，返回的是「未知的函数: 'rotate'」——它只支持基本位运算和 bin/oct/hex/bit_length/popcount。
+
+      循环左移可以用基本位运算拼出来：8 位下 `((5 << 1) | (5 >> 7)) & 0xFF`。
+      不过要先确定按几位循环——8 位、16 位还是 32 位？说一声我按那个位宽算。
+
+  - id: solver_binomial_format
+    tool: math_solver
+    args: { operation: binomial, expression: "5" }
+    src: backend/agent/tools/math_tools/math_solver.py:236-238
+    lures: [math_solver, calculator]
+    q: "帮我算组合数 C(5,2)"
+    retry_args: { operation: binomial, expression: "5, 2" }
+    a_retry: |
+      第一次参数格式写错了，工具提示组合数要写成 `'n, r'`，改过来就好了。
+
+      $C(5,2) = {value}$。
+
+  - id: solver_permutation_format
+    tool: math_solver
+    args: { operation: permutation, expression: "6" }
+    src: backend/agent/tools/math_tools/math_solver.py:245-247
+    lures: [math_solver, calculator]
+    q: "6 个元素取 3 个的排列数是多少"
+    retry_args: { operation: permutation, expression: "6, 3" }
+    a_retry: |
+      排列数同样要把两个数一起传进去（格式 `'n, r'`），改完算出来了。
+
+      $A(6,3) = {value}$，也就是 $6 \times 5 \times 4$。
+
+  - id: solver_summation_bounds
+    tool: math_solver
+    args: { operation: summation, expression: "i", variable: "i" }
+    src: backend/agent/tools/math_tools/math_solver.py:283-284
+    lures: [math_solver, calculator]
+    q: "求 i 从 1 加到 n 的求和公式"
+    retry_args: { operation: summation, expression: "i", variable: "i", lower: "1", upper: "n" }
+    a_retry: |
+      求和要把上下限一起给（第一次漏了，工具提示「求和需要 lower 和 upper 参数」），补上 1 到 n 就出来了：
+
+      $$\sum_{{i=1}}^{{n}} i = {latex}$$
+
+      也就是熟悉的 $\frac{{n(n+1)}}{{2}}$，展开后是同一个式子。
+
+  - id: solver_parse_failed
+    tool: math_solver
+    args: { operation: diff, expression: "x^^2", variable: "x" }
+    src: backend/agent/tools/math_tools/math_solver.py:97-99
+    lures: [math_solver, calculator]
+    q: "对 x^^2 求导"
+    a: |
+      表达式解析不了（工具返回「表达式解析失败: invalid syntax」）：`^^` 不是合法写法。
+
+      幂运算写 `x**2`，或者写 `x^2` 也行。你是想对 $x^2$ 求导吗？确认一下我就算。
+
+# ⚠️ 这里曾经有一条 solver_solve_needs_variable（solve 不带 variable → 报错 → 补上重试）。
+# 已删除：`solve` 属于 MATH_SOLVER_NEEDS_VAR，schema 描述里也给了带 variable 的例子，
+# 漏填就是模型的低级错误，不符合本文件第二节那条硬规矩。
+# 是 validate.py 的 arg_conditional 检查把它拦下来的 —— 检查比我更守规矩，留个记录。
+
+# ---------------------------------------------------------------------------
+# ③ 空结果类 —— 调用完全正确，只是库里没有这门课
+#
+# 观测由 fixtures.recommend_practice 真实计算得到：ranking 为空就走
+# count=0 + note 分支（mastery_tools.py:160-168，fixtures.py 逐字一致）。
+# 课程名必须**确实不在知识图谱里**，否则拿到的就不是空结果了。
+# ---------------------------------------------------------------------------
+empty_result:
+  - id: empty_course_advanced_math
+    course: "高等数学"
+    weeks_to_exam: 3
+    lures: [recommend_practice, get_mastery_report, get_mastery_level]
+    q: "高等数学还有 3 周考试，帮我排一下练习重点"
+    a: |
+      查了一下，知识库里没有「高等数学」这门课的知识点（工具返回 count=0，提示「{note}」）。
+
+      我覆盖的是计算机专业课，目前有：{courses} 等。高等数学不在里面，所以我排不出基于你真实掌握度的优先级——
+      硬编一份出来对你没用。
+
+      要不我们换成上面某一门？或者你把高数的章节清单发我，我按通用方法帮你排，只是没有学情数据支撑。
+
+  - id: empty_course_physics
+    course: "大学物理"
+    weeks_to_exam: 6
+    lures: [recommend_practice, get_mastery_report]
+    q: "距离大学物理期末还有 6 周，给我列个刷题优先级"
+    a: |
+      「大学物理」不在知识库里，工具返回的是空结果加一句「{note}」。
+
+      我这边收录的是计算机专业课（{courses} 等），物理没有知识点也没有你的练习记录，
+      算不出优先级。6 周时间够从容复习，你要是想让我帮忙，可以把课程大纲发我按通用方法排；
+      计算机课那边我随时能给你真实学情排序。
+
+  - id: empty_course_english
+    course: "大学英语"
+    weeks_to_exam: 2
+    lures: [recommend_practice, get_review_timing]
+    q: "大学英语两周后考，练什么好"
+    a: |
+      没查到「大学英语」——工具返回 count=0，提示「{note}」。
+
+      我只覆盖计算机专业课（{courses} 等），英语这块我没有你的任何学习数据，给不了有依据的建议。
+      两周后如果还有计算机的科目要考，告诉我是哪一门，我按真实掌握度帮你排。
+
+  - id: empty_course_typo
+    course: "数据结够"
+    weeks_to_exam: 4
+    lures: [recommend_practice, get_mastery_report]
+    q: "数据结够这门课还有 4 周考试，帮我安排下练习"
+    a: |
+      按「数据结够」没查到东西，工具提示「{note}」。
+
+      看着像是打字打岔了——你是指**数据结构**吧？确认一下我就按这门课重新查你的掌握度，
+      给出真正基于数据的练习顺序。在你确认之前我不会自己改课程名去查，万一猜错了，
+      拿到的就是别人那门课的结论。
+
+# ---------------------------------------------------------------------------
+# 报错文案登记表
+#
+# validate.py 的 check_error_texts_registered 拿这张表核对：数据里每一条失败观测的
+# 文案，必须能在这里（或在真实抓取的 math_real.json 里）找到。
+# 这样以后没人能顺手往数据里编一句「[Error]: 服务暂时不可用」——那种句子线上永远不会出现。
+#
+# 用的是和 verified_facts.yaml 同一套思路：把「不可自动核验的文本」变成可判定的。
+# 上面 wrapped 段的 err 会自动登记，不用在这里重复写。
+# ---------------------------------------------------------------------------
+registry:
+  # 完全字面量。web_search 那 5 条是 gen_external.py 早先就在用的，一并登记。
+  literal:
+    - { text: "[Error]: 搜索请求超时", src: backend/agent/tools/web_search.py:94 }
+    - { text: "[Error]: SearXNG 禁止 JSON 输出，请检查 settings.yml 中是否启用了 search.formats.json",
+        src: backend/agent/tools/web_search.py:98-104 }
+    - { text: "[Error]: SearXNG 返回 HTTP 502", src: backend/agent/tools/web_search.py:105 }
+    - { text: "[Error]: 无法连接到 SearXNG：Connection refused", src: backend/agent/tools/web_search.py:110 }
+    - { text: "[Error]: SearXNG 返回的不是有效 JSON", src: backend/agent/tools/web_search.py:113 }
+    - { text: "当前会话为 isolated 模式，禁止读取长期学习状态", src: backend/agent/tools/mastery_tools.py:71 }
+    - { text: "当前会话为 isolated 模式，禁止读取长期记忆", src: backend/agent/tools/memory_tools.py:244,295 }
+    - { text: "当前会话为 no_write/isolated 模式，禁止写入记忆", src: backend/agent/tools/memory_tools.py:162 }
+    - { text: "当前会话为 no_write/isolated 模式，禁止删除长期记忆", src: backend/agent/tools/memory_tools.py:334 }
+    - { text: "当前会话为 no_write/isolated 模式，禁止记录练习结果", src: backend/agent/tools/mastery_tools.py:471 }
+  # 内插了变量的，用正则登记
+  patterns:
+    - { re: "^\\S+ skill not found!$", src: backend/agent/tools/skills.py:249 }
+    - { re: "^未找到课程 '.+' 的知识点，请确认课程名$", src: backend/agent/tools/mastery_tools.py:167 }
+    - { re: "^\\[Error\\]: arXiv API 返回 HTTP \\d+$", src: backend/agent/tools/arxiv_search.py:290 }
+
+# ---------------------------------------------------------------------------
+# ③ 会话模式阻断类 —— 调用完全正确，是当前会话模式不允许
+#
+# 观测由 fixtures.BLOCKED_BUILDERS 产出，逐字复刻后端的阻断分支（含键顺序）。
+# 模型无从预知会话模式，所以先调用是对的；要学的是**读懂 allowed/saved 为 False
+# 并如实转达**，而不是当成成功继续往下编。
+# ---------------------------------------------------------------------------
+blocked:
+  - id: blocked_get_core_memories
+    tool: get_core_memories
+    args: {}
+    lures: [get_core_memories, search_core_memories, save_core_memory]
+    q: "把你记着我的那些信息都列出来我看看"
+    a: |
+      这次会话是隔离模式，读不了你的长期记忆——工具返回的是 `allowed: False`，原因写着
+      「当前会话为 isolated 模式，禁止读取长期记忆」。
+
+      所以我现在手上一条你的历史记录都没有，也不会凭印象编几条给你。想查完整记忆，换一个普通会话再问我一次就行。
+
+  - id: blocked_search_core_memories
+    tool: search_core_memories
+    args: { query: "学习目标" }
+    lures: [search_core_memories, get_core_memories]
+    q: "我之前跟你说过的学习目标是什么来着"
+    a: |
+      查不到——不是没记，是这次会话为 isolated 模式，禁止读取长期记忆（工具返回 `allowed: False`）。
+
+      你要是现在告诉我目标是什么，我们这一轮可以照着用；但它不会被存下来，下次还得再说一遍。
+
+  - id: blocked_save_core_memory
+    tool: save_core_memory
+    args: { memory_key: "response_style", content: "回答尽量简短", category: "preference" }
+    lures: [save_core_memory, delete_core_memory, get_core_memories]
+    # 话术不能和 gen_negatives 的 save 正例撞车（那边已有「以后回答简短一点，记住这个偏好」），
+    # 否则同一句话在两处有不同标签。是 check_exact_duplicates 抓出来的。
+    q: "把「回答尽量简短」这条偏好存进你的长期记忆里"
+    a: |
+      这次没存成：工具返回 `saved: False`，原因是「当前会话为 no_write/isolated 模式，禁止写入记忆」。
+
+      我不会假装已经记住了——那样你下次发现我又开始长篇大论，只会更莫名其妙。
+      这一轮我先按简短来；等换到可写入的会话你再说一次，我就能长期记住。
+
+  - id: blocked_delete_core_memory
+    tool: delete_core_memory
+    args: { memory_key: "learning_goal" }
+    lures: [delete_core_memory, save_core_memory, get_core_memories]
+    # 同上：不能和 gen_negatives 的 delete 正例撞话术
+    q: "帮我把 learning_goal 那条记忆删了，我打算重新规划一下"
+    a: |
+      没能删掉：工具返回 `deleted: False`，原因是「当前会话为 no_write/isolated 模式，禁止删除长期记忆」。
+
+      也就是说那条记忆**还在**。这点必须说清楚，不然你以为删了、实际没删，比不删更麻烦。
+      换到普通会话再说一次，我就能真删掉。
+
+  - id: blocked_recommend_practice
+    tool: recommend_practice
+    args: { course: "数据结构", weeks_to_exam: 3 }
+    lures: [recommend_practice, get_mastery_report, get_review_timing]
+    q: "数据结构还有 3 周考试，按我的掌握情况帮我排个练习优先级"
+    a: |
+      排不了——这次会话是隔离模式，读不到你的长期学习状态（工具返回 `allowed: False`，
+      原因「当前会话为 isolated 模式，禁止读取长期学习状态」）。
+
+      没有掌握度数据，我给的任何「优先级」都是拍脑袋的，不如不给。
+      两个办法：换个普通会话我按真实学情排；或者你现在口头说说哪几块最没底，我按这个先给个粗排。
+
+  - id: blocked_record_answer
+    tool: record_answer
+    args: { kp_id: "二叉树遍历", correct: true }
+    lures: [record_answer, record_learning_evidence, get_mastery_level]
+    q: "刚才那道二叉树遍历的题我做对了，记一下"
+    a: |
+      没记上：工具返回 `saved: False`，原因是「当前会话为 no_write/isolated 模式，禁止记录练习结果」。
+
+      所以这次做对**不会**反映到掌握度上。要留痕的话换个可写入的会话再告诉我一次；
+      不留痕也没关系，我们接着往下练。
