@@ -99,4 +99,38 @@ void main() {
     expect(restored.breakDurationMinutes, 10);
     expect(restored.termStartDate, '2026-08-03');
   });
+
+  test('ChatGroup parses nullable style/tone and conversation count', () {
+    final group = ChatGroup.fromJson({
+      'group_id': 'group-1',
+      'user_id': 'user-1',
+      'name': '高数',
+      'description': '高等数学复习',
+      'custom_instruction': '用苏格拉底式提问引导我',
+      'style': 'socratic',
+      'tone': null,
+      'conversation_count': 3,
+      'created_at': '2026-08-12T08:00:00Z',
+      'updated_at': '2026-08-12T09:00:00Z',
+    });
+
+    expect(group.id, 'group-1');
+    expect(group.userId, 'user-1');
+    expect(group.name, '高数');
+    expect(group.style, 'socratic');
+    expect(group.tone, isNull);
+    expect(group.conversationCount, 3);
+  });
+
+  test('ChatConversation parses optional group id', () {
+    final conversation = ChatConversation.fromJson({
+      'conversation_id': 'conversation-1',
+      'title': '线性代数',
+      'updated_at': '2026-08-12T08:00:00Z',
+      'workspace_type': 'learning',
+      'group_id': 'group-1',
+    });
+
+    expect(conversation.groupId, 'group-1');
+  });
 }

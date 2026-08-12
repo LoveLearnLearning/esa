@@ -200,6 +200,11 @@ class _LoginPageState extends State<LoginPage>
     });
   }
 
+  void _enterAsGuest() {
+    if (_loading) return;
+    AppScope.of(context).enterAsGuest();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -231,6 +236,11 @@ class _LoginPageState extends State<LoginPage>
                   _compactLayout(constraints)
                 else
                   _desktopLayout(constraints),
+                Positioned(
+                  left: compact ? 18 : 72,
+                  bottom: compact ? 18 : 24,
+                  child: _GuestLoginButton(),
+                ),
                 if (_loading) const Positioned.fill(child: _LoadingStage()),
               ],
             );
@@ -280,7 +290,7 @@ class _LoginPageState extends State<LoginPage>
         top: constraints.maxWidth < 560 ? 180 : 205,
         left: 18,
         right: 18,
-        bottom: 28,
+        bottom: 88,
       ),
       child: Column(
         children: [
@@ -820,6 +830,24 @@ class _LoginPageState extends State<LoginPage>
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _GuestLoginButton() {
+    return OutlinedButton.icon(
+      onPressed: _enterAsGuest,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: _muted,
+        side: const BorderSide(color: _line),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      icon: const Icon(LucideIcons.userRound, size: 15),
+      label: const Text(
+        '游客登录',
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
       ),
     );
   }
