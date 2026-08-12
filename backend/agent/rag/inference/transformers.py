@@ -26,6 +26,10 @@ class TransformersEmbeddingProvider:
     model_name: str = "Qwen/Qwen3-Embedding-4B"
     load_path: str | None = None
     device: str = "cuda"
+    # ``device`` is part of the frozen embedding fingerprint.  Cluster
+    # launchers may expose the same CUDA device under another logical index;
+    # keep that placement detail out of the semantic index identity.
+    runtime_device: str | None = None
     dimension: int = 2560
     max_length: int = 8192
     batch_size: int = 8
@@ -80,9 +84,10 @@ class TransformersEmbeddingProvider:
             source,
             padding_side="left",
         )
+        target_device = self.runtime_device or self.device
         self._model = (
             AutoModel.from_pretrained(source, torch_dtype="auto")
-            .to(self.device)
+            .to(target_device)
             .eval()
         )
 
@@ -107,7 +112,8 @@ class TransformersEmbeddingProvider:
             max_length=self.max_length,
             return_tensors="pt",
         )
-        encoded = {name: value.to(self.device) for name, value in encoded.items()}
+        target_device = self.runtime_device or self.device
+        encoded = {name: value.to(target_device) for name, value in encoded.items()}
         with self._torch.inference_mode():
             hidden = self._model(**encoded).last_hidden_state
             pooled = self._torch.nn.functional.normalize(hidden[:, -1], p=2, dim=1)

@@ -343,7 +343,11 @@ ESA_AUXILIARY_MODEL_PATH=/path/to/auxiliary-model
 
 ## 6. 启动 Qdrant
 
-正式 RAG 使用 Qdrant，默认地址是 `http://127.0.0.1:6333`。本机 Docker 示例：
+正式 RAG 使用 Qdrant，默认地址是 `http://127.0.0.1:6333`。Qdrant storage 必须放在
+支持可靠文件锁的本地文件系统，不能放在超算的 NFS 项目目录或 NFS 持久盘；否则
+Qdrant 会报告数据损坏风险。Slurm 启动脚本默认把在线 storage 放到当前作业的本地
+`$SLURM_TMPDIR`，通过 `ESA_QDRANT_SNAPSHOT_PATH` 从 NFS 上的只读 collection snapshot
+恢复；`ESA_QDRANT_STORAGE_PATH` 仅用于覆盖为另一处本地文件系统。本机 Docker 示例：
 
 ```bash
 mkdir -p "$ESA_WORKSPACE/runtime/qdrant/storage"
@@ -419,6 +423,7 @@ RAG_QDRANT_COLLECTION=rag_qwen3_embedding_4b_v2
 RAG_EMBEDDING_BACKEND=transformers
 RAG_EMBEDDING_MODEL_PATH=/path/to/model-storage/Qwen3-Embedding-4B
 RAG_EMBEDDING_DEVICE=cuda
+RAG_EMBEDDING_RUNTIME_DEVICE=
 RAG_EMBEDDING_DIMENSION=2560
 RAG_FUSION_METHOD=dense
 RAG_DENSE_WEIGHT=1.0
@@ -553,6 +558,14 @@ PY
 ```bash
 python -m backend.main
 ```
+
+在六卡 Slurm 节点使用 `backend/scripts/run_esa_stack.sh` 时，脚本会将前四张卡分给
+主模型、第五张卡分给辅助模型、第六张卡分给 Transformers Embedding，并自动把
+`RAG_EMBEDDING_RUNTIME_DEVICE` 设置为主后端中的逻辑 `cuda:4`。`RAG_EMBEDDING_DEVICE`
+仍保持为冻结部署指纹中的 `cuda`；前者只是物理放置别名，不改变索引身份。若
+`RAG_ENABLED=true` 且本机 6333 未运行，脚本还会从
+`runtime/qdrant/bin/qdrant` 启动仅监听本机的 Qdrant，拒绝把在线 storage 启动在 NFS，
+并在新作业的本地 storage 为空时恢复 `ESA_QDRANT_SNAPSHOT_PATH`。
 
 应用启动时：
 
