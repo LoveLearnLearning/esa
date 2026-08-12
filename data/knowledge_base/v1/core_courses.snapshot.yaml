@@ -1,0 +1,467 @@
+# ESA four-layer KB v1 - snapshot aligned to repository core_courses.yaml
+courses:
+- course: 程序设计基础
+  category: core
+  points:
+  - {id: 数据类型, name: 数据类型, weight: 0.07}
+  - {id: 变量与常量, name: 变量与常量, weight: 0.05}
+  - {id: 运算符与表达式, name: 运算符与表达式, weight: 0.07}
+  - {id: 输入输出, name: 输入输出, weight: 0.05}
+  - {id: 选择结构, name: 选择结构, weight: 0.06}
+  - {id: 循环结构, name: 循环结构, weight: 0.07}
+  - {id: 数组, name: 数组, weight: 0.08}
+  - {id: 函数, name: 函数, weight: 0.1}
+  - {id: 指针, name: 指针, weight: 0.12}
+  - {id: 结构体, name: 结构体, weight: 0.06}
+  - {id: 联合体与枚举, name: 联合体与枚举, weight: 0.04}
+  - {id: 位运算, name: 位运算, weight: 0.04}
+  - {id: 预处理指令, name: 预处理指令, weight: 0.04}
+  - {id: 动态内存管理, name: 动态内存管理, weight: 0.08}
+  - {id: 文件操作, name: 文件操作, weight: 0.07}
+  prerequisites:
+  - [函数, 选择结构]
+  - [数组, 变量与常量]
+  - [指针, 数组]
+  - [结构体, 数组]
+  - [动态内存管理, 指针]
+  - [文件操作, 指针]
+  - [位运算, 运算符与表达式]
+- course: 面向对象程序设计
+  category: core
+  points:
+  - {id: 类与对象, name: 类与对象, weight: 0.12}
+  - {id: 构造函数与析构函数, name: 构造函数与析构函数, weight: 0.08}
+  - {id: 封装, name: 封装, weight: 0.08}
+  - {id: 继承, name: 继承, weight: 0.1}
+  - {id: 多态, name: 多态, weight: 0.1}
+  - {id: 抽象类与接口, name: 抽象类与接口, weight: 0.08}
+  - {id: 运算符重载, name: 运算符重载, weight: 0.06}
+  - {id: 泛型, name: 泛型, weight: 0.08}
+  - {id: 异常处理, name: 异常处理, weight: 0.08}
+  - {id: 集合框架, name: 集合框架, weight: 0.08}
+  - {id: 输入输出流, name: 输入输出流, weight: 0.06}
+  - {id: 多线程编程, name: 多线程编程, weight: 0.08}
+  prerequisites:
+  - [构造函数与析构函数, 类与对象]
+  - [封装, 类与对象]
+  - [继承, 类与对象]
+  - [多态, 继承]
+  - [抽象类与接口, 继承]
+  - [运算符重载, 类与对象]
+  - [泛型, 类与对象]
+  - [异常处理, 类与对象]
+  - [集合框架, 泛型]
+  - [输入输出流, 异常处理]
+- course: 离散数学
+  category: core
+  points:
+  - {id: 命题逻辑, name: 命题逻辑, weight: 0.1}
+  - {id: 谓词逻辑, name: 谓词逻辑, weight: 0.08}
+  - {id: 集合论, name: 集合论, weight: 0.1}
+  - {id: 关系, name: 关系, weight: 0.09}
+  - {id: 函数(离散数学), name: 函数, weight: 0.08}
+  - {id: 图的基本概念, name: 图的基本概念, weight: 0.09}
+  - {id: 图的遍历(离散数学), name: 图的遍历, weight: 0.07}
+  - {id: 树(离散数学), name: 树, weight: 0.07}
+  - {id: 欧拉图与哈密顿图, name: 欧拉图与哈密顿图, weight: 0.07}
+  - {id: 代数系统, name: 代数系统, weight: 0.08}
+  - {id: 布尔代数, name: 布尔代数, weight: 0.08}
+  - {id: 组合数学初步, name: 组合数学初步, weight: 0.09}
+  prerequisites:
+  - [谓词逻辑, 命题逻辑]
+  - [集合论, 命题逻辑]
+  - [关系, 集合论]
+  - [函数(离散数学), 关系]
+  - [图的基本概念, 集合论]
+  - [图的遍历(离散数学), 图的基本概念]
+  - [树(离散数学), 图的基本概念]
+  - [欧拉图与哈密顿图, 图的基本概念]
+  - [代数系统, 集合论]
+  - [布尔代数, 代数系统]
+- course: 数据结构
+  category: core
+  points:
+  - {id: 算法复杂度, name: 算法复杂度, weight: 0.06}
+  - {id: 线性表, name: 线性表, weight: 0.07}
+  - {id: 顺序表, name: 顺序表, weight: 0.06}
+  - {id: 链表, name: 链表, weight: 0.08}
+  - {id: 栈, name: 栈, weight: 0.06}
+  - {id: 队列, name: 队列, weight: 0.06}
+  - {id: 串, name: 串, weight: 0.04}
+  - {id: 二叉树, name: 二叉树, weight: 0.08}
+  - {id: 二叉树遍历, name: 二叉树遍历, weight: 0.06}
+  - {id: 二叉搜索树, name: 二叉搜索树, weight: 0.06}
+  - {id: 哈夫曼树, name: 哈夫曼树, weight: 0.05}
+  - {id: 堆, name: 堆, weight: 0.05}
+  - {id: 优先队列, name: 优先队列, weight: 0.05}
+  - {id: 图, name: 图, weight: 0.08}
+  - {id: 图的遍历, name: 图的遍历, weight: 0.06}
+  - {id: 深度优先搜索, name: 深度优先搜索, weight: 0.05}
+  - {id: 广度优先搜索, name: 广度优先搜索, weight: 0.05}
+  - {id: 最小生成树, name: 最小生成树, weight: 0.05}
+  - {id: 并查集, name: 并查集, weight: 0.04}
+  - {id: 查找, name: 查找, weight: 0.07}
+  - {id: 哈希表, name: 哈希表, weight: 0.06}
+  - {id: 排序算法, name: 排序算法, weight: 0.06}
+  prerequisites:
+  - [顺序表, 线性表]
+  - [链表, 线性表]
+  - [栈, 线性表]
+  - [队列, 线性表]
+  - [链表, 指针]
+  - [二叉树遍历, 递归]
+  - [二叉树, 递归]
+  - [二叉搜索树, 二叉树]
+  - [二叉搜索树, 查找]
+  - [哈夫曼树, 二叉树]
+  - [堆, 二叉树]
+  - [优先队列, 堆]
+  - [图, 线性表]
+  - [图的遍历, 图]
+  - [深度优先搜索, 图]
+  - [深度优先搜索, 栈]
+  - [广度优先搜索, 图]
+  - [广度优先搜索, 队列]
+  - [最小生成树, 图]
+  - [并查集, 图]
+  - [查找, 顺序表]
+  - [哈希表, 查找]
+  - [排序算法, 顺序表]
+  - [算法复杂度, 线性表]
+  - [二叉树遍历, 栈]
+- course: 算法设计与分析
+  category: core
+  points:
+  - {id: 递归, name: 递归, weight: 0.1}
+  - {id: 分治法, name: 分治法, weight: 0.09}
+  - {id: 动态规划, name: 动态规划, weight: 0.12}
+  - {id: 贪心算法, name: 贪心算法, weight: 0.09}
+  - {id: 回溯法, name: 回溯法, weight: 0.08}
+  - {id: 分支限界法, name: 分支限界法, weight: 0.06}
+  - {id: 渐进复杂度分析, name: 渐进复杂度分析, weight: 0.1}
+  - {id: 摊还分析, name: 摊还分析, weight: 0.06}
+  - {id: 最短路径, name: 最短路径, weight: 0.08}
+  - {id: 最大流, name: 最大流, weight: 0.07}
+  - {id: 拓扑排序, name: 拓扑排序, weight: 0.06}
+  - {id: NP完全理论, name: NP完全理论, weight: 0.09}
+  prerequisites:
+  - [分治法, 递归]
+  - [动态规划, 分治法]
+  - [贪心算法, 动态规划]
+  - [回溯法, 递归]
+  - [分支限界法, 回溯法]
+  - [最短路径, 图]
+  - [最大流, 图]
+  - [拓扑排序, 图]
+  - [NP完全理论, 渐进复杂度分析]
+  - [摊还分析, 渐进复杂度分析]
+- course: 数字逻辑与数字电路
+  category: core
+  points:
+  - {id: 数制转换, name: 数制转换, weight: 0.06}
+  - {id: 布尔代数(数字逻辑), name: 布尔代数, weight: 0.08}
+  - {id: 逻辑门, name: 逻辑门, weight: 0.08}
+  - {id: 组合逻辑电路, name: 组合逻辑电路, weight: 0.1}
+  - {id: 译码器与编码器, name: 译码器与编码器, weight: 0.07}
+  - {id: 多路选择器, name: 多路选择器, weight: 0.07}
+  - {id: 触发器, name: 触发器, weight: 0.09}
+  - {id: 时序逻辑电路, name: 时序逻辑电路, weight: 0.1}
+  - {id: 寄存器, name: 寄存器, weight: 0.08}
+  - {id: 计数器, name: 计数器, weight: 0.07}
+  - {id: 有限状态机, name: 有限状态机, weight: 0.1}
+  - {id: Verilog基础, name: Verilog基础, weight: 0.1}
+  prerequisites:
+  - [逻辑门, 布尔代数(数字逻辑)]
+  - [组合逻辑电路, 逻辑门]
+  - [译码器与编码器, 组合逻辑电路]
+  - [多路选择器, 组合逻辑电路]
+  - [触发器, 逻辑门]
+  - [时序逻辑电路, 触发器]
+  - [寄存器, 触发器]
+  - [计数器, 时序逻辑电路]
+  - [有限状态机, 时序逻辑电路]
+  - [Verilog基础, 时序逻辑电路]
+- course: 计算机组成原理
+  category: core
+  points:
+  - {id: 冯诺依曼结构, name: 冯诺依曼结构, weight: 0.07}
+  - {id: 数制与编码, name: 数制与编码, weight: 0.06}
+  - {id: 原码反码补码, name: 原码反码补码, weight: 0.06}
+  - {id: 定点数运算, name: 定点数运算, weight: 0.07}
+  - {id: 浮点数表示, name: 浮点数表示, weight: 0.06}
+  - {id: 指令系统, name: 指令系统, weight: 0.1}
+  - {id: 寻址方式, name: 寻址方式, weight: 0.06}
+  - {id: CPU数据通路, name: CPU数据通路, weight: 0.09}
+  - {id: 控制器, name: 控制器, weight: 0.07}
+  - {id: 中断系统, name: 中断系统, weight: 0.07}
+  - {id: 存储器层次, name: 存储器层次, weight: 0.08}
+  - {id: Cache, name: Cache, weight: 0.07}
+  - {id: 主存储器, name: 主存储器, weight: 0.06}
+  - {id: 总线, name: 总线, weight: 0.04}
+  - {id: I/O方式, name: I/O方式, weight: 0.04}
+  prerequisites:
+  - [原码反码补码, 数制与编码]
+  - [定点数运算, 原码反码补码]
+  - [浮点数表示, 数制与编码]
+  - [指令系统, 冯诺依曼结构]
+  - [寻址方式, 指令系统]
+  - [CPU数据通路, 指令系统]
+  - [控制器, CPU数据通路]
+  - [中断系统, 控制器]
+  - [存储器层次, 冯诺依曼结构]
+  - [Cache, 存储器层次]
+  - [主存储器, 存储器层次]
+  - [总线, 冯诺依曼结构]
+  - [I/O方式, 中断系统]
+- course: 计算机系统基础
+  category: core
+  points:
+  - {id: 信息表示与存储, name: 信息表示与存储, weight: 0.1}
+  - {id: 程序机器级表示, name: 程序机器级表示, weight: 0.1}
+  - {id: 汇编语言, name: 汇编语言, weight: 0.09}
+  - {id: 链接, name: 链接, weight: 0.08}
+  - {id: 异常控制流, name: 异常控制流, weight: 0.1}
+  - {id: 存储器层次(系统), name: 存储器层次, weight: 0.09}
+  - {id: Cache设计, name: Cache设计, weight: 0.08}
+  - {id: 虚拟内存(系统), name: 虚拟内存, weight: 0.09}
+  - {id: 系统级I/O, name: 系统级I/O, weight: 0.07}
+  - {id: 并发编程基础, name: 并发编程基础, weight: 0.08}
+  - {id: GDB调试, name: GDB调试, weight: 0.05}
+  - {id: 性能优化, name: 性能优化, weight: 0.07}
+  prerequisites:
+  - [程序机器级表示, 信息表示与存储]
+  - [汇编语言, 程序机器级表示]
+  - [链接, 汇编语言]
+  - [异常控制流, 汇编语言]
+  - [Cache设计, 存储器层次(系统)]
+  - [虚拟内存(系统), 存储器层次(系统)]
+  - [并发编程基础, 异常控制流]
+  - [性能优化, 汇编语言]
+  - [系统级I/O, 异常控制流]
+- course: 计算机体系结构
+  category: core
+  points:
+  - {id: 指令集设计, name: 指令集设计, weight: 0.09}
+  - {id: RISC与CISC, name: RISC与CISC, weight: 0.07}
+  - {id: 流水线技术, name: 流水线技术, weight: 0.12}
+  - {id: 数据冒险与转发, name: 数据冒险与转发, weight: 0.09}
+  - {id: 控制冒险与分支预测, name: 控制冒险与分支预测, weight: 0.08}
+  - {id: 乱序执行, name: 乱序执行, weight: 0.08}
+  - {id: 超标量处理器, name: 超标量处理器, weight: 0.08}
+  - {id: 存储层次设计, name: 存储层次设计, weight: 0.09}
+  - {id: 多核处理器, name: 多核处理器, weight: 0.07}
+  - {id: GPU体系结构, name: GPU体系结构, weight: 0.07}
+  - {id: 并行体系结构, name: 并行体系结构, weight: 0.08}
+  - {id: 能耗优化, name: 能耗优化, weight: 0.08}
+  prerequisites:
+  - [RISC与CISC, 指令集设计]
+  - [流水线技术, 指令集设计]
+  - [数据冒险与转发, 流水线技术]
+  - [控制冒险与分支预测, 流水线技术]
+  - [乱序执行, 流水线技术]
+  - [超标量处理器, 流水线技术]
+  - [存储层次设计, 存储器层次]
+  - [多核处理器, 存储层次设计]
+  - [GPU体系结构, 并行体系结构]
+  - [并行体系结构, 超标量处理器]
+- course: 操作系统
+  category: core
+  points:
+  - {id: 操作系统概述, name: 操作系统概述, weight: 0.06}
+  - {id: 进程与线程, name: 进程与线程, weight: 0.08}
+  - {id: 进程调度, name: 进程调度, weight: 0.07}
+  - {id: 进程同步, name: 进程同步, weight: 0.08}
+  - {id: 信号量, name: 信号量, weight: 0.07}
+  - {id: 经典同步问题, name: 经典同步问题, weight: 0.06}
+  - {id: 进程通信, name: 进程通信, weight: 0.05}
+  - {id: 死锁, name: 死锁, weight: 0.07}
+  - {id: 内存管理, name: 内存管理, weight: 0.08}
+  - {id: 分页, name: 分页, weight: 0.07}
+  - {id: 分段, name: 分段, weight: 0.06}
+  - {id: 虚拟内存, name: 虚拟内存, weight: 0.09}
+  - {id: 页面置换算法, name: 页面置换算法, weight: 0.06}
+  - {id: 文件系统, name: 文件系统, weight: 0.06}
+  - {id: 设备管理, name: 设备管理, weight: 0.04}
+  prerequisites:
+  - [进程与线程, 操作系统概述]
+  - [进程调度, 进程与线程]
+  - [进程同步, 进程与线程]
+  - [信号量, 进程同步]
+  - [经典同步问题, 信号量]
+  - [进程通信, 进程同步]
+  - [死锁, 进程同步]
+  - [内存管理, 操作系统概述]
+  - [分页, 内存管理]
+  - [分段, 内存管理]
+  - [虚拟内存, 分页]
+  - [页面置换算法, 虚拟内存]
+  - [文件系统, 内存管理]
+  - [设备管理, 中断系统]
+- course: 计算机网络
+  category: core
+  points:
+  - {id: 网络体系结构, name: 网络体系结构, weight: 0.06}
+  - {id: OSI参考模型, name: OSI参考模型, weight: 0.06}
+  - {id: TCP/IP协议栈, name: TCP/IP协议栈, weight: 0.08}
+  - {id: 物理层, name: 物理层, weight: 0.05}
+  - {id: 数据链路层, name: 数据链路层, weight: 0.07}
+  - {id: 差错控制, name: 差错控制, weight: 0.06}
+  - {id: MAC协议, name: MAC协议, weight: 0.06}
+  - {id: IP编址, name: IP编址, weight: 0.08}
+  - {id: 子网划分, name: 子网划分, weight: 0.06}
+  - {id: 路由算法, name: 路由算法, weight: 0.07}
+  - {id: ARP, name: ARP, weight: 0.05}
+  - {id: ICMP, name: ICMP, weight: 0.04}
+  - {id: UDP协议, name: UDP协议, weight: 0.06}
+  - {id: TCP协议, name: TCP协议, weight: 0.09}
+  - {id: 拥塞控制, name: 拥塞控制, weight: 0.06}
+  - {id: 应用层协议, name: 应用层协议, weight: 0.05}
+  prerequisites:
+  - [OSI参考模型, 网络体系结构]
+  - [TCP/IP协议栈, OSI参考模型]
+  - [数据链路层, 物理层]
+  - [差错控制, 数据链路层]
+  - [MAC协议, 数据链路层]
+  - [IP编址, TCP/IP协议栈]
+  - [子网划分, IP编址]
+  - [路由算法, IP编址]
+  - [ARP, IP编址]
+  - [ICMP, IP编址]
+  - [UDP协议, TCP/IP协议栈]
+  - [TCP协议, UDP协议]
+  - [拥塞控制, TCP协议]
+  - [应用层协议, TCP/IP协议栈]
+- course: 数据库原理
+  category: core
+  points:
+  - {id: 关系模型, name: 关系模型, weight: 0.09}
+  - {id: 关系代数, name: 关系代数, weight: 0.08}
+  - {id: SQL语言, name: SQL语言, weight: 0.09}
+  - {id: 数据完整性, name: 数据完整性, weight: 0.07}
+  - {id: 函数依赖, name: 函数依赖, weight: 0.08}
+  - {id: 范式, name: 范式, weight: 0.08}
+  - {id: ER模型, name: ER模型, weight: 0.08}
+  - {id: 数据库设计, name: 数据库设计, weight: 0.08}
+  - {id: 索引, name: 索引, weight: 0.07}
+  - {id: 事务, name: 事务, weight: 0.08}
+  - {id: 并发控制, name: 并发控制, weight: 0.08}
+  - {id: 封锁协议, name: 封锁协议, weight: 0.06}
+  - {id: 数据库恢复, name: 数据库恢复, weight: 0.06}
+  prerequisites:
+  - [关系代数, 关系模型]
+  - [SQL语言, 关系代数]
+  - [数据完整性, 关系模型]
+  - [函数依赖, 关系模型]
+  - [范式, 函数依赖]
+  - [ER模型, 关系模型]
+  - [数据库设计, ER模型]
+  - [索引, SQL语言]
+  - [事务, SQL语言]
+  - [并发控制, 事务]
+  - [封锁协议, 并发控制]
+  - [数据库恢复, 事务]
+- course: 编译原理
+  category: core
+  points:
+  - {id: 词法分析, name: 词法分析, weight: 0.09}
+  - {id: 正规表达式, name: 正规表达式, weight: 0.07}
+  - {id: 有限自动机, name: 有限自动机, weight: 0.08}
+  - {id: 语法分析, name: 语法分析, weight: 0.1}
+  - {id: LL分析, name: LL分析, weight: 0.07}
+  - {id: LR分析, name: LR分析, weight: 0.08}
+  - {id: 语法树, name: 语法树, weight: 0.07}
+  - {id: 语法制导翻译, name: 语法制导翻译, weight: 0.08}
+  - {id: 语义分析, name: 语义分析, weight: 0.07}
+  - {id: 符号表, name: 符号表, weight: 0.06}
+  - {id: 中间代码, name: 中间代码, weight: 0.08}
+  - {id: 代码优化, name: 代码优化, weight: 0.07}
+  - {id: 目标代码生成, name: 目标代码生成, weight: 0.08}
+  prerequisites:
+  - [正规表达式, 词法分析]
+  - [有限自动机, 词法分析]
+  - [语法分析, 词法分析]
+  - [LL分析, 语法分析]
+  - [LR分析, 语法分析]
+  - [语法树, 语法分析]
+  - [语法制导翻译, 语法树]
+  - [语义分析, 语法制导翻译]
+  - [符号表, 语义分析]
+  - [中间代码, 语义分析]
+  - [代码优化, 中间代码]
+  - [目标代码生成, 中间代码]
+- course: 形式语言与自动机
+  category: core
+  points:
+  - {id: 文法与形式语言, name: 文法与形式语言, weight: 0.11}
+  - {id: 正则语言, name: 正则语言, weight: 0.1}
+  - {id: 上下文无关文法, name: 上下文无关文法, weight: 0.11}
+  - {id: 下推自动机, name: 下推自动机, weight: 0.1}
+  - {id: 图灵机, name: 图灵机, weight: 0.12}
+  - {id: 可计算性, name: 可计算性, weight: 0.1}
+  - {id: 不可判定性, name: 不可判定性, weight: 0.09}
+  - {id: Chomsky层级, name: Chomsky层级, weight: 0.09}
+  - {id: 正则语言性质, name: 正则语言性质, weight: 0.08}
+  - {id: 上下文无关语言性质, name: 上下文无关语言性质, weight: 0.1}
+  prerequisites:
+  - [正则语言, 文法与形式语言]
+  - [上下文无关文法, 正则语言]
+  - [下推自动机, 上下文无关文法]
+  - [图灵机, 下推自动机]
+  - [可计算性, 图灵机]
+  - [不可判定性, 可计算性]
+  - [Chomsky层级, 文法与形式语言]
+  - [正则语言性质, 正则语言]
+  - [上下文无关语言性质, 上下文无关文法]
+- course: 软件工程
+  category: core
+  points:
+  - {id: 软件过程模型, name: 软件过程模型, weight: 0.09}
+  - {id: 敏捷开发, name: 敏捷开发, weight: 0.08}
+  - {id: 需求工程, name: 需求工程, weight: 0.09}
+  - {id: 软件设计, name: 软件设计, weight: 0.1}
+  - {id: 模块化, name: 模块化, weight: 0.08}
+  - {id: UML, name: UML, weight: 0.08}
+  - {id: 软件体系结构, name: 软件体系结构, weight: 0.08}
+  - {id: 软件测试, name: 软件测试, weight: 0.1}
+  - {id: 白盒测试, name: 白盒测试, weight: 0.07}
+  - {id: 黑盒测试, name: 黑盒测试, weight: 0.07}
+  - {id: 软件维护, name: 软件维护, weight: 0.08}
+  - {id: 项目管理, name: 项目管理, weight: 0.08}
+  prerequisites:
+  - [敏捷开发, 软件过程模型]
+  - [需求工程, 软件过程模型]
+  - [软件设计, 需求工程]
+  - [模块化, 软件设计]
+  - [UML, 软件设计]
+  - [软件体系结构, 软件设计]
+  - [软件测试, 软件设计]
+  - [白盒测试, 软件测试]
+  - [黑盒测试, 软件测试]
+  - [软件维护, 软件测试]
+  - [项目管理, 软件过程模型]
+- course: 人工智能导论
+  category: core
+  points:
+  - {id: 人工智能概述, name: 人工智能概述, weight: 0.08}
+  - {id: 问题求解与搜索, name: 问题求解与搜索, weight: 0.1}
+  - {id: 启发式搜索, name: 启发式搜索, weight: 0.09}
+  - {id: 博弈搜索, name: 博弈搜索, weight: 0.08}
+  - {id: 知识表示, name: 知识表示, weight: 0.09}
+  - {id: 推理机制, name: 推理机制, weight: 0.09}
+  - {id: 机器学习基础, name: 机器学习基础, weight: 0.1}
+  - {id: 神经网络基础, name: 神经网络基础, weight: 0.09}
+  - {id: 强化学习基础, name: 强化学习基础, weight: 0.08}
+  - {id: 自然语言处理基础, name: 自然语言处理基础, weight: 0.07}
+  - {id: 计算机视觉基础, name: 计算机视觉基础, weight: 0.07}
+  - {id: 智能体, name: 智能体, weight: 0.06}
+  prerequisites:
+  - [启发式搜索, 问题求解与搜索]
+  - [博弈搜索, 启发式搜索]
+  - [知识表示, 人工智能概述]
+  - [推理机制, 知识表示]
+  - [机器学习基础, 推理机制]
+  - [神经网络基础, 机器学习基础]
+  - [强化学习基础, 机器学习基础]
+  - [自然语言处理基础, 机器学习基础]
+  - [计算机视觉基础, 机器学习基础]
+  - [智能体, 推理机制]
