@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -20,7 +21,7 @@ class UserStore(BaseSQLiteStore):
 
     def _initialize(self) -> None:
         """辅助函数 初始化 users 表 并做老库迁移"""
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             # 新库直接建全 老库这条会被跳过
             connection.execute(
                 """

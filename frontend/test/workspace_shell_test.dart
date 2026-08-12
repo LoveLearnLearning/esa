@@ -57,12 +57,14 @@ class _WorkspaceApi extends ApiClient {
   Future<ChatConversation> createWorkspaceConversation(
     WorkspaceType workspace, {
     String? researchProjectId,
+    String? groupId,
   }) async => ChatConversation(
     id: 'research-chat',
     title: '新对话',
     updatedAt: DateTime(2026),
     workspaceType: workspace,
     researchProjectId: researchProjectId,
+    groupId: groupId,
   );
 }
 

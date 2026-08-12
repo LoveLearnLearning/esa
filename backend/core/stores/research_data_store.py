@@ -17,7 +17,7 @@ class ResearchDataStore(BaseSQLiteStore):
         super().__init__(database_path)
 
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS research_datasets (
@@ -263,15 +263,19 @@ class ResearchDataStore(BaseSQLiteStore):
     def requeue_interrupted(self) -> list[str]:
         now = self._now()
         with closing(self._connect()) as connection, connection:
-            connection.execute(
-                """
-                UPDATE research_analysis_jobs
-                SET status = 'queued', started_at = NULL, updated_at = ?
-                WHERE status = 'running'
-                """,
-                (now,),
-            )
             rows = connection.execute(
-                "SELECT job_id FROM research_analysis_jobs WHERE status = 'queued'"
+                """
+                SELECT job_id, status FROM research_analysis_jobs
+                WHERE status IN ('queued', 'running')
+                """
             ).fetchall()
+            if any(row["status"] == "running" for row in rows):
+                connection.execute(
+                    """
+                    UPDATE research_analysis_jobs
+                    SET status = 'queued', started_at = NULL, updated_at = ?
+                    WHERE status = 'running'
+                    """,
+                    (now,),
+                )
         return [row["job_id"] for row in rows]

@@ -35,7 +35,7 @@ from .ir import (
 )
 from .paths import in_dataset
 from .render import ROLE_TO_SHAREGPT, to_sharegpt
-from . import fixtures
+from . import fixtures, review
 from .system_prompt import COLLECT_PLACEHOLDER
 
 # ShareGPT 角色顺序的硬性规则（converter.py:144-146）：
@@ -884,8 +884,15 @@ def main(argv: list[str] | None = None) -> int:
     by_cat = Counter(s.category for s in samples)
     for cat, n in sorted(by_cat.items()):
         print(f"  {cat:20s} {n}")
-    if (n_review := sum(1 for s in samples if s.needs_review)) :
-        print(f"\n待人工复核 {n_review} 条（无法自动核验的写作类内容）")
+    # 必须走 review.pending，不能自己写 `if s.needs_review` —— 那样台账里已经
+    # 登记放行的样本照样会被算进来，这个数就永远不动，审多少都看不出来。
+    # `split.py` 正是这么错过一次的，见 esa/review.py 顶部说明。
+    ledger = review.load_ledger()
+    n_review = len(review.pending(samples, ledger))
+    n_cleared = sum(1 for s in samples if s.needs_review and s.id in ledger)
+    if n_review or n_cleared:
+        print(f"\n待人工复核 {n_review} 条（无法自动核验的写作类内容）", end="")
+        print(f"；已登记放行 {n_cleared} 条" if n_cleared else "")
 
     if not findings:
         print("\n✅ 全部通过")

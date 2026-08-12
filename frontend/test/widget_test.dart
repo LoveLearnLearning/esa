@@ -7,8 +7,22 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend/api/api_client.dart';
 import 'package:frontend/main.dart';
+import 'package:frontend/models/models.dart';
+import 'package:frontend/state/app_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _GuestTestApi extends ApiClient {
+  _GuestTestApi() : super(baseUrl: 'http://test.invalid');
+
+  @override
+  Future<ScheduleSnapshot> getSchedule() async =>
+      const ScheduleSnapshot(courses: [], settings: ScheduleSettings());
+
+  @override
+  Future<List<LearningCourseSummary>> getLearningCourses() async => const [];
+}
 
 void main() {
   setUp(() {
@@ -23,6 +37,22 @@ void main() {
     expect(find.text('邮箱或用户名'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
     expect(find.text('记住登录'), findsOneWidget);
+  });
+
+  testWidgets('guest login enters the main shell without a backend session', (
+    tester,
+  ) async {
+    final state = AppState(api: _GuestTestApi());
+    addTearDown(state.dispose);
+    await tester.pumpWidget(EsaApp(state: state));
+    await tester.pump();
+
+    expect(find.text('游客登录'), findsOneWidget);
+    await tester.tap(find.text('游客登录'));
+    await tester.pumpAndSettle();
+
+    expect(state.username, '游客');
+    expect(find.text('你好，游客'), findsOneWidget);
   });
 
   testWidgets('submits login form from password keyboard action', (
@@ -40,6 +70,24 @@ void main() {
     expect(find.text('密码至少 8 位'), findsOneWidget);
   });
 
+  testWidgets('hides the input hint as soon as the field is focused', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const EsaApp());
+    await tester.pump();
+
+    final accountField = find.byType(TextField).first;
+    expect(
+      tester.widget<TextField>(accountField).decoration?.hintText,
+      'name@example.com',
+    );
+
+    await tester.tap(accountField);
+    await tester.pump();
+
+    expect(tester.widget<TextField>(accountField).decoration?.hintText, isNull);
+  });
+
   testWidgets('registration requires email and verification code', (
     tester,
   ) async {
@@ -54,5 +102,33 @@ void main() {
     expect(find.text('获取验证码'), findsOneWidget);
     expect(find.text('用户名'), findsOneWidget);
     expect(find.text('确认密码'), findsOneWidget);
+  });
+
+  testWidgets('auth page renders without overflow on desktop', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const EsaApp());
+    await tester.pump();
+
+    expect(find.text('Your knowledge\nis a network.'), findsOneWidget);
+    expect(find.text('欢迎回来'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('auth page renders without overflow on mobile', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const EsaApp());
+    await tester.pump();
+
+    expect(find.text('Your knowledge is a network.'), findsOneWidget);
+    expect(find.text('进入 ESA'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

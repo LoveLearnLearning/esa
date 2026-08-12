@@ -14,12 +14,13 @@ class _KnowledgeApi extends ApiClient {
   final List<String> streamedInputs = [];
 
   @override
-  Future<ChatConversation> createConversation() async {
+  Future<ChatConversation> createConversation({String? groupId}) async {
     createdConversations++;
     return ChatConversation(
       id: 'conversation-$createdConversations',
       title: '新对话',
       updatedAt: DateTime(2026),
+      groupId: groupId,
     );
   }
 
