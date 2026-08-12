@@ -1,6 +1,8 @@
 // 界面 1 —— 登录 / 注册
 // 左右两栏 海报(红) + 表单 窄屏(<880)竖向堆叠 海报在上
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -21,9 +23,13 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+  final _email = TextEditingController();
+  final _verificationCode = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _password2 = TextEditingController();
+  final _emailFocus = FocusNode();
+  final _verificationCodeFocus = FocusNode();
   final _usernameFocus = FocusNode();
   final _passwordFocus = FocusNode();
   final _password2Focus = FocusNode();
@@ -32,13 +38,21 @@ class _LoginPageState extends State<LoginPage> {
   bool _showPw = false;
   bool _rememberLogin = true;
   bool _loading = false;
+  bool _sendingCode = false;
+  int _codeCooldown = 0;
+  Timer? _codeTimer;
   String? _error;
 
   @override
   void dispose() {
+    _codeTimer?.cancel();
+    _email.dispose();
+    _verificationCode.dispose();
     _username.dispose();
     _password.dispose();
     _password2.dispose();
+    _emailFocus.dispose();
+    _verificationCodeFocus.dispose();
     _usernameFocus.dispose();
     _passwordFocus.dispose();
     _password2Focus.dispose();
@@ -47,14 +61,72 @@ class _LoginPageState extends State<LoginPage> {
 
   bool get _isRegister => _mode == AuthMode.register;
 
+  bool _looksLikeEmail(String value) {
+    final parts = value.trim().split('@');
+    return parts.length == 2 &&
+        parts.first.isNotEmpty &&
+        parts.last.contains('.') &&
+        !parts.last.startsWith('.') &&
+        !parts.last.endsWith('.');
+  }
+
+  Future<void> _sendVerificationCode() async {
+    if (_sendingCode || _codeCooldown > 0) return;
+    final email = _email.text.trim();
+    if (!_looksLikeEmail(email)) {
+      setState(() => _error = '请输入正确的邮箱地址');
+      _emailFocus.requestFocus();
+      return;
+    }
+    setState(() {
+      _error = null;
+      _sendingCode = true;
+    });
+    final result = await AppScope.of(context).sendRegistrationCode(email);
+    if (!mounted) return;
+    final seconds = int.tryParse(result ?? '');
+    setState(() {
+      _sendingCode = false;
+      _error = seconds == null ? result : null;
+      if (seconds != null) _codeCooldown = seconds;
+    });
+    if (seconds == null) return;
+    _verificationCodeFocus.requestFocus();
+    _codeTimer?.cancel();
+    _codeTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (_codeCooldown <= 1) {
+          _codeCooldown = 0;
+          timer.cancel();
+        } else {
+          _codeCooldown--;
+        }
+      });
+    });
+  }
+
   Future<void> _submit() async {
     if (_loading) return;
 
     final username = _username.text.trim();
+    final email = _email.text.trim();
+    final verificationCode = _verificationCode.text.trim();
     final password = _password.text; // 不 trim 密码
     // 校验与后端一致
     if (username.isEmpty || password.isEmpty) {
-      setState(() => _error = '请输入用户名和密码');
+      setState(() => _error = _isRegister ? '请输入用户名和密码' : '请输入邮箱或用户名和密码');
+      return;
+    }
+    if (_isRegister && !_looksLikeEmail(email)) {
+      setState(() => _error = '请输入正确的邮箱地址');
+      return;
+    }
+    if (_isRegister && !RegExp(r'^\d{6}$').hasMatch(verificationCode)) {
+      setState(() => _error = '请输入邮件中的 6 位验证码');
       return;
     }
     if (username.length > 32) {
@@ -76,7 +148,7 @@ class _LoginPageState extends State<LoginPage> {
     });
     final app = AppScope.of(context);
     final err = _isRegister
-        ? await app.register(username, password, accountRole: _accountRole)
+        ? await app.register(email, verificationCode, username, password)
         : await app.login(username, password, rememberLogin: _rememberLogin);
     if (!mounted) return;
     if (err == null) TextInput.finishAutofillContext(shouldSave: true);
@@ -156,21 +228,23 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: EsaSpace.xl),
                 if (_isRegister) ...[
-                  Text('注册身份', style: context.texts.labelMedium),
-                  const SizedBox(height: EsaSpace.sm),
-                  EsaSegmented<String>(
-                    value: _accountRole,
-                    onChanged: (value) => setState(() => _accountRole = value),
-                    segments: const [
-                      EsaSegment('student', '学生', sublabel: 'STUDENT'),
-                      EsaSegment('teacher', '教师', sublabel: 'TEACHER'),
-                    ],
+                  _field(
+                    context,
+                    label: '邮箱',
+                    controller: _email,
+                    focusNode: _emailFocus,
+                    keyboardType: TextInputType.emailAddress,
+                    autofillHints: const [AutofillHints.email],
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: (_) => _verificationCodeFocus.requestFocus(),
                   ),
-                  const SizedBox(height: EsaSpace.xl),
+                  const SizedBox(height: EsaSpace.lg),
+                  _verificationCodeField(context),
+                  const SizedBox(height: EsaSpace.lg),
                 ],
                 _field(
                   context,
-                  label: '用户名',
+                  label: _isRegister ? '用户名' : '邮箱或用户名',
                   controller: _username,
                   focusNode: _usernameFocus,
                   autofillHints: const [AutofillHints.username],
@@ -219,7 +293,9 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: EsaSpace.lg),
                 Text(
-                  '密码 8–128 位 · 会话有效期 7 天',
+                  _isRegister
+                      ? '验证码 10 分钟内有效 · 密码 8–128 位'
+                      : '支持邮箱或用户名登录 · 会话有效期 7 天',
                   style: TextStyle(fontSize: 11.5, color: context.n.n600),
                 ),
               ],
@@ -256,6 +332,8 @@ class _LoginPageState extends State<LoginPage> {
     Iterable<String>? autofillHints,
     TextInputAction? textInputAction,
     ValueChanged<String>? onSubmitted,
+    TextInputType? keyboardType,
+    int? maxLength,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -268,11 +346,60 @@ class _LoginPageState extends State<LoginPage> {
           obscureText: obscure,
           autofillHints: autofillHints,
           textInputAction: textInputAction,
+          keyboardType: keyboardType,
+          maxLength: maxLength,
+          buildCounter: maxLength == null
+              ? null
+              : (_, {required currentLength, required isFocused, maxLength}) =>
+                    null,
           // 竖排布局下字段靠近屏幕底部，聚焦时确保滚到键盘上方
           scrollPadding: EdgeInsets.only(
             bottom: MediaQuery.viewInsetsOf(context).bottom + 24,
           ),
           onSubmitted: onSubmitted,
+        ),
+      ],
+    );
+  }
+
+  Widget _verificationCodeField(BuildContext context) {
+    final disabled = _sendingCode || _codeCooldown > 0;
+    final buttonText = _sendingCode
+        ? '发送中…'
+        : _codeCooldown > 0
+        ? '${_codeCooldown}s'
+        : '获取验证码';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _fieldLabel(context, '邮箱验证码'),
+        const SizedBox(height: EsaSpace.sm),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _verificationCode,
+                focusNode: _verificationCodeFocus,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(6),
+                ],
+                autofillHints: const [AutofillHints.oneTimeCode],
+                textInputAction: TextInputAction.next,
+                onSubmitted: (_) => _usernameFocus.requestFocus(),
+              ),
+            ),
+            const SizedBox(width: EsaSpace.sm),
+            SizedBox(
+              width: 112,
+              child: OutlinedButton(
+                onPressed: disabled ? null : _sendVerificationCode,
+                child: Text(buttonText),
+              ),
+            ),
+          ],
         ),
       ],
     );

@@ -16,6 +16,8 @@ VALID_MAJORS = {"cs"}
 
 # 请求
 class RegisterRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    verification_code: str = Field(pattern=r"^\d{6}$")
     username: str = Field(min_length=1, max_length=32)
     password: str = Field(min_length=8, max_length=128)
     account_role: Literal["student", "teacher"] = "student"
@@ -24,6 +26,14 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class EmailCodeRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
+class BindEmailRequest(EmailCodeRequest):
+    verification_code: str = Field(pattern=r"^\d{6}$")
 
 
 class ChangePasswordRequest(BaseModel):
@@ -196,7 +206,7 @@ class LoginResponse(BaseModel):
     session_id: str
     user_id: str
     username: str
-    account_role: Literal["student", "teacher"]
+    email: str | None = None
     expires_at: datetime
 
 

@@ -1,7 +1,10 @@
 // 界面 4 —— 用户资料 + 设置(居中弹层)
 // 资料区 + 统计三宫格 + 字段 + 设置区 + 底部 退出登录 / 保存
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../state/app_state.dart';
@@ -98,7 +101,7 @@ class _ProfileSheetState extends State<_ProfileSheet> {
                     const SizedBox(height: EsaSpace.xl),
                     _labeledField(context, 'DISPLAY NAME', _name),
                     const SizedBox(height: EsaSpace.lg),
-                    _labeledField(context, 'EMAIL', _email),
+                    _emailField(context, app),
                     const SizedBox(height: EsaSpace.lg),
                     _roleField(context),
                     const SizedBox(height: EsaSpace.xl),
@@ -269,6 +272,43 @@ class _ProfileSheetState extends State<_ProfileSheet> {
       children: [
         _fieldLabel(context, en),
         TextField(controller: c),
+      ],
+    );
+  }
+
+  Widget _emailField(BuildContext context, AppState app) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _fieldLabel(context, 'EMAIL'),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _email,
+                readOnly: true,
+                decoration: InputDecoration(
+                  hintText: '尚未绑定邮箱',
+                  prefixIcon: const Icon(LucideIcons.mail, size: 18),
+                ),
+              ),
+            ),
+            const SizedBox(width: EsaSpace.sm),
+            TextButton(
+              onPressed: () async {
+                final bound = await showDialog<String>(
+                  context: context,
+                  builder: (_) => _BindEmailDialog(initialEmail: app.email),
+                );
+                if (bound != null && mounted) {
+                  _email.text = bound;
+                  setState(() {});
+                }
+              },
+              child: Text(app.email.isEmpty ? '绑定' : '更换'),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -512,7 +552,7 @@ class _ProfileSheetState extends State<_ProfileSheet> {
       });
       return;
     }
-    app.updateProfile(name: _name.text, mail: _email.text);
+    app.updateProfile(name: _name.text, roleValue: _role);
     Navigator.of(context).pop();
   }
 
@@ -579,6 +619,179 @@ class _ProfileSheetState extends State<_ProfileSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _BindEmailDialog extends StatefulWidget {
+  const _BindEmailDialog({required this.initialEmail});
+
+  final String initialEmail;
+
+  @override
+  State<_BindEmailDialog> createState() => _BindEmailDialogState();
+}
+
+class _BindEmailDialogState extends State<_BindEmailDialog> {
+  late final TextEditingController _email;
+  final _code = TextEditingController();
+  bool _sending = false;
+  bool _submitting = false;
+  int _cooldown = 0;
+  Timer? _timer;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _email = TextEditingController(text: widget.initialEmail);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _email.dispose();
+    _code.dispose();
+    super.dispose();
+  }
+
+  bool _validEmail(String value) {
+    final parts = value.trim().split('@');
+    return parts.length == 2 &&
+        parts.first.isNotEmpty &&
+        parts.last.contains('.') &&
+        !parts.last.startsWith('.') &&
+        !parts.last.endsWith('.');
+  }
+
+  Future<void> _sendCode() async {
+    if (_sending || _cooldown > 0) return;
+    final value = _email.text.trim();
+    if (!_validEmail(value)) {
+      setState(() => _error = '请输入正确的邮箱地址');
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    final result = await AppScope.of(context).sendBindEmailCode(value);
+    if (!mounted) return;
+    final seconds = int.tryParse(result ?? '');
+    setState(() {
+      _sending = false;
+      _error = seconds == null ? result : null;
+      if (seconds != null) _cooldown = seconds;
+    });
+    if (seconds == null) return;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || _cooldown <= 1) {
+        timer.cancel();
+        if (mounted) setState(() => _cooldown = 0);
+        return;
+      }
+      setState(() => _cooldown--);
+    });
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    final value = _email.text.trim();
+    if (!_validEmail(value)) {
+      setState(() => _error = '请输入正确的邮箱地址');
+      return;
+    }
+    if (!RegExp(r'^\d{6}$').hasMatch(_code.text)) {
+      setState(() => _error = '请输入 6 位邮箱验证码');
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final error = await AppScope.of(context).bindEmail(value, _code.text);
+    if (!mounted) return;
+    if (error == null) {
+      Navigator.of(context).pop(value.toLowerCase());
+      return;
+    }
+    setState(() {
+      _submitting = false;
+      _error = error;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.initialEmail.isEmpty ? '绑定邮箱' : '更换邮箱'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _email,
+              enabled: !_submitting,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: '邮箱',
+                prefixIcon: Icon(LucideIcons.mail, size: 18),
+              ),
+            ),
+            const SizedBox(height: EsaSpace.md),
+            TextField(
+              controller: _code,
+              enabled: !_submitting,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              maxLength: 6,
+              onSubmitted: (_) => _submit(),
+              decoration: InputDecoration(
+                labelText: '验证码',
+                counterText: '',
+                suffixIcon: TextButton(
+                  onPressed: _sending || _cooldown > 0 ? null : _sendCode,
+                  child: Text(
+                    _sending
+                        ? '发送中'
+                        : _cooldown > 0
+                        ? '${_cooldown}s'
+                        : '发送验证码',
+                  ),
+                ),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: EsaSpace.md),
+              Text(
+                _error!,
+                style: const TextStyle(color: EsaColors.accent, fontSize: 12.5),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _submitting ? null : _submit,
+          child: _submitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('确认绑定'),
+        ),
+      ],
     );
   }
 }

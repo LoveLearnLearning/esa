@@ -2,18 +2,28 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from backend.core.services.auth_service import AuthService
+from backend.core.services.email_verification_service import (
+    EmailDeliveryError,
+    EmailVerificationService,
+    InvalidEmail,
+    normalize_email,
+)
+from backend.core.stores.email_verification_store import VerificationRateLimited
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
 from backend.core.web.deps import get_current_session
 from backend.core.web.schemas import (
+    BindEmailRequest,
     ChangePasswordRequest,
+    EmailCodeRequest,
     LoginRequest,
     LoginResponse,
     RegisterRequest,
@@ -23,21 +33,107 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 
 
+def _email_service(request: Request) -> EmailVerificationService:
+    service = getattr(request.app.state, "email_verification_service", None)
+    if not isinstance(service, EmailVerificationService):
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "邮件服务尚未配置",
+        )
+    return service
+
+
+def _normalized_email(value: str) -> str:
+    try:
+        return normalize_email(value)
+    except InvalidEmail as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client is not None else "unknown"
+
+
+async def _send_code(
+    *, request: Request, email: str, purpose: str
+) -> dict[str, int | str]:
+    service = _email_service(request)
+    try:
+        retry_after = await service.request_code(
+            email=email,
+            purpose=purpose,
+            ip=_client_ip(request),
+        )
+    except VerificationRateLimited as error:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "验证码发送过于频繁，请稍后再试",
+            headers={"Retry-After": str(error.retry_after_seconds)},
+        ) from error
+    except EmailDeliveryError as error:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "邮件暂时无法投递，请稍后再试",
+        ) from error
+    return {"status": "accepted", "retry_after_seconds": retry_after}
+
+
+def _require_valid_code(
+    service: EmailVerificationService,
+    *,
+    email: str,
+    purpose: str,
+    code: str,
+) -> None:
+    result = service.verify(email=email, purpose=purpose, code=code)
+    if result == "expired":
+        detail = "验证码已过期，请重新获取"
+    elif result == "attempts_exceeded":
+        detail = "验证码错误次数过多，请重新获取"
+    elif result != "ok":
+        detail = "验证码错误"
+    else:
+        return
+    raise HTTPException(status.HTTP_400_BAD_REQUEST, detail)
+
+
+@router.post("/email/send-code", status_code=status.HTTP_202_ACCEPTED)
+async def send_registration_code(
+    body: EmailCodeRequest,
+    request: Request,
+) -> dict[str, int | str]:
+    email = _normalized_email(body.email)
+    user_store: UserStore = request.app.state.user_store
+    if user_store.get_by_email(email) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "该邮箱已注册")
+    return await _send_code(request=request, email=email, purpose="register")
+
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, request: Request) -> dict[str, str]:
     auth_service: AuthService = request.app.state.auth
+    user_store: UserStore = request.app.state.user_store
+    email = _normalized_email(body.email)
+    if user_store.get_by_username(body.username) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "用户名已存在")
+    if user_store.get_by_email(email) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "该邮箱已注册")
+    email_service = _email_service(request)
+    _require_valid_code(email_service, email=email, purpose="register", code=body.verification_code)
+    verified_at = datetime.now(timezone.utc).isoformat()
     user: UserRecord | None = auth_service.register(
         body.username,
         body.password,
-        body.account_role,
+        email=email,
+        email_verified_at=verified_at,
     )
     if user is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "用户名已存在")
+        raise HTTPException(status.HTTP_409_CONFLICT, "用户名或邮箱已存在")
 
     return {
         "user_id": user.id,
         "username": user.username,
-        "account_role": user.account_role,
+        "email": email,
     }
 
 
@@ -47,7 +143,7 @@ def login(body: LoginRequest, request: Request) -> LoginResponse:
     session: SessionPrincipal | None = auth_service.login(body.username, body.password)
 
     if session is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户名或密码错误！")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "邮箱、用户名或密码错误")
 
     user_store: UserStore = request.app.state.user_store
 
@@ -67,9 +163,50 @@ def login(body: LoginRequest, request: Request) -> LoginResponse:
         session_id=session.session_id,
         user_id=session.user_id,
         username=user.username,
-        account_role=user.account_role,
+        email=user.email,
         expires_at=session.expires_at,
     )
+
+
+@router.post("/email/bind/send-code", status_code=status.HTTP_202_ACCEPTED)
+async def send_bind_email_code(
+    body: EmailCodeRequest,
+    request: Request,
+    session: CurrentSession,
+) -> dict[str, int | str]:
+    del session
+    email = _normalized_email(body.email)
+    user_store: UserStore = request.app.state.user_store
+    if user_store.get_by_email(email) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "该邮箱已被其他账号使用")
+    return await _send_code(request=request, email=email, purpose="bind")
+
+
+@router.post("/email/bind")
+def bind_email(
+    body: BindEmailRequest,
+    request: Request,
+    session: CurrentSession,
+) -> dict[str, str]:
+    email = _normalized_email(body.email)
+    user_store: UserStore = request.app.state.user_store
+    existing = user_store.get_by_email(email)
+    if existing is not None and existing.id != session.user_id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "该邮箱已被其他账号使用")
+    email_service = _email_service(request)
+    _require_valid_code(
+        email_service,
+        email=email,
+        purpose="bind",
+        code=body.verification_code,
+    )
+    if not user_store.bind_email(
+        session.user_id,
+        email,
+        datetime.now(timezone.utc).isoformat(),
+    ):
+        raise HTTPException(status.HTTP_409_CONFLICT, "邮箱绑定失败")
+    return {"email": email}
 
 
 @router.post(

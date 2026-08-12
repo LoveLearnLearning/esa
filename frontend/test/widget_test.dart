@@ -20,7 +20,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('登录'), findsWidgets);
-    expect(find.text('用户名'), findsOneWidget);
+    expect(find.text('邮箱或用户名'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
     expect(find.text('记住登录'), findsOneWidget);
   });
@@ -38,5 +38,21 @@ void main() {
     await tester.pump();
 
     expect(find.text('密码至少 8 位'), findsOneWidget);
+  });
+
+  testWidgets('registration requires email and verification code', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const EsaApp());
+    await tester.pump();
+
+    await tester.tap(find.text('注册').first);
+    await tester.pump();
+
+    expect(find.text('邮箱'), findsOneWidget);
+    expect(find.text('邮箱验证码'), findsOneWidget);
+    expect(find.text('获取验证码'), findsOneWidget);
+    expect(find.text('用户名'), findsOneWidget);
+    expect(find.text('确认密码'), findsOneWidget);
   });
 }

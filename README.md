@@ -8,7 +8,7 @@ ESA 是一个面向学习场景的多用户 Agent 项目，由 FastAPI 后端、
 
 ## 当前能力
 
-- 用户注册、登录、退出、修改密码和 7 天会话保持
+- 邮箱验证码注册、邮箱或用户名登录、老用户绑定邮箱、修改密码和 7 天会话保持
 - Qwen3.5-122B 主模型通过 vLLM 异步引擎提供推理
 - 独占第 5 张 GPU 的 Qwen3.5-9B 辅助服务负责课表解析和离线对话压缩
 - 对话与消息持久化、同步回复和 SSE 流式回复
@@ -63,6 +63,44 @@ cd frontend
 flutter pub get
 flutter run
 ```
+
+## 配置验证邮件（超算 + 独立邮件服务器）
+
+验证码由超算上的 ESA 后端生成、摘要存储和校验；另一台服务器只运行
+[`email_service`](email_service)，负责邮件模板和 Resend 投递。前端始终只访问 ESA，
+不能直接访问邮件服务。两台服务器之间使用 HTTPS 和共享服务令牌认证。
+
+先在 Resend 添加发信子域名 `notify.lovelearnlearning.cn`，再按 Resend 控制台给出的
+准确值添加 SPF、DKIM DNS 记录，并等待状态变为 Verified。
+
+在独立邮件服务器配置：
+
+```bash
+MAIL_SERVICE_TOKEN=<openssl rand -hex 32>
+RESEND_API_KEY=re_xxxxxxxxx
+MAIL_FROM=星知智链 <verify@notify.lovelearnlearning.cn>
+```
+
+将其部署在 HTTPS 地址（例如 `https://mail-api.lovelearnlearning.cn`），并只对外暴露
+反向代理的 443 端口。邮件服务器只需复制 `email_service/` 目录，在该目录构建：
+
+```bash
+docker build -t esa-mail-service .
+docker run --env-file .env -p 127.0.0.1:8080:8080 esa-mail-service
+```
+
+超算不需要 `.env`。在 `backend/core/utils/config.py` 的邮件配置区填写：
+
+```python
+EMAIL_PROVIDER = "service"
+EMAIL_SERVICE_URL = "https://mail-api.lovelearnlearning.cn"
+EMAIL_SERVICE_TOKEN = "与邮件服务器 MAIL_SERVICE_TOKEN 完全相同"
+EMAIL_VERIFICATION_SECRET = "另一个 openssl rand -hex 32 生成值"
+```
+
+`EMAIL_VERIFICATION_SECRET` 和服务令牌必须使用两个不同的随机值。Resend API Key
+只放在独立邮件服务器，不能放在超算或前端。未配置时验证码接口返回 `503`；投递失败
+返回 `502`，验证码不会出现在日志或 API 响应中。
 
 通过编译参数覆盖 API 地址：
 
