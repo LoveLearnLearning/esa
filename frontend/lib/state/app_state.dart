@@ -609,6 +609,7 @@ class AppState extends ChangeNotifier {
     String text, {
     bool markdown = false,
     String? displayText,
+    List<String> attachmentIds = const [],
   }) async {
     final input = text.trim();
     if (input.isEmpty || busy) return;
@@ -632,9 +633,17 @@ class AppState extends ChangeNotifier {
 
     try {
       if (streamOn) {
-        await _receiveStream(id, input, list, placeholder);
+        await _receiveStream(
+          id,
+          input,
+          list,
+          placeholder,
+          attachmentIds: attachmentIds,
+        );
       } else {
-        final newMsgs = await api.sendMessage(id, input);
+        final newMsgs = attachmentIds.isEmpty
+            ? await api.sendMessage(id, input)
+            : await api.sendMessageWithAttachments(id, input, attachmentIds);
         list.remove(placeholder);
         list.addAll(newMsgs.where((message) => !message.isUser));
         notifyListeners();
@@ -660,6 +669,15 @@ class AppState extends ChangeNotifier {
         );
       }
     } finally {
+      if (attachmentIds.isNotEmpty) {
+        await Future.wait(
+          attachmentIds.map(
+            (attachmentId) => api
+                .deleteConversationAttachment(id, attachmentId)
+                .catchError((_) {}),
+          ),
+        );
+      }
       busy = false;
       notifyListeners();
     }
@@ -688,8 +706,9 @@ class AppState extends ChangeNotifier {
     String conversationId,
     String input,
     List<ChatMessage> list,
-    ChatMessage assistant,
-  ) async {
+    ChatMessage assistant, {
+    List<String> attachmentIds = const [],
+  }) async {
     var completed = false;
     final reasoningQueue = Queue<String>();
     final contentQueue = Queue<String>();
@@ -758,7 +777,13 @@ class AppState extends ChangeNotifier {
       // 事件间隔超过 120 秒视为挂死，结束流走中断恢复。只在 Web 上
       // 启用：原生平台连接中断会正常抛错，而且 Stream.timeout 的假
       // 定时器会挂死 FakeAsync 测试环境。
-      var events = api.streamMessage(conversationId, input);
+      var events = attachmentIds.isEmpty
+          ? api.streamMessage(conversationId, input)
+          : api.streamMessageWithAttachments(
+              conversationId,
+              input,
+              attachmentIds,
+            );
       if (kIsWeb) {
         events = events.timeout(
           const Duration(seconds: 120),
@@ -817,6 +842,31 @@ class AppState extends ChangeNotifier {
     if (!completed) {
       throw ApiException(500, '流式连接意外中断');
     }
+  }
+
+  Future<DocumentAttachment> uploadConversationAttachment({
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    if (activeId == null) {
+      await _createConversation();
+    }
+    final conversationId = activeId;
+    if (conversationId == null) {
+      throw ApiException(0, '无法创建对话，请稍后重试');
+    }
+    return api.uploadConversationAttachment(
+      conversationId: conversationId,
+      filename: filename,
+      bytes: bytes,
+    );
+  }
+
+  Future<void> removeConversationAttachment(
+    DocumentAttachment attachment,
+    String conversationId,
+  ) async {
+    await api.deleteConversationAttachment(conversationId, attachment.id);
   }
 
   void regenerate(String assistantMessageId) {

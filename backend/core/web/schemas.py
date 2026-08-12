@@ -31,6 +31,7 @@ class ChangePasswordRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     content: str = Field(min_length=1)
+    attachment_ids: list[str] = Field(default_factory=list, max_length=3)
 
 
 class ConversationCreateRequest(BaseModel):

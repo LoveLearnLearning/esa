@@ -123,7 +123,7 @@ def prune_mineru_output(output_root: Path) -> list[str]:
     removed: list[str] = []
     for path in sorted(output_root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
         if path.is_file() and not should_retain(path):
-            removed.append(str(path.relative_to(output_root)))
+            removed.append(path.relative_to(output_root).as_posix())
             path.unlink()
         elif path.is_dir() and not any(path.iterdir()):
             path.rmdir()

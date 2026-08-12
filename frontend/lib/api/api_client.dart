@@ -391,6 +391,14 @@ class ApiClient {
       'webp' => 'image/webp',
       'bmp' => 'image/bmp',
       'heic' || 'heif' => 'image/heic',
+      'gif' => 'image/gif',
+      'tif' || 'tiff' => 'image/tiff',
+      'docx' =>
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'pptx' =>
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'xlsx' =>
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'html' || 'htm' => 'text/html',
       _ => 'application/octet-stream',
     };
@@ -438,6 +446,9 @@ class ApiClient {
             )
             .toList(),
         skippedCount: (data['skipped_count'] as num?)?.toInt() ?? 0,
+        documentPipeline:
+            (data['document'] as Map?)?['pipeline']?.toString() ?? 'legacy',
+        documentId: (data['document'] as Map?)?['document_id']?.toString(),
       );
     } on TimeoutException {
       throw ApiException(0, '课表识别超时，请稍后重试');
@@ -618,6 +629,72 @@ class ApiClient {
         .toList();
   }
 
+  Future<List<ChatMessage>> sendMessageWithAttachments(
+    String id,
+    String content,
+    List<String> attachmentIds,
+  ) async {
+    final r = await http.post(
+      _uri('/conversations/$id/messages'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'content': content, 'attachment_ids': attachmentIds}),
+    );
+    if (r.statusCode != 200) _fail(r);
+    final list = _decode(r) as List;
+    return list
+        .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<DocumentAttachment> uploadConversationAttachment({
+    required String conversationId,
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      _uri('/conversations/$conversationId/attachments'),
+    );
+    if (sessionId != null) {
+      request.headers['Authorization'] = 'Bearer $sessionId';
+    }
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+        contentType: MediaType.parse(_mimeFor(filename, bytes)),
+      ),
+    );
+    try {
+      final streamed = await request.send().timeout(
+        const Duration(minutes: 10),
+      );
+      final response = await http.Response.fromStream(
+        streamed,
+      ).timeout(const Duration(minutes: 2));
+      if (response.statusCode != 201) _fail(response);
+      return DocumentAttachment.fromJson(
+        _decode(response) as Map<String, dynamic>,
+      );
+    } on TimeoutException {
+      throw ApiException(0, 'DocIR 解析超时，请稍后重试');
+    } on http.ClientException {
+      throw ApiException(0, '网络异常，请检查网络后重试');
+    }
+  }
+
+  Future<void> deleteConversationAttachment(
+    String conversationId,
+    String attachmentId,
+  ) async {
+    final r = await http.delete(
+      _uri('/conversations/$conversationId/attachments/$attachmentId'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204 && r.statusCode != 404) _fail(r);
+  }
+
   Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
     if (kOfflineMode) {
       final messages = await _offlineSend(id, content);
@@ -652,13 +729,35 @@ class ApiClient {
       _fail(http.Response.bytes(bytes, response.statusCode));
     }
 
+    yield* _decodeSse(response.stream);
+  }
+
+  Stream<ChatStreamEvent> streamMessageWithAttachments(
+    String id,
+    String content,
+    List<String> attachmentIds,
+  ) async* {
+    final request =
+        http.Request('POST', _uri('/conversations/$id/messages/stream'))
+          ..headers.addAll(_headers(auth: true))
+          ..body = jsonEncode({
+            'content': content,
+            'attachment_ids': attachmentIds,
+          });
+
+    final response = await request.send();
+    if (response.statusCode != 200) {
+      final bytes = await response.stream.toBytes();
+      _fail(http.Response.bytes(bytes, response.statusCode));
+    }
+    yield* _decodeSse(response.stream);
+  }
+
+  Stream<ChatStreamEvent> _decodeSse(Stream<List<int>> stream) async* {
     String eventName = 'message';
     final dataLines = <String>[];
-
     await for (final line
-        in response.stream
-            .transform(utf8.decoder)
-            .transform(const LineSplitter())) {
+        in stream.transform(utf8.decoder).transform(const LineSplitter())) {
       if (line.isEmpty) {
         if (dataLines.isNotEmpty) {
           final decoded = jsonDecode(dataLines.join('\n'));
@@ -670,7 +769,6 @@ class ApiClient {
         dataLines.clear();
         continue;
       }
-
       if (line.startsWith(':')) continue;
       if (line.startsWith('event:')) {
         eventName = line.substring('event:'.length).trim();
@@ -678,8 +776,6 @@ class ApiClient {
         dataLines.add(line.substring('data:'.length).trimLeft());
       }
     }
-
-    // 兼容服务端关闭连接前没有再发送空行的情况。
     if (dataLines.isNotEmpty) {
       final decoded = jsonDecode(dataLines.join('\n'));
       if (decoded is Map<String, dynamic>) {

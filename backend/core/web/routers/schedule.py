@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import (
     APIRouter,
@@ -18,7 +19,9 @@ from pydantic import BaseModel, Field, model_validator
 from backend.agent.tools.mastery_tools import kg_store
 from backend.core.services.schedule_import_service import (
     extract_schedule_document,
+    extract_schedule_document_via_docir,
     extract_schedule_courses,
+    supports_docir_schedule,
 )
 from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_course_store import UserCourseStore
@@ -271,11 +274,20 @@ async def import_schedule(
     filename = file.filename or "schedule"
     content_type = file.content_type or "application/octet-stream"
     try:
-        document = await extract_schedule_document(
-            filename=filename,
-            content_type=content_type,
-            data=data,
-        )
+        mm_sessions = getattr(request.app.state, "mm_sessions", None)
+        if mm_sessions is not None and supports_docir_schedule(filename):
+            document = await extract_schedule_document_via_docir(
+                mm_sessions=mm_sessions,
+                session_key=f"schedule:{user.id}:{uuid4()}",
+                filename=filename,
+                data=data,
+            )
+        else:
+            document = await extract_schedule_document(
+                filename=filename,
+                content_type=content_type,
+                data=data,
+            )
         store: ScheduleStore = request.app.state.schedule_store
         courses = await extract_schedule_courses(
             llm_client=request.app.state.auxiliary_llm_client,
@@ -315,6 +327,7 @@ async def import_schedule(
         "skipped_count": len(skipped),
         "tables": store.list_tables(user.id),
         "active_table_id": store.ensure_active_table(user.id),
+        "document": document.metadata,
     }
 
 

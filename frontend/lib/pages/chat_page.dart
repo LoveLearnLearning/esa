@@ -199,14 +199,30 @@ class _ChatPageState extends State<ChatPage> {
             ),
             Composer(
               busy: app.busy,
+              conversationId: app.activeId,
               taskMode: _taskMode,
               onClearTaskMode: () => setState(() => _taskMode = null),
+              onUploadAttachment: (filename, bytes) =>
+                  app.uploadConversationAttachment(
+                    filename: filename,
+                    bytes: bytes,
+                  ),
+              onRemoveAttachment: app.removeConversationAttachment,
               onSend: (text, markdown) {
                 _resumeFollowing();
                 app.send(
                   _taskMode?.buildPrompt(text) ?? text,
                   markdown: markdown,
                   displayText: text,
+                );
+              },
+              onSendWithAttachment: (text, markdown, attachment) {
+                _resumeFollowing();
+                app.send(
+                  _taskMode?.buildPrompt(text) ?? text,
+                  markdown: markdown,
+                  displayText: '$text\n\n📎 ${attachment.filename}',
+                  attachmentIds: [attachment.id],
                 );
               },
             ),
