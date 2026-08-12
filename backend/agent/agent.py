@@ -44,6 +44,47 @@ _UNSUPPORTED_TOOL_CALLS_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_LEARNING_ONLY_TOOLS = frozenset(
+    {
+        "save_core_memory",
+        "search_core_memories",
+        "get_core_memories",
+        "delete_core_memory",
+        "recommend_practice",
+        "get_mastery_report",
+        "get_mastery_level",
+        "get_weak_prerequisites",
+        "get_review_timing",
+        "record_answer",
+        "record_learning_evidence",
+        "get_learning_evidence_summary",
+        "retrieve_knowledge",
+        "get_knowledge_base_stats",
+        "load_skill",
+    }
+)
+
+
+def tool_schemas_for_workspace(workspace_type: str) -> list[dict]:
+    """Return only tools whose state and semantics belong to this workspace."""
+    if workspace_type == "learning":
+        return tr.schemas
+    return [
+        schema
+        for schema in tr.schemas
+        if schema["function"]["name"] not in _LEARNING_ONLY_TOOLS
+    ]
+
+
+def call_workspace_tool(
+    workspace_type: str,
+    name: str,
+    arguments: dict,
+) -> object:
+    if workspace_type != "learning" and name in _LEARNING_ONLY_TOOLS:
+        return f"[Error]: tool {name!r} is unavailable in {workspace_type} workspace"
+    return tr.call(name, arguments)
+
 
 def serialize_tool_result(result: object) -> str:
     """将 Tool observation 统一序列化为标准 JSON。
@@ -147,25 +188,35 @@ class Agent:
 
         # 轻量确定性路由选中策略后按需加载 Skill 正文，
         # 主 Agent 仍需结合用户当前消息决定具体执行。
-        decision = PedagogyRouter.route(
-            input,
-            history=history,
-            profile=prompt_ctx.user_profile_context,
+        if prompt_ctx.workspace_type == "learning":
+            decision = PedagogyRouter.route(
+                input,
+                history=history,
+                profile=prompt_ctx.user_profile_context,
+            )
+            loaded_skill_body = (
+                load_skill(decision.skill_name)
+                if decision.skill_name is not None
+                else None
+            )
+            prompt_ctx = replace(
+                prompt_ctx,
+                pedagogy_context=decision.to_prompt_context(
+                    loaded_skill_body=loaded_skill_body,
+                ),
+                autoload_skills_context=build_autoload_skills_context(),
+            )
+        else:
+            prompt_ctx = replace(
+                prompt_ctx,
+                pedagogy_context="",
+                autoload_skills_context="",
+            )
+        skills_context = (
+            build_skills_context()
+            if prompt_ctx.workspace_type == "learning"
+            else ""
         )
-        loaded_skill_body = (
-            load_skill(decision.skill_name)
-            if decision.skill_name is not None
-            else None
-        )
-
-        prompt_ctx = replace(
-            prompt_ctx,
-            pedagogy_context=decision.to_prompt_context(
-                loaded_skill_body=loaded_skill_body,
-            ),
-            autoload_skills_context=build_autoload_skills_context(),
-        )
-        skills_context = build_skills_context()
 
         system_prompt = build_system_prompt(
             user_name=user_name,
@@ -209,6 +260,8 @@ class Agent:
 
         返回本轮新消息（用户输入 + 助手回复 + Tool 结果），调用方可直接持久化。
         """
+        workspace_type = (prompt_ctx or PromptContext()).workspace_type
+        tool_schemas = tool_schemas_for_workspace(workspace_type)
         messages, new_messages = self._prepare_run(
             input,
             user_name,
@@ -220,12 +273,12 @@ class Agent:
         for _ in range(self.loop_times):
             response = await self.llm_provider.generate(
                 messages,
-                tr.schemas,
+                tool_schemas,
             )
 
             parsed: ParsedOutput = self.llm_provider.parse_output(
                 response,
-                tr.schemas,
+                tool_schemas,
             )
             tool_calls: list[ToolCall] = parsed.tool_calls
 
@@ -267,7 +320,8 @@ class Agent:
 
             for tool_call in tool_calls:
                 result = await asyncio.to_thread(
-                    tr.call,
+                    call_workspace_tool,
+                    workspace_type,
                     tool_call.name,
                     tool_call.arguments,
                 )
@@ -299,6 +353,8 @@ class Agent:
         prompt_ctx: PromptContext | None = None,
         total_weeks: int | None = None,
     ) -> AsyncIterator[AgentStreamEvent]:
+        workspace_type = (prompt_ctx or PromptContext()).workspace_type
+        tool_schemas = tool_schemas_for_workspace(workspace_type)
         messages, new_messages = self._prepare_run(
             input,
             user_name,
@@ -312,7 +368,7 @@ class Agent:
 
             async for chunk in self.llm_provider.generate_stream(
                 messages,
-                tr.schemas,
+                tool_schemas,
             ):
                 for event, delta in stream_parser.feed(chunk):
                     yield AgentStreamEvent(
@@ -329,7 +385,7 @@ class Agent:
             response = stream_parser.raw_text
             parsed = self.llm_provider.parse_output(
                 response,
-                tr.schemas,
+                tool_schemas,
             )
             tool_calls = parsed.tool_calls
 
@@ -369,7 +425,8 @@ class Agent:
 
             for tool_call in tool_calls:
                 result = await asyncio.to_thread(
-                    tr.call,
+                    call_workspace_tool,
+                    workspace_type,
                     tool_call.name,
                     tool_call.arguments,
                 )

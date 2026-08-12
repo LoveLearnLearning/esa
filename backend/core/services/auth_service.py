@@ -68,6 +68,7 @@ class AuthService:
         self,
         username: str,
         password: str,
+        account_role: str = "student",
     ) -> UserRecord | None:
         """给新用户提供注册服务 user_id 由服务端生成
         Args:
@@ -89,6 +90,7 @@ class AuthService:
             username=username,
             password_hash=pwd_hash,
             status="active",
+            account_role=account_role,
         )
 
         if not self.user_store.create(new_user):

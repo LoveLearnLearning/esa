@@ -637,17 +637,115 @@ class ChatMessage extends ChangeNotifier {
 }
 
 /// 一个历史对话 对应 /conversations 的元素
+enum WorkspaceType {
+  learning,
+  teaching,
+  research;
+
+  String get wireName => name;
+  String get label => switch (this) {
+    WorkspaceType.learning => '学习空间',
+    WorkspaceType.teaching => '教学空间',
+    WorkspaceType.research => '科研空间',
+  };
+
+  static WorkspaceType fromWire(String? value) => switch (value) {
+    'teaching' => WorkspaceType.teaching,
+    'research' => WorkspaceType.research,
+    _ => WorkspaceType.learning,
+  };
+}
+
+class WorkspaceDescriptor {
+  const WorkspaceDescriptor({
+    required this.type,
+    required this.name,
+    required this.description,
+    required this.capabilities,
+  });
+
+  final WorkspaceType type;
+  final String name;
+  final String description;
+  final List<String> capabilities;
+
+  factory WorkspaceDescriptor.fromJson(Map<String, dynamic> json) =>
+      WorkspaceDescriptor(
+        type: WorkspaceType.fromWire(json['type'] as String?),
+        name: json['name'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        capabilities: (json['capabilities'] as List? ?? const [])
+            .whereType<String>()
+            .toList(),
+      );
+}
+
+class WorkspaceManifest {
+  const WorkspaceManifest({
+    required this.accountRole,
+    required this.defaultWorkspace,
+    required this.workspaces,
+  });
+
+  final String accountRole;
+  final WorkspaceType defaultWorkspace;
+  final List<WorkspaceDescriptor> workspaces;
+
+  factory WorkspaceManifest.fromJson(Map<String, dynamic> json) =>
+      WorkspaceManifest(
+        accountRole: json['account_role'] as String? ?? 'student',
+        defaultWorkspace: WorkspaceType.fromWire(
+          json['default_workspace'] as String?,
+        ),
+        workspaces: (json['workspaces'] as List? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(WorkspaceDescriptor.fromJson)
+            .toList(),
+      );
+}
+
+class ResearchProject {
+  const ResearchProject({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.status,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final String status;
+  final DateTime updatedAt;
+
+  factory ResearchProject.fromJson(Map<String, dynamic> json) =>
+      ResearchProject(
+        id: json['project_id'] as String,
+        name: json['name'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        status: json['status'] as String? ?? 'active',
+        updatedAt:
+            DateTime.tryParse(json['updated_at'] as String? ?? '')?.toLocal() ??
+            DateTime.now(),
+      );
+}
+
 class ChatConversation {
   ChatConversation({
     required this.id,
     required this.title,
     required this.updatedAt,
     this.pinned = false,
+    this.workspaceType = WorkspaceType.learning,
+    this.researchProjectId,
   });
 
   final String id;
   String title;
   DateTime updatedAt;
+  final WorkspaceType workspaceType;
+  final String? researchProjectId;
   bool pinned; // 置顶 后端暂无字段 仅前端本地状态
 
   factory ChatConversation.fromJson(Map<String, dynamic> j) {
@@ -657,6 +755,8 @@ class ChatConversation {
       updatedAt:
           DateTime.tryParse(j['updated_at'] as String? ?? '')?.toLocal() ??
           DateTime.now(),
+      workspaceType: WorkspaceType.fromWire(j['workspace_type'] as String?),
+      researchProjectId: j['research_project_id'] as String?,
     );
   }
 }

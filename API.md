@@ -66,7 +66,7 @@ Authorization: Bearer <session_id>
 请求体:
 
 ```json
-{ "username": "feng", "password": "password123" }
+{ "username": "feng", "password": "password123", "account_role": "student" }
 ```
 
 校验规则: `username` 1-32 位 `password` 8-128 位 不符合返回 422
@@ -74,7 +74,7 @@ Authorization: Bearer <session_id>
 成功响应 `201`:
 
 ```json
-{ "user_id": "服务端生成的uuid", "username": "feng" }
+{ "user_id": "服务端生成的uuid", "username": "feng", "account_role": "student" }
 ```
 
 失败: `409` 用户名已存在
@@ -96,6 +96,7 @@ Authorization: Bearer <session_id>
     "session_id": "uuid 作为后续请求的 Bearer token",
     "user_id": "用户uuid",
     "username": "feng",
+    "account_role": "student",
     "expires_at": "2026-07-24T07:22:08.123456+00:00"
 }
 ```
@@ -125,11 +126,58 @@ Authorization: Bearer <session_id>
 
 ---
 
+## Workspace 与科研项目接口
+
+以下接口均需要认证。`account_role` 目前只允许 `student` 或 `teacher`：学生可进入学习、科研 Workspace，教师可进入教学、科研 Workspace。
+
+### GET /workspaces — 当前账号可用 Workspace
+
+响应 `200`：
+
+```json
+{
+  "account_role": "student",
+  "default_workspace": "learning",
+  "workspaces": [
+    {
+      "type": "learning",
+      "name": "学习空间",
+      "description": "课程学习、练习、课表与知识掌握",
+      "capabilities": ["chat", "schedule", "knowledge_map", "mastery"]
+    },
+    {
+      "type": "research",
+      "name": "科研空间",
+      "description": "科研项目、文献、写作、趋势与数据分析",
+      "capabilities": ["chat", "research_projects", "attachments"]
+    }
+  ]
+}
+```
+
+### GET/POST /research/projects — 科研项目列表与创建
+
+创建请求：
+
+```json
+{ "name": "多智能体科研", "description": "前沿追踪与论文写作" }
+```
+
+创建成功返回 `201`。列表默认只返回当前用户的活跃项目；`GET /research/projects?include_archived=true` 可包含归档项目。
+
+### GET/PATCH /research/projects/{project_id} — 项目详情与更新
+
+PATCH 可传 `name`、`description`、`status`，其中 `status` 为 `active` 或 `archived`。项目不存在或不属于当前用户均返回 `404`。
+
+---
+
 ## 对话接口
 
 以下接口均需要认证 只能访问属于当前登录用户的对话
 
 ### GET /conversations — 历史对话列表
+
+可用 `workspace_type=learning|teaching|research` 过滤；服务端会校验当前账号是否有权进入该 Workspace。
 
 响应 `200` 按最近更新排序:
 
@@ -140,6 +188,8 @@ Authorization: Bearer <session_id>
         "user_id": "用户uuid",
         "title": "对话标题",
         "group_id": "分组uuid 或 null(未分组)",
+        "workspace_type": "learning",
+        "research_project_id": null,
         "created_at": "...",
         "updated_at": "..."
     }
@@ -151,12 +201,17 @@ Authorization: Bearer <session_id>
 请求体(`title` / `group_id` 均可省略 默认 "新对话" + 未分组):
 
 ```json
-{ "title": "线性代数问题", "group_id": "分组uuid" }
+{
+  "title": "线性代数问题",
+  "group_id": "分组uuid",
+  "workspace_type": "learning",
+  "research_project_id": null
+}
 ```
 
 响应 `201`: 单个对话对象 结构同上
 
-`group_id` 不存在或不属于当前用户: `404`
+`group_id` 不存在或不属于当前用户: `404`。无权进入所选 Workspace 返回 `403`；科研项目不存在或不属于当前用户返回 `404`；非科研 Workspace 绑定科研项目返回 `422`。
 
 ### PATCH /conversations/{conversation_id} — 重命名或移动分组
 

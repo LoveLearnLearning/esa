@@ -57,6 +57,7 @@ class ApiClient {
   String? sessionId;
   String? userId;
   String? username;
+  String accountRole = 'student';
   DateTime? sessionExpiresAt;
 
   bool get isLoggedIn => sessionId != null;
@@ -89,12 +90,23 @@ class ApiClient {
   }
 
   // ---------- 认证 ----------
-  Future<void> register(String username, String password) async {
-    if (kOfflineMode) return; // 离线模式注册直接成功
+  Future<void> register(
+    String username,
+    String password, {
+    String accountRole = 'student',
+  }) async {
+    if (kOfflineMode) {
+      this.accountRole = accountRole;
+      return;
+    }
     final r = await http.post(
       _uri('/auth/register'),
       headers: _headers(),
-      body: jsonEncode({'username': username, 'password': password}),
+      body: jsonEncode({
+        'username': username,
+        'password': password,
+        'account_role': accountRole,
+      }),
     );
     if (r.statusCode != 201) _fail(r);
   }
@@ -114,6 +126,7 @@ class ApiClient {
     sessionId = data['session_id'] as String;
     userId = data['user_id'] as String;
     this.username = data['username'] as String;
+    accountRole = data['account_role'] as String? ?? 'student';
     sessionExpiresAt = DateTime.tryParse(data['expires_at'] as String? ?? '');
   }
 
@@ -122,6 +135,7 @@ class ApiClient {
       sessionId = null;
       userId = null;
       username = null;
+      accountRole = 'student';
       sessionExpiresAt = null;
       return;
     }
@@ -134,6 +148,7 @@ class ApiClient {
       sessionId = null;
       userId = null;
       username = null;
+      accountRole = 'student';
       sessionExpiresAt = null;
     }
   }
@@ -551,16 +566,69 @@ class ApiClient {
   }
 
   // ---------- 对话 ----------
+  Future<WorkspaceManifest> getWorkspaceManifest() async {
+    if (kOfflineMode) {
+      final types = accountRole == 'teacher'
+          ? [WorkspaceType.teaching, WorkspaceType.research]
+          : [WorkspaceType.learning, WorkspaceType.research];
+      return WorkspaceManifest(
+        accountRole: accountRole,
+        defaultWorkspace: types.first,
+        workspaces: types
+            .map(
+              (type) => WorkspaceDescriptor(
+                type: type,
+                name: type.label,
+                description: '',
+                capabilities: const ['chat'],
+              ),
+            )
+            .toList(),
+      );
+    }
+    final response = await http.get(
+      _uri('/workspaces'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return WorkspaceManifest.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
   Future<List<ChatConversation>> listConversations() async {
-    if (kOfflineMode) return List.of(_offConvs);
+    if (kOfflineMode) {
+      return _offConvs
+          .where((item) => item.workspaceType == WorkspaceType.learning)
+          .toList();
+    }
     final r = await http.get(
-      _uri('/conversations'),
+      _uri('/conversations?workspace_type=learning'),
       headers: _headers(auth: true),
     );
     if (r.statusCode != 200) _fail(r);
     final list = _decode(r) as List;
     return list
         .map((e) => ChatConversation.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<ChatConversation>> listWorkspaceConversations(
+    WorkspaceType workspace,
+  ) async {
+    if (kOfflineMode) {
+      return _offConvs
+          .where((item) => item.workspaceType == workspace)
+          .toList();
+    }
+    final response = await http.get(
+      _uri('/conversations?workspace_type=${workspace.wireName}'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    final list = _decode(response) as List;
+    return list
+        .map((item) => ChatConversation.fromJson(item as Map<String, dynamic>))
         .toList();
   }
 
@@ -572,6 +640,81 @@ class ApiClient {
     );
     if (r.statusCode != 201) _fail(r);
     return ChatConversation.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<ChatConversation> createWorkspaceConversation(
+    WorkspaceType workspace, {
+    String? researchProjectId,
+  }) async {
+    if (workspace == WorkspaceType.learning && researchProjectId == null) {
+      return createConversation();
+    }
+    if (kOfflineMode) {
+      return _offlineNewConversation(
+        workspaceType: workspace,
+        researchProjectId: researchProjectId,
+      );
+    }
+    final body = <String, String>{'workspace_type': workspace.wireName};
+    if (researchProjectId case final projectId?) {
+      body['research_project_id'] = projectId;
+    }
+    final response = await http.post(
+      _uri('/conversations'),
+      headers: _headers(auth: true),
+      body: jsonEncode(body),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return ChatConversation.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
+  Future<List<ResearchProject>> listResearchProjects() async {
+    if (kOfflineMode) return List.of(_offResearchProjects);
+    final response = await http.get(
+      _uri('/research/projects'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .map((item) => ResearchProject.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<ResearchProject> createResearchProject(
+    String name,
+    String description,
+  ) async {
+    if (kOfflineMode) {
+      final project = ResearchProject(
+        id: _offId(),
+        name: name,
+        description: description,
+        status: 'active',
+        updatedAt: DateTime.now(),
+      );
+      _offResearchProjects.insert(0, project);
+      return project;
+    }
+    final response = await http.post(
+      _uri('/research/projects'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'name': name, 'description': description}),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return ResearchProject.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
+  Future<void> archiveResearchProject(String id) async {
+    if (kOfflineMode) {
+      _offResearchProjects.removeWhere((item) => item.id == id);
+      return;
+    }
+    final response = await http.patch(
+      _uri('/research/projects/$id'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'status': 'archived'}),
+    );
+    if (response.statusCode != 200) _fail(response);
   }
 
   Future<void> renameConversation(String id, String title) async {
@@ -786,6 +929,7 @@ class ApiClient {
 
   // ==================== 离线模式实现 ====================
   final List<ChatConversation> _offConvs = [];
+  final List<ResearchProject> _offResearchProjects = [];
   final Map<String, List<ChatMessage>> _offMsgs = {};
   int _offSeq = 0;
 
@@ -834,11 +978,16 @@ class ApiClient {
     _offMsgs[c2.id] = [];
   }
 
-  ChatConversation _offlineNewConversation() {
+  ChatConversation _offlineNewConversation({
+    WorkspaceType workspaceType = WorkspaceType.learning,
+    String? researchProjectId,
+  }) {
     final c = ChatConversation(
       id: _offId(),
       title: '新对话',
       updatedAt: DateTime.now(),
+      workspaceType: workspaceType,
+      researchProjectId: researchProjectId,
     );
     _offConvs.insert(0, c);
     _offMsgs[c.id] = [];

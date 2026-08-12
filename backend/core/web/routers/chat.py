@@ -20,6 +20,7 @@ from backend.agent.rag.retrieval.contracts import SearchResponse
 from backend.agent.memories.memory_models import ProfileQuery
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
+from backend.core.stores.research_project_store import ResearchProjectStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import (
@@ -41,6 +42,7 @@ from backend.core.web.schemas import (
     SendMessageRequest,
 )
 from backend.core.web.sse import encode_sse
+from backend.core.workspaces import WorkspaceAccessPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -265,10 +267,11 @@ def _prepare_message(
     conversation_mode = (
         settings.default_conversation_mode if settings is not None else "normal"
     )
+    workspace_type = conversation.get("workspace_type", "learning")
     kp_resolver = getattr(request.app.state, "kp_resolver", None)
     kp_matches = (
         kp_resolver.resolve(body.content, limit=3)
-        if kp_resolver is not None
+        if kp_resolver is not None and workspace_type == "learning"
         else []
     )
     resolved_kp_ids = [match.kp_id for match in kp_matches]
@@ -281,7 +284,7 @@ def _prepare_message(
     # isolated 会话不读取长期记忆 不构建画像快照
     user_profile_context = (
         None
-        if conversation_mode == "isolated"
+        if conversation_mode == "isolated" or workspace_type != "learning"
         else request.app.state.profile_builder.build(
             ProfileQuery(
                 user_id=user.id,
@@ -307,6 +310,7 @@ def _prepare_message(
         group_custom_instruction=group_custom_instruction,
         conversation_summary=conversation_summary or "",
         conversation_mode=conversation_mode,
+        workspace_type=workspace_type,
     )
 
 
@@ -332,6 +336,7 @@ def _build_prompt_context(
         conversation_summary=ctx.conversation_summary,
         conversation_mode=ctx.conversation_mode,
         attachment_context=attachment_context,
+        workspace_type=ctx.workspace_type,
     )
 
 
@@ -339,9 +344,20 @@ def _build_prompt_context(
 def list_conversations(
     request: Request,
     session: CurrentSession,
+    workspace_type: str | None = None,
 ) -> list[dict]:
     chat_store: ChatStore = request.app.state.chat_store
-    return chat_store.list_conversations(session.user_id)
+    if workspace_type is not None:
+        user_store: UserStore = request.app.state.user_store
+        user = user_store.get_by_id(session.user_id)
+        if user is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "user no longer exists")
+        if not WorkspaceAccessPolicy.can_access(user.account_role, workspace_type):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "workspace access denied")
+    return chat_store.list_conversations(
+        session.user_id,
+        workspace_type=workspace_type,
+    )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -352,11 +368,29 @@ def create_conversation(
 ) -> dict:
     body = body or ConversationCreateRequest()
     _validate_group_owned(request, body.group_id, session)
+    user_store: UserStore = request.app.state.user_store
+    user = user_store.get_by_id(session.user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "user no longer exists")
+    if not WorkspaceAccessPolicy.can_access(user.account_role, body.workspace_type):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "workspace access denied")
+    if body.research_project_id is not None:
+        project_store: ResearchProjectStore = request.app.state.research_project_store
+        project = project_store.get_project(body.research_project_id, session.user_id)
+        if project is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "research project not found")
+        if project["status"] != "active":
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "archived research project cannot accept new conversations",
+            )
     chat_store: ChatStore = request.app.state.chat_store
     return chat_store.create_conversation(
         session.user_id,
         title=body.title,
         group_id=body.group_id,
+        workspace_type=body.workspace_type,
+        research_project_id=body.research_project_id,
     )
 
 

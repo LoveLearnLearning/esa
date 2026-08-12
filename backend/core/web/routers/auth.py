@@ -26,13 +26,18 @@ CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, request: Request) -> dict[str, str]:
     auth_service: AuthService = request.app.state.auth
-    user: UserRecord | None = auth_service.register(body.username, body.password)
+    user: UserRecord | None = auth_service.register(
+        body.username,
+        body.password,
+        body.account_role,
+    )
     if user is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "用户名已存在")
 
     return {
         "user_id": user.id,
         "username": user.username,
+        "account_role": user.account_role,
     }
 
 
@@ -62,6 +67,7 @@ def login(body: LoginRequest, request: Request) -> LoginResponse:
         session_id=session.session_id,
         user_id=session.user_id,
         username=user.username,
+        account_role=user.account_role,
         expires_at=session.expires_at,
     )
 

@@ -28,6 +28,7 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordFocus = FocusNode();
   final _password2Focus = FocusNode();
   AuthMode _mode = AuthMode.login;
+  String _accountRole = 'student';
   bool _showPw = false;
   bool _rememberLogin = true;
   bool _loading = false;
@@ -75,7 +76,7 @@ class _LoginPageState extends State<LoginPage> {
     });
     final app = AppScope.of(context);
     final err = _isRegister
-        ? await app.register(username, password)
+        ? await app.register(username, password, accountRole: _accountRole)
         : await app.login(username, password, rememberLogin: _rememberLogin);
     if (!mounted) return;
     if (err == null) TextInput.finishAutofillContext(shouldSave: true);
@@ -154,6 +155,19 @@ class _LoginPageState extends State<LoginPage> {
                   ],
                 ),
                 const SizedBox(height: EsaSpace.xl),
+                if (_isRegister) ...[
+                  Text('注册身份', style: context.texts.labelMedium),
+                  const SizedBox(height: EsaSpace.sm),
+                  EsaSegmented<String>(
+                    value: _accountRole,
+                    onChanged: (value) => setState(() => _accountRole = value),
+                    segments: const [
+                      EsaSegment('student', '学生', sublabel: 'STUDENT'),
+                      EsaSegment('teacher', '教师', sublabel: 'TEACHER'),
+                    ],
+                  ),
+                  const SizedBox(height: EsaSpace.xl),
+                ],
                 _field(
                   context,
                   label: '用户名',

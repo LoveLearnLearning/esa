@@ -278,10 +278,9 @@ class _ProfileSheetState extends State<_ProfileSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _fieldLabel(context, 'ROLE'),
-        EsaSegmented<String>(
-          value: _role,
-          onChanged: (v) => setState(() => _role = v),
-          segments: const [EsaSegment('学生', '学生'), EsaSegment('教师', '教师')],
+        InputDecorator(
+          decoration: const InputDecoration(helperText: '账号身份由注册入口与服务端权限决定'),
+          child: Text(_role),
         ),
       ],
     );
@@ -513,7 +512,7 @@ class _ProfileSheetState extends State<_ProfileSheet> {
       });
       return;
     }
-    app.updateProfile(name: _name.text, mail: _email.text, roleValue: _role);
+    app.updateProfile(name: _name.text, mail: _email.text);
     Navigator.of(context).pop();
   }
 

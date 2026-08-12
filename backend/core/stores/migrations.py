@@ -48,10 +48,16 @@ CREATE TABLE {table} (
     user_id TEXT NOT NULL,
     title TEXT NOT NULL,
     group_id TEXT,
+    workspace_type TEXT NOT NULL DEFAULT 'learning',
+    research_project_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE SET NULL
+    FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE SET NULL,
+    FOREIGN KEY(research_project_id)
+        REFERENCES research_projects(project_id) ON DELETE SET NULL,
+    CHECK(workspace_type IN ('learning', 'teaching', 'research')),
+    CHECK(research_project_id IS NULL OR workspace_type = 'research')
 )
 """
 
@@ -608,6 +614,103 @@ def _migrate_schedule_tables(connection: sqlite3.Connection) -> None:
     ensure_schedule_tables_schema(connection)
 
 
+def _migrate_workspace_domain(connection: sqlite3.Connection) -> None:
+    """V9: account roles, workspace-bound chats, and research projects."""
+    user_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(users)").fetchall()
+    }
+    if "account_role" not in user_columns:
+        connection.execute(
+            "ALTER TABLE users ADD COLUMN account_role TEXT NOT NULL DEFAULT 'student'"
+        )
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS research_projects (
+            project_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(status IN ('active', 'archived'))
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_research_projects_user "
+        "ON research_projects(user_id, status, updated_at)"
+    )
+
+    conversation_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(conversations)").fetchall()
+    }
+    if "workspace_type" not in conversation_columns:
+        connection.execute(
+            "ALTER TABLE conversations ADD COLUMN workspace_type "
+            "TEXT NOT NULL DEFAULT 'learning'"
+        )
+    if "research_project_id" not in conversation_columns:
+        connection.execute(
+            "ALTER TABLE conversations ADD COLUMN research_project_id TEXT"
+        )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_conversations_workspace "
+        "ON conversations(user_id, workspace_type, updated_at)"
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS conversations_workspace_insert
+        BEFORE INSERT ON conversations
+        FOR EACH ROW
+        WHEN NEW.workspace_type NOT IN ('learning', 'teaching', 'research')
+          OR (NEW.research_project_id IS NOT NULL AND NEW.workspace_type != 'research')
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid conversation workspace binding');
+        END
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS conversations_research_project_insert
+        BEFORE INSERT ON conversations
+        FOR EACH ROW
+        WHEN NEW.research_project_id IS NOT NULL
+         AND NOT EXISTS (
+             SELECT 1 FROM research_projects
+             WHERE project_id = NEW.research_project_id
+               AND user_id = NEW.user_id
+         )
+        BEGIN
+            SELECT RAISE(ABORT, 'research project must belong to conversation user');
+        END
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS conversations_workspace_update
+        BEFORE UPDATE OF workspace_type, research_project_id, user_id ON conversations
+        FOR EACH ROW
+        WHEN NEW.workspace_type NOT IN ('learning', 'teaching', 'research')
+          OR (NEW.research_project_id IS NOT NULL AND NEW.workspace_type != 'research')
+          OR (
+              NEW.research_project_id IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM research_projects
+                  WHERE project_id = NEW.research_project_id
+                    AND user_id = NEW.user_id
+              )
+          )
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid conversation workspace binding');
+        END
+        """
+    )
+
+
 MIGRATIONS: list[MigrationDef] = [
     (
         1,
@@ -791,6 +894,11 @@ MIGRATIONS: list[MigrationDef] = [
             ON conversation_summaries(updated_at)
             """,
         ],
+    ),
+    (
+        9,
+        "create_workspace_and_research_domain",
+        _migrate_workspace_domain,
     ),
 ]
 

@@ -28,6 +28,7 @@ from backend.core.stores.conversation_summary_store import ConversationSummarySt
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.migrations import run_migrations
 from backend.core.stores.profile_store import ProfileStore
+from backend.core.stores.research_project_store import ResearchProjectStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_store import UserStore
@@ -70,6 +71,8 @@ from backend.core.web.routers import (
     memories,
     preferences,
     schedule,
+    research,
+    workspaces,
 )
 from backend.core.web.concurrency import ConversationTurnCoordinator
 
@@ -90,6 +93,7 @@ async def lifespan(app: FastAPI):
     app.state.profile_store = ProfileStore(DB_PATH)
 
     run_migrations(DB_PATH)
+    app.state.research_project_store = ResearchProjectStore(DB_PATH)
     app.state.user_course_store = UserCourseStore(DB_PATH)
     app.state.schedule_store = ScheduleStore(DB_PATH)
     app.state.user_presence_store = UserPresenceStore(DB_PATH)
@@ -178,6 +182,8 @@ business_router.include_router(preferences.memory_settings_router)
 business_router.include_router(learning.router)
 business_router.include_router(schedule.router)
 business_router.include_router(memories.router)
+business_router.include_router(workspaces.router)
+business_router.include_router(research.router)
 
 api_router = APIRouter()
 api_router.include_router(business_router)

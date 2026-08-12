@@ -5,6 +5,7 @@ from __future__ import annotations
 import backend.core.message.system as system_message
 import backend.core.message.style_tone as style_tone
 from backend.core.utils.models import PromptContext
+from backend.core.workspaces import workspace_prompt
 
 
 def _clean(value: str | None) -> str:
@@ -33,6 +34,7 @@ def build_system_prompt(
 
     sections = [
         system_message.SYSTEM_PROMPT.strip(),
+        f"# Current workspace\n\n{workspace_prompt(prompt_ctx.workspace_type)}",
         f"> 用户昵称: {user_name or '未提供'}",
         (
             "# 输出风格\n\n"

@@ -39,6 +39,7 @@ class UserRecord:
     username: str
     password_hash: str
     status: str
+    account_role: str = "student"
 
     preferred_style: str = "concise"
     preferred_tone: str = "friendly"
@@ -108,6 +109,7 @@ class PromptContext:
     conversation_summary: str = ""
     conversation_mode: str = "normal"
     attachment_context: str = ""
+    workspace_type: str = "learning"
 
     # 由 Agent._prepare_run 内部生成，不属于用户可写偏好。
     pedagogy_context: str = ""
@@ -126,3 +128,4 @@ class MessageContext:
     group_custom_instruction: str
     conversation_summary: str = ""
     conversation_mode: str = "normal"
+    workspace_type: str = "learning"

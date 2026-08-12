@@ -29,6 +29,7 @@ class UserStore(BaseSQLiteStore):
                     username TEXT NOT NULL UNIQUE,
                     password_hash TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'active',
+                    account_role TEXT NOT NULL DEFAULT 'student',
                     preferred_style TEXT NOT NULL DEFAULT 'concise',
                     preferred_tone TEXT NOT NULL DEFAULT 'friendly',
                     custom_instruction TEXT NOT NULL DEFAULT '',
@@ -50,6 +51,10 @@ class UserStore(BaseSQLiteStore):
             if "preferred_style" not in columns:
                 connection.execute(
                     "ALTER TABLE users ADD COLUMN preferred_style TEXT NOT NULL DEFAULT 'concise'"
+                )
+            if "account_role" not in columns:
+                connection.execute(
+                    "ALTER TABLE users ADD COLUMN account_role TEXT NOT NULL DEFAULT 'student'"
                 )
             if "preferred_tone" not in columns:
                 connection.execute(
@@ -117,6 +122,7 @@ class UserStore(BaseSQLiteStore):
             username=row["username"],
             password_hash=row["password_hash"],
             status=row["status"],
+            account_role=row["account_role"],
             preferred_style=row["preferred_style"],
             preferred_tone=row["preferred_tone"],
             custom_instruction=row["custom_instruction"],
@@ -141,7 +147,7 @@ class UserStore(BaseSQLiteStore):
         """
         row = self.query_one(
             """
-            SELECT id, username, password_hash, status,
+            SELECT id, username, password_hash, status, account_role,
                    preferred_style, preferred_tone, custom_instruction,
                    major, grade, current_week, total_weeks, profile_enabled
             FROM users
@@ -167,7 +173,7 @@ class UserStore(BaseSQLiteStore):
         """
         row = self.query_one(
             """
-            SELECT id, username, password_hash, status,
+            SELECT id, username, password_hash, status, account_role,
                    preferred_style, preferred_tone, custom_instruction,
                    major, grade, current_week, total_weeks, profile_enabled
             FROM users
@@ -193,17 +199,18 @@ class UserStore(BaseSQLiteStore):
             self.execute(
                 """
                 INSERT INTO users (
-                    id, username, password_hash, status,
+                    id, username, password_hash, status, account_role,
                     preferred_style, preferred_tone, custom_instruction,
                     major, grade, current_week, total_weeks, profile_enabled
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user.id,
                     user.username,
                     user.password_hash,
                     user.status,
+                    user.account_role,
                     user.preferred_style,
                     user.preferred_tone,
                     user.custom_instruction,

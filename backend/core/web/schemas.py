@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # 风格/语调合法枚举 供偏好与分组接口共用
 VALID_STYLES = {"concise", "detailed", "socratic"}
@@ -17,6 +18,7 @@ VALID_MAJORS = {"cs"}
 class RegisterRequest(BaseModel):
     username: str = Field(min_length=1, max_length=32)
     password: str = Field(min_length=8, max_length=128)
+    account_role: Literal["student", "teacher"] = "student"
 
 
 class LoginRequest(BaseModel):
@@ -37,6 +39,33 @@ class SendMessageRequest(BaseModel):
 class ConversationCreateRequest(BaseModel):
     title: str = Field(default="新对话", min_length=1, max_length=64)
     group_id: str | None = Field(default=None)
+    workspace_type: Literal["learning", "teaching", "research"] = "learning"
+    research_project_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_research_binding(self):
+        if self.research_project_id and self.workspace_type != "research":
+            raise ValueError("research_project_id requires the research workspace")
+        return self
+
+
+class ResearchProjectCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=1000)
+
+
+class ResearchProjectUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=1000)
+    status: Literal["active", "archived"] | None = None
+
+    @model_validator(mode="after")
+    def require_an_update(self):
+        if not self.model_fields_set or all(
+            getattr(self, field) is None for field in self.model_fields_set
+        ):
+            raise ValueError("at least one project field must be provided")
+        return self
 
 
 class ConversationPatchRequest(BaseModel):
@@ -167,6 +196,7 @@ class LoginResponse(BaseModel):
     session_id: str
     user_id: str
     username: str
+    account_role: Literal["student", "teacher"]
     expires_at: datetime
 
 

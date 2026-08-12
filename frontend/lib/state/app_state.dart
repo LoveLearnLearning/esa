@@ -32,6 +32,25 @@ class AppState extends ChangeNotifier {
   ThemeMode themeMode = ThemeMode.dark;
   bool streamOn = true;
   bool toolsOn = true;
+  String accountRole = 'student';
+  List<WorkspaceDescriptor> availableWorkspaces = const [
+    WorkspaceDescriptor(
+      type: WorkspaceType.learning,
+      name: '学习空间',
+      description: '',
+      capabilities: ['chat'],
+    ),
+    WorkspaceDescriptor(
+      type: WorkspaceType.research,
+      name: '科研空间',
+      description: '',
+      capabilities: ['chat', 'research_projects'],
+    ),
+  ];
+  WorkspaceType activeWorkspace = WorkspaceType.learning;
+  final List<ResearchProject> researchProjects = [];
+  bool loadingResearchProjects = false;
+  bool researchProjectsLoaded = false;
   String email = '';
   String role = '学生';
   UserPreferences preferences = const UserPreferences();
@@ -93,9 +112,13 @@ class AppState extends ChangeNotifier {
   }
 
   /// 注册并自动登录 返回 null 表示成功 否则返回错误文案
-  Future<String?> register(String username, String password) async {
+  Future<String?> register(
+    String username,
+    String password, {
+    String accountRole = 'student',
+  }) async {
     try {
-      await api.register(username, password);
+      await api.register(username, password, accountRole: accountRole);
       await api.login(username, password);
       email = '$username@esa.study';
       await _afterLogin();
@@ -108,6 +131,14 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _afterLogin() async {
+    final manifest = await api.getWorkspaceManifest();
+    accountRole = manifest.accountRole;
+    api.accountRole = manifest.accountRole;
+    role = accountRole == 'teacher' ? '教师' : '学生';
+    availableWorkspaces = manifest.workspaces;
+    if (!availableWorkspaces.any((item) => item.type == activeWorkspace)) {
+      activeWorkspace = manifest.defaultWorkspace;
+    }
     await Future.wait([loadConversations(), loadPreferencesAndProfile()]);
     if (conversations.isNotEmpty) {
       await setActive(conversations.first.id);
@@ -229,6 +260,11 @@ class AppState extends ChangeNotifier {
     busy = false;
     preferences = const UserPreferences();
     userProfile = const UserProfile();
+    accountRole = 'student';
+    role = '学生';
+    activeWorkspace = WorkspaceType.learning;
+    researchProjects.clear();
+    researchProjectsLoaded = false;
     notifyListeners();
   }
 
@@ -478,7 +514,9 @@ class AppState extends ChangeNotifier {
     loadingConversations = true;
     notifyListeners();
     try {
-      final list = await api.listConversations();
+      final list = activeWorkspace == WorkspaceType.learning
+          ? await api.listConversations()
+          : await api.listWorkspaceConversations(activeWorkspace);
       for (final c in list) {
         c.pinned = _pinned.contains(c.id);
       }
@@ -491,6 +529,70 @@ class AppState extends ChangeNotifier {
       loadingConversations = false;
       notifyListeners();
     }
+  }
+
+  Future<void> switchWorkspace(WorkspaceType workspace) async {
+    if (workspace == activeWorkspace ||
+        !availableWorkspaces.any((item) => item.type == workspace)) {
+      return;
+    }
+    activeWorkspace = workspace;
+    activeId = null;
+    conversations.clear();
+    notifyListeners();
+    await loadConversations();
+    if (conversations.isNotEmpty) await setActive(conversations.first.id);
+    if (workspace == WorkspaceType.research) await loadResearchProjects();
+  }
+
+  Future<void> loadResearchProjects({bool force = false}) async {
+    if (loadingResearchProjects || (researchProjectsLoaded && !force)) return;
+    loadingResearchProjects = true;
+    notifyListeners();
+    try {
+      researchProjects
+        ..clear()
+        ..addAll(await api.listResearchProjects());
+      researchProjectsLoaded = true;
+    } catch (error) {
+      if (!_handled401(error)) rethrow;
+    } finally {
+      loadingResearchProjects = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> createResearchProject(String name, String description) async {
+    final project = await api.createResearchProject(
+      name.trim(),
+      description.trim(),
+    );
+    researchProjects.insert(0, project);
+    notifyListeners();
+  }
+
+  Future<void> archiveResearchProject(String id) async {
+    await api.archiveResearchProject(id);
+    researchProjects.removeWhere((item) => item.id == id);
+    notifyListeners();
+  }
+
+  Future<void> openResearchProject(ResearchProject project) async {
+    final existing = conversations.where(
+      (item) => item.researchProjectId == project.id,
+    );
+    if (existing.isNotEmpty) {
+      await setActive(existing.first.id);
+      return;
+    }
+    final conversation = await api.createWorkspaceConversation(
+      WorkspaceType.research,
+      researchProjectId: project.id,
+    );
+    conversations.insert(0, conversation);
+    _messages[conversation.id] = [];
+    activeId = conversation.id;
+    notifyListeners();
   }
 
   Future<void> setActive(String id) async {
@@ -549,7 +651,9 @@ class AppState extends ChangeNotifier {
 
   Future<void> _createConversationImpl() async {
     try {
-      final conv = await api.createConversation();
+      final conv = activeWorkspace == WorkspaceType.learning
+          ? await api.createConversation()
+          : await api.createWorkspaceConversation(activeWorkspace);
       conversations.insert(0, conv);
       _messages[conv.id] = [];
       activeId = conv.id;
@@ -977,10 +1081,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateProfile({String? name, String? mail, String? roleValue}) {
+  void updateProfile({String? name, String? mail}) {
     if (name != null && name.trim().isNotEmpty) api.username = name.trim();
     if (mail != null) email = mail.trim();
-    if (roleValue != null) role = roleValue;
     notifyListeners();
   }
 }
