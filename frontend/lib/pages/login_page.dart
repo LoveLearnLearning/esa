@@ -366,6 +366,10 @@ class _LoginPageState extends State<LoginPage>
                 ),
                 const SizedBox(height: 26),
                 _modeSwitch(),
+                if (!_isRegister) ...[
+                  const SizedBox(height: 12),
+                  _guestLoginButton(),
+                ],
                 const SizedBox(height: 24),
                 if (_isRegister) ...[
                   _fieldLabel('账号类型'),
@@ -854,7 +858,7 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
-  Widget _GuestLoginButton() {
+  Widget _guestLoginButton() {
     return OutlinedButton.icon(
       onPressed: _enterAsGuest,
       style: OutlinedButton.styleFrom(

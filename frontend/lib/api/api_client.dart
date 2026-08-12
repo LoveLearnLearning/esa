@@ -609,10 +609,7 @@ class ApiClient {
   // ---------- 对话分组 ----------
   Future<List<ChatGroup>> listGroups() async {
     if (kOfflineMode) return List.of(_offGroups);
-    final r = await http.get(
-      _uri('/groups'),
-      headers: _headers(auth: true),
-    );
+    final r = await http.get(_uri('/groups'), headers: _headers(auth: true));
     if (r.statusCode != 200) _fail(r);
     final list = _decode(r) as List;
     return list
@@ -651,8 +648,8 @@ class ApiClient {
         'name': name,
         'description': description,
         'custom_instruction': customInstruction,
-        if (style != null) 'style': style,
-        if (tone != null) 'tone': tone,
+        'style': ?style,
+        'tone': ?tone,
       }),
     );
     if (r.statusCode != 201) _fail(r);
@@ -681,9 +678,7 @@ class ApiClient {
         style: identical(style, groupFieldUnset)
             ? current.style
             : style as String?,
-        tone: identical(tone, groupFieldUnset)
-            ? current.tone
-            : tone as String?,
+        tone: identical(tone, groupFieldUnset) ? current.tone : tone as String?,
         conversationCount: current.conversationCount,
         createdAt: current.createdAt,
         updatedAt: DateTime.now(),
@@ -692,9 +687,9 @@ class ApiClient {
       return updated;
     }
     final body = <String, dynamic>{
-      if (name != null) 'name': name,
-      if (description != null) 'description': description,
-      if (customInstruction != null) 'custom_instruction': customInstruction,
+      'name': ?name,
+      'description': ?description,
+      'custom_instruction': ?customInstruction,
       if (!identical(style, groupFieldUnset)) 'style': style as String?,
       if (!identical(tone, groupFieldUnset)) 'tone': tone as String?,
     };
@@ -791,9 +786,7 @@ class ApiClient {
     final r = await http.post(
       _uri('/conversations'),
       headers: _headers(auth: true),
-      body: jsonEncode({
-        if (groupId != null) 'group_id': groupId,
-      }),
+      body: jsonEncode({'group_id': ?groupId}),
     );
     if (r.statusCode != 201) _fail(r);
     return ChatConversation.fromJson(_decode(r) as Map<String, dynamic>);
@@ -1383,9 +1376,8 @@ class ApiClient {
     return (_decode(response) as List)
         .whereType<Map>()
         .map(
-          (item) => TeachingSubmission.fromJson(
-            Map<String, dynamic>.from(item),
-          ),
+          (item) =>
+              TeachingSubmission.fromJson(Map<String, dynamic>.from(item)),
         )
         .toList();
   }
@@ -1486,9 +1478,8 @@ class ApiClient {
     return (_decode(response) as List)
         .whereType<Map>()
         .map(
-          (item) => TeachingAssignment.fromJson(
-            Map<String, dynamic>.from(item),
-          ),
+          (item) =>
+              TeachingAssignment.fromJson(Map<String, dynamic>.from(item)),
         )
         .toList();
   }

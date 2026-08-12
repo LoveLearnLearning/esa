@@ -746,10 +746,9 @@ class AppState extends ChangeNotifier {
         customInstruction: group.customInstruction,
         style: group.style,
         tone: group.tone,
-        conversationCount: (group.conversationCount + delta).clamp(
-          0,
-          1 << 30,
-        ).toInt(),
+        conversationCount: (group.conversationCount + delta)
+            .clamp(0, 1 << 30)
+            .toInt(),
         createdAt: group.createdAt,
         updatedAt: group.updatedAt,
       );
@@ -853,7 +852,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> newConversation() async {
-    if (_activeConversationIsEmpty) return;
+    // Keep the initial blank state empty unless a group selection explicitly
+    // asks for a conversation to be created inside it.
+    if (activeId == null && activeGroupId == null) return;
+    if (activeId != null && _activeConversationIsEmpty) return;
     // 先立即切换到空白页，避免网络延迟期间还看到旧对话。
     activeId = null;
     notifyListeners();

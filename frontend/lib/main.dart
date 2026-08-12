@@ -38,7 +38,9 @@ class _EsaAppState extends State<EsaApp> {
 
   @override
   void dispose() {
-    _app.dispose();
+    // Callers that inject an AppState own its lifecycle (tests and embedded
+    // shells); EsaApp only owns the state it creates itself.
+    if (widget.state == null) _app.dispose();
     super.dispose();
   }
 

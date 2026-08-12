@@ -956,3 +956,252 @@ class ChatGroup {
         DateTime.now(),
   );
 }
+
+/// Teaching API models. The backend uses snake_case identifiers while the
+/// Flutter pages use small typed view models for the classroom workflow.
+class TeachingClass {
+  const TeachingClass({
+    required this.id,
+    required this.name,
+    required this.course,
+    this.term = '',
+    this.description = '',
+    this.status = 'active',
+    this.studentCount = 0,
+    this.openAssignmentCount = 0,
+    this.membershipStatus,
+    this.membershipId,
+    this.teacherUsername,
+  });
+
+  final String id;
+  final String name;
+  final String course;
+  final String term;
+  final String description;
+  final String status;
+  final int studentCount;
+  final int openAssignmentCount;
+  final String? membershipStatus;
+  final String? membershipId;
+  final String? teacherUsername;
+
+  factory TeachingClass.fromJson(Map<String, dynamic> json) => TeachingClass(
+    id: (json['class_id'] ?? json['id'])?.toString() ?? '',
+    name: json['name']?.toString() ?? '',
+    course: (json['canonical_course'] ?? json['course'])?.toString() ?? '',
+    term: json['term']?.toString() ?? '',
+    description: json['description']?.toString() ?? '',
+    status: json['status']?.toString() ?? 'active',
+    studentCount: (json['student_count'] as num?)?.toInt() ?? 0,
+    openAssignmentCount: (json['open_assignment_count'] as num?)?.toInt() ?? 0,
+    membershipStatus: json['membership_status']?.toString(),
+    membershipId: json['membership_id']?.toString(),
+    teacherUsername: json['teacher_username']?.toString(),
+  );
+}
+
+class TeachingQuestion {
+  const TeachingQuestion({
+    required this.id,
+    required this.prompt,
+    required this.maxPoints,
+    this.questionType = 'short_answer',
+    this.rubric = '',
+    this.referenceAnswer = '',
+    this.kpId,
+  });
+
+  final String id;
+  final String prompt;
+  final double maxPoints;
+  final String questionType;
+  final String rubric;
+  final String referenceAnswer;
+  final String? kpId;
+
+  String get type => questionType;
+
+  factory TeachingQuestion.fromJson(Map<String, dynamic> json) =>
+      TeachingQuestion(
+        id: (json['question_id'] ?? json['id'])?.toString() ?? '',
+        prompt: json['prompt']?.toString() ?? '',
+        maxPoints: (json['max_points'] as num?)?.toDouble() ?? 0,
+        questionType: json['question_type']?.toString() ?? 'short_answer',
+        rubric: json['rubric']?.toString() ?? '',
+        referenceAnswer: json['reference_answer']?.toString() ?? '',
+        kpId: json['kp_id']?.toString(),
+      );
+}
+
+class TeachingAssignment {
+  const TeachingAssignment({
+    required this.id,
+    required this.classId,
+    required this.className,
+    required this.course,
+    required this.title,
+    required this.instructions,
+    required this.status,
+    required this.totalPoints,
+    required this.submittedCount,
+    required this.studentCount,
+    required this.questions,
+    this.dueAt,
+    this.submissionId,
+    this.submissionStatus,
+    this.analysisStatus,
+    this.feedbackStatus,
+    this.totalScore,
+    this.submittedAt,
+  });
+
+  final String id;
+  final String classId;
+  final String className;
+  final String course;
+  final String title;
+  final String instructions;
+  final String status;
+  final double totalPoints;
+  final int submittedCount;
+  final int studentCount;
+  final List<TeachingQuestion> questions;
+  final DateTime? dueAt;
+  final String? submissionId;
+  final String? submissionStatus;
+  final String? analysisStatus;
+  final String? feedbackStatus;
+  final double? totalScore;
+  final DateTime? submittedAt;
+
+  factory TeachingAssignment.fromJson(Map<String, dynamic> json) {
+    DateTime? date(String key) =>
+        DateTime.tryParse(json[key]?.toString() ?? '');
+    final rawQuestions = json['questions'];
+    return TeachingAssignment(
+      id: (json['assignment_id'] ?? json['id'])?.toString() ?? '',
+      classId: json['class_id']?.toString() ?? '',
+      className: json['class_name']?.toString() ?? '',
+      course: (json['canonical_course'] ?? json['course'])?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      instructions: json['instructions']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'draft',
+      totalPoints: (json['total_points'] as num?)?.toDouble() ?? 0,
+      submittedCount: (json['submitted_count'] as num?)?.toInt() ?? 0,
+      studentCount: (json['student_count'] as num?)?.toInt() ?? 0,
+      questions: rawQuestions is List
+          ? rawQuestions
+                .whereType<Map>()
+                .map(
+                  (item) => TeachingQuestion.fromJson(
+                    Map<String, dynamic>.from(item),
+                  ),
+                )
+                .toList()
+          : const [],
+      dueAt: date('due_at'),
+      submissionId: json['submission_id']?.toString(),
+      submissionStatus: json['submission_status']?.toString(),
+      analysisStatus: json['analysis_status']?.toString(),
+      feedbackStatus: json['feedback_status']?.toString(),
+      totalScore: (json['total_score'] as num?)?.toDouble(),
+      submittedAt: date('submitted_at'),
+    );
+  }
+}
+
+class TeachingAnswer {
+  TeachingAnswer({
+    required this.id,
+    required this.questionId,
+    required this.prompt,
+    required this.answerText,
+    required this.maxPoints,
+    this.aiScore,
+    this.finalScore,
+    this.feedback = '',
+    this.kpId,
+    Map<String, dynamic>? raw,
+  }) : raw = raw ?? <String, dynamic>{};
+
+  final String id;
+  final String questionId;
+  final String prompt;
+  final String answerText;
+  final double maxPoints;
+  final double? aiScore;
+  final double? finalScore;
+  final String feedback;
+  final String? kpId;
+  final Map<String, dynamic> raw;
+
+  factory TeachingAnswer.fromJson(Map<String, dynamic> json) => TeachingAnswer(
+    id: (json['answer_id'] ?? json['id'])?.toString() ?? '',
+    questionId: json['question_id']?.toString() ?? '',
+    prompt: json['prompt']?.toString() ?? '',
+    answerText: json['answer_text']?.toString() ?? '',
+    maxPoints: (json['max_points'] as num?)?.toDouble() ?? 0,
+    aiScore: (json['ai_score'] as num?)?.toDouble(),
+    finalScore: (json['final_score'] as num?)?.toDouble(),
+    feedback: (json['final_feedback'] ?? json['ai_feedback'])?.toString() ?? '',
+    kpId: (json['final_kp_id'] ?? json['ai_kp_id'] ?? json['kp_id'])
+        ?.toString(),
+    raw: Map<String, dynamic>.from(json),
+  );
+}
+
+class TeachingSubmission {
+  TeachingSubmission({
+    required this.id,
+    required this.studentUsername,
+    required this.analysisStatus,
+    required this.feedbackStatus,
+    required this.answers,
+    this.assignmentId = '',
+    this.studentId = '',
+    this.status = 'submitted',
+    this.totalScore,
+    this.submittedAt,
+    this.version = 1,
+  });
+
+  final String id;
+  final String assignmentId;
+  final String studentId;
+  final String studentUsername;
+  final String status;
+  final String analysisStatus;
+  final String feedbackStatus;
+  final double? totalScore;
+  final DateTime? submittedAt;
+  final int version;
+  final List<TeachingAnswer> answers;
+
+  factory TeachingSubmission.fromJson(Map<String, dynamic> json) {
+    DateTime? date(String key) =>
+        DateTime.tryParse(json[key]?.toString() ?? '');
+    final rawAnswers = json['answers'];
+    return TeachingSubmission(
+      id: (json['submission_id'] ?? json['id'])?.toString() ?? '',
+      assignmentId: json['assignment_id']?.toString() ?? '',
+      studentId: json['student_id']?.toString() ?? '',
+      studentUsername: json['student_username']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'submitted',
+      analysisStatus: json['analysis_status']?.toString() ?? 'pending',
+      feedbackStatus: json['feedback_status']?.toString() ?? 'unpublished',
+      totalScore: (json['total_score'] as num?)?.toDouble(),
+      submittedAt: date('submitted_at'),
+      version: (json['version'] as num?)?.toInt() ?? 1,
+      answers: rawAnswers is List
+          ? rawAnswers
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      TeachingAnswer.fromJson(Map<String, dynamic>.from(item)),
+                )
+                .toList()
+          : const [],
+    );
+  }
+}

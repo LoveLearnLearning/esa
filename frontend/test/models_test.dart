@@ -133,4 +133,67 @@ void main() {
 
     expect(conversation.groupId, 'group-1');
   });
+
+  test(
+    'teaching models parse backend identifiers and nested workflow data',
+    () {
+      final classroom = TeachingClass.fromJson({
+        'class_id': 'class-1',
+        'name': '数据结构 1 班',
+        'canonical_course': '数据结构',
+        'student_count': 12,
+        'open_assignment_count': 2,
+        'membership_status': 'active',
+      });
+      final assignment = TeachingAssignment.fromJson({
+        'assignment_id': 'assignment-1',
+        'class_id': 'class-1',
+        'class_name': '数据结构 1 班',
+        'canonical_course': '数据结构',
+        'title': '二分查找诊断',
+        'status': 'published',
+        'total_points': 10,
+        'questions': [
+          {
+            'question_id': 'question-1',
+            'question_type': 'code',
+            'prompt': '实现二分查找',
+            'max_points': 10,
+          },
+        ],
+      });
+      final submission = TeachingSubmission.fromJson({
+        'submission_id': 'submission-1',
+        'assignment_id': 'assignment-1',
+        'student_username': 'student',
+        'analysis_status': 'completed',
+        'feedback_status': 'published',
+        'answers': [
+          {
+            'answer_id': 'answer-1',
+            'question_id': 'question-1',
+            'prompt': '实现二分查找',
+            'answer_text': '代码答案',
+            'max_points': 10,
+            'ai_score': 7,
+            'ai_feedback': 'AI 建议',
+            'ai_kp_id': 'kp-ai',
+            'final_score': 8,
+            'final_feedback': '教师反馈',
+            'final_kp_id': 'kp-final',
+          },
+        ],
+      });
+
+      expect(classroom.id, 'class-1');
+      expect(classroom.course, '数据结构');
+      expect(classroom.studentCount, 12);
+      expect(assignment.id, 'assignment-1');
+      expect(assignment.questions.single.type, 'code');
+      expect(submission.studentUsername, 'student');
+      expect(submission.answers.single.finalScore, 8);
+      expect(submission.answers.single.feedback, '教师反馈');
+      expect(submission.answers.single.kpId, 'kp-final');
+    },
+  );
 }

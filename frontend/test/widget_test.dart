@@ -10,6 +10,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/api/api_client.dart';
 import 'package:frontend/main.dart';
+import 'package:frontend/models/models.dart';
 import 'package:frontend/state/app_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -39,7 +40,6 @@ void main() {
     expect(find.text('记住登录'), findsOneWidget);
   });
 
-<<<<<<< HEAD
   testWidgets('renders a startup page while the remembered session loads', (
     tester,
   ) async {
@@ -54,7 +54,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('邮箱或用户名'), findsOneWidget);
-=======
+  });
+
   testWidgets('guest login enters the main shell without a backend session', (
     tester,
   ) async {
@@ -68,8 +69,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(state.username, '游客');
-    expect(find.text('你好，游客'), findsOneWidget);
->>>>>>> b3f476f15bc13d437df12bb1a0ce673baf5bec37
+    expect(find.text('你好，游客。'), findsOneWidget);
   });
 
   testWidgets('submits login form from password keyboard action', (
@@ -99,6 +99,7 @@ void main() {
       'name@example.com',
     );
 
+    await tester.ensureVisible(accountField);
     await tester.tap(accountField);
     await tester.pump();
 
