@@ -2,13 +2,19 @@
 
 > 在这里记录前后端网络 endpoint 前端照此对接 后端改动接口时同步更新本文档
 >
-> 最后核对：2026-08-09。
+> 最后核对：2026-08-12。
 
-- Base URL（`python -m backend.main`）: `http://127.0.0.1:51024`
+- Base URL（`python -m backend.main`）: `http://127.0.0.1:51024/api`
+- 生产 Base URL: `https://esa.lovelearnlearning.cn/api`
 - 开发启动命令: `uvicorn backend.core.web.webAPI:app --host 0.0.0.0 --port 51024 --reload`
 - 交互式调试: 启动后访问 `http://127.0.0.1:51024/docs`
 - 通信格式: 普通接口使用 JSON 流式消息接口响应 `text/event-stream`
 - 时间格式: 统一为 UTC ISO 8601 字符串 例如 `2026-07-24T05:22:08.123456+00:00`
+
+下文标题中的 `/auth/...`、`/conversations/...`、`/me/...` 均为相对 Base URL
+的路径。例如 `POST /auth/login` 的实际 canonical wire path 是
+`POST /api/auth/login`。迁移期仍可通过 `ESA_ENABLE_LEGACY_API_ROUTES=true`
+启用旧的无 `/api` 前缀别名，但新客户端不得依赖这些别名。
 
 ## 认证约定
 
@@ -34,6 +40,20 @@ Authorization: Bearer <session_id>
 | 404    | 资源不存在或不属于当前用户                                     |
 | 409    | 资源冲突，如用户名已存在、分组达到上限或同一对话上一轮仍在生成 |
 | 422    | 请求体校验不通过 由 pydantic 自动返回                          |
+
+---
+
+## 运维接口
+
+### GET /health — 存活检查
+
+无需认证，成功响应 `200`：
+
+```json
+{ "status": "ok" }
+```
+
+该接口只表示 HTTP 进程存活，不访问数据库，也不调用主模型、辅助模型或 RAG。
 
 ---
 
@@ -561,14 +581,27 @@ Profile V2 的显式字段统一更新入口，可部分更新：
 
 ## Web 部署约定
 
-推荐把 Flutter Web 编译时的 `ESA_API_BASE` 设置为 `/api`，再由 Nginx 反向代理到 `127.0.0.1:51024`。SSE 代理必须关闭缓冲：
+Flutter Web 默认使用同源 `/api`。Nginx 必须把 `/api` 前缀原样转发到后端；
+`proxy_pass` 末尾不能带 `/`，否则会剥离后端所需的 `/api`。SSE 代理必须关闭缓冲：
 
 ```nginx
-location /api/ {
-    proxy_pass http://127.0.0.1:51024/;
+# 运维指标不应通过公网前端域名暴露。
+location ^~ /api/internal/ {
+    return 404;
+}
+
+location ^~ /api/ {
+    proxy_pass http://115.29.197.244:51024;
     proxy_http_version 1.1;
+    client_max_body_size 20m;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
     proxy_buffering off;
     proxy_cache off;
     proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
 }
 ```

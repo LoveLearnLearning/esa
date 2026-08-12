@@ -159,6 +159,54 @@ def _choice_from_env(
     return value
 
 
+def _csv_from_env(name: str, default: str) -> tuple[str, ...]:
+    """Read a comma-separated environment setting without accepting blanks."""
+
+    values = tuple(
+        item.strip()
+        for item in os.environ.get(name, default).split(",")
+        if item.strip()
+    )
+    if not values:
+        raise ValueError(f"{name} must contain at least one value")
+    return values
+
+
+# HTTP deployment.  The public browser-facing URL is supplied by Nginx; the
+# application itself owns the /api prefix so the proxy must preserve the URI.
+API_PREFIX: str = "/api"
+SERVER_HOST: str = _str_from_env("HOST", "0.0.0.0")
+SERVER_PORT: int = _int_from_env("PORT", 51024)
+if SERVER_PORT > 65535:
+    raise ValueError("PORT must be <= 65535")
+
+CORS_ALLOWED_ORIGINS: tuple[str, ...] = _csv_from_env(
+    "ESA_CORS_ALLOWED_ORIGINS",
+    "https://esa.lovelearnlearning.cn",
+)
+if "*" in CORS_ALLOWED_ORIGINS:
+    raise ValueError("ESA_CORS_ALLOWED_ORIGINS must list explicit origins")
+TRUSTED_HOSTS: tuple[str, ...] = _csv_from_env(
+    "ESA_TRUSTED_HOSTS",
+    "esa.lovelearnlearning.cn,localhost,127.0.0.1",
+)
+if "*" in TRUSTED_HOSTS:
+    raise ValueError("ESA_TRUSTED_HOSTS must list explicit hosts")
+# Never trust arbitrary clients to supply X-Forwarded-* headers.  Production
+# must set this to the actual reverse-proxy source IP; loopback remains the
+# safe local default.
+FORWARDED_ALLOW_IPS: tuple[str, ...] = _csv_from_env(
+    "ESA_FORWARDED_ALLOW_IPS",
+    "127.0.0.1",
+)
+if "*" in FORWARDED_ALLOW_IPS:
+    raise ValueError("ESA_FORWARDED_ALLOW_IPS must list trusted proxy addresses")
+ENABLE_LEGACY_API_ROUTES: bool = _bool_from_env(
+    "ESA_ENABLE_LEGACY_API_ROUTES",
+    True,
+)
+
+
 # collection and deployment
 RAG_ENABLED: bool = _bool_from_env("RAG_ENABLED", False)
 RAG_COLLECTION_ID = "collection_e55166f798ef1c361c72de9a"

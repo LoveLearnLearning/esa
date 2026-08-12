@@ -1,5 +1,5 @@
 // ESA 后端 REST 客户端 —— 按 API.md 对齐
-// Base URL 可用 --dart-define=ESA_API_BASE=http://x.x.x.x:8000 覆盖
+// Base URL 可用 --dart-define=ESA_API_BASE=https://example.com/api 覆盖
 // 认证：登录拿到 session_id 之后所有请求带 Authorization: Bearer <session_id>
 //
 // 当 config.dart 里 kOfflineMode == true 时 所有方法走本地假数据 完全不发网络请求
@@ -10,6 +10,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../config.dart';
 import '../models/models.dart';
@@ -36,12 +37,20 @@ class ChatStreamEvent {
 
 class ApiClient {
   ApiClient({String? baseUrl})
-    : baseUrl =
-          baseUrl ??
-          const String.fromEnvironment(
-            'ESA_API_BASE',
-            defaultValue: 'http://115.29.197.244:51024',
-          );
+    : baseUrl = _normalizeBaseUrl(baseUrl ?? _defaultBaseUrl);
+
+  static const String _configuredBaseUrl = String.fromEnvironment(
+    'ESA_API_BASE',
+  );
+
+  static String get _defaultBaseUrl {
+    if (_configuredBaseUrl.isNotEmpty) return _configuredBaseUrl;
+    // Web 始终同源访问 Nginx；原生客户端使用同一个 HTTPS 公网入口。
+    return kIsWeb ? '/api' : 'https://esa.lovelearnlearning.cn/api';
+  }
+
+  static String _normalizeBaseUrl(String value) =>
+      value.endsWith('/') ? value.substring(0, value.length - 1) : value;
 
   final String baseUrl;
 
@@ -424,7 +433,8 @@ class ApiClient {
         courses: (data['courses'] as List? ?? const [])
             .whereType<Map>()
             .map(
-              (item) => ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
+              (item) =>
+                  ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
             )
             .toList(),
         skippedCount: (data['skipped_count'] as num?)?.toInt() ?? 0,

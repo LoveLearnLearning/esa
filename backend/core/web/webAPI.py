@@ -3,9 +3,11 @@
 from contextlib import asynccontextmanager
 import logging
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from backend.agent.agent import Agent
 from backend.agent.memories.kg_loader import ensure_knowledge_graph_seeded
@@ -33,6 +35,7 @@ from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.utils.config import (
     AGENT_LOOP_TIME,
+    API_PREFIX,
     AUXILIARY_MODEL_BASE_URL,
     AUXILIARY_MODEL_NAME,
     AUXILIARY_MODEL_REQUEST_TIMEOUT,
@@ -44,6 +47,9 @@ from backend.core.utils.config import (
     CONVERSATION_COMPRESSION_MIN_NEW_MESSAGES,
     CONVERSATION_COMPRESSION_SCAN_INTERVAL,
     CONVERSATION_OFFLINE_AFTER_SECONDS,
+    CORS_ALLOWED_ORIGINS,
+    ENABLE_LEGACY_API_ROUTES,
+    FORWARDED_ALLOW_IPS,
     MODEL_DTYPE,
     MODEL_GPU_MEMORY_UTILIZATION,
     MODEL_KV_CACHE_DTYPE,
@@ -53,6 +59,7 @@ from backend.core.utils.config import (
     MODEL_PATH,
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
+    TRUSTED_HOSTS,
     validate_startup_config,
 )
 from backend.core.web.routers import (
@@ -161,52 +168,114 @@ async def lifespan(app: FastAPI):
         app.state.agent.llm_provider.engine.shutdown()
 
 
-app = FastAPI(lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+business_router = APIRouter()
+business_router.include_router(auth.router)
+business_router.include_router(chat.router)
+business_router.include_router(groups.router)
+business_router.include_router(preferences.router)
+business_router.include_router(preferences.profile_router)
+business_router.include_router(preferences.memory_settings_router)
+business_router.include_router(learning.router)
+business_router.include_router(schedule.router)
+business_router.include_router(memories.router)
 
-app.include_router(auth.router)
-app.include_router(chat.router)
-app.include_router(groups.router)
-app.include_router(preferences.router)
-app.include_router(preferences.profile_router)
-app.include_router(preferences.memory_settings_router)
-app.include_router(learning.router)
-app.include_router(schedule.router)
-app.include_router(memories.router)
+api_router = APIRouter()
+api_router.include_router(business_router)
 
 
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
+@api_router.get("/health", tags=["operations"])
+def health() -> dict[str, str]:
+    """Process liveness only; deliberately avoids models, RAG, and databases."""
+
+    return {"status": "ok"}
 
 
-@app.get("/internal/metrics")
-def get_internal_metrics():
-    """暴露画像系统可观测性指标 供运维排查
+@api_router.get("/internal/metrics", tags=["operations"])
+def get_internal_metrics(request: Request):
+    """Expose the in-process profile metrics snapshot for operations."""
 
-    返回 ProfileBuilder 的 ProfileMetrics 快照 进程内计数器。
-    多 Worker 部署时各进程独立 需通过服务发现聚合或改用 Redis 共享。
-    """
-    profile_builder = getattr(app.state, "profile_builder", None)
+    profile_builder = getattr(request.app.state, "profile_builder", None)
     if profile_builder is None:
         return {"error": "profile_builder not initialized"}
     return profile_builder.get_metrics_snapshot()
 
 
-@app.get("/internal/metrics/prometheus", response_class=PlainTextResponse)
-def get_metrics_prometheus():
-    """Prometheus 文本展示格式端点
+@api_router.get(
+    "/internal/metrics/prometheus",
+    response_class=PlainTextResponse,
+    tags=["operations"],
+)
+def get_metrics_prometheus(request: Request):
+    """Expose profile metrics using the Prometheus text format."""
 
-    在 prometheus.yml 中配置 scrape 此端点即可采集画像指标。
-    多 Worker 部署时 每个 Worker 独立计数 Prometheus 自动聚合。
-    """
-    profile_builder = getattr(app.state, "profile_builder", None)
+    profile_builder = getattr(request.app.state, "profile_builder", None)
     if profile_builder is None:
         return "profile_builder not initialized\n"
     return profile_builder.get_metrics_prometheus()
+
+
+def create_app(
+    *,
+    app_lifespan=lifespan,
+    api_prefix: str = API_PREFIX,
+    cors_allowed_origins: tuple[str, ...] = CORS_ALLOWED_ORIGINS,
+    trusted_hosts: tuple[str, ...] = TRUSTED_HOSTS,
+    forwarded_allow_ips: tuple[str, ...] = FORWARDED_ALLOW_IPS,
+    enable_legacy_routes: bool = ENABLE_LEGACY_API_ROUTES,
+) -> FastAPI:
+    """Build the HTTP application with an explicit reverse-proxy contract."""
+
+    application = FastAPI(lifespan=app_lifespan)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(cors_allowed_origins),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Accept",
+            "Authorization",
+            "Cache-Control",
+            "Content-Type",
+            "Last-Event-ID",
+        ],
+    )
+    application.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=list(trusted_hosts),
+        www_redirect=False,
+    )
+    application.add_middleware(
+        ProxyHeadersMiddleware,
+        trusted_hosts=list(forwarded_allow_ips),
+    )
+
+    # Canonical production API.  Nginx must preserve this prefix upstream.
+    application.include_router(api_router, prefix=api_prefix)
+
+    # Keep pre-existing clients functional during deployment.  These aliases
+    # are deliberately omitted from OpenAPI so /api remains canonical.
+    if enable_legacy_routes:
+        application.include_router(business_router, include_in_schema=False)
+        application.add_api_route(
+            "/internal/metrics",
+            get_internal_metrics,
+            methods=["GET"],
+            include_in_schema=False,
+        )
+        application.add_api_route(
+            "/internal/metrics/prometheus",
+            get_metrics_prometheus,
+            methods=["GET"],
+            response_class=PlainTextResponse,
+            include_in_schema=False,
+        )
+
+    return application
+
+
+app = create_app()
+
+
+@app.get("/", include_in_schema=False)
+def read_root():
+    return {"Hello": "World"}
