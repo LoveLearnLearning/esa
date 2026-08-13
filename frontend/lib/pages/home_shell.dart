@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../api/api_client.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
@@ -257,12 +258,6 @@ class _GlobalRail extends StatelessWidget {
           icon: LucideIcons.messageCircle,
           tooltip: '学习助手',
           active: section == StudentSection.assistant,
-          onTap: () => onSelect(StudentSection.assistant),
-        ),
-        _RailButton(
-          icon: LucideIcons.search,
-          tooltip: '搜索',
-          active: false,
           onTap: () => onSelect(StudentSection.assistant),
         ),
         _RailButton(
@@ -734,57 +729,20 @@ class _StudentContextRail extends StatelessWidget {
     final app = AppScope.of(context);
     final research = section == StudentSection.research;
     final recent = app.conversations.take(3).map((item) => item.title).toList();
-    final courses = app.scheduleCourses
-        .map((item) => item.name)
-        .where((name) => name.trim().isNotEmpty)
-        .toSet()
-        .take(3)
-        .toList();
+    final courses = app.learningCourses.take(3).toList();
     final projects = app.researchProjects
         .take(3)
         .map((item) => item.name)
+        .toList();
+    final weakLines = app.masteryReport?.weakPoints
+        .take(3)
+        .map((point) => '${point.name}  ${_masteryLabel(point.masteryLevel)}')
         .toList();
     if (!research && !conversationActive) {
       return const _LearningOverviewRail();
     }
     if (research && researchProject != null) {
-      return ListView(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        children: [
-          _ContextCard(
-            icon: LucideIcons.clipboardList,
-            title: '项目上下文',
-            lines: [
-              '研究主题  ${researchProject!.name}',
-              '研究阶段  模型构建与验证',
-              '团队成员  个人项目',
-            ],
-          ),
-          const _ContextCard(
-            icon: LucideIcons.database,
-            title: '数据集',
-            lines: ['ADNI 1/2/3 MRI', 'ADNI FDG-PET', 'ADNI 认知量表'],
-          ),
-          const _ContextCard(
-            icon: LucideIcons.lightbulb,
-            title: '当前假设',
-            lines: ['多模态融合显著优于单模态', 'rs-fMRI 连接特征贡献最大'],
-          ),
-          const _ContextCard(
-            icon: LucideIcons.bookMarked,
-            title: '关键参考文献',
-            lines: [
-              'Zhou et al., NeuroImage, 2023',
-              'Chen et al., Med Image Anal, 2022',
-            ],
-          ),
-          const _ContextCard(
-            icon: LucideIcons.files,
-            title: '文件',
-            lines: ['项目计划.pdf', '数据预处理脚本.ipynb', '实验记录.md'],
-          ),
-        ],
-      );
+      return _ResearchProjectContextRail(project: researchProject!);
     }
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -806,26 +764,159 @@ class _StudentContextRail extends StatelessWidget {
                 icon: LucideIcons.bookOpen,
                 title: '学习上下文',
                 lines: [
-                  courses.isEmpty ? '当前课程  暂未选择' : '当前课程  ${courses.first}',
-                  '当前知识点  极限与连续',
+                  courses.isEmpty
+                      ? '当前课程  暂未添加'
+                      : '当前课程  ${courses.first.name}',
+                  if (app.masteryReport?.weakPoints.firstOrNull
+                      case final point?)
+                    '优先复习  ${point.name}',
                 ],
               ),
-              const _ProgressContextCard(),
-              const _ContextCard(
-                icon: LucideIcons.circleAlert,
-                title: '薄弱知识点',
-                lines: [
-                  '无穷小与无穷大             48%',
-                  '函数的连续性判定           56%',
-                  '极限的运算法则             61%',
-                ],
+              _ProgressContextCard(
+                report: app.masteryReport,
+                loading: app.loadingLearningOverview,
               ),
               _ContextCard(
-                icon: LucideIcons.files,
-                title: '相关资料',
-                lines: recent.isEmpty ? const ['暂无相关资料'] : recent,
+                icon: LucideIcons.circleAlert,
+                title: '薄弱知识点',
+                lines: weakLines == null || weakLines.isEmpty
+                    ? const ['暂无薄弱知识点记录']
+                    : weakLines,
+              ),
+              _ContextCard(
+                icon: LucideIcons.messageSquare,
+                title: '最近对话',
+                lines: recent.isEmpty ? const ['暂无最近对话'] : recent,
               ),
             ],
+    );
+  }
+}
+
+String _masteryLabel(double? value) =>
+    value == null ? '未评估' : '${value.round()}%';
+
+String _projectStatusLabel(String status) => switch (status) {
+  'active' => '进行中',
+  'archived' => '已归档',
+  'completed' => '已完成',
+  _ => status.isEmpty ? '未设置' : status,
+};
+
+String _dateLabel(DateTime value) =>
+    '${value.year.toString().padLeft(4, '0')}-'
+    '${value.month.toString().padLeft(2, '0')}-'
+    '${value.day.toString().padLeft(2, '0')}';
+
+class _ResearchProjectContextRail extends StatefulWidget {
+  const _ResearchProjectContextRail({required this.project});
+
+  final ResearchProject project;
+
+  @override
+  State<_ResearchProjectContextRail> createState() =>
+      _ResearchProjectContextRailState();
+}
+
+class _ResearchProjectContextRailState
+    extends State<_ResearchProjectContextRail> {
+  bool _loading = true;
+  List<ResearchDataset> _datasets = const [];
+  List<ResearchDocument> _documents = const [];
+  List<FrontierTrackingJob> _frontierJobs = const [];
+  String? _error;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loading) unawaited(_load());
+  }
+
+  @override
+  void didUpdateWidget(covariant _ResearchProjectContextRail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.project.id != widget.project.id) {
+      _loading = true;
+      unawaited(_load());
+    }
+  }
+
+  Future<void> _load() async {
+    final api = AppScope.of(context).api;
+    try {
+      final values = await Future.wait([
+        api.listResearchDatasets(widget.project.id),
+        api.listResearchDocuments(widget.project.id),
+        api.listFrontierJobs(widget.project.id),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _datasets = values[0] as List<ResearchDataset>;
+        _documents = values[1] as List<ResearchDocument>;
+        _frontierJobs = values[2] as List<FrontierTrackingJob>;
+        _error = null;
+        _loading = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.detail;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = '项目数据暂时无法加载';
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      children: [
+        if (_error != null)
+          _ContextCard(
+            icon: LucideIcons.circleAlert,
+            title: '加载失败',
+            lines: [_error!],
+          ),
+        _ContextCard(
+          icon: LucideIcons.clipboardList,
+          title: '项目上下文',
+          lines: [
+            '研究主题  ${widget.project.name}',
+            '项目状态  ${_projectStatusLabel(widget.project.status)}',
+            '最近更新  ${_dateLabel(widget.project.updatedAt)}',
+            if (widget.project.description.trim().isNotEmpty)
+              widget.project.description.trim(),
+          ],
+        ),
+        _ContextCard(
+          icon: LucideIcons.database,
+          title: '数据集',
+          lines: _datasets.isEmpty
+              ? const ['暂无数据集']
+              : _datasets.take(3).map((item) => item.name).toList(),
+        ),
+        _ContextCard(
+          icon: LucideIcons.bookMarked,
+          title: '前沿检索',
+          lines: _frontierJobs.isEmpty
+              ? const ['暂无前沿检索记录']
+              : _frontierJobs.take(3).map((item) => item.query).toList(),
+        ),
+        _ContextCard(
+          icon: LucideIcons.files,
+          title: '项目文档',
+          lines: _documents.isEmpty
+              ? const ['暂无项目文档']
+              : _documents.take(3).map((item) => item.title).toList(),
+        ),
+      ],
     );
   }
 }
@@ -870,7 +961,10 @@ class _ContextCard extends StatelessWidget {
 }
 
 class _ProgressContextCard extends StatelessWidget {
-  const _ProgressContextCard();
+  const _ProgressContextCard({required this.report, required this.loading});
+
+  final MasteryReport? report;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -886,23 +980,26 @@ class _ProgressContextCard extends StatelessWidget {
       children: [
         Text('掌握度', style: context.texts.titleMedium),
         const SizedBox(height: 12),
-        const Row(
-          children: [
-            Text(
-              '72',
-              style: TextStyle(
-                fontSize: 34,
-                color: Color(0xFF4387FF),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            Text('%', style: TextStyle(color: Color(0xFF4387FF))),
-          ],
+        Text(
+          loading ? '加载中' : _masteryLabel(report?.averageMastery),
+          style: const TextStyle(
+            fontSize: 28,
+            color: Color(0xFF4387FF),
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 8),
-        const LinearProgressIndicator(value: .72, minHeight: 5),
+        LinearProgressIndicator(
+          value: report == null
+              ? 0
+              : (report!.averageMastery / 100).clamp(0.0, 1.0),
+          minHeight: 5,
+        ),
         const SizedBox(height: 8),
-        Text('较上次提升 8%  ↑', style: context.texts.bodySmall),
+        Text(
+          report == null ? '暂无学习证据' : '已评估 ${report!.totalPoints} 个知识点',
+          style: context.texts.bodySmall,
+        ),
       ],
     ),
   );
@@ -912,30 +1009,54 @@ class _LearningOverviewRail extends StatelessWidget {
   const _LearningOverviewRail();
 
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    children: [
-      _ContextCard(
-        icon: LucideIcons.lightbulb,
-        title: '今日学习建议',
-        lines: const ['专注于理解核心概念，', '通过练习巩固知识点', '今日目标进度          3/6 完成'],
-      ),
-      _ContextCard(
-        icon: LucideIcons.notebookTabs,
-        title: '最近课程',
-        lines: const [
-          '高等数学          进度 72%',
-          '线性代数          进度 46%',
-          '概率论与数理统计  进度 28%',
-        ],
-      ),
-      _ContextCard(
-        icon: LucideIcons.chartNoAxesColumnIncreasing,
-        title: '学习状态',
-        lines: const ['本周学习时长', '18.6 小时', '连续学习天数  7 天', '知识点掌握率  72%'],
-      ),
-    ],
-  );
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final report = app.masteryReport;
+    final courses = app.learningCourses;
+    final suggestions = report?.weakPoints.isNotEmpty == true
+        ? [
+            '优先复习 ${report!.weakPoints.first.name}',
+            '当前有 ${report.weakPoints.length} 个薄弱知识点',
+          ]
+        : const ['暂无针对性建议，完成练习后会生成'];
+    final courseLines = courses.isEmpty
+        ? const ['还没有添加学习课程']
+        : courses
+              .take(3)
+              .map(
+                (course) =>
+                    '${course.name}  ${_masteryLabel(course.averageMastery)}',
+              )
+              .toList();
+    final stateLines = report == null
+        ? [app.learningOverviewError ?? '暂无学习状态记录']
+        : [
+            '已评估知识点  ${report.totalPoints}',
+            '平均掌握度  ${_masteryLabel(report.averageMastery)}',
+            '待加强知识点  ${report.weakPoints.length}',
+            '待复习知识点  ${report.stalePoints.length}',
+          ];
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      children: [
+        _ContextCard(
+          icon: LucideIcons.lightbulb,
+          title: '今日学习建议',
+          lines: suggestions,
+        ),
+        _ContextCard(
+          icon: LucideIcons.notebookTabs,
+          title: '最近课程',
+          lines: courseLines,
+        ),
+        _ContextCard(
+          icon: LucideIcons.chartNoAxesColumnIncreasing,
+          title: '学习状态',
+          lines: stateLines,
+        ),
+      ],
+    );
+  }
 }
 
 class _MobileHeader extends StatelessWidget {
@@ -956,16 +1077,13 @@ class _MobileHeader extends StatelessWidget {
         const _EsaWordmark(),
         const SizedBox(width: 14),
         Expanded(
-          child: Text(
-            switch (section) {
-              StudentSection.research => '研究空间',
-              StudentSection.knowledge => '知识地图',
-              StudentSection.assignments => '作业',
-              StudentSection.schedule => '课表',
-              StudentSection.assistant => '学习空间',
-            },
-            style: context.texts.headlineSmall,
-          ),
+          child: Text(switch (section) {
+            StudentSection.research => '研究空间',
+            StudentSection.knowledge => '知识地图',
+            StudentSection.assignments => '作业',
+            StudentSection.schedule => '课表',
+            StudentSection.assistant => '学习空间',
+          }, style: context.texts.headlineSmall),
         ),
         IconButton(
           tooltip: '通知',

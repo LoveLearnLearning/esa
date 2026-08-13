@@ -1,7 +1,7 @@
 # backend/core/web/webAPI.py
 
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,10 +14,13 @@ from backend.agent.memories.kg_loader import ensure_knowledge_graph_seeded
 from backend.agent.memories.kp_resolver import KnowledgePointResolver
 from backend.agent.memories.paths import USER_DB_PATH
 from backend.agent.memories.profile_builder import ProfileBuilder
-from backend.agent.mm import MMConfig, MultimodalIngestionService, MultimodalSessionService
+from backend.agent.mm import (
+    MMConfig,
+    MultimodalIngestionService,
+    MultimodalSessionService,
+)
 from backend.agent.rag.lifecycle import RAGApplicationLifecycle
 from backend.agent.tools.learning_tools import evidence_store
-from backend.agent.tools.attachment_tools import AttachmentToolContext
 from backend.agent.tools.mastery_tools import kg_store, mastery_store
 from backend.core.services.auth_service import AuthService
 from backend.core.services.auxiliary_llm_service import AuxiliaryLLMClient
@@ -44,12 +47,12 @@ from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.research_data_store import ResearchDataStore
 from backend.core.stores.research_project_store import ResearchProjectStore
 from backend.core.stores.research_writing_store import ResearchWritingStore
-from backend.core.stores.session_store import SessionStore
 from backend.core.stores.schedule_store import ScheduleStore
-from backend.core.stores.user_store import UserStore
+from backend.core.stores.session_store import SessionStore
+from backend.core.stores.teaching_store import TeachingStore
 from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.stores.user_presence_store import UserPresenceStore
-from backend.core.stores.teaching_store import TeachingStore
+from backend.core.stores.user_store import UserStore
 from backend.core.utils.config import (
     AGENT_LOOP_TIME,
     API_PREFIX,
@@ -65,7 +68,6 @@ from backend.core.utils.config import (
     CONVERSATION_COMPRESSION_SCAN_INTERVAL,
     CONVERSATION_OFFLINE_AFTER_SECONDS,
     CORS_ALLOWED_ORIGINS,
-    ENABLE_LEGACY_API_ROUTES,
     EMAIL_CODE_COOLDOWN_SECONDS,
     EMAIL_CODE_EMAIL_HOURLY_LIMIT,
     EMAIL_CODE_IP_HOURLY_LIMIT,
@@ -75,6 +77,7 @@ from backend.core.utils.config import (
     EMAIL_SERVICE_TOKEN,
     EMAIL_SERVICE_URL,
     EMAIL_VERIFICATION_SECRET,
+    ENABLE_LEGACY_API_ROUTES,
     FORWARDED_ALLOW_IPS,
     MODEL_DTYPE,
     MODEL_GPU_MEMORY_UTILIZATION,
@@ -90,6 +93,7 @@ from backend.core.utils.config import (
     USER_ATTACHMENT_ROOT,
     validate_startup_config,
 )
+from backend.core.web.concurrency import ConversationTurnCoordinator
 from backend.core.web.routers import (
     auth,
     chat,
@@ -97,14 +101,13 @@ from backend.core.web.routers import (
     learning,
     memories,
     preferences,
-    schedule,
     research,
     research_capabilities,
+    schedule,
     student_teaching,
     teaching,
     workspaces,
 )
-from backend.core.web.concurrency import ConversationTurnCoordinator
 
 DB_PATH = USER_DB_PATH
 logger = logging.getLogger(__name__)
@@ -143,7 +146,11 @@ async def lifespan(app: FastAPI):
     app.state.email_verification_service = None
     if EMAIL_PROVIDER == "service":
         # validate_startup_config has already guaranteed these values.
-        if not EMAIL_SERVICE_URL or not EMAIL_SERVICE_TOKEN or not EMAIL_VERIFICATION_SECRET:
+        if (
+            not EMAIL_SERVICE_URL
+            or not EMAIL_SERVICE_TOKEN
+            or not EMAIL_VERIFICATION_SECRET
+        ):
             raise RuntimeError("邮件服务配置不完整")
         app.state.email_verification_service = EmailVerificationService(
             store=app.state.email_verification_store,
@@ -171,9 +178,7 @@ async def lifespan(app: FastAPI):
         timeout=AUXILIARY_MODEL_REQUEST_TIMEOUT,
     )
     if not await app.state.auxiliary_llm_client.is_ready():
-        logger.warning(
-            "辅助 Qwen 服务尚未就绪，课表解析与离线上下文压缩将暂时不可用"
-        )
+        logger.warning("辅助 Qwen 服务尚未就绪，课表解析与离线上下文压缩将暂时不可用")
     app.state.research_writing_service = ResearchWritingService(
         app.state.research_writing_store,
         app.state.auxiliary_llm_client,

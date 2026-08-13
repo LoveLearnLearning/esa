@@ -781,30 +781,54 @@ class _MobileLearningInsights extends StatelessWidget {
   const _MobileLearningInsights();
 
   @override
-  Widget build(BuildContext context) => Column(
-    children: const [
-      _InsightPanel(
-        icon: LucideIcons.lightbulb,
-        title: '今日学习建议',
-        lines: [
-          '专注于理解核心概念，通过练习巩固知识点',
-          '目标进度                              3/6 完成',
-        ],
-      ),
-      SizedBox(height: 10),
-      _InsightPanel(
-        icon: LucideIcons.notebookTabs,
-        title: '最近课程',
-        lines: ['高等数学      进度 72%', '线性代数      进度 46%'],
-      ),
-      SizedBox(height: 10),
-      _InsightPanel(
-        icon: LucideIcons.chartNoAxesColumnIncreasing,
-        title: '学习状态',
-        lines: ['本周学习时长  18.6 小时', '知识点掌握率  72%'],
-      ),
-    ],
-  );
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final report = app.masteryReport;
+    final courses = app.learningCourses;
+    final suggestions = report?.weakPoints.isNotEmpty == true
+        ? [
+            '优先复习 ${report!.weakPoints.first.name}',
+            '待加强知识点 ${report.weakPoints.length} 个',
+          ]
+        : const ['暂无针对性建议，完成练习后会生成'];
+    final courseLines = courses.isEmpty
+        ? const ['还没有添加学习课程']
+        : courses
+              .take(2)
+              .map(
+                (course) =>
+                    '${course.name}  ${course.averageMastery == null ? '未评估' : '${course.averageMastery!.round()}%'}',
+              )
+              .toList();
+    final stateLines = report == null
+        ? [app.learningOverviewError ?? '暂无学习状态记录']
+        : [
+            '已评估知识点 ${report.totalPoints}',
+            '平均掌握度 ${report.averageMastery.round()}%',
+            '待复习知识点 ${report.stalePoints.length}',
+          ];
+    return Column(
+      children: [
+        _InsightPanel(
+          icon: LucideIcons.lightbulb,
+          title: '今日学习建议',
+          lines: suggestions,
+        ),
+        const SizedBox(height: 10),
+        _InsightPanel(
+          icon: LucideIcons.notebookTabs,
+          title: '最近课程',
+          lines: courseLines,
+        ),
+        const SizedBox(height: 10),
+        _InsightPanel(
+          icon: LucideIcons.chartNoAxesColumnIncreasing,
+          title: '学习状态',
+          lines: stateLines,
+        ),
+      ],
+    );
+  }
 }
 
 class _InsightPanel extends StatelessWidget {

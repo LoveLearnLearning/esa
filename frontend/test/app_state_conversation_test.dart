@@ -44,6 +44,30 @@ class _InterruptedToolApi extends _ConversationApi {
   Future<List<ChatMessage>> getMessages(String conversationId) async => [];
 }
 
+class _LearningOverviewApi extends _ConversationApi {
+  @override
+  Future<List<LearningCourseSummary>> getLearningCourses() async => const [
+    LearningCourseSummary(
+      name: '数据结构',
+      totalPoints: 24,
+      evaluatedPoints: 10,
+      weakPoints: 2,
+      reviewPoints: 1,
+      averageMastery: 68,
+    ),
+  ];
+
+  @override
+  Future<MasteryReport> getMasteryReport({String course = ''}) async =>
+      const MasteryReport(
+        totalPoints: 10,
+        averageMastery: 68,
+        weakPoints: [MasteryPoint(name: '图的遍历', masteryLevel: 42)],
+        strongPoints: [],
+        stalePoints: [],
+      );
+}
+
 void main() {
   test('空白新对话不会被重复创建', () async {
     final api = _ConversationApi()
@@ -82,5 +106,21 @@ void main() {
     final tool = state.messages.singleWhere((message) => message.isTool);
     expect(tool.toolRunning, isFalse);
     expect(tool.text, '工具调用未完成：连接已中断');
+  });
+
+  test('学习概览从后端课程与掌握度接口加载', () async {
+    final api = _LearningOverviewApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+
+    await state.loadLearningOverview();
+
+    expect(state.learningOverviewError, isNull);
+    expect(state.learningCourses.single.name, '数据结构');
+    expect(state.masteryReport?.averageMastery, 68);
+    expect(state.masteryReport?.weakPoints.single.name, '图的遍历');
   });
 }
