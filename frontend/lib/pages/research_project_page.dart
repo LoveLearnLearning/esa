@@ -430,10 +430,10 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
         _ResearchPanel(
           icon: LucideIcons.target,
           title: '项目目标',
-          trailing: const _ProjectProgress(),
+          trailing: _ProjectProgress(project: widget.project),
           child: Text(
             widget.project.description.isEmpty
-                ? '完善研究问题、数据、方法和评价口径，形成可验证的研究结论。'
+                ? '暂无项目描述'
                 : widget.project.description,
             style: context.texts.bodyMedium?.copyWith(color: context.n.n600),
           ),
@@ -459,8 +459,12 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
             runSpacing: 8,
             children: [
               _Tag(text: '研究主题  ${widget.project.name}'),
-              const _Tag(text: '研究阶段  模型构建与验证'),
-              const _Tag(text: '团队成员  个人项目'),
+              _Tag(
+                text: '项目状态  ${_researchStatusLabel(widget.project.status)}',
+              ),
+              _Tag(
+                text: '最近更新  ${_researchDateLabel(widget.project.updatedAt)}',
+              ),
             ],
           ),
         ),
@@ -481,7 +485,7 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
         const _ResearchPanel(
           icon: LucideIcons.lightbulb,
           title: '当前假设',
-          child: Text('在这里记录可检验的研究假设，并在实验与数据分析后更新支持状态。'),
+          child: Text('后端暂未提供结构化研究假设记录。'),
         ),
         const SizedBox(height: 12),
         _ResearchPanel(
@@ -828,7 +832,9 @@ class _ResearchPanel extends StatelessWidget {
 }
 
 class _ProjectProgress extends StatelessWidget {
-  const _ProjectProgress();
+  const _ProjectProgress({required this.project});
+
+  final ResearchProject project;
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -836,17 +842,33 @@ class _ProjectProgress extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('进度', style: context.texts.bodySmall),
+        Text('项目状态', style: context.texts.bodySmall),
         const SizedBox(height: 3),
-        const Text('62%', style: TextStyle(fontSize: 26)),
-        const SizedBox(height: 8),
-        const LinearProgressIndicator(value: .62, minHeight: 5),
+        Text(
+          _researchStatusLabel(project.status),
+          style: const TextStyle(fontSize: 22),
+        ),
         const SizedBox(height: 10),
-        Text('预计完成\n2025-07-30', style: context.texts.bodySmall),
+        Text(
+          '最近更新\n${_researchDateLabel(project.updatedAt)}',
+          style: context.texts.bodySmall,
+        ),
       ],
     ),
   );
 }
+
+String _researchStatusLabel(String status) => switch (status) {
+  'active' => '进行中',
+  'archived' => '已归档',
+  'completed' => '已完成',
+  _ => status.isEmpty ? '未设置' : status,
+};
+
+String _researchDateLabel(DateTime value) =>
+    '${value.year.toString().padLeft(4, '0')}-'
+    '${value.month.toString().padLeft(2, '0')}-'
+    '${value.day.toString().padLeft(2, '0')}';
 
 class _PaperRow extends StatelessWidget {
   const _PaperRow({required this.title});

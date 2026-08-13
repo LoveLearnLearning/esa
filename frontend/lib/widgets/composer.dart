@@ -379,6 +379,10 @@ class _ComposerState extends State<Composer> {
           'tiff',
         ],
         withData: false,
+        // file_picker 的 Web 端在 withData=false 时不会填充 bytes；此时
+        // 再通过 file.xFile.openRead() 会在插件内部对 bytes 使用 `!` 并崩溃。
+        // 直接请求分块流既能避免空值，也不会把大附件一次性读入内存。
+        withReadStream: kIsWeb,
         cancelUploadOnWindowBlur: false,
       );
       final file = result?.files.singleOrNull;
@@ -390,9 +394,10 @@ class _ComposerState extends State<Composer> {
         return;
       }
       setState(() => _uploadingAttachment = true);
+      final stream = file.readStream ?? file.xFile.openRead();
       final attachment = await widget.onUploadAttachment!(
         file.name,
-        file.xFile.openRead(),
+        stream,
         file.size,
       );
       if (!mounted) return;

@@ -58,6 +58,10 @@ class AppState extends ChangeNotifier {
   UserPreferences preferences = const UserPreferences();
   UserProfile userProfile = const UserProfile();
   bool loadingProfile = false;
+  List<LearningCourseSummary> learningCourses = const [];
+  MasteryReport? masteryReport;
+  bool loadingLearningOverview = false;
+  String? learningOverviewError;
   bool restoringSession;
 
   // ---- 对话数据 ----
@@ -186,6 +190,7 @@ class AppState extends ChangeNotifier {
       loadConversations(),
       loadGroups(),
       loadPreferencesAndProfile(),
+      loadLearningOverview(),
     ]);
     if (conversations.isNotEmpty) {
       await setActive(conversations.first.id);
@@ -367,6 +372,10 @@ class AppState extends ChangeNotifier {
     busy = false;
     preferences = const UserPreferences();
     userProfile = const UserProfile();
+    learningCourses = const [];
+    masteryReport = null;
+    loadingLearningOverview = false;
+    learningOverviewError = null;
     email = '';
     notifyListeners();
   }
@@ -1295,6 +1304,28 @@ class AppState extends ChangeNotifier {
       if (!_handled401(e)) rethrow;
     } finally {
       loadingProfile = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadLearningOverview() async {
+    if (!api.isLoggedIn || loadingLearningOverview) return;
+    loadingLearningOverview = true;
+    learningOverviewError = null;
+    notifyListeners();
+    try {
+      final values = await Future.wait([
+        api.getLearningCourses(),
+        api.getMasteryReport(),
+      ]);
+      learningCourses = values[0] as List<LearningCourseSummary>;
+      masteryReport = values[1] as MasteryReport;
+    } on ApiException catch (error) {
+      if (!_handled401(error)) learningOverviewError = error.detail;
+    } catch (_) {
+      learningOverviewError = '学习概览暂时无法加载';
+    } finally {
+      loadingLearningOverview = false;
       notifyListeners();
     }
   }
