@@ -33,6 +33,7 @@ from backend.core.services.frontier_tracking_service import FrontierTrackingServ
 from backend.core.services.research_data_service import ResearchDataService
 from backend.core.services.research_writing_service import ResearchWritingService
 from backend.core.services.teaching_analysis_service import TeachingAnalysisService
+from backend.core.services.user_attachment_service import UserAttachmentStore
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.conversation_summary_store import ConversationSummaryStore
 from backend.core.stores.email_verification_store import EmailVerificationStore
@@ -120,14 +121,11 @@ async def lifespan(app: FastAPI):
     app.state.chat_store = ChatStore(DB_PATH)
     app.state.session_store = SessionStore(DB_PATH)
     app.state.profile_store = ProfileStore(DB_PATH)
-<<<<<<< HEAD
     app.state.user_attachment_store = UserAttachmentStore(
         USER_ATTACHMENT_ROOT,
         max_bytes=USER_ATTACHMENT_MAX_BYTES,
     )
-=======
     app.state.teaching_store = TeachingStore(DB_PATH)
->>>>>>> b3f476f15bc13d437df12bb1a0ce673baf5bec37
 
     run_migrations(DB_PATH)
     app.state.research_project_store = ResearchProjectStore(DB_PATH)
