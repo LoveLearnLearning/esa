@@ -146,13 +146,10 @@ class _ComposerState extends State<Composer> {
     );
 
     return Container(
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: context.n.divider)),
-      ),
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+      padding: EdgeInsets.fromLTRB(narrow ? 0 : 18, 12, narrow ? 0 : 18, 14),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: EsaSpace.contentMaxWidth),
+          constraints: const BoxConstraints(maxWidth: 900),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -194,7 +191,7 @@ class _ComposerState extends State<Composer> {
                         builder: (context, _) => TextField(
                           controller: _controller,
                           focusNode: _focus,
-                          minLines: 2,
+                          minLines: narrow ? 1 : 2,
                           maxLines: 6,
                           onChanged: (_) => setState(() {}),
                           style: inputStyle,
@@ -211,7 +208,7 @@ class _ComposerState extends State<Composer> {
                             // x 坐标开始绘制，光标会盖住首字形成“重影”。
                             hintText: _focus.hasFocus
                                 ? null
-                                : widget.taskMode?.hint ?? '问点什么…',
+                                : widget.taskMode?.hint ?? '向 ESA 提问任何学习问题…',
                             hintStyle: inputStyle.copyWith(
                               color: context.n.n600,
                             ),
@@ -225,6 +222,10 @@ class _ComposerState extends State<Composer> {
                         _attachButton(context),
                         const SizedBox(width: EsaSpace.sm),
                         _markdownButton(context),
+                        const SizedBox(width: EsaSpace.sm),
+                        _formulaButton(context),
+                        const SizedBox(width: EsaSpace.sm),
+                        _imageButton(context),
                         if (!narrow) ...[
                           const SizedBox(width: EsaSpace.md),
                           Text(
@@ -454,36 +455,57 @@ class _ComposerState extends State<Composer> {
 
   Widget _sendButton(BuildContext context) {
     final enabled = _canSend;
-    return Opacity(
-      opacity: enabled ? 1 : 0.45,
-      child: Material(
-        color: EsaColors.accent,
-        borderRadius: BorderRadius.circular(EsaRadii.pill),
-        child: InkWell(
-          onTap: enabled ? _send : null,
-          borderRadius: BorderRadius.circular(EsaRadii.pill),
-          child: Container(
-            height: 32,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            alignment: Alignment.center,
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '发送',
-                  style: TextStyle(
-                    color: EsaColors.onAccent,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
+    return Semantics(
+      button: true,
+      label: '发送',
+      enabled: enabled,
+      child: Tooltip(
+        message: '发送',
+        child: Opacity(
+          opacity: enabled ? 1 : 0.45,
+          child: Material(
+            color: EsaColors.accent,
+            borderRadius: BorderRadius.circular(10),
+            child: InkWell(
+              onTap: enabled ? _send : null,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                child: const Icon(
+                  LucideIcons.send,
+                  size: 19,
+                  color: EsaColors.onAccent,
                 ),
-                SizedBox(width: 6),
-                Icon(LucideIcons.arrowUp, size: 16, color: EsaColors.onAccent),
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+
+  Widget _formulaButton(BuildContext context) => Tooltip(
+    message: '插入公式',
+    child: SizedBox(
+      width: 32,
+      height: 32,
+      child: Center(
+        child: Text(
+          'ƒ₍ₓ₎',
+          style: TextStyle(fontSize: 17, color: context.n.n600),
+        ),
+      ),
+    ),
+  );
+
+  Widget _imageButton(BuildContext context) => Tooltip(
+    message: '添加图片',
+    child: SizedBox(
+      width: 32,
+      height: 32,
+      child: Icon(LucideIcons.imagePlus, size: 18, color: context.n.n600),
+    ),
+  );
 }

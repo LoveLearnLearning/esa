@@ -7,9 +7,14 @@ import '../theme/esa_context.dart';
 import 'research_project_page.dart';
 
 class ResearchWorkspacePage extends StatefulWidget {
-  const ResearchWorkspacePage({super.key, required this.onOpenChat});
+  const ResearchWorkspacePage({
+    super.key,
+    required this.onOpenChat,
+    this.onOpenProject,
+  });
 
   final VoidCallback onOpenChat;
+  final ValueChanged<ResearchProject>? onOpenProject;
 
   @override
   State<ResearchWorkspacePage> createState() => _ResearchWorkspacePageState();
@@ -153,6 +158,10 @@ class _ResearchWorkspacePageState extends State<ResearchWorkspacePage> {
                 itemBuilder: (context, index) => _ProjectCard(
                   project: app.researchProjects[index],
                   onOpen: () async {
+                    if (widget.onOpenProject != null) {
+                      widget.onOpenProject!(app.researchProjects[index]);
+                      return;
+                    }
                     await Navigator.of(context).push<void>(
                       MaterialPageRoute(
                         builder: (_) => AppScope(

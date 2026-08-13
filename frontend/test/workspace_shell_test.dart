@@ -90,8 +90,14 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.byKey(const ValueKey('workspace-switcher')), findsOneWidget);
-    await state.switchWorkspace(WorkspaceType.research);
+    expect(
+      find.byKey(const ValueKey('student-research-destination')),
+      findsOneWidget,
+    );
+    expect(find.text('教学'), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey('student-research-destination')),
+    );
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(state.activeWorkspace, WorkspaceType.research);
@@ -114,9 +120,9 @@ void main() {
 
     await tester.tap(find.text('多智能体科研'));
     await tester.pumpAndSettle();
-    expect(find.text('领域前沿追踪'), findsOneWidget);
-    expect(find.text('学术写作'), findsOneWidget);
-    expect(find.text('数据分析'), findsOneWidget);
+    expect(find.text('项目目标'), findsOneWidget);
+    expect(find.text('Papers'), findsOneWidget);
+    expect(find.text('Data'), findsOneWidget);
     expect(find.text('讲解一道题'), findsNothing);
   });
 }

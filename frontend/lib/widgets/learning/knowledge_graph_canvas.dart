@@ -5,7 +5,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../models/models.dart';
 import '../../theme/esa_context.dart';
-import '../../theme/esa_theme.dart';
 
 class KnowledgeGraphCanvas extends StatefulWidget {
   const KnowledgeGraphCanvas({
@@ -19,72 +18,47 @@ class KnowledgeGraphCanvas extends StatefulWidget {
   final List<KnowledgeMapEdge> edges;
   final ValueChanged<KnowledgeMapNode> onNodeTap;
 
-  static const nodeWidth = 172.0;
-  static const nodeHeight = 88.0;
-  static const horizontalGap = 92.0;
-  static const verticalGap = 28.0;
-  static const padding = 52.0;
-
   @override
   State<KnowledgeGraphCanvas> createState() => _KnowledgeGraphCanvasState();
 }
 
 class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas> {
-  final _transformation = TransformationController();
-  double _fitScale = 1.0;
-  Size? _fittedViewport;
+  KnowledgeMapNode? _selected;
+  double _scale = 1;
 
-  @override
-  void dispose() {
-    _transformation.dispose();
-    super.dispose();
-  }
-
-  Map<String, Rect> _layout() {
-    final byLevel = <int, List<KnowledgeMapNode>>{};
-    for (final node in widget.visibleNodes) {
-      byLevel.putIfAbsent(node.level, () => []).add(node);
+  KnowledgeMapNode get _center {
+    if (_selected != null && widget.visibleNodes.contains(_selected)) {
+      return _selected!;
     }
-    for (final nodes in byLevel.values) {
-      nodes.sort((a, b) => a.name.compareTo(b.name));
+    final scores = <String, int>{};
+    for (final edge in widget.edges) {
+      scores[edge.from] = (scores[edge.from] ?? 0) + 1;
+      scores[edge.to] = (scores[edge.to] ?? 0) + 1;
     }
-    final result = <String, Rect>{};
-    final levels = byLevel.keys.toList()..sort();
-    for (var column = 0; column < levels.length; column++) {
-      final nodes = byLevel[levels[column]]!;
-      for (var row = 0; row < nodes.length; row++) {
-        result[nodes[row].id] = Rect.fromLTWH(
-          KnowledgeGraphCanvas.padding +
-              column *
-                  (KnowledgeGraphCanvas.nodeWidth +
-                      KnowledgeGraphCanvas.horizontalGap),
-          KnowledgeGraphCanvas.padding +
-              row *
-                  (KnowledgeGraphCanvas.nodeHeight +
-                      KnowledgeGraphCanvas.verticalGap),
-          KnowledgeGraphCanvas.nodeWidth,
-          KnowledgeGraphCanvas.nodeHeight,
-        );
-      }
-    }
-    return result;
-  }
-
-  /// 首次（及视口尺寸变化时）把整张图缩放到刚好放进屏幕。
-  /// 手机竖屏上多列图谱宽度轻松超过 2000px，不缩放的话只能看到左上角。
-  /// 在帧后回调里改 controller，避免构建期间触发依赖方重建。
-  void _scheduleFitScale(Size viewport, double width, double height) {
-    if (_fittedViewport == viewport) return;
-    _fittedViewport = viewport;
-    final fit = math.min(
-      math.min(viewport.width / width, viewport.height / height),
-      1.0,
+    return widget.visibleNodes.reduce(
+      (a, b) => (scores[a.id] ?? 0) >= (scores[b.id] ?? 0) ? a : b,
     );
-    _fitScale = fit.clamp(0.3, 1.0);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _transformation.value = Matrix4.diagonal3Values(_fitScale, _fitScale, 1);
-    });
+  }
+
+  List<KnowledgeMapNode> get _satellites {
+    final center = _center;
+    final adjacent = <String>{};
+    for (final edge in widget.edges) {
+      if (edge.from == center.id) adjacent.add(edge.to);
+      if (edge.to == center.id) adjacent.add(edge.from);
+    }
+    final ordered = [
+      ...widget.visibleNodes.where((node) => adjacent.contains(node.id)),
+      ...widget.visibleNodes.where(
+        (node) => node.id != center.id && !adjacent.contains(node.id),
+      ),
+    ];
+    return ordered.take(8).toList();
+  }
+
+  void _open(KnowledgeMapNode node) {
+    setState(() => _selected = node);
+    widget.onNodeTap(node);
   }
 
   @override
@@ -92,211 +66,308 @@ class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas> {
     if (widget.visibleNodes.isEmpty) {
       return const Center(child: Text('当前筛选条件下没有知识点'));
     }
-    final rects = _layout();
-    final width = rects.values.fold<double>(
-      720,
-      (value, rect) => math.max(value, rect.right + KnowledgeGraphCanvas.padding),
-    );
-    final height = rects.values.fold<double>(
-      480,
-      (value, rect) =>
-          math.max(value, rect.bottom + KnowledgeGraphCanvas.padding),
-    );
     return LayoutBuilder(
       builder: (context, constraints) {
-        _scheduleFitScale(
-          Size(constraints.maxWidth, constraints.maxHeight),
-          width,
-          height,
+        final compact = constraints.maxWidth < 600;
+        final graphSize = Size(
+          compact ? constraints.maxWidth : math.max(680, constraints.maxWidth),
+          compact
+              ? math.max(330, constraints.maxHeight)
+              : math.max(520, constraints.maxHeight),
         );
-        return InteractiveViewer(
-          transformationController: _transformation,
-          minScale: 0.3,
-          maxScale: 2.4,
-          boundaryMargin: const EdgeInsets.all(260),
-          constrained: false,
-          child: SizedBox(
-            width: width,
-            height: height,
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: _KnowledgeEdgePainter(
-                      rects: rects,
-                      edges: widget.edges,
-                      color: context.n.n500,
-                    ),
+        final center = Offset(
+          graphSize.width / 2,
+          graphSize.height / 2 - (compact ? 2 : 12),
+        );
+        final radiusX = math.min(
+          graphSize.width * (compact ? .34 : .34),
+          compact ? 135.0 : 310.0,
+        );
+        final radiusY = math.min(
+          graphSize.height * (compact ? .30 : .34),
+          compact ? 128.0 : 205.0,
+        );
+        final satellitePositions = <String, Offset>{};
+        final satellites = _satellites;
+        for (var i = 0; i < satellites.length; i++) {
+          final angle = -math.pi / 2 + i * (math.pi * 2 / satellites.length);
+          satellitePositions[satellites[i].id] = Offset(
+            center.dx + math.cos(angle) * radiusX,
+            center.dy + math.sin(angle) * radiusY,
+          );
+        }
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: CustomPaint(painter: const _DotBackgroundPainter()),
+            ),
+            ClipRect(
+              child: Transform.scale(
+                scale: _scale,
+                child: SizedBox(
+                  width: graphSize.width,
+                  height: graphSize.height,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: CustomPaint(
+                          painter: _RadialEdgePainter(
+                            center: center,
+                            satellites: satellitePositions,
+                            edges: widget.edges,
+                            centerId: _center.id,
+                          ),
+                        ),
+                      ),
+                      _nodeAt(_center, center, primary: true),
+                      for (final node in satellites)
+                        _nodeAt(node, satellitePositions[node.id]!),
+                    ],
                   ),
                 ),
-                for (final node in widget.visibleNodes)
-                  Positioned.fromRect(
-                    rect: rects[node.id]!,
-                    child: _KnowledgeNodeCard(
-                      node: node,
-                      onTap: () => widget.onNodeTap(node),
-                    ),
-                  ),
-              ],
+              ),
             ),
-          ),
+            if (!compact)
+              Positioned(left: 14, bottom: 14, child: _GraphLegend()),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 12,
+              child: Center(
+                child: _ZoomBar(
+                  value: _scale,
+                  onChanged: (value) => setState(() => _scale = value),
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
   }
+
+  Widget _nodeAt(KnowledgeMapNode node, Offset point, {bool primary = false}) {
+    final compact = MediaQuery.sizeOf(context).width < 600;
+    final diameter = primary
+        ? (compact ? 86.0 : 112.0)
+        : (compact ? 62.0 : 82.0);
+    return Positioned(
+      left: point.dx - diameter / 2,
+      top: point.dy - diameter / 2,
+      width: diameter,
+      height: diameter,
+      child: _RadialNode(
+        node: node,
+        primary: primary,
+        onTap: () => _open(node),
+      ),
+    );
+  }
 }
 
-class _KnowledgeEdgePainter extends CustomPainter {
-  const _KnowledgeEdgePainter({
-    required this.rects,
-    required this.edges,
-    required this.color,
-  });
-
-  final Map<String, Rect> rects;
-  final List<KnowledgeMapEdge> edges;
-  final Color color;
+class _DotBackgroundPainter extends CustomPainter {
+  const _DotBackgroundPainter();
 
   @override
   void paint(Canvas canvas, Size size) {
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = const Color(0xFF030B15),
+    );
     final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-    for (final edge in edges) {
-      final source = rects[edge.from];
-      final target = rects[edge.to];
-      if (source == null || target == null) continue;
-      final start = Offset(source.right, source.center.dy);
-      final end = Offset(target.left, target.center.dy);
-      final control = math.max(28.0, (end.dx - start.dx).abs() * 0.45);
-      final path = Path()
-        ..moveTo(start.dx, start.dy)
-        ..cubicTo(
-          start.dx + control,
-          start.dy,
-          end.dx - control,
-          end.dy,
-          end.dx,
-          end.dy,
-        );
-      canvas.drawPath(path, paint);
-      const arrow = 6.0;
-      canvas.drawPath(
-        Path()
-          ..moveTo(end.dx - arrow, end.dy - arrow)
-          ..lineTo(end.dx, end.dy)
-          ..lineTo(end.dx - arrow, end.dy + arrow),
-        paint,
-      );
+      ..color = const Color(0xFF1458B8).withValues(alpha: .3);
+    for (double x = 14; x < size.width; x += 28) {
+      for (double y = 14; y < size.height; y += 28) {
+        canvas.drawCircle(Offset(x, y), .75, paint);
+      }
     }
   }
 
   @override
-  bool shouldRepaint(covariant _KnowledgeEdgePainter oldDelegate) =>
-      oldDelegate.rects != rects ||
-      oldDelegate.edges != edges ||
-      oldDelegate.color != color;
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _KnowledgeNodeCard extends StatelessWidget {
-  const _KnowledgeNodeCard({required this.node, required this.onTap});
+class _RadialEdgePainter extends CustomPainter {
+  const _RadialEdgePainter({
+    required this.center,
+    required this.satellites,
+    required this.edges,
+    required this.centerId,
+  });
+  final Offset center;
+  final Map<String, Offset> satellites;
+  final List<KnowledgeMapEdge> edges;
+  final String centerId;
 
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF6D7D91).withValues(alpha: .72)
+      ..strokeWidth = 1.2;
+    for (final entry in satellites.entries) {
+      final edge = edges.cast<KnowledgeMapEdge?>().firstWhere(
+        (item) =>
+            item?.from == centerId && item?.to == entry.key ||
+            item?.to == centerId && item?.from == entry.key,
+        orElse: () => null,
+      );
+      if (edge == null) {
+        paint.color = const Color(0xFF496078).withValues(alpha: .55);
+      } else {
+        paint.color = const Color(0xFF7D8DA0).withValues(alpha: .78);
+      }
+      final vector = entry.value - center;
+      final start = center + vector / vector.distance * 54;
+      final end = entry.value - vector / vector.distance * 42;
+      canvas.drawLine(start, end, paint);
+      canvas.drawCircle(end, 2.2, Paint()..color = paint.color);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RadialEdgePainter oldDelegate) => true;
+}
+
+class _RadialNode extends StatelessWidget {
+  const _RadialNode({
+    required this.node,
+    required this.primary,
+    required this.onTap,
+  });
   final KnowledgeMapNode node;
+  final bool primary;
   final VoidCallback onTap;
 
-  String get _statusText => switch (node.status) {
-    'weak' => '需加强',
-    'learning' => '学习中',
-    'good' => '较好',
-    'mastered' => '稳定掌握',
-    _ => '未评估',
-  };
-
-  Color _statusColor(BuildContext context) => switch (node.status) {
-    'weak' => context.scheme.error,
-    'learning' => const Color(0xFFF59E0B),
-    'good' => const Color(0xFF22C55E),
-    'mastered' => const Color(0xFF10B981),
-    _ => context.n.n600,
+  Color get _color => switch (node.status) {
+    'mastered' || 'good' => const Color(0xFF66C65A),
+    'weak' => const Color(0xFFFF981F),
+    _ => const Color(0xFF3478F6),
   };
 
   @override
-  Widget build(BuildContext context) {
-    final color = _statusColor(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(EsaRadii.card),
-        child: Ink(
-          padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(
-            color: context.n.n100,
-            borderRadius: BorderRadius.circular(EsaRadii.card),
-            border: Border.all(
-              color: node.status == 'weak'
-                  ? color.withValues(alpha: 0.72)
-                  : context.n.divider,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    customBorder: const CircleBorder(),
+    child: Container(
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(9),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFF071320),
+        border: Border.all(color: _color, width: primary ? 2.2 : 1.3),
+        boxShadow: [
+          BoxShadow(
+            color: _color.withValues(alpha: primary ? .65 : .25),
+            blurRadius: primary ? 28 : 14,
+            spreadRadius: primary ? 4 : 1,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      node.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.texts.titleMedium,
-                    ),
-                  ),
-                  if (node.needsReview)
-                    Icon(LucideIcons.clock3, size: 15, color: color),
-                ],
-              ),
-              const Spacer(),
-              Row(
-                children: [
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _statusText,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    node.masteryLevel == null
-                        ? '—'
-                        : '${node.masteryLevel!.round()}%',
-                    style: context.texts.bodySmall,
-                  ),
-                ],
-              ),
-            ],
+          BoxShadow(
+            color: _color.withValues(alpha: .7),
+            blurRadius: 0,
+            spreadRadius: primary ? -8 : -5,
+          ),
+        ],
+      ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          node.name,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: primary ? 20 : 15,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
+
+class _GraphLegend extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 124,
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xE60B1724),
+      border: Border.all(color: context.n.divider),
+      borderRadius: BorderRadius.circular(9),
+    ),
+    child: const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('图例', style: TextStyle(fontSize: 12)),
+        SizedBox(height: 8),
+        _LegendDot(color: Color(0xFF66C65A), label: '已掌握'),
+        _LegendDot(color: Color(0xFF3478F6), label: '掌握中'),
+        _LegendDot(color: Color(0xFFFF981F), label: '薄弱'),
+        _LegendDot(color: Color(0xFF8793A5), label: '未学习'),
+      ],
+    ),
+  );
+}
+
+class _LegendDot extends StatelessWidget {
+  const _LegendDot({required this.color, required this.label});
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 7),
+        Text(label, style: const TextStyle(fontSize: 10.5)),
+      ],
+    ),
+  );
+}
+
+class _ZoomBar extends StatelessWidget {
+  const _ZoomBar({required this.value, required this.onChanged});
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 42,
+    padding: const EdgeInsets.symmetric(horizontal: 9),
+    decoration: BoxDecoration(
+      color: const Color(0xE60B1724),
+      border: Border.all(color: context.n.divider),
+      borderRadius: BorderRadius.circular(9),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          onPressed: () => onChanged((value - .1).clamp(.65, 1.35)),
+          icon: const Icon(LucideIcons.minus, size: 16),
+        ),
+        SizedBox(
+          width: 48,
+          child: Text(
+            '${(value * 100).round()}%',
+            textAlign: TextAlign.center,
+            style: context.texts.bodySmall,
+          ),
+        ),
+        IconButton(
+          onPressed: () => onChanged((value + .1).clamp(.65, 1.35)),
+          icon: const Icon(LucideIcons.zoomIn, size: 16),
+        ),
+        IconButton(
+          onPressed: () => onChanged(1),
+          icon: const Icon(LucideIcons.locateFixed, size: 16),
+        ),
+      ],
+    ),
+  );
 }

@@ -19,11 +19,13 @@ class KnowledgeMapPage extends StatefulWidget {
     required this.onOpenChat,
     this.onOpenSchedule,
     this.api,
+    this.embedded = false,
   });
 
   final VoidCallback onOpenChat;
   final VoidCallback? onOpenSchedule;
   final ApiClient? api;
+  final bool embedded;
 
   @override
   State<KnowledgeMapPage> createState() => _KnowledgeMapPageState();
@@ -554,30 +556,62 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('个人知识地图'),
-      actions: [
-        IconButton(
-          tooltip: '刷新',
-          onPressed: _loading ? null : _loadCourses,
-          icon: const Icon(LucideIcons.refreshCw),
+  Widget build(BuildContext context) {
+    final desktop = MediaQuery.sizeOf(context).width >= 1040;
+    final content = Column(
+      children: [
+        if (widget.embedded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 14, 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text('高等数学知识地图', style: context.texts.headlineSmall),
+                ),
+                IconButton(
+                  tooltip: '刷新',
+                  onPressed: _loading ? null : _loadCourses,
+                  icon: const Icon(LucideIcons.refreshCw, size: 18),
+                ),
+              ],
+            ),
+          ),
+        if (!_loading && _error == null) _toolbar(),
+        Expanded(
+          child: desktop && widget.embedded
+              ? Row(
+                  children: [
+                    const SizedBox(width: 220, child: _ChapterOutline()),
+                    VerticalDivider(width: 1, color: context.n.divider),
+                    Expanded(child: _content()),
+                  ],
+                )
+              : _content(),
         ),
       ],
-    ),
-    body: Column(
-      children: [
-        if (!_loading && _error == null) _toolbar(),
-        Expanded(child: _content()),
-      ],
-    ),
-  );
+    );
+    if (widget.embedded) return content;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('个人知识地图'),
+        actions: [
+          IconButton(
+            tooltip: '刷新',
+            onPressed: _loading ? null : _loadCourses,
+            icon: const Icon(LucideIcons.refreshCw),
+          ),
+        ],
+      ),
+      body: content,
+    );
+  }
 
   Widget _toolbar() {
     final hasGraph = _map?.nodes.isNotEmpty == true;
+    final mobile = MediaQuery.sizeOf(context).width < 600;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
       decoration: BoxDecoration(
         color: context.scheme.surface,
         border: Border(bottom: BorderSide(color: context.n.divider)),
@@ -610,7 +644,7 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
             icon: const Icon(LucideIcons.plus, size: 17),
             label: const Text('添加课程'),
           ),
-          if (hasGraph) ...[
+          if (hasGraph && !mobile) ...[
             _roundedDropdown(
               value: _statusFilter,
               items: const [
@@ -641,6 +675,14 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
               shape: const StadiumBorder(),
             ),
             const KnowledgeMapLegend(),
+          ] else if (hasGraph) ...[
+            FilterChip(
+              selected: _weakOnly,
+              avatar: const Icon(LucideIcons.filter, size: 15),
+              label: const Text('只看问题'),
+              onSelected: (value) => setState(() => _weakOnly = value),
+              shape: const StadiumBorder(),
+            ),
           ],
         ],
       ),
@@ -683,6 +725,12 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
     if (_selectedCourse?.supported != true) return _unsupportedState();
     final data = _map;
     if (data == null || data.nodes.isEmpty) return _unsupportedState();
+    final mobile = MediaQuery.sizeOf(context).width < 600;
+    final selected = data.nodes.isEmpty
+        ? null
+        : data.nodes.reduce(
+            (a, b) => (a.masteryLevel ?? 0) >= (b.masteryLevel ?? 0) ? a : b,
+          );
     return Column(
       children: [
         if ((_selectedCourse?.evaluatedPoints ?? 0) == 0 && !_bannerDismissed)
@@ -694,6 +742,11 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
             onNodeTap: _openNode,
           ),
         ),
+        if (mobile && selected != null)
+          Flexible(
+            flex: 5,
+            child: _MobileKnowledgeSummary(node: selected),
+          ),
       ],
     );
   }
@@ -807,11 +860,7 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
           tooltip: '关闭提示',
           visualDensity: VisualDensity.compact,
           onPressed: () => unawaited(_dismissBanner()),
-          icon: Icon(
-            LucideIcons.x,
-            size: 16,
-            color: context.scheme.primary,
-          ),
+          icon: Icon(LucideIcons.x, size: 16, color: context.scheme.primary),
         ),
         const SizedBox(width: 4),
         Icon(LucideIcons.sparkles, color: context.scheme.primary, size: 20),
@@ -842,6 +891,152 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
           Text(_error!, textAlign: TextAlign.center),
           const SizedBox(height: 14),
           OutlinedButton(onPressed: _loadCourses, child: const Text('重新加载')),
+        ],
+      ),
+    ),
+  );
+}
+
+class _ChapterOutline extends StatelessWidget {
+  const _ChapterOutline();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    color: const Color(0xFF08131F),
+    padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+    child: ListView(
+      children: const [
+        Text('章节大纲', style: TextStyle(fontSize: 12, color: Color(0xFFAAB5C7))),
+        SizedBox(height: 12),
+        _OutlineRow(label: '第 1 章  函数与极限'),
+        _OutlineRow(label: '第 2 章  导数与微分', expanded: true),
+        _OutlineRow(label: '2.1 导数的概念', selected: true, inset: true),
+        _OutlineRow(label: '导数的定义', inset: true),
+        _OutlineRow(label: '可导与连续的关系', inset: true),
+        _OutlineRow(label: '2.2 求导法则', inset: true),
+        _OutlineRow(label: '2.3 高阶导数', inset: true),
+        _OutlineRow(label: '第 3 章  微分中值定理'),
+        _OutlineRow(label: '第 4 章  不定积分'),
+        _OutlineRow(label: '第 5 章  定积分'),
+        _OutlineRow(label: '第 6 章  多元函数微分学'),
+      ],
+    ),
+  );
+}
+
+class _OutlineRow extends StatelessWidget {
+  const _OutlineRow({
+    required this.label,
+    this.selected = false,
+    this.expanded = false,
+    this.inset = false,
+  });
+  final String label;
+  final bool selected;
+  final bool expanded;
+  final bool inset;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: EdgeInsets.only(left: inset ? 12 : 0, bottom: 3),
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+    decoration: BoxDecoration(
+      color: selected
+          ? EsaColors.accent.withValues(alpha: .18)
+          : Colors.transparent,
+      borderRadius: BorderRadius.circular(7),
+    ),
+    child: Row(
+      children: [
+        Icon(
+          inset
+              ? LucideIcons.circle
+              : expanded
+              ? LucideIcons.chevronDown
+              : LucideIcons.chevronRight,
+          size: inset ? 7 : 13,
+          color: selected ? const Color(0xFF5795FF) : context.n.n600,
+        ),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              color: selected ? const Color(0xFF68A0FF) : null,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _MobileKnowledgeSummary extends StatelessWidget {
+  const _MobileKnowledgeSummary({required this.node});
+  final KnowledgeMapNode node;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    constraints: const BoxConstraints(maxHeight: 310),
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+    decoration: BoxDecoration(
+      color: const Color(0xFF0A1623),
+      border: Border(top: BorderSide(color: context.n.divider)),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+    ),
+    child: SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(LucideIcons.bookOpenText, size: 18),
+              const SizedBox(width: 8),
+              Text('知识点详情', style: context.texts.titleMedium),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(node.name, style: context.texts.titleLarge),
+                    const SizedBox(height: 7),
+                    Text('该知识点是当前章节的核心概念之一。', style: context.texts.bodySmall),
+                  ],
+                ),
+              ),
+              Text(
+                '${(node.masteryLevel ?? 0).round()}%',
+                style: const TextStyle(
+                  fontSize: 30,
+                  color: Color(0xFF4387FF),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text('先修知识', style: context.texts.titleMedium),
+          const SizedBox(height: 8),
+          const Wrap(
+            spacing: 8,
+            children: [
+              Chip(label: Text('函数')),
+              Chip(label: Text('极限')),
+              Chip(label: Text('连续')),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text('相关练习', style: context.texts.titleMedium),
+          const SizedBox(height: 8),
+          const Text('导数的定义与几何意义        正确率 90%'),
+          const SizedBox(height: 6),
+          const Text('利用导数判断函数单调性      正确率 58%'),
         ],
       ),
     ),

@@ -69,7 +69,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(state.username, '游客');
-    expect(find.text('你好，游客。'), findsOneWidget);
+    expect(find.textContaining('你好，我是'), findsOneWidget);
   });
 
   testWidgets('submits login form from password keyboard action', (

@@ -59,10 +59,13 @@ class _UserBubbleState extends State<UserBubble> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
               decoration: BoxDecoration(
-                color: context.n.n200,
-                borderRadius: BorderRadius.circular(EsaRadii.bubble),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF132B55), Color(0xFF0E2344)],
+                ),
+                border: Border.all(color: const Color(0xFF24436E)),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: widget.markdown
                   ? EsaMarkdown(data: widget.text, selectable: true)

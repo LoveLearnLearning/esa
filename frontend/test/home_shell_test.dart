@@ -144,7 +144,7 @@ void main() {
     expect(restored.scheduleSettings.totalPeriods, 10);
   });
 
-  testWidgets('wide layout moves page navigation to a right-side rail', (
+  testWidgets('wide layout uses the student workspace rail on the left', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1280, 800);
@@ -157,12 +157,13 @@ void main() {
     await tester.pumpWidget(app(state));
     await tester.pumpAndSettle();
 
-    expect(find.byType(NavigationRail), findsOneWidget);
-    expect(find.byType(NavigationBar), findsNothing);
-    // 导航栏在屏幕右侧
-    final railRect = tester.getRect(find.byType(NavigationRail));
-    expect(railRect.center.dx, greaterThan(1280 / 2));
+    final rail = find.byKey(const ValueKey('student-global-rail'));
+    expect(rail, findsOneWidget);
+    expect(tester.getRect(rail).center.dx, lessThan(1280 / 2));
+    expect(find.text('教学'), findsNothing);
 
+    await tester.tap(find.byTooltip('学习助手').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('课表'));
     await tester.pumpAndSettle();
     expect(find.text('添加课程'), findsOneWidget);
@@ -240,5 +241,29 @@ void main() {
     expect(find.text('上午'), findsOneWidget);
     expect(find.text('下午'), findsOneWidget);
     expect(find.text('晚上'), findsOneWidget);
+  });
+
+  testWidgets('student mobile navigation only exposes learning and research', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final state = createState();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('student-learning-destination')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('student-research-destination')),
+      findsOneWidget,
+    );
+    expect(find.text('教学'), findsNothing);
   });
 }

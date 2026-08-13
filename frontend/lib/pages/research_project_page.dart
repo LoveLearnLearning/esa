@@ -8,16 +8,21 @@ import '../api/api_client.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
+import '../theme/esa_theme.dart';
 
 class ResearchProjectPage extends StatefulWidget {
   const ResearchProjectPage({
     super.key,
     required this.project,
     required this.onOpenChat,
+    this.embedded = false,
+    this.onBack,
   });
 
   final ResearchProject project;
   final VoidCallback onOpenChat;
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<ResearchProjectPage> createState() => _ResearchProjectPageState();
@@ -300,62 +305,216 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
   Future<void> _openChat() async {
     await AppScope.of(context).openResearchProject(widget.project);
     if (!mounted) return;
-    Navigator.pop(context);
+    if (!widget.embedded) Navigator.pop(context);
     widget.onOpenChat();
   }
 
   @override
-  Widget build(BuildContext context) => DefaultTabController(
-    length: 3,
-    child: Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.project.name),
-            Text(
-              '科研项目工作台',
-              style: context.texts.labelMedium?.copyWith(color: context.n.n600),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: _openChat,
-            icon: const Icon(LucideIcons.messageCircle, size: 18),
-            label: const Text('项目对话'),
-          ),
-          const SizedBox(width: 12),
-        ],
-        bottom: const TabBar(
-          tabs: [
-            Tab(icon: Icon(LucideIcons.radar), text: '前沿追踪'),
-            Tab(icon: Icon(LucideIcons.filePenLine), text: '学术写作'),
-            Tab(icon: Icon(LucideIcons.chartNoAxesCombined), text: '数据分析'),
-          ],
-        ),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                if (_error != null)
-                  MaterialBanner(
-                    content: Text(_error!),
-                    actions: [
-                      TextButton(
-                        onPressed: () => setState(() => _error = null),
-                        child: const Text('关闭'),
-                      ),
-                    ],
-                  ),
-                Expanded(
-                  child: TabBarView(
-                    children: [_frontierTab(), _writingTab(), _dataTab()],
-                  ),
+  Widget build(BuildContext context) {
+    final content = DefaultTabController(
+      length: 6,
+      child: Column(
+        children: [
+          _projectHeader(),
+          if (_error != null)
+            MaterialBanner(
+              content: Text(_error!),
+              actions: [
+                TextButton(
+                  onPressed: () => setState(() => _error = null),
+                  child: const Text('关闭'),
                 ),
               ],
             ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : TabBarView(
+                    children: [
+                      _overviewTab(),
+                      _frontierTab(),
+                      _writingTab(),
+                      _experimentsTab(),
+                      _dataTab(),
+                      _settingsTab(),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+    return widget.embedded ? content : Scaffold(body: SafeArea(child: content));
+  }
+
+  Widget _projectHeader() => Container(
+    padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+    decoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: context.n.divider)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            if (widget.onBack != null) ...[
+              IconButton(
+                tooltip: '返回项目列表',
+                onPressed: widget.onBack,
+                icon: const Icon(LucideIcons.arrowLeft, size: 18),
+              ),
+              const SizedBox(width: 4),
+            ],
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: EsaColors.accent.withValues(alpha: .15),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Icon(LucideIcons.brainCircuit, size: 19),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.project.name, style: context.texts.headlineSmall),
+                  Text(
+                    widget.project.description.isEmpty
+                        ? '独立科研项目工作空间'
+                        : widget.project.description,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.texts.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            TextButton.icon(
+              onPressed: _openChat,
+              icon: const Icon(LucideIcons.messageCircle, size: 17),
+              label: const Text('项目对话'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const TabBar(
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          tabs: [
+            Tab(icon: Icon(LucideIcons.gauge, size: 16), text: 'Overview'),
+            Tab(icon: Icon(LucideIcons.bookOpen, size: 16), text: 'Papers'),
+            Tab(icon: Icon(LucideIcons.notebookPen, size: 16), text: 'Notes'),
+            Tab(
+              icon: Icon(LucideIcons.flaskConical, size: 16),
+              text: 'Experiments',
+            ),
+            Tab(icon: Icon(LucideIcons.database, size: 16), text: 'Data'),
+            Tab(icon: Icon(LucideIcons.settings, size: 16), text: 'Settings'),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Widget _overviewTab() {
+    final compact = MediaQuery.sizeOf(context).width < 680;
+    final keyItems = <String>[
+      ..._frontierJobs.take(3).map((job) => job.query),
+      ..._documents.take(3).map((document) => document.title),
+    ];
+    return ListView(
+      padding: EdgeInsets.all(compact ? 14 : 18),
+      children: [
+        _ResearchPanel(
+          icon: LucideIcons.target,
+          title: '项目目标',
+          trailing: const _ProjectProgress(),
+          child: Text(
+            widget.project.description.isEmpty
+                ? '完善研究问题、数据、方法和评价口径，形成可验证的研究结论。'
+                : widget.project.description,
+            style: context.texts.bodyMedium?.copyWith(color: context.n.n600),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _ResearchPanel(
+          icon: LucideIcons.bookMarked,
+          title: '关键文献',
+          child: keyItems.isEmpty
+              ? Text('还没有关键文献，前往 Papers 开始检索。', style: context.texts.bodySmall)
+              : Column(
+                  children: [
+                    for (final item in keyItems) _PaperRow(title: item),
+                  ],
+                ),
+        ),
+        const SizedBox(height: 12),
+        _ResearchPanel(
+          icon: LucideIcons.clipboardList,
+          title: '项目上下文',
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _Tag(text: '研究主题  ${widget.project.name}'),
+              const _Tag(text: '研究阶段  模型构建与验证'),
+              const _Tag(text: '团队成员  个人项目'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _ResearchPanel(
+          icon: LucideIcons.database,
+          title: '数据集',
+          child: _datasets.isEmpty
+              ? Text('还没有数据集，前往 Data 上传。', style: context.texts.bodySmall)
+              : Column(
+                  children: [
+                    for (final dataset in _datasets.take(4))
+                      _DataRow(dataset: dataset),
+                  ],
+                ),
+        ),
+        const SizedBox(height: 12),
+        const _ResearchPanel(
+          icon: LucideIcons.lightbulb,
+          title: '当前假设',
+          child: Text('在这里记录可检验的研究假设，并在实验与数据分析后更新支持状态。'),
+        ),
+        const SizedBox(height: 12),
+        _ResearchPanel(
+          icon: LucideIcons.files,
+          title: '文件',
+          child: _documents.isEmpty
+              ? Text('还没有项目文件，前往 Notes 新建文档。', style: context.texts.bodySmall)
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final document in _documents.take(4))
+                      _FileChip(document: document),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _experimentsTab() =>
+      const Center(child: _EmptyState(text: '实验记录将在这里关联数据、方法与评价结果。'));
+
+  Widget _settingsTab() => Center(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: _ResearchPanel(
+        icon: LucideIcons.settings,
+        title: '项目设置',
+        child: Text(
+          '项目状态：${widget.project.status}\n项目名称：${widget.project.name}',
+        ),
+      ),
     ),
   );
 
@@ -623,6 +782,174 @@ class _IntroCard extends StatelessWidget {
           child,
         ],
       ),
+    ),
+  );
+}
+
+class _ResearchPanel extends StatelessWidget {
+  const _ResearchPanel({
+    required this.icon,
+    required this.title,
+    required this.child,
+    this.trailing,
+  });
+  final IconData icon;
+  final String title;
+  final Widget child;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: const Color(0xFF0B1724),
+      border: Border.all(color: context.n.divider),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: const Color(0xFF4B8DFF)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: context.texts.titleLarge),
+              const SizedBox(height: 12),
+              child,
+            ],
+          ),
+        ),
+        if (trailing != null) ...[const SizedBox(width: 16), trailing!],
+      ],
+    ),
+  );
+}
+
+class _ProjectProgress extends StatelessWidget {
+  const _ProjectProgress();
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 150,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('进度', style: context.texts.bodySmall),
+        const SizedBox(height: 3),
+        const Text('62%', style: TextStyle(fontSize: 26)),
+        const SizedBox(height: 8),
+        const LinearProgressIndicator(value: .62, minHeight: 5),
+        const SizedBox(height: 10),
+        Text('预计完成\n2025-07-30', style: context.texts.bodySmall),
+      ],
+    ),
+  );
+}
+
+class _PaperRow extends StatelessWidget {
+  const _PaperRow({required this.title});
+  final String title;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: context.n.n100,
+      border: Border.all(color: context.n.divider),
+      borderRadius: BorderRadius.circular(9),
+    ),
+    child: Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: BoxDecoration(
+            color: const Color(0xFF15A66A).withValues(alpha: .16),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: const Text(
+            '高相关',
+            style: TextStyle(color: Color(0xFF34D399), fontSize: 11),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
+        ),
+        Icon(LucideIcons.bookmark, size: 18, color: context.n.n600),
+      ],
+    ),
+  );
+}
+
+class _Tag extends StatelessWidget {
+  const _Tag({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+    decoration: BoxDecoration(
+      color: context.n.n100,
+      border: Border.all(color: context.n.divider),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(text, style: context.texts.bodySmall),
+  );
+}
+
+class _DataRow extends StatelessWidget {
+  const _DataRow({required this.dataset});
+  final ResearchDataset dataset;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: const BoxDecoration(
+            color: Color(0xFF2ECC71),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 9),
+        Expanded(child: Text(dataset.name)),
+        Text('${dataset.rowCount} 行', style: context.texts.bodySmall),
+      ],
+    ),
+  );
+}
+
+class _FileChip extends StatelessWidget {
+  const _FileChip({required this.document});
+  final ResearchDocument document;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 220,
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: context.n.n100,
+      border: Border.all(color: context.n.divider),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      children: [
+        const Icon(LucideIcons.fileText, size: 18, color: Color(0xFF548EFF)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            document.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     ),
   );
 }

@@ -21,7 +21,10 @@ import '../widgets/message_bubble.dart';
 import '../widgets/tool_call_card.dart';
 
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key});
+  const ChatPage({super.key, this.embedded = false});
+
+  /// The home shell owns global navigation and page chrome in embedded mode.
+  final bool embedded;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -162,85 +165,93 @@ class _ChatPageState extends State<ChatPage> {
       _setFollowOutput(true);
     }
     _scrollToBottom();
-    final narrow = MediaQuery.of(context).size.width < 600;
+    final pageWidth = MediaQuery.sizeOf(context).width;
+    final narrow = pageWidth < (widget.embedded ? 1040 : 600);
+
+    final embeddedHeader =
+        widget.embedded && app.messages.isNotEmpty && !narrow;
+    final composer = Composer(
+      busy: app.busy,
+      conversationId: app.activeId,
+      taskMode: _taskMode,
+      onClearTaskMode: () => setState(() => _taskMode = null),
+      onUploadAttachment: (filename, stream, length) =>
+          app.uploadConversationAttachment(
+            filename: filename,
+            stream: stream,
+            length: length,
+          ),
+      onRemoveAttachment: app.removeConversationAttachment,
+      onSend: (text, markdown) {
+        _resumeFollowing();
+        app.send(
+          _taskMode?.buildPrompt(text) ?? text,
+          markdown: markdown,
+          displayText: text,
+        );
+      },
+      onSendWithAttachment: (text, markdown, attachment) {
+        _resumeFollowing();
+        app.send(
+          _taskMode?.buildPrompt(text) ?? text,
+          markdown: markdown,
+          displayText: '$text\n\n📎 ${attachment.filename}',
+          attachmentIds: [attachment.id],
+        );
+      },
+    );
+    final mobileLanding = narrow && app.messages.isEmpty;
+    final content = Column(
+      children: [
+        if (!widget.embedded)
+          _TopBar(
+            narrow: narrow,
+            title: app.activeConversation?.title ?? 'ESA',
+            onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+            onNewChat: app.newConversation,
+            workspace: app.activeWorkspace,
+            onLearning: app.activeWorkspace == WorkspaceType.learning
+                ? () => showLearningDashboard(context)
+                : null,
+            onMemory: app.activeWorkspace == WorkspaceType.learning
+                ? () => showMemorySheet(context)
+                : null,
+          ),
+        if (embeddedHeader)
+          _EmbeddedChatHeader(title: app.activeConversation?.title ?? '新对话'),
+        Expanded(
+          // Touching the message area dismisses the software keyboard.
+          child: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (event) {
+              if (event.kind == PointerDeviceKind.touch ||
+                  event.kind == PointerDeviceKind.stylus) {
+                FocusManager.instance.primaryFocus?.unfocus();
+              }
+            },
+            child: app.loadingMessages && app.messages.isEmpty
+                ? const Center(child: CircularProgressIndicator())
+                : app.messages.isEmpty
+                ? _EmptyState(
+                    name: app.username,
+                    workspace: app.activeWorkspace,
+                    selected: _taskMode,
+                    onPick: (mode) => setState(() => _taskMode = mode),
+                    mobileComposer: mobileLanding ? composer : null,
+                  )
+                : _messageList(context, app),
+          ),
+        ),
+        if (!mobileLanding) composer,
+      ],
+    );
 
     return Scaffold(
       key: _scaffoldKey,
       resizeToAvoidBottomInset: false,
       drawerEdgeDragWidth: 24,
-      drawer: const HistoryDrawer(),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _TopBar(
-              narrow: narrow,
-              title: app.activeConversation?.title ?? 'ESA',
-              onMenu: () => _scaffoldKey.currentState?.openDrawer(),
-              onNewChat: app.newConversation,
-              workspace: app.activeWorkspace,
-              onLearning: app.activeWorkspace == WorkspaceType.learning
-                  ? () => showLearningDashboard(context)
-                  : null,
-              onMemory: app.activeWorkspace == WorkspaceType.learning
-                  ? () => showMemorySheet(context)
-                  : null,
-            ),
-            Expanded(
-              // 触摸消息区/空状态的任意位置都收起键盘（覆盖空状态分支，
-              // 消息列表内部的 Listener 有更细的追底处理）
-              child: Listener(
-                behavior: HitTestBehavior.translucent,
-                onPointerDown: (event) {
-                  if (event.kind == PointerDeviceKind.touch ||
-                      event.kind == PointerDeviceKind.stylus) {
-                    FocusManager.instance.primaryFocus?.unfocus();
-                  }
-                },
-                child: app.loadingMessages && app.messages.isEmpty
-                    ? const Center(child: CircularProgressIndicator())
-                    : app.messages.isEmpty
-                    ? _EmptyState(
-                        name: app.username,
-                        workspace: app.activeWorkspace,
-                        selected: _taskMode,
-                        onPick: (mode) => setState(() => _taskMode = mode),
-                      )
-                    : _messageList(context, app),
-              ),
-            ),
-            Composer(
-              busy: app.busy,
-              conversationId: app.activeId,
-              taskMode: _taskMode,
-              onClearTaskMode: () => setState(() => _taskMode = null),
-              onUploadAttachment: (filename, stream, length) =>
-                  app.uploadConversationAttachment(
-                    filename: filename,
-                    stream: stream,
-                    length: length,
-                  ),
-              onRemoveAttachment: app.removeConversationAttachment,
-              onSend: (text, markdown) {
-                _resumeFollowing();
-                app.send(
-                  _taskMode?.buildPrompt(text) ?? text,
-                  markdown: markdown,
-                  displayText: text,
-                );
-              },
-              onSendWithAttachment: (text, markdown, attachment) {
-                _resumeFollowing();
-                app.send(
-                  _taskMode?.buildPrompt(text) ?? text,
-                  markdown: markdown,
-                  displayText: '$text\n\n📎 ${attachment.filename}',
-                  attachmentIds: [attachment.id],
-                );
-              },
-            ),
-          ],
-        ),
-      ),
+      drawer: widget.embedded ? null : const HistoryDrawer(),
+      body: widget.embedded ? content : SafeArea(child: content),
     );
   }
 
@@ -268,7 +279,7 @@ class _ChatPageState extends State<ChatPage> {
           key: const ValueKey('chat-message-list'),
           controller: _scrollController,
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(20, 34, 20, 24),
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
           itemCount: messages.length,
           separatorBuilder: (_, _) =>
               const SizedBox(height: EsaSpace.messageGap),
@@ -300,9 +311,7 @@ class _ChatPageState extends State<ChatPage> {
             }
             return Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: EsaSpace.contentMaxWidth,
-                ),
+                constraints: const BoxConstraints(maxWidth: 900),
                 child: SizedBox(width: double.infinity, child: child),
               ),
             );
@@ -311,6 +320,33 @@ class _ChatPageState extends State<ChatPage> {
       ),
     );
   }
+}
+
+class _EmbeddedChatHeader extends StatelessWidget {
+  const _EmbeddedChatHeader({required this.title});
+  final String title;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 50,
+    padding: const EdgeInsets.symmetric(horizontal: 20),
+    decoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: context.n.divider)),
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.texts.titleMedium?.copyWith(fontSize: 16),
+          ),
+        ),
+        Icon(LucideIcons.panelRightOpen, size: 18, color: context.n.n600),
+      ],
+    ),
+  );
 }
 
 class _TopBar extends StatelessWidget {
@@ -446,28 +482,30 @@ class _EmptyState extends StatelessWidget {
     required this.workspace,
     required this.selected,
     required this.onPick,
+    this.mobileComposer,
   });
   final String name;
   final WorkspaceType workspace;
   final TaskMode? selected;
   final ValueChanged<TaskMode> onPick;
+  final Widget? mobileComposer;
 
   static const _cards = [
-    ('01', TaskMode.explainProblem),
-    ('02', TaskMode.studyPlan),
-    ('03', TaskMode.searchMaterials),
-    ('04', TaskMode.reviewHomework),
-    ('05', TaskMode.concept),
-    ('06', TaskMode.masteryReport),
-    ('07', TaskMode.practiceRecommendation),
-    ('08', TaskMode.academicSearch),
+    (LucideIcons.calendarCheck2, Color(0xFF3478F6), TaskMode.studyPlan),
+    (LucideIcons.lightbulb, Color(0xFF20C85A), TaskMode.concept),
+    (LucideIcons.penLine, Color(0xFF8B5CF6), TaskMode.reviewHomework),
+    (LucideIcons.search, Color(0xFFFFA514), TaskMode.searchMaterials),
   ];
 
   static const _researchCards = [
-    ('01', TaskMode.literatureFrontier),
-    ('02', TaskMode.academicWriting),
-    ('03', TaskMode.researchDataAnalysis),
-    ('04', TaskMode.researchPlanning),
+    (LucideIcons.radar, Color(0xFF3478F6), TaskMode.literatureFrontier),
+    (LucideIcons.filePenLine, Color(0xFF20C85A), TaskMode.academicWriting),
+    (
+      LucideIcons.chartNoAxesCombined,
+      Color(0xFF8B5CF6),
+      TaskMode.researchDataAnalysis,
+    ),
+    (LucideIcons.flaskConical, Color(0xFFFFA514), TaskMode.researchPlanning),
   ];
 
   @override
@@ -475,44 +513,86 @@ class _EmptyState extends StatelessWidget {
     final cards = switch (workspace) {
       WorkspaceType.learning => _cards,
       WorkspaceType.research => _researchCards,
-      WorkspaceType.teaching => const <(String, TaskMode)>[],
+      WorkspaceType.teaching => const <(IconData, Color, TaskMode)>[],
     };
-    final introduction = workspace == WorkspaceType.research
-        ? '我是你的科研智能体。选择一个科研任务，再在下方补充项目材料与要求。'
-        : workspace == WorkspaceType.teaching
-        ? '我是你的教学智能体。描述课程、教学对象与需要完成的任务。'
-        : '我是你的学习智能体。选择一个任务模式，再在下方补充内容并发送。';
+    final mobile = MediaQuery.sizeOf(context).width < 1040;
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 34, 20, 24),
+      padding: EdgeInsets.fromLTRB(20, mobile ? 10 : 24, 20, 28),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: EsaSpace.contentMaxWidth),
+          constraints: const BoxConstraints(maxWidth: 760),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(
-                'WELCOME',
-                style: context.texts.labelSmall?.copyWith(
-                  color: EsaColors.accent,
+              if (!mobile) ...[
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: _AssistantModeSelector(),
+                ),
+                const SizedBox(height: 52),
+              ],
+              _AssistantOrb(compact: mobile),
+              SizedBox(height: mobile ? 12 : 22),
+              Text.rich(
+                TextSpan(
+                  children: const [
+                    TextSpan(text: '你好，我是 '),
+                    TextSpan(
+                      text: 'ESA',
+                      style: TextStyle(color: Color(0xFF4387FF)),
+                    ),
+                    TextSpan(text: ' 学习助手'),
+                  ],
+                ),
+                textAlign: TextAlign.center,
+                style: context.texts.headlineMedium?.copyWith(
+                  fontSize: mobile ? 24 : 28,
                 ),
               ),
-              const SizedBox(height: EsaSpace.md),
-              Text('你好，$name。', style: context.texts.headlineMedium),
-              const SizedBox(height: EsaSpace.md),
+              SizedBox(height: mobile ? 8 : 12),
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 520),
-                child: Text(introduction, style: context.texts.bodyLarge),
-              ),
-              const SizedBox(height: EsaSpace.xl),
-              for (final card in cards) ...[
-                _SuggestionCard(
-                  index: card.$1,
-                  title: card.$2.title,
-                  desc: card.$2.description,
-                  selected: selected == card.$2,
-                  onTap: () => onPick(card.$2),
+                constraints: const BoxConstraints(maxWidth: 580),
+                child: Text(
+                  '我可以帮你制定学习计划、解释概念、辅导作业、检索资料，\n有什么想学习或解决的问题？尽管问我吧！',
+                  textAlign: TextAlign.center,
+                  style: context.texts.bodyLarge?.copyWith(
+                    color: context.n.n600,
+                  ),
                 ),
-                const SizedBox(height: EsaSpace.sm),
+              ),
+              SizedBox(height: mobile ? 18 : 42),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final columns = mobile ? 2 : 4;
+                  final gap = mobile ? 10.0 : 12.0;
+                  final width =
+                      (constraints.maxWidth - gap * (columns - 1)) / columns;
+                  return Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: [
+                      for (final card in cards)
+                        SizedBox(
+                          width: width,
+                          child: _SuggestionCard(
+                            icon: card.$1,
+                            accent: card.$2,
+                            title: card.$3.title,
+                            desc: card.$3.description,
+                            selected: selected == card.$3,
+                            onTap: () => onPick(card.$3),
+                            compact: mobile,
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              if (mobileComposer != null) ...[
+                const SizedBox(height: 12),
+                mobileComposer!,
+                const SizedBox(height: 12),
+                const _MobileLearningInsights(),
               ],
             ],
           ),
@@ -524,18 +604,22 @@ class _EmptyState extends StatelessWidget {
 
 class _SuggestionCard extends StatelessWidget {
   const _SuggestionCard({
-    required this.index,
+    required this.icon,
+    required this.accent,
     required this.title,
     required this.desc,
     required this.selected,
     required this.onTap,
+    required this.compact,
   });
 
-  final String index;
+  final IconData icon;
+  final Color accent;
   final String title;
   final String desc;
   final bool selected;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -543,50 +627,222 @@ class _SuggestionCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(EsaRadii.card),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+        height: compact ? 118 : 136,
+        padding: EdgeInsets.all(compact ? 12 : 14),
         decoration: BoxDecoration(
-          color: selected ? EsaColors.accent.withValues(alpha: 0.08) : null,
-          border: Border.all(color: context.n.divider),
+          color: selected
+              ? EsaColors.accent.withValues(alpha: 0.14)
+              : context.n.n100,
+          border: Border.all(
+            color: selected ? EsaColors.accent : Colors.transparent,
+          ),
           borderRadius: BorderRadius.circular(EsaRadii.card),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 34,
-              child: Text(
-                index,
-                style: const TextStyle(
-                  color: EsaColors.accent,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.0,
+            Row(
+              children: [
+                Container(
+                  width: compact ? 34 : 38,
+                  height: compact ? 34 : 38,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Icon(icon, color: accent, size: compact ? 19 : 21),
                 ),
-              ),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
+                SizedBox(width: compact ? 9 : 11),
+                Expanded(
+                  child: Text(
                     title,
-                    style: context.texts.titleMedium?.copyWith(fontSize: 15),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.texts.titleMedium?.copyWith(
+                      fontSize: compact ? 14 : 15,
+                    ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    desc,
-                    style: TextStyle(fontSize: 12.5, color: context.n.n600),
-                  ),
-                ],
+                ),
+              ],
+            ),
+            SizedBox(height: compact ? 7 : 9),
+            Text(
+              desc,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: compact ? 11 : 11.5,
+                height: 1.35,
+                color: context.n.n600,
               ),
             ),
+            const Spacer(),
             Icon(
-              selected ? LucideIcons.check : LucideIcons.chevronRight,
-              size: 18,
-              color: selected ? EsaColors.accent : context.n.n600,
+              selected ? LucideIcons.check : LucideIcons.arrowRight,
+              size: compact ? 15 : 16,
             ),
           ],
         ),
       ),
     );
   }
+}
+
+class _AssistantModeSelector extends StatelessWidget {
+  const _AssistantModeSelector();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 36,
+    padding: const EdgeInsets.symmetric(horizontal: 13),
+    decoration: BoxDecoration(
+      color: const Color(0xFF0A1725),
+      border: Border.all(color: context.n.divider),
+      borderRadius: BorderRadius.circular(18),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(
+          LucideIcons.messageCircleMore,
+          size: 16,
+          color: Color(0xFF5E9BFF),
+        ),
+        const SizedBox(width: 8),
+        Text('学习助手', style: TextStyle(fontSize: 13, color: context.n.n700)),
+        const SizedBox(width: 8),
+        Icon(LucideIcons.chevronDown, size: 14, color: context.n.n600),
+      ],
+    ),
+  );
+}
+
+class _AssistantOrb extends StatelessWidget {
+  const _AssistantOrb({required this.compact});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: compact ? 86 : 112,
+    height: compact ? 86 : 112,
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        Container(
+          width: compact ? 86 : 112,
+          height: compact ? 86 : 112,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: const Color(0xFF1E65E8).withValues(alpha: .25),
+            ),
+          ),
+        ),
+        Container(
+          width: compact ? 66 : 84,
+          height: compact ? 66 : 84,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: const Color(0xFF2476FF).withValues(alpha: .5),
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x553878FF),
+                blurRadius: 28,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+        ),
+        Container(
+          width: compact ? 46 : 58,
+          height: compact ? 46 : 58,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              colors: [Color(0xFF61C9FF), Color(0xFF365BFF)],
+            ),
+          ),
+          child: const Icon(
+            LucideIcons.messageCircleMore,
+            color: Colors.white,
+            size: 30,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _MobileLearningInsights extends StatelessWidget {
+  const _MobileLearningInsights();
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: const [
+      _InsightPanel(
+        icon: LucideIcons.lightbulb,
+        title: '今日学习建议',
+        lines: [
+          '专注于理解核心概念，通过练习巩固知识点',
+          '目标进度                              3/6 完成',
+        ],
+      ),
+      SizedBox(height: 10),
+      _InsightPanel(
+        icon: LucideIcons.notebookTabs,
+        title: '最近课程',
+        lines: ['高等数学      进度 72%', '线性代数      进度 46%'],
+      ),
+      SizedBox(height: 10),
+      _InsightPanel(
+        icon: LucideIcons.chartNoAxesColumnIncreasing,
+        title: '学习状态',
+        lines: ['本周学习时长  18.6 小时', '知识点掌握率  72%'],
+      ),
+    ],
+  );
+}
+
+class _InsightPanel extends StatelessWidget {
+  const _InsightPanel({
+    required this.icon,
+    required this.title,
+    required this.lines,
+  });
+  final IconData icon;
+  final String title;
+  final List<String> lines;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: context.n.n100,
+      border: Border.all(color: context.n.divider),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 19),
+            const SizedBox(width: 9),
+            Text(title, style: context.texts.titleMedium),
+          ],
+        ),
+        const SizedBox(height: 12),
+        for (final line in lines)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: Text(line, style: context.texts.bodySmall),
+          ),
+      ],
+    ),
+  );
 }

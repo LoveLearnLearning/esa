@@ -132,49 +132,93 @@ class _AssistantMessageState extends State<AssistantMessage> {
 
   Widget _buildMessage(BuildContext context) {
     final m = widget.message;
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('ESA', style: context.texts.labelSmall),
-        const SizedBox(height: EsaSpace.sm),
-        if (m.reasoning.isNotEmpty) ...[
-          _reasoning(context, m),
-          const SizedBox(height: EsaSpace.md),
-        ],
-        _body(context, m),
-        if (!m.typing && m.text.isNotEmpty) ...[
-          const SizedBox(height: EsaSpace.sm),
-          Row(
-            children: [
-              _IconAction(
-                icon: LucideIcons.copy,
-                color: _copied ? EsaColors.accent : context.n.n600,
-                tooltip: '复制',
-                onTap: () {
-                  _copy();
-                },
-              ),
-              const SizedBox(width: 4),
-              _IconAction(
-                icon: LucideIcons.refreshCw,
-                color: context.n.n600,
-                tooltip: '重新生成',
-                onTap: widget.onRegenerate,
-              ),
-              const Spacer(),
-              Icon(LucideIcons.alertCircle, size: 14, color: context.n.n600),
-              const SizedBox(width: 6),
-              Text(
-                'AI 生成',
-                style: TextStyle(
-                  color: context.n.n600,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
+        Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: EsaColors.accent.withValues(alpha: .18),
+            border: Border.all(color: EsaColors.accent.withValues(alpha: .35)),
           ),
-        ],
+          child: const Text(
+            'ESA',
+            style: TextStyle(
+              fontSize: 9,
+              color: Color(0xFF5D97FF),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: context.n.n100,
+              border: Border.all(color: context.n.divider),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text('ESA', style: context.texts.labelSmall),
+                    const SizedBox(width: 8),
+                    Text(m.createdAt ?? '', style: context.texts.bodySmall),
+                  ],
+                ),
+                const SizedBox(height: EsaSpace.sm),
+                if (m.reasoning.isNotEmpty) ...[
+                  _reasoning(context, m),
+                  const SizedBox(height: EsaSpace.md),
+                ],
+                _body(context, m),
+                if (!m.typing && m.text.isNotEmpty) ...[
+                  const SizedBox(height: EsaSpace.sm),
+                  Row(
+                    children: [
+                      _IconAction(
+                        icon: LucideIcons.copy,
+                        color: _copied ? EsaColors.accent : context.n.n600,
+                        tooltip: '复制',
+                        onTap: () {
+                          _copy();
+                        },
+                      ),
+                      const SizedBox(width: 4),
+                      _IconAction(
+                        icon: LucideIcons.refreshCw,
+                        color: context.n.n600,
+                        tooltip: '重新生成',
+                        onTap: widget.onRegenerate,
+                      ),
+                      const Spacer(),
+                      Icon(
+                        LucideIcons.alertCircle,
+                        size: 14,
+                        color: context.n.n600,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'AI 生成',
+                        style: TextStyle(
+                          color: context.n.n600,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
