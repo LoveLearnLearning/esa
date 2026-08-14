@@ -10,6 +10,7 @@ cd "$frontend_dir"
 flutter build web \
   --release \
   --pwa-strategy=none \
+  --base-href=/esa/ \
   --dart-define=ESA_API_BASE=/api
 
 find build/web -type f \

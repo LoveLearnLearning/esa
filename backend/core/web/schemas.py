@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # 风格/语调合法枚举 供偏好与分组接口共用
 VALID_STYLES = {"concise", "detailed", "socratic"}
@@ -42,6 +43,56 @@ class ChangePasswordRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     content: str = Field(min_length=1)
     attachment_ids: list[str] = Field(default_factory=list, max_length=3)
+    replace_message_id: int | None = Field(default=None, ge=1)
+
+
+class ResearchProjectCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=1000)
+
+
+class ResearchProjectUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=1000)
+    status: Literal["active", "archived"] | None = None
+
+    @model_validator(mode="after")
+    def require_an_update(self):
+        if not self.model_fields_set or all(
+            getattr(self, field) is None for field in self.model_fields_set
+        ):
+            raise ValueError("at least one project field must be provided")
+        return self
+
+
+class FrontierTrackingCreateRequest(BaseModel):
+    query: str = Field(min_length=2, max_length=300)
+    time_window_years: int = Field(default=5, ge=1, le=20)
+    max_results: int = Field(default=20, ge=5, le=40)
+
+
+class ResearchDocumentCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    document_type: Literal["outline", "literature_review", "paper", "notes"]
+    content: str = Field(default="", max_length=200_000)
+
+
+class ResearchDocumentUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    content: str | None = Field(default=None, max_length=200_000)
+
+
+class ResearchWritingJobCreateRequest(BaseModel):
+    operation: Literal["outline", "literature_review", "polish", "format_check"]
+    instruction: str = Field(default="", max_length=4000)
+    source_text: str = Field(default="", max_length=200_000)
+
+
+class ResearchAnalysisJobCreateRequest(BaseModel):
+    analysis_type: Literal[
+        "descriptive", "correlation", "group_compare", "text_frequency"
+    ]
+    parameters: dict[str, str] = Field(default_factory=dict)
 
 
 class ConversationCreateRequest(BaseModel):

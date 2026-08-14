@@ -13,6 +13,7 @@ import 'package:http/http.dart' show ClientException;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
+import '../models/code_editor_settings.dart';
 import '../models/models.dart';
 import '../theme/esa_theme.dart';
 
@@ -29,11 +30,15 @@ class AppState extends ChangeNotifier {
   static const _rememberExpiresAtKey = 'esa.remember.expires_at';
   static const _scheduleStoragePrefix = 'esa.schedule.';
   static const _scheduleSettingsStoragePrefix = 'esa.schedule.settings.';
+  static const _codeEditorIndentSizeKey = 'esa.editor.indent_size';
+  static const _codeEditorThemeKey = 'esa.editor.theme';
 
   // ---- 本地设置(不落后端) ----
   ThemeMode themeMode = ThemeMode.dark;
   bool streamOn = true;
   bool toolsOn = true;
+  int codeEditorIndentSize = 2;
+  String codeEditorTheme = 'vs-dark';
   String accountRole = 'student';
   List<WorkspaceDescriptor> availableWorkspaces = const [
     WorkspaceDescriptor(
@@ -216,6 +221,7 @@ class AppState extends ChangeNotifier {
     try {
       final localPreferences = await _getLocalPreferences();
       if (localPreferences == null) return;
+      _loadLocalEditorSettings(localPreferences);
       final sessionId = localPreferences.getString(_rememberSessionKey);
       final userId = localPreferences.getString(_rememberUserIdKey);
       final username = localPreferences.getString(_rememberUsernameKey);
@@ -302,6 +308,17 @@ class AppState extends ChangeNotifier {
       // 新增插件后仅 Hot Restart 时 Web 插件可能尚未重新注册。
       // 此时跳过会话持久化，让应用仍可正常进入登录页。
       return null;
+    }
+  }
+
+  void _loadLocalEditorSettings(SharedPreferences localPreferences) {
+    final indentSize = localPreferences.getInt(_codeEditorIndentSizeKey);
+    if (indentSize == 2 || indentSize == 4 || indentSize == 8) {
+      codeEditorIndentSize = indentSize!;
+    }
+    final editorTheme = localPreferences.getString(_codeEditorThemeKey);
+    if (isCodeEditorTheme(editorTheme)) {
+      codeEditorTheme = editorTheme!;
     }
   }
 
@@ -959,6 +976,7 @@ class AppState extends ChangeNotifier {
     bool markdown = false,
     String? displayText,
     List<String> attachmentIds = const [],
+    List<DocumentAttachment> attachments = const [],
   }) async {
     final input = text.trim();
     if (input.isEmpty || busy) return;
@@ -972,7 +990,15 @@ class AppState extends ChangeNotifier {
     final list = _messages.putIfAbsent(id, () => []);
 
     final visibleInput = (displayText ?? input).trim();
-    list.add(ChatMessage.user(visibleInput, markdown: markdown));
+    final selectedAttachmentIds = attachmentIds.isNotEmpty
+        ? attachmentIds
+        : attachments.map((item) => item.id).toList();
+    final userMessage = ChatMessage.user(
+      visibleInput,
+      markdown: markdown,
+      attachments: attachments,
+    );
+    list.add(userMessage);
     _touchConversation(id, visibleInput);
 
     final placeholder = ChatMessage.typingPlaceholder();
@@ -987,12 +1013,17 @@ class AppState extends ChangeNotifier {
           input,
           list,
           placeholder,
-          attachmentIds: attachmentIds,
+          attachmentIds: selectedAttachmentIds,
+          userMessage: userMessage,
         );
       } else {
-        final newMsgs = attachmentIds.isEmpty
+        final newMsgs = selectedAttachmentIds.isEmpty
             ? await api.sendMessage(id, input)
-            : await api.sendMessageWithAttachments(id, input, attachmentIds);
+            : await api.sendMessageWithAttachments(
+                id,
+                input,
+                selectedAttachmentIds,
+              );
         list.remove(placeholder);
         list.addAll(newMsgs.where((message) => !message.isUser));
         notifyListeners();
@@ -1048,6 +1079,8 @@ class AppState extends ChangeNotifier {
     List<ChatMessage> list,
     ChatMessage assistant, {
     List<String> attachmentIds = const [],
+    ChatMessage? userMessage,
+    int? replaceMessageId,
   }) async {
     var completed = false;
     final reasoningQueue = Queue<String>();
@@ -1117,7 +1150,14 @@ class AppState extends ChangeNotifier {
       // 事件间隔超过 120 秒视为挂死，结束流走中断恢复。只在 Web 上
       // 启用：原生平台连接中断会正常抛错，而且 Stream.timeout 的假
       // 定时器会挂死 FakeAsync 测试环境。
-      var events = attachmentIds.isEmpty
+      var events = replaceMessageId != null
+          ? api.streamRevisedMessage(
+              conversationId,
+              input,
+              replaceMessageId,
+              attachmentIds,
+            )
+          : attachmentIds.isEmpty
           ? api.streamMessage(conversationId, input)
           : api.streamMessageWithAttachments(
               conversationId,
@@ -1133,6 +1173,11 @@ class AppState extends ChangeNotifier {
       await for (final event in events) {
         switch (event.event) {
           case 'start':
+            final persistedId = event.data['user_message_id']?.toString();
+            if (persistedId != null && persistedId.isNotEmpty) {
+              userMessage?.id = persistedId;
+              userMessage?.notifyListeners();
+            }
             break;
           case 'reasoning':
             enqueue(reasoningQueue, event.data['delta'] as String? ?? '');
@@ -1251,6 +1296,51 @@ class AppState extends ChangeNotifier {
     String conversationId,
   ) async {
     await api.deleteConversationAttachment(conversationId, attachment.id);
+  }
+
+  Future<void> reviseUserMessage(ChatMessage message, String text) async {
+    final conversationId = activeId;
+    final messageId = int.tryParse(message.id);
+    final input = text.trim();
+    if (conversationId == null || messageId == null || input.isEmpty || busy) {
+      return;
+    }
+    final list = _messages[conversationId];
+    final index = list?.indexWhere((item) => identical(item, message)) ?? -1;
+    if (list == null || index < 0) return;
+    message.text = input;
+    message.notifyListeners();
+    if (index + 1 < list.length) list.removeRange(index + 1, list.length);
+    final placeholder = ChatMessage.typingPlaceholder();
+    list.add(placeholder);
+    busy = true;
+    notifyListeners();
+    try {
+      await _receiveStream(
+        conversationId,
+        input,
+        list,
+        placeholder,
+        attachmentIds: message.attachments.map((item) => item.id).toList(),
+        userMessage: message,
+        replaceMessageId: messageId,
+      );
+    } catch (error) {
+      final recovered = await _recoverInterruptedReply(conversationId, list);
+      if (!recovered) {
+        list.remove(placeholder);
+        list.add(
+          ChatMessage(
+            id: DateTime.now().microsecondsSinceEpoch.toString(),
+            role: MessageRole.assistant,
+            text: '（修改消息失败：${error is ApiException ? error.detail : '网络异常'}）',
+          ),
+        );
+      }
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
   }
 
   void regenerate(String assistantMessageId) {
@@ -1381,6 +1471,27 @@ class AppState extends ChangeNotifier {
   void setToolsOn(bool v) {
     toolsOn = v;
     notifyListeners();
+  }
+
+  void setCodeEditorIndentSize(int value) {
+    if (value != 2 && value != 4 && value != 8) return;
+    codeEditorIndentSize = value;
+    notifyListeners();
+    unawaited(_persistCodeEditorSetting(_codeEditorIndentSizeKey, value));
+  }
+
+  void setCodeEditorTheme(String value) {
+    if (!isCodeEditorTheme(value)) return;
+    codeEditorTheme = value;
+    notifyListeners();
+    unawaited(_persistCodeEditorSetting(_codeEditorThemeKey, value));
+  }
+
+  Future<void> _persistCodeEditorSetting(String key, Object value) async {
+    final localPreferences = await _getLocalPreferences();
+    if (localPreferences == null) return;
+    if (value is int) await localPreferences.setInt(key, value);
+    if (value is String) await localPreferences.setString(key, value);
   }
 
   void updateProfile({String? name, String? mail}) {

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from backend.agent.agent import Agent
 from backend.agent.tools.attachment_tools import AttachmentToolContext
@@ -85,6 +85,7 @@ def _attachment_out(item: StoredAttachment) -> dict:
         "page_count": 0,
         "validation_status": "pending",
         "quality_issue_count": 0,
+        "media_type": item.media_type,
         "size_bytes": item.size_bytes,
     }
 
@@ -94,9 +95,9 @@ def _attachment_inventory(
     user_id: str,
     conversation_id: str,
     attachment_ids: list[str],
-) -> tuple[str, AttachmentToolContext | None]:
+) -> tuple[str, AttachmentToolContext | None, list[dict]]:
     if not attachment_ids:
-        return "", None
+        return "", None, []
     store = _attachment_store(request)
     try:
         items = store.require_many(
@@ -126,12 +127,24 @@ def _attachment_inventory(
         "Skill，再调用该 Skill 指定的 Tool；不得猜测附件内容或传入文件路径。\n\n"
         + json.dumps(payload, ensure_ascii=False)
     )
-    return inventory, AttachmentToolContext(
-        user_id=user_id,
-        conversation_id=conversation_id,
-        allowed_attachment_ids=frozenset(item.attachment_id for item in items),
-        store=store,
-        mm_sessions=service,
+    return (
+        inventory,
+        AttachmentToolContext(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            allowed_attachment_ids=frozenset(item.attachment_id for item in items),
+            store=store,
+            mm_sessions=service,
+        ),
+        [
+            {
+                "id": item.attachment_id,
+                "filename": item.filename,
+                "media_type": item.media_type,
+                "size_bytes": item.size_bytes,
+            }
+            for item in items
+        ],
     )
 
 
@@ -248,6 +261,7 @@ def _prepare_message(
     conversation_id: str,
     body: SendMessageRequest,
     session: SessionPrincipal,
+    attachments: list[dict] | None = None,
 ) -> MessageContext:
     """公共前置: 取对话 + 校验归属 + 取用户 + 401 + 加载历史 + 落库用户消息 + 学情档案 + 分组参数
 
@@ -274,12 +288,29 @@ def _prepare_message(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在！")
 
     # 读取模型历史 + 落库用户消息 同一事务原子完成 避免并发读-写竞态
-    conversation_summary, history = (
-        chat_store.get_compressed_model_history_and_append(
-            conversation_id,
-            [{"role": "user", "content": body.content, "is_visible": True}],
+    if body.replace_message_id is None:
+        conversation_summary, history = (
+            chat_store.get_compressed_model_history_and_append(
+                conversation_id,
+                [
+                    {
+                        "role": "user",
+                        "content": body.content,
+                        "attachments": attachments or [],
+                        "is_visible": True,
+                    }
+                ],
+            )
         )
-    )
+        user_message_id = chat_store.latest_message_id(conversation_id)
+    else:
+        conversation_summary, history = chat_store.revise_user_message(
+            conversation_id,
+            body.replace_message_id,
+            body.content,
+            attachments or [],
+        )
+        user_message_id = body.replace_message_id
 
     # 会话记忆模式: normal(读+写) / no_write(只读) / isolated(不读不写)
     settings = user_store.get_memory_settings(user.id)
@@ -330,6 +361,7 @@ def _prepare_message(
         conversation_summary=conversation_summary or "",
         conversation_mode=conversation_mode,
         workspace_type=workspace_type,
+        user_message_id=user_message_id,
     )
 
 
@@ -541,6 +573,31 @@ async def delete_attachment(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "附件不存在")
 
 
+@router.get("/{conversation_id}/attachments/{attachment_id}")
+def get_attachment(
+    conversation_id: str,
+    attachment_id: str,
+    request: Request,
+    session: CurrentSession,
+    download: bool = False,
+) -> FileResponse:
+    _load_owned(request, conversation_id, session)
+    item = _attachment_store(request).get(
+        user_id=session.user_id,
+        conversation_id=conversation_id,
+        attachment_id=attachment_id,
+    )
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "附件不存在")
+    disposition = "attachment" if download else "inline"
+    return FileResponse(
+        item.source_path,
+        media_type=item.media_type,
+        filename=item.filename,
+        content_disposition_type=disposition,
+    )
+
+
 @router.get("/{conversation_id}/messages")
 def get_messages(
     conversation_id: str,
@@ -563,13 +620,18 @@ async def send_message(
     _load_owned(request, conversation_id, session)
     lease = await _acquire_turn(request, conversation_id)
     async with lease:
-        attachment_context, tool_context = _attachment_inventory(
+        attachment_context, tool_context, attachments = _attachment_inventory(
             request,
             session.user_id,
             conversation_id,
             body.attachment_ids,
         )
-        ctx = _prepare_message(request, conversation_id, body, session)
+        try:
+            ctx = _prepare_message(
+                request, conversation_id, body, session, attachments
+            )
+        except ValueError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
         chat_store: ChatStore = request.app.state.chat_store
         agent: Agent = request.app.state.agent
 
@@ -602,13 +664,18 @@ async def stream_message(
     _load_owned(request, conversation_id, session)
     lease = await _acquire_turn(request, conversation_id)
     try:
-        attachment_context, tool_context = _attachment_inventory(
+        attachment_context, tool_context, attachments = _attachment_inventory(
             request,
             session.user_id,
             conversation_id,
             body.attachment_ids,
         )
-        ctx = _prepare_message(request, conversation_id, body, session)
+        try:
+            ctx = _prepare_message(
+                request, conversation_id, body, session, attachments
+            )
+        except ValueError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
         chat_store: ChatStore = request.app.state.chat_store
         agent: Agent = request.app.state.agent
         prompt_ctx = _build_prompt_context(
@@ -625,6 +692,7 @@ async def stream_message(
             "start",
             {
                 "conversation_id": conversation_id,
+                "user_message_id": ctx.user_message_id,
             },
         )
 

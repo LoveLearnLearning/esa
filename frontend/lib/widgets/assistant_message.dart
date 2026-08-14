@@ -20,12 +20,24 @@ class AssistantMessage extends StatefulWidget {
     required this.onRegenerate,
     this.onContentChanged,
     this.renderPaused,
+    this.onOpenCodeEditor,
+    this.codeOverrideFor,
+    this.onOpenCodeEditorWithId,
+    this.onCodeChangedWithId,
+    this.codeOverrideVersion = 0,
   });
 
   final ChatMessage message;
   final VoidCallback onRegenerate;
   final VoidCallback? onContentChanged;
   final ValueListenable<bool>? renderPaused;
+  final void Function(String code, String language)? onOpenCodeEditor;
+  final String? Function(String blockId)? codeOverrideFor;
+  final void Function(String blockId, String code, String language)?
+  onOpenCodeEditorWithId;
+  final void Function(String blockId, String code, String language)?
+  onCodeChangedWithId;
+  final int codeOverrideVersion;
 
   @override
   State<AssistantMessage> createState() => _AssistantMessageState();
@@ -316,7 +328,16 @@ class _AssistantMessageState extends State<AssistantMessage> {
     // 正在流式更新的 Markdown 节点不能加入 Flutter 的选择树。否则用户拖选
     // 其他正文时，这里的子节点又被流式重建，会触发 ConcurrentModificationError。
     // 生成完成后会立即恢复跨段落选择。
-    final markdown = EsaMarkdown(data: visibleText, selectable: !m.typing);
+    final markdown = EsaMarkdown(
+      data: visibleText,
+      selectable: !m.typing,
+      onEditCode: widget.onOpenCodeEditor,
+      codeBlockPrefix: m.id,
+      codeOverrideFor: widget.codeOverrideFor,
+      onOpenCodeEditorWithId: widget.onOpenCodeEditorWithId,
+      onCodeChangedWithId: widget.onCodeChangedWithId,
+      codeOverrideVersion: widget.codeOverrideVersion,
+    );
 
     if (!m.typing) return markdown;
 

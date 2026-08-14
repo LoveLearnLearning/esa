@@ -102,7 +102,7 @@ class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas> {
           (_viewportSize.width - 28) / _canvasSize.width,
           (_viewportSize.height - 28) / _canvasSize.height,
         )
-        .clamp(.18, 1.0)
+        .clamp(_viewportSize.width < 600 ? .60 : .68, 1.0)
         .toDouble();
     final dx = (_viewportSize.width - _canvasSize.width * scale) / 2;
     final dy = (_viewportSize.height - _canvasSize.height * scale) / 2;
@@ -186,6 +186,7 @@ class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas> {
                               edges: widget.edges,
                               rootId: layout.rootId,
                               hoveredId: _hoveredId,
+                              compact: compact,
                             ),
                           ),
                         ),
@@ -231,13 +232,13 @@ class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas> {
     required bool root,
     required bool compact,
   }) {
-    final width = root ? (compact ? 132.0 : 174.0) : (compact ? 112.0 : 152.0);
-    final height = root ? (compact ? 58.0 : 68.0) : (compact ? 46.0 : 54.0);
+    final size = _mindMapNodeSize(root: root, compact: compact);
     return Positioned(
-      left: point.dx - width / 2,
-      top: point.dy - height / 2,
-      width: width,
-      height: height,
+      key: ValueKey('knowledge-graph-node-${node.id}'),
+      left: point.dx - size.width / 2,
+      top: point.dy - size.height / 2,
+      width: size.width,
+      height: size.height,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hoveredId = node.id),
@@ -255,6 +256,11 @@ class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas> {
     );
   }
 }
+
+Size _mindMapNodeSize({required bool root, required bool compact}) => Size(
+  root ? (compact ? 132.0 : 174.0) : (compact ? 112.0 : 152.0),
+  root ? (compact ? 58.0 : 68.0) : (compact ? 46.0 : 54.0),
+);
 
 class _MindMapLayout {
   const _MindMapLayout({
@@ -285,9 +291,10 @@ class _MindMapLayout {
     }
     final minimumLevel = nodes.map((node) => node.level).reduce(math.min);
     final rootCandidates = nodes.where((node) => node.level == minimumLevel);
-    final root = rootCandidates.reduce(
-      (a, b) => degree[a.id]! >= degree[b.id]! ? a : b,
-    );
+    final courseRoot = nodes.where((node) => node.isCourse).firstOrNull;
+    final root =
+        courseRoot ??
+        rootCandidates.reduce((a, b) => degree[a.id]! >= degree[b.id]! ? a : b);
 
     final depths = <String, int>{root.id: 0};
     final queue = <String>[root.id];
@@ -316,15 +323,18 @@ class _MindMapLayout {
         final category = a.category.compareTo(b.category);
         return category != 0 ? category : a.name.compareTo(b.name);
       });
-    final depthIndexes = <int, int>{};
+    final sideByNode = <String, int>{};
+    var nextRootSide = 1;
     for (final node in sorted) {
       final depth = depths[node.id]!;
-      final index = depthIndexes.update(
-        depth,
-        (value) => value + 1,
-        ifAbsent: () => 0,
-      );
-      final side = index.isEven ? 1 : -1;
+      final parent = adjacency[node.id]!
+          .where((id) => depths[id] == depth - 1)
+          .firstOrNull;
+      final side = parent == null || parent == root.id
+          ? nextRootSide
+          : (sideByNode[parent] ?? nextRootSide);
+      if (parent == null || parent == root.id) nextRootSide *= -1;
+      sideByNode[node.id] = side;
       groups.putIfAbsent((depth, side), () => []).add(node);
     }
 
@@ -333,10 +343,10 @@ class _MindMapLayout {
       1,
       (value, group) => math.max(value, group.length),
     );
-    final horizontalGap = compact ? 152.0 : 208.0;
-    final verticalGap = compact ? 66.0 : 78.0;
-    final sidePadding = compact ? 100.0 : 145.0;
-    final verticalPadding = compact ? 84.0 : 110.0;
+    final horizontalGap = compact ? 220.0 : 312.0;
+    final verticalGap = compact ? 108.0 : 132.0;
+    final sidePadding = compact ? 142.0 : 210.0;
+    final verticalPadding = compact ? 126.0 : 174.0;
     final size = Size(
       math.max(
         minimumSize.width,
@@ -407,6 +417,7 @@ class _MindMapEdgePainter extends CustomPainter {
     required this.edges,
     required this.rootId,
     required this.hoveredId,
+    required this.compact,
   });
 
   final Map<String, Offset> positions;
@@ -414,28 +425,226 @@ class _MindMapEdgePainter extends CustomPainter {
   final List<KnowledgeMapEdge> edges;
   final String rootId;
   final String? hoveredId;
+  final bool compact;
+
+  Rect _nodeBounds(String id, Offset center, {double clearance = 0}) {
+    final size = _mindMapNodeSize(root: id == rootId, compact: compact);
+    return Rect.fromCenter(
+      center: center,
+      width: size.width + clearance * 2,
+      height: size.height + clearance * 2,
+    );
+  }
+
+  Offset _boundaryPoint(
+    Offset center,
+    Offset toward,
+    String nodeId, {
+    double clearance = 0,
+  }) {
+    final delta = toward - center;
+    if (delta.distanceSquared < .01) return center;
+    final bounds = _nodeBounds(nodeId, center, clearance: clearance);
+    final halfWidth = bounds.width / 2;
+    final halfHeight = bounds.height / 2;
+    final xScale = delta.dx.abs() < .001
+        ? double.infinity
+        : halfWidth / delta.dx.abs();
+    final yScale = delta.dy.abs() < .001
+        ? double.infinity
+        : halfHeight / delta.dy.abs();
+    return center + delta * math.min(xScale, yScale);
+  }
+
+  bool _polylineIntersectsNode(
+    List<Offset> points,
+    String startId,
+    String endId,
+  ) {
+    for (final entry in positions.entries) {
+      if (entry.key == startId || entry.key == endId) continue;
+      final bounds = _nodeBounds(
+        entry.key,
+        entry.value,
+        clearance: compact ? 18 : 24,
+      );
+      for (var index = 1; index < points.length; index++) {
+        if (_segmentIntersectsRect(points[index - 1], points[index], bounds)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool _segmentIntersectsRect(Offset start, Offset end, Rect rect) {
+    if (rect.contains(start) || rect.contains(end)) return true;
+    final delta = end - start;
+    var lower = 0.0;
+    var upper = 1.0;
+    for (final axis in <(double, double, double, double)>[
+      (start.dx, delta.dx, rect.left, rect.right),
+      (start.dy, delta.dy, rect.top, rect.bottom),
+    ]) {
+      if (axis.$2.abs() < .001) {
+        if (axis.$1 < axis.$3 || axis.$1 > axis.$4) return false;
+        continue;
+      }
+      final first = (axis.$3 - axis.$1) / axis.$2;
+      final second = (axis.$4 - axis.$1) / axis.$2;
+      lower = math.max(lower, math.min(first, second));
+      upper = math.min(upper, math.max(first, second));
+      if (lower > upper) return false;
+    }
+    return upper >= 0 && lower <= 1;
+  }
+
+  Path _edgePath(Offset start, Offset end, String startId, String endId) {
+    final direction = end.dx >= start.dx ? 1.0 : -1.0;
+    final bend = math.max(42.0, (end.dx - start.dx).abs() * .42);
+    final firstControl = Offset(start.dx + bend * direction, start.dy);
+    final secondControl = Offset(end.dx - bend * direction, end.dy);
+    final samples = <Offset>[
+      for (var step = 0; step <= 24; step++)
+        _cubicPoint(start, firstControl, secondControl, end, step / 24),
+    ];
+    if (!_polylineIntersectsNode(samples, startId, endId)) {
+      return Path()
+        ..moveTo(start.dx, start.dy)
+        ..cubicTo(
+          firstControl.dx,
+          firstControl.dy,
+          secondControl.dx,
+          secondControl.dy,
+          end.dx,
+          end.dy,
+        );
+    }
+
+    final routeAbove = (start.dy + end.dy) / 2 <= sizeCenterY;
+    final outerY = routeAbove
+        ? positions.values.map((point) => point.dy).reduce(math.min)
+        : positions.values.map((point) => point.dy).reduce(math.max);
+    final baseClearance = compact ? 48.0 : 64.0;
+    final lead = compact ? 54.0 : 76.0;
+    final startCorridorX = start.dx + lead * direction;
+    final endCorridorX = end.dx - lead * direction;
+    final midpointX = (startCorridorX + endCorridorX) / 2;
+    var fallbackRouteY = outerY;
+    for (final factor in const [1.0, 1.7, 2.5]) {
+      final clearance = baseClearance * factor;
+      final routeY = routeAbove ? outerY - clearance : outerY + clearance;
+      fallbackRouteY = routeY;
+      final midpoint = Offset(midpointX, routeY);
+      final firstControl = Offset(start.dx + lead * direction * .72, start.dy);
+      final firstRouteControl = Offset(startCorridorX, routeY);
+      final secondRouteControl = Offset(endCorridorX, routeY);
+      final secondControl = Offset(end.dx - lead * direction * .72, end.dy);
+      final detourSamples = <Offset>[
+        for (var step = 0; step <= 18; step++)
+          _cubicPoint(
+            start,
+            firstControl,
+            firstRouteControl,
+            midpoint,
+            step / 18,
+          ),
+        for (var step = 1; step <= 18; step++)
+          _cubicPoint(
+            midpoint,
+            secondRouteControl,
+            secondControl,
+            end,
+            step / 18,
+          ),
+      ];
+      if (_polylineIntersectsNode(detourSamples, startId, endId)) continue;
+      return Path()
+        ..moveTo(start.dx, start.dy)
+        ..cubicTo(
+          firstControl.dx,
+          firstControl.dy,
+          firstRouteControl.dx,
+          firstRouteControl.dy,
+          midpoint.dx,
+          midpoint.dy,
+        )
+        ..cubicTo(
+          secondRouteControl.dx,
+          secondRouteControl.dy,
+          secondControl.dx,
+          secondControl.dy,
+          end.dx,
+          end.dy,
+        );
+    }
+    return _roundedPolylinePath([
+      start,
+      Offset(startCorridorX, start.dy),
+      Offset(startCorridorX, fallbackRouteY),
+      Offset(endCorridorX, fallbackRouteY),
+      Offset(endCorridorX, end.dy),
+      end,
+    ], compact ? 22 : 30);
+  }
+
+  Path _roundedPolylinePath(List<Offset> points, double radius) {
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    for (var index = 1; index < points.length - 1; index++) {
+      final previous = points[index - 1];
+      final corner = points[index];
+      final next = points[index + 1];
+      final incoming = corner - previous;
+      final outgoing = next - corner;
+      if (incoming.distance < .01 || outgoing.distance < .01) {
+        path.lineTo(corner.dx, corner.dy);
+        continue;
+      }
+      final cornerRadius = math.min(
+        radius,
+        math.min(incoming.distance / 2, outgoing.distance / 2),
+      );
+      final before = corner - incoming / incoming.distance * cornerRadius;
+      final after = corner + outgoing / outgoing.distance * cornerRadius;
+      path
+        ..lineTo(before.dx, before.dy)
+        ..quadraticBezierTo(corner.dx, corner.dy, after.dx, after.dy);
+    }
+    return path..lineTo(points.last.dx, points.last.dy);
+  }
+
+  Offset _cubicPoint(
+    Offset start,
+    Offset firstControl,
+    Offset secondControl,
+    Offset end,
+    double t,
+  ) {
+    final inverse = 1 - t;
+    return start * (inverse * inverse * inverse) +
+        firstControl * (3 * inverse * inverse * t) +
+        secondControl * (3 * inverse * t * t) +
+        end * (t * t * t);
+  }
+
+  double get sizeCenterY {
+    if (positions.isEmpty) return 0;
+    return positions.values.map((point) => point.dy).reduce((a, b) => a + b) /
+        positions.length;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
     for (final edge in edges) {
-      final start = positions[edge.from];
-      final end = positions[edge.to];
-      if (start == null || end == null) continue;
+      final startCenter = positions[edge.from];
+      final endCenter = positions[edge.to];
+      if (startCenter == null || endCenter == null) continue;
+      final start = _boundaryPoint(startCenter, endCenter, edge.from);
+      final end = _boundaryPoint(endCenter, startCenter, edge.to);
       final highlighted = hoveredId == edge.from || hoveredId == edge.to;
       final target = nodes[edge.to];
       final color = _nodeColor(target?.status ?? 'unseen');
-      final direction = end.dx >= start.dx ? 1.0 : -1.0;
-      final bend = math.max(34.0, (end.dx - start.dx).abs() * .46);
-      final path = Path()
-        ..moveTo(start.dx, start.dy)
-        ..cubicTo(
-          start.dx + bend * direction,
-          start.dy,
-          end.dx - bend * direction,
-          end.dy,
-          end.dx,
-          end.dy,
-        );
+      final path = _edgePath(start, end, edge.from, edge.to);
       canvas.drawPath(
         path,
         Paint()
@@ -445,7 +654,7 @@ class _MindMapEdgePainter extends CustomPainter {
           ..color = color.withValues(alpha: highlighted ? .92 : .44),
       );
       if (highlighted) {
-        canvas.drawCircle(end, 3.2, Paint()..color = color);
+        canvas.drawCircle(end, 2.8, Paint()..color = color);
       }
     }
   }
@@ -454,10 +663,12 @@ class _MindMapEdgePainter extends CustomPainter {
   bool shouldRepaint(covariant _MindMapEdgePainter oldDelegate) =>
       oldDelegate.positions != positions ||
       oldDelegate.hoveredId != hoveredId ||
-      oldDelegate.edges != edges;
+      oldDelegate.edges != edges ||
+      oldDelegate.compact != compact;
 }
 
 Color _nodeColor(String status) => switch (status) {
+  'course' => const Color(0xFFF1C75B),
   'mastered' || 'good' => const Color(0xFF66C65A),
   'weak' => const Color(0xFFFF981F),
   'learning' => const Color(0xFF3478F6),
@@ -482,7 +693,9 @@ class _MindMapNode extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _nodeColor(node.status);
-    final detail = node.masteryLevel == null
+    final detail = node.isCourse
+        ? '课程节点'
+        : node.masteryLevel == null
         ? '未评估'
         : '${node.masteryLevel!.round()}%';
     return AnimatedScale(

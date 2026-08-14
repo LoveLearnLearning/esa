@@ -12,10 +12,26 @@ import 'copyable_selection_area.dart';
 import 'esa_markdown.dart';
 
 class UserBubble extends StatefulWidget {
-  const UserBubble({super.key, required this.text, this.markdown = false});
+  const UserBubble({
+    super.key,
+    required this.text,
+    this.markdown = false,
+    this.codeBlockPrefix,
+    this.codeOverrideFor,
+    this.onOpenCodeEditorWithId,
+    this.onCodeChangedWithId,
+    this.codeOverrideVersion = 0,
+  });
 
   final String text;
   final bool markdown;
+  final String? codeBlockPrefix;
+  final String? Function(String blockId)? codeOverrideFor;
+  final void Function(String blockId, String code, String language)?
+  onOpenCodeEditorWithId;
+  final void Function(String blockId, String code, String language)?
+  onCodeChangedWithId;
+  final int codeOverrideVersion;
 
   @override
   State<UserBubble> createState() => _UserBubbleState();
@@ -67,8 +83,16 @@ class _UserBubbleState extends State<UserBubble> {
                 border: Border.all(color: const Color(0xFF24436E)),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: widget.markdown
-                  ? EsaMarkdown(data: widget.text, selectable: true)
+              child: widget.markdown || containsFencedCode(widget.text)
+                  ? EsaMarkdown(
+                      data: widget.text,
+                      selectable: true,
+                      codeBlockPrefix: widget.codeBlockPrefix,
+                      codeOverrideFor: widget.codeOverrideFor,
+                      onOpenCodeEditorWithId: widget.onOpenCodeEditorWithId,
+                      onCodeChangedWithId: widget.onCodeChangedWithId,
+                      codeOverrideVersion: widget.codeOverrideVersion,
+                    )
                   : CopyableSelectionArea(
                       child: Text(widget.text, style: context.texts.bodyMedium),
                     ),

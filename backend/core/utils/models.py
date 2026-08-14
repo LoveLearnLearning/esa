@@ -130,3 +130,4 @@ class MessageContext:
     conversation_summary: str = ""
     conversation_mode: str = "normal"
     workspace_type: str = "learning"
+    user_message_id: int | None = None
