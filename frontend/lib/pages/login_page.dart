@@ -284,12 +284,6 @@ class _LoginPageState extends State<LoginPage>
                 bottom: math.max(72, constraints.maxHeight * 0.09),
                 child: const _HeroCopy(),
               ),
-              const Positioned(
-                right: 0,
-                top: 100,
-                bottom: 100,
-                child: VerticalDivider(width: 1, color: _line),
-              ),
             ],
           ),
         ),
@@ -1017,8 +1011,7 @@ class _Metric extends StatefulWidget {
   State<_Metric> createState() => _MetricState();
 }
 
-class _MetricState extends State<_Metric>
-    with SingleTickerProviderStateMixin {
+class _MetricState extends State<_Metric> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _progress;
 
@@ -1061,10 +1054,7 @@ class _MetricState extends State<_Metric>
               ),
               TextSpan(
                 text: widget.label,
-                style: const TextStyle(
-                  color: Color(0xFF738299),
-                  fontSize: 11,
-                ),
+                style: const TextStyle(color: Color(0xFF738299), fontSize: 11),
               ),
             ],
           ),
@@ -1254,7 +1244,7 @@ class _KnowledgeGraphPainter extends CustomPainter {
     _GraphNode(.30, .40, 5, 'Linear Algebra'),
     _GraphNode(.39, .16, 3.5, 'Limits'),
     _GraphNode(.40, .29, 3.5, 'Derivatives'),
-    _GraphNode(.40, .40, 3.5, 'Matrices'),
+    _GraphNode(.35, .65, 3.5, 'Matrices'),
     _GraphNode(.46, .50, 4.5, 'Eigenvalues'),
     _GraphNode(.15, .52, 5, 'Probability'),
     _GraphNode(.06, .61, 3.5, 'Bayes'),
@@ -1267,7 +1257,7 @@ class _KnowledgeGraphPainter extends CustomPainter {
     _GraphNode(.51, .60, 5, 'Data Structures'),
     _GraphNode(.61, .71, 4.5, 'Graph Theory'),
     _GraphNode(.41, .70, 4.5, 'Algorithms'),
-    _GraphNode(.27, .75, 4.5, 'Operating Systems'),
+    _GraphNode(.49, .86, 4.5, 'Operating Systems'),
     _GraphNode(.11, .78, 4.5, 'Databases'),
   ];
 
@@ -1305,12 +1295,7 @@ class _KnowledgeGraphPainter extends CustomPainter {
     final right = math.min(left + math.max(heroWidth, 120), size.width - 24);
     final bottomInset = math.max(72.0, size.height * .09);
     final top = size.height - bottomInset - 136;
-    return Rect.fromLTRB(
-      left,
-      top - 18,
-      right,
-      size.height - bottomInset + 10,
-    );
+    return Rect.fromLTRB(left, top - 18, right, size.height - bottomInset + 10);
   }
 
   Offset _repelFromHero(Offset point, Size size) {
@@ -1386,7 +1371,10 @@ class _KnowledgeGraphPainter extends CustomPainter {
     for (var i = 0; i < edges.length; i++) {
       final edge = edges[i];
       if (edge.$1 >= visibleCount || edge.$2 >= visibleCount) continue;
+      final isOperatingSystemsEdge =
+          (edge.$1 == 17 && edge.$2 == 18) || (edge.$1 == 18 && edge.$2 == 17);
       if (heroRect != null &&
+          !isOperatingSystemsEdge &&
           _segmentIntersectsRect(
             _points[edge.$1],
             _points[edge.$2],
