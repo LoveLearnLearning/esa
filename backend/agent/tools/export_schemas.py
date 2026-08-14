@@ -11,12 +11,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools import tr
 
 OUTPUT_PATH = Path(__file__).resolve().with_name("tool_schemas.json")
 
 
 def export_tool_schemas(output_path: str | Path = OUTPUT_PATH) -> Path:
+    register_builtin_tools()
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

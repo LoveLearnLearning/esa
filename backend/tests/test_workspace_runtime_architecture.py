@@ -237,6 +237,7 @@ def test_capability_schema_is_narrowed_for_turn_resources_and_memory_mode():
     )
     assert "save_core_memory" not in no_write.run_metadata["tool_names"]
     assert "search_core_memories" in no_write.run_metadata["tool_names"]
+    assert "get_core_memories" in no_write.run_metadata["tool_names"]
 
     isolated = WorkspaceRuntime(AgentRuntimeDependencies()).prepare(
         _turn(bound, conversation_mode="isolated")

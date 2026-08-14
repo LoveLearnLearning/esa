@@ -74,6 +74,7 @@ def _memory_executor(
     *,
     workspace_type: str,
     request_id: str,
+    user_store: UserStore | None = None,
 ):
     scope = ResourceScope()
     route = WorkspaceRoute(
@@ -93,7 +94,10 @@ def _memory_executor(
         workspace_route=route,
         authorized_resources=scope,
         conversation_mode="normal",
-        runtime_dependencies=AgentRuntimeDependencies(core_memory_service=service),
+        runtime_dependencies=AgentRuntimeDependencies(
+            user_store=user_store,
+            core_memory_service=service,
+        ),
         request_id=request_id,
     )
     return CapabilityRuntime().compile(
@@ -102,6 +106,32 @@ def _memory_executor(
         profile_fingerprint=f"{workspace_type}:1",
         policy_versions=(route.memory_policy_id,),
     ).bind(context)
+
+
+def test_memory_policy_denial_is_returned_to_the_agent_as_a_tool_error(tmp_path):
+    database, conversation_id = _database(tmp_path)
+    users = UserStore(database)
+    users.update_memory_settings("u1", saved_memory_enabled=False)
+    service = CoreMemoryService(CoreMemoryStore(database))
+    register_builtin_tools()
+    executor = _memory_executor(
+        service,
+        conversation_id,
+        workspace_type="learning",
+        request_id="memory-disabled",
+        user_store=users,
+    )
+
+    result = asyncio.run(
+        executor.execute("search_core_memories", {"query": "learning goal"})
+    )
+
+    assert result == {
+        "ok": False,
+        "error": "memory_policy_denied",
+        "tool": "search_core_memories",
+        "detail": "saved memory is disabled",
+    }
 
 
 def test_agent_action_create_is_atomic_and_approval_executes_once(tmp_path):
@@ -345,10 +375,15 @@ def test_delete_memory_tool_uses_memory_id_and_enforces_workspace_scope(tmp_path
         workspace_type="learning",
         request_id="cross-workspace-delete",
     )
-    with pytest.raises(PermissionError, match="outside the current workspace"):
-        asyncio.run(
-            learning.execute("delete_core_memory", {"memory_id": memory_id})
-        )
+    denied = asyncio.run(
+        learning.execute("delete_core_memory", {"memory_id": memory_id})
+    )
+    assert denied == {
+        "ok": False,
+        "error": "permission_denied",
+        "tool": "delete_core_memory",
+        "detail": "memory is outside the current workspace scope",
+    }
     assert store.get(memory_id, "u1") is not None
 
     deleted = asyncio.run(

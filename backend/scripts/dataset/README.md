@@ -107,7 +107,7 @@ human → function_call → observation → function_call → observation → gp
 |---|---|---|
 | `template` | `qwen3` | **不能用 `qwen3_nothink`** —— 它不产出 `<think>`，后端 `StreamOutputParser` 会把整个回答当 reasoning 吐出、正文为空 |
 | `enable_thinking` | 保持默认 `true` | ReasoningTemplate 会自动补空 CoT 并计算 loss（`template.py:424-431`），这正是前端解析所依赖的 |
-| `cutoff_len` | **≥ 8192** | 默认 2048。22 个工具的 schema 区 + `get_mastery_report` 约 1851 token 的返回，4096 都装不下 |
+| `cutoff_len` | **≥ 8192** | 默认 2048。32 个工具的 schema 区 + `get_mastery_report` 约 1851 token 的返回，4096 都装不下 |
 
 ### 训练时必须核对的一件事
 
@@ -125,7 +125,7 @@ wc -l dataset/data/out/esa_agent_train.jsonl   # 文件行数
 完整清单见 [`docs/后端问题反馈.md`](docs/后端问题反馈.md)（每条带后端 `文件:行号`）。这里只留和本目录直接相关的：
 
 - **工具调用线上格式**（P0-1）：后端 `parse_output` 用 XML 风格，LLaMA-Factory qwen 模板产出 JSON。跑 `tests/test_parser_compat.py` 看实证。**这个决定不阻塞数据生成** —— ShareGPT 文件本身格式无关。
-- **`tool_schemas.json` 应由后端导出**，不是手抄。当前 `schemas/tool_schemas.json` 与后端仓库 `backend/agent/tools/tool_schemas.json` **逐字节一致**（指纹 `e62713fb`，22 个工具），是从仓库取的；根目录那份 16 工具的旧版**已废弃，不要用**。
+- **`tool_schemas.json` 应由后端导出**，不是手抄。当前 `schemas/tool_schemas.json` 与后端仓库 `backend/agent/tools/tool_schemas.json` **逐字节一致**（规范化指纹 `749b8a84`，32 个工具），是从仓库取的；根目录那份 16 工具的旧版**已废弃，不要用**。
 - ~~**`load_skill` 的 `name` 参数没有 enum**，模型无从得知有哪些技能，必然幻觉。需要后端补。~~
   → **这条是错的，已推翻。** 可用 Skill 索引本来就注入在 system prompt 里（后端 `core/message/build_prompt.py:80`），
   模型看得到有哪些技能，所以 `load_skill` 不需要 enum。这句话曾经写进计划、待办和口头汇报，

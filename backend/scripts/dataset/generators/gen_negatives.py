@@ -58,12 +58,12 @@ SAVE_ARGS = {
         {"memory_key": "exam_schedule", "content": "期末考试从第 16 周开始", "category": "constraint"},
 }
 DELETE_ARGS = {
-    "把我之前设的学习目标删掉吧": "learning_goal",
-    "忘掉你记的我的回答风格偏好": "response_style",
-    "请删除关于我薄弱知识点的那条记忆。": "weak_topics",
-    "我不想让你再记着我的考试安排了，删了它": "exam_schedule",
-    "之前存的那个学习目标不作数了，清掉": "learning_goal",
-    "帮我把回答风格那条记忆去掉": "response_style",
+    "把我之前设的学习目标删掉吧": ("learning_goal", "memory-learning-goal"),
+    "忘掉你记的我的回答风格偏好": ("response_style", "memory-response-style"),
+    "请删除关于我薄弱知识点的那条记忆。": ("weak_topics", "memory-weak-topics"),
+    "我不想让你再记着我的考试安排了，删了它": ("exam_schedule", "memory-exam-schedule"),
+    "之前存的那个学习目标不作数了，清掉": ("learning_goal", "memory-learning-goal"),
+    "帮我把回答风格那条记忆去掉": ("response_style", "memory-response-style"),
 }
 
 
@@ -119,19 +119,20 @@ def gen_memory_positives(version, rng, all_names, out):
             version, rng, all_names))
 
     for i, q in enumerate(cfg["明确要求删除"]):
-        key = DELETE_ARGS.get(q)
-        if key is None:
+        target = DELETE_ARGS.get(q)
+        if target is None:
             print(f"    ⚠️  没有为 {q!r} 配置 delete 参数，已跳过")
             continue
-        result = execute("delete_core_memory", {"memory_key": key})
+        key, memory_id = target
+        result = execute("delete_core_memory", {"memory_id": memory_id})
         out.append(mk(
             f"del_pos_{i:03d}", f"mem__delete__{key}__{i:03d}",
             "single_tool_call", ["delete_core_memory", "save_core_memory"],
             [Turn(role="user", content=q),
-             Turn(role="tool_call", calls=[ToolCall("delete_core_memory", {"memory_key": key})]),
+             Turn(role="tool_call", calls=[ToolCall("delete_core_memory", {"memory_id": memory_id})]),
              Turn(role="tool_result", results=[ToolResult("delete_core_memory", result)]),
              Turn(role="assistant",
-                  content=f"已经删掉「{result['memory_key']}」这条记忆了。")],
+                  content=f"已经删掉「{key}」这条记忆了。")],
             version, rng, all_names))
 
 

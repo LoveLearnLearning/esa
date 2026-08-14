@@ -326,6 +326,21 @@ def test_research_projects_are_user_scoped_and_bind_research_chats(tmp_path):
     )
     assert archived_binding.status_code == 409
 
+    existing_sync = client.post(
+        f"/api/conversations/{bound.json()['conversation_id']}/messages",
+        headers=alice,
+        json={"content": "continue the project discussion"},
+    )
+    assert existing_sync.status_code == 409
+    assert "archived" in existing_sync.json()["detail"]
+
+    existing_stream = client.post(
+        f"/api/conversations/{bound.json()['conversation_id']}/messages/stream",
+        headers=alice,
+        json={"content": "continue the project discussion"},
+    )
+    assert existing_stream.status_code == 409
+
 
 def test_research_workspace_has_only_scoped_tools():
     register_builtin_tools()

@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.skills import (
     build_autoload_skills_context,
@@ -13,6 +16,18 @@ def test_skill_contracts_match_registered_tools():
     refresh_skill_cache()
     errors = validate_skill_contracts(set(tr.registered_tools))
     assert errors == []
+
+
+def test_tool_schema_snapshots_match_the_registered_runtime():
+    register_builtin_tools()
+    repository_root = Path(__file__).resolve().parents[2]
+    backend_snapshot = repository_root / "backend/agent/tools/tool_schemas.json"
+    dataset_snapshot = (
+        repository_root / "backend/scripts/dataset/schemas/tool_schemas.json"
+    )
+
+    assert backend_snapshot.read_bytes() == dataset_snapshot.read_bytes()
+    assert json.loads(backend_snapshot.read_text(encoding="utf-8")) == tr.schemas
 
 
 def test_new_pedagogy_skills_are_loadable():

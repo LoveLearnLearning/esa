@@ -7,8 +7,11 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from backend.agent.skills.catalog import ScopedSkillView
+from backend.agent.memories.core_memory_models import MemoryPolicyDenied
 from backend.agent.tools import tr
 from backend.agent.tools.catalog import (
+    MEMORY_READ_TOOLS,
+    MEMORY_WRITE_TOOLS,
     ScopedToolView,
     TOOL_RESOURCE_REQUIREMENTS,
     capability_declaration,
@@ -17,10 +20,6 @@ from backend.agent.tools.context import ToolExecutionContext
 from backend.agent.workspaces.models import ResolvedCapabilities
 
 
-MEMORY_READ_TOOLS = frozenset({"search_core_memories", "get_core_memories"})
-MEMORY_WRITE_TOOLS = frozenset(
-    {"save_core_memory", "propose_core_memory", "delete_core_memory"}
-)
 RESEARCH_WORKFLOW_TOOLS = frozenset(
     {"start_frontier_tracking", "start_research_writing", "start_dataset_analysis"}
 )
@@ -79,75 +78,97 @@ class BoundToolExecutor:
                 "tool": name,
                 "required": sorted(required),
             }
-        if name == "load_skill":
-            requested = normalized.get("name")
-            if not isinstance(requested, str):
-                return {"ok": False, "error": "invalid_skill_name"}
-            return self._skills.load(requested)
-        if name in {
-            "search_core_memories", "get_core_memories",
-            "save_core_memory", "propose_core_memory", "delete_core_memory",
-        } and self.context.runtime_dependencies.core_memory_service is not None:
-            from backend.agent.tools.common.memory_tools import execute_memory_tool
+        try:
+            if name == "load_skill":
+                requested = normalized.get("name")
+                if not isinstance(requested, str):
+                    return {"ok": False, "error": "invalid_skill_name"}
+                return self._skills.load(requested)
+            if (
+                name in MEMORY_READ_TOOLS | MEMORY_WRITE_TOOLS
+                and self.context.runtime_dependencies.core_memory_service is not None
+            ):
+                from backend.agent.tools.common.memory_tools import execute_memory_tool
 
-            return execute_memory_tool(self.context, name, normalized)
-        if name == "get_teaching_context":
-            reader = self.context.runtime_dependencies.teaching_context_reader
-            if reader is None:
-                raise RuntimeError("Teaching context reader is not configured")
-            return reader.read_teaching_context(
-                user_id=self.context.user_id,
-                class_id=self.context.authorized_resources.class_id,
-                assignment_id=self.context.authorized_resources.assignment_id,
-            )
-        if name in {
-            "start_frontier_tracking", "start_research_writing", "start_dataset_analysis"
-        }:
-            declaration = capability_declaration(name)
-            service = self.context.runtime_dependencies.agent_action_service
-            if service is None:
-                raise RuntimeError("Agent Action service is not configured")
-            project_id = self.context.authorized_resources.project_id
-            payload = dict(normalized)
-            if name == "start_frontier_tracking":
-                if project_id is None:
-                    raise ValueError("research conversation is not bound to a project")
-                payload["project_id"] = project_id
-            return service.request(
-                user_id=self.context.user_id,
-                conversation_id=self.context.conversation_id,
-                workspace_type=self.context.workspace_route.workspace_type,
-                action_type=name,
-                arguments=payload,
-                resource_snapshot={
-                    "project_id": project_id,
-                    "markers": self.context.authorized_resources.markers,
-                    "resource_revisions": dict(
-                        self.context.authorized_resources.revision_set
-                    ),
-                    "resource_policy_version": (
-                        self.context.authorized_resources.policy_version
-                    ),
-                    "audit_markers": self.context.authorized_resources.audit_markers,
-                    "request_id": self.context.request_id,
-                    "run_id": self.context.run_id,
-                },
-                policy_id=self.context.workspace_route.action_policy,
-                approval_mode=declaration.approval_mode,
-            )
-        if name.startswith("parse_") and name.endswith("_attachment"):
-            from backend.agent.tools.common.attachment_tools import execute_attachment_tool
+                return execute_memory_tool(self.context, name, normalized)
+            if name == "get_teaching_context":
+                reader = self.context.runtime_dependencies.teaching_context_reader
+                if reader is None:
+                    raise RuntimeError("Teaching context reader is not configured")
+                return reader.read_teaching_context(
+                    user_id=self.context.user_id,
+                    class_id=self.context.authorized_resources.class_id,
+                    assignment_id=self.context.authorized_resources.assignment_id,
+                )
+            if name in {
+                "start_frontier_tracking", "start_research_writing", "start_dataset_analysis"
+            }:
+                declaration = capability_declaration(name)
+                service = self.context.runtime_dependencies.agent_action_service
+                if service is None:
+                    raise RuntimeError("Agent Action service is not configured")
+                project_id = self.context.authorized_resources.project_id
+                payload = dict(normalized)
+                if name == "start_frontier_tracking":
+                    if project_id is None:
+                        raise ValueError("research conversation is not bound to a project")
+                    payload["project_id"] = project_id
+                return service.request(
+                    user_id=self.context.user_id,
+                    conversation_id=self.context.conversation_id,
+                    workspace_type=self.context.workspace_route.workspace_type,
+                    action_type=name,
+                    arguments=payload,
+                    resource_snapshot={
+                        "project_id": project_id,
+                        "markers": self.context.authorized_resources.markers,
+                        "resource_revisions": dict(
+                            self.context.authorized_resources.revision_set
+                        ),
+                        "resource_policy_version": (
+                            self.context.authorized_resources.policy_version
+                        ),
+                        "audit_markers": self.context.authorized_resources.audit_markers,
+                        "request_id": self.context.request_id,
+                        "run_id": self.context.run_id,
+                    },
+                    policy_id=self.context.workspace_route.action_policy,
+                    approval_mode=declaration.approval_mode,
+                )
+            if name.startswith("parse_") and name.endswith("_attachment"):
+                from backend.agent.tools.common.attachment_tools import execute_attachment_tool
 
-            return await execute_attachment_tool(self.context, name, normalized)
-        if name in {
-            "recommend_practice", "get_mastery_report", "get_mastery_level",
-            "get_weak_prerequisites", "get_review_timing", "record_answer",
-            "record_learning_evidence", "get_learning_evidence_summary",
-        }:
-            from backend.agent.tools.learning.runtime import execute_learning_tool
+                return await execute_attachment_tool(self.context, name, normalized)
+            if name in {
+                "recommend_practice", "get_mastery_report", "get_mastery_level",
+                "get_weak_prerequisites", "get_review_timing", "record_answer",
+                "record_learning_evidence", "get_learning_evidence_summary",
+            }:
+                from backend.agent.tools.learning.runtime import execute_learning_tool
 
-            return execute_learning_tool(self.context, name, normalized)
-        return await self._view.execute(name, normalized)
+                return execute_learning_tool(self.context, name, normalized)
+            return await self._view.execute(name, normalized)
+        except MemoryPolicyDenied as error:
+            return {
+                "ok": False,
+                "error": "memory_policy_denied",
+                "tool": name,
+                "detail": str(error),
+            }
+        except PermissionError as error:
+            return {
+                "ok": False,
+                "error": "permission_denied",
+                "tool": name,
+                "detail": str(error),
+            }
+        except (ValueError, RuntimeError) as error:
+            return {
+                "ok": False,
+                "error": "tool_execution_error",
+                "tool": name,
+                "detail": str(error),
+            }
 
 
 @dataclass(frozen=True, slots=True)

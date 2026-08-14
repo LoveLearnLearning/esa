@@ -370,6 +370,54 @@ def test_teaching_context_adapter_revalidates_teacher_ownership_and_state():
         )
 
 
+def test_bound_teaching_context_errors_are_returned_as_tool_results():
+    class Reader:
+        def read_teaching_context(self, **_kwargs):
+            raise ValueError("teaching classroom is no longer authorized")
+
+    register_builtin_tools()
+    definition = WORKSPACE_DEFINITIONS["teaching"]
+    scope = ResourceScope(class_id="class-1", capabilities=frozenset({"classroom"}))
+    route = WorkspaceRoute(
+        workspace_type="teaching",
+        agent_profile_id=definition.profile_id,
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        prompt_key=definition.prompt_key,
+        profile_policy=definition.profile_policy,
+        memory_policy_id=definition.memory_policy_id,
+        resource_scope=scope,
+        action_policy=definition.action_policy,
+    )
+    compiled = CapabilityRuntime().compile(
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        profile_fingerprint="teaching:1",
+        policy_versions=("teaching.v1",),
+        resource_capabilities=frozenset({"classroom"}),
+    )
+    context = ToolExecutionContext(
+        user_id="teacher-1",
+        conversation_id="c1",
+        workspace_route=route,
+        authorized_resources=scope,
+        conversation_mode="normal",
+        runtime_dependencies=AgentRuntimeDependencies(teaching_context_reader=Reader()),
+        request_id="r1",
+    )
+
+    result = asyncio.run(
+        compiled.bind(context).execute("get_teaching_context", {})
+    )
+
+    assert result == {
+        "ok": False,
+        "error": "tool_execution_error",
+        "tool": "get_teaching_context",
+        "detail": "teaching classroom is no longer authorized",
+    }
+
+
 def test_workspace_compiler_rejects_undeclared_resource_capabilities():
     identity = TrustedIdentity("u1", "student", "student")
     definition = WORKSPACE_DEFINITIONS["learning"]

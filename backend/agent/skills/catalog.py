@@ -71,16 +71,17 @@ class ScopedSkillView:
                 key=lambda skill: (-skill.priority, skill.name),
             )
         )
+        declarations = tuple(skill_declaration(skill) for skill in selected)
         payload = [
             (
-                skill_declaration(skill).name,
-                skill_declaration(skill).version,
-                skill_declaration(skill).scope,
+                declaration.name,
+                declaration.version,
+                declaration.scope,
                 skill.autoload,
-                skill_declaration(skill).required_tools,
-                tuple(sorted(skill_declaration(skill).required_resource_capabilities)),
+                declaration.required_tools,
+                tuple(sorted(declaration.required_resource_capabilities)),
             )
-            for skill in selected
+            for skill, declaration in zip(selected, declarations)
         ]
         canonical = json.dumps(payload, separators=(",", ":"))
         fingerprint = hashlib.sha256(

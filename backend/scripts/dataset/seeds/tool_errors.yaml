@@ -441,7 +441,7 @@ blocked:
 
   - id: blocked_delete_core_memory
     tool: delete_core_memory
-    args: { memory_key: "learning_goal" }
+    args: { memory_id: "memory-learning-goal" }
     lures: [delete_core_memory, save_core_memory, get_core_memories]
     # 同上：不能和 gen_negatives 的 delete 正例撞话术
     q: "帮我把 learning_goal 那条记忆删了，我打算重新规划一下"

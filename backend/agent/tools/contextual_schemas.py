@@ -10,7 +10,7 @@ from backend.agent.tools.tools import tr
 CONTEXTUAL_TOOL_NAMES = frozenset(
     {
         "load_skill", "save_core_memory", "propose_core_memory",
-        "search_core_memories",
+        "search_core_memories", "get_core_memories",
         "delete_core_memory", "recommend_practice",
         "get_mastery_report",
         "get_mastery_level", "get_weak_prerequisites", "get_review_timing",

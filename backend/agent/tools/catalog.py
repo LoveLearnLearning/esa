@@ -13,6 +13,11 @@ from backend.core.utils.tool_arguments import normalize_tool_arguments
 
 TOOL_CATALOG_VERSION = 1
 
+MEMORY_READ_TOOLS = frozenset({"search_core_memories", "get_core_memories"})
+MEMORY_WRITE_TOOLS = frozenset(
+    {"save_core_memory", "propose_core_memory", "delete_core_memory"}
+)
+
 LEARNING_TOOLS = frozenset(
     {
         "recommend_practice", "get_mastery_report", "get_mastery_level",
@@ -25,14 +30,12 @@ LEARNING_TOOLS = frozenset(
 COMMON_TOOLS = frozenset(
     {
         "get_weather", "get_time", "web_search", "arxiv_search", "calculator",
-        "math_solver", "bitwise_calculator", "load_skill", "save_core_memory",
-        "propose_core_memory", "search_core_memories",
-        "delete_core_memory",
+        "math_solver", "bitwise_calculator", "load_skill",
         "parse_pdf_attachment", "parse_word_attachment",
         "parse_presentation_attachment", "parse_spreadsheet_attachment",
         "parse_image_attachment",
     }
-)
+) | MEMORY_READ_TOOLS | MEMORY_WRITE_TOOLS
 
 RESEARCH_TOOLS = frozenset(
     {
@@ -86,7 +89,9 @@ CAPABILITY_DECLARATIONS: dict[str, CapabilityDeclaration] = {
         name: CapabilityDeclaration(
             name,
             "research",
-            required_resource_capabilities=TOOL_RESOURCE_REQUIREMENTS[name],
+            required_resource_capabilities=TOOL_RESOURCE_REQUIREMENTS.get(
+                name, frozenset()
+            ),
             kind="action",
             approval_mode="approval_required",
             policy_version="research.v1",

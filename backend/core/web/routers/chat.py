@@ -201,6 +201,26 @@ def _load_owned(
     return conversation
 
 
+def _ensure_message_allowed(
+    request: Request,
+    conversation: dict,
+    session: SessionPrincipal,
+) -> None:
+    """Reject writes to archived research conversations with a stable 4xx."""
+    project_id = conversation.get("research_project_id")
+    if not project_id:
+        return
+    project_store: ResearchProjectStore = request.app.state.research_project_store
+    project = project_store.get_project(project_id, session.user_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "research project not found")
+    if project.get("status") != "active":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "archived research project is read-only",
+        )
+
+
 def _validate_group_owned(
     request: Request,
     group_id: str | None,
@@ -503,8 +523,7 @@ def _build_run_spec(
             attachments=AttachmentAuthorization(
                 tuple(item["attachment_id"] for item in authorized_attachments)
             ),
-            project_owned=project_id is None
-            or (project is not None and project.get("status") == "active"),
+            project_owned=project_id is None or project is not None,
             class_authorized=classroom_authorization.class_authorized,
             assignment_authorized=classroom_authorization.assignment_authorized,
             resource_capabilities=frozenset(
@@ -852,7 +871,8 @@ async def send_message(
     session: CurrentSession,
 ) -> list[dict]:
     # 在排队前先校验归属，避免无权用户占用其他会话的租约。
-    _load_owned(request, conversation_id, session)
+    conversation = _load_owned(request, conversation_id, session)
+    _ensure_message_allowed(request, conversation, session)
     lease = await _acquire_turn(request, conversation_id)
     async with lease:
         authorized_attachments, attachments = _attachment_inventory(
@@ -894,7 +914,8 @@ async def stream_message(
     request: Request,
     session: CurrentSession,
 ) -> StreamingResponse:
-    _load_owned(request, conversation_id, session)
+    conversation = _load_owned(request, conversation_id, session)
+    _ensure_message_allowed(request, conversation, session)
     lease = await _acquire_turn(request, conversation_id)
     try:
         authorized_attachments, attachments = _attachment_inventory(

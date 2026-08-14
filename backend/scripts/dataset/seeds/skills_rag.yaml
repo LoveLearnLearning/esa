@@ -82,9 +82,9 @@ load_skill:
       a: "15 的阶乘是 ${value}$。这种算术直接用计算器算就行，不需要加载教学技能。"
     - q: "把我的学习目标删掉"
       tool: delete_core_memory
-      args: { memory_key: "learning_goal" }
+      args: { memory_id: "memory-learning-goal" }
       lure: load_skill
-      a: "已经把「{memory_key}」这条记忆删掉了。这是记忆管理，不需要加载教学技能。"
+      a: "已经删除指定的长期记忆。这是记忆管理，不需要加载教学技能。"
 
   # profile_personalization 是 autoload:true，已经在 system prompt 里，
   # 不该再用 load_skill 加载一次

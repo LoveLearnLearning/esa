@@ -5,10 +5,12 @@ import argparse
 import json
 from pathlib import Path
 
+from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools import tr
 
 
 def export_tool_schemas(output_path: Path) -> None:
+    register_builtin_tools()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(
