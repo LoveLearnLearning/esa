@@ -32,10 +32,10 @@ class ComposedContext:
 
 @dataclass(frozen=True, slots=True)
 class LoopPolicy:
-    max_iterations: int = 3
+    max_iterations: int
+    tool_timeout_seconds: float
     parallel_tools: bool = False
     tool_error_policy: str = "return_structured_error"
-    tool_timeout_seconds: float = 30.0
 
     def __post_init__(self) -> None:
         if self.max_iterations < 1:
@@ -55,7 +55,7 @@ class WorkspaceRuntimeProfile:
     profile_policy: str
     memory_policy_id: str
     action_policy: str
-    loop_policy: LoopPolicy = LoopPolicy()
+    loop_policy: LoopPolicy
     version: int = 1
 
 

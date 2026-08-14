@@ -13,6 +13,8 @@ from backend.agent.workspaces.capability_runtime import CapabilityRuntime
 from backend.agent.workspaces.context_composer import ContextComposer
 from backend.agent.workspaces.models import AgentTurnInput, ResolvedCapabilities
 from backend.agent.workspaces.profiles.learning import PROFILE as LEARNING_PROFILE
+from backend.agent.workspaces.profiles.research import PROFILE as RESEARCH_PROFILE
+from backend.agent.workspaces.profiles.teaching import PROFILE as TEACHING_PROFILE
 from backend.agent.workspaces.runtime import WorkspaceRuntime
 from backend.core.router.basic_router import route_workspace
 from backend.core.router.context import ConversationContext, RoutingContext
@@ -22,6 +24,7 @@ from backend.core.router.errors import (
     WorkspaceAccessDenied,
 )
 from backend.core.router.models import ResourceScope, TrustedIdentity, WorkspaceRoute
+from backend.core.utils.config import AGENT_LOOP_TIME, AGENT_TOOL_TIMEOUT_SECONDS
 
 
 def _identity(role: str = "student", user_id: str = "u1") -> TrustedIdentity:
@@ -59,6 +62,12 @@ def _turn(route: WorkspaceRoute, **values) -> AgentTurnInput:
     }
     defaults.update(values)
     return AgentTurnInput(**defaults)
+
+
+def test_workspace_profiles_use_central_agent_runtime_config():
+    for profile in (LEARNING_PROFILE, RESEARCH_PROFILE, TEACHING_PROFILE):
+        assert profile.loop_policy.max_iterations == AGENT_LOOP_TIME
+        assert profile.loop_policy.tool_timeout_seconds == AGENT_TOOL_TIMEOUT_SECONDS
 
 
 def test_core_router_fails_closed_for_identity_workspace_and_resources():

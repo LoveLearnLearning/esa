@@ -74,7 +74,6 @@ from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.config import (
-    AGENT_LOOP_TIME,
     API_PREFIX,
     AUXILIARY_MODEL_BASE_URL,
     AUXILIARY_MODEL_NAME,
@@ -299,7 +298,6 @@ async def lifespan(app: FastAPI):
         app.state.session_store,
     )
     app.state.agent = Agent(
-        loop_times=AGENT_LOOP_TIME,
         model_path=MODEL_PATH,
         dtype=MODEL_DTYPE,
         kv_cache_dtype=MODEL_KV_CACHE_DTYPE,
