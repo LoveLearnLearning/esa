@@ -297,6 +297,7 @@
     providersReady = true;
 
     defineThemes(monaco);
+    window.esaLsp?.registerProviders(monaco);
 
     const snippets = {
       python: [
@@ -381,7 +382,9 @@
     dark,
     indentSize,
     editorTheme,
+    sessionToken,
     onChanged,
+    onLspStatus,
   ) {
     cancelled.delete(id);
     Promise.all([loadMonaco(), loadEditorFont()]).then(([monaco]) => {
@@ -404,7 +407,10 @@
           cursorBlinking: 'blink',
           cursorSmoothCaretAnimation: 'off',
           disableMonospaceOptimizations: true,
-          fixedOverflowWidgets: true,
+          // Fixed-position overflow widgets are misplaced behind Flutter's
+          // transformed HtmlElementView. Keep suggest/hover widgets inside
+          // Monaco's own layout coordinate system.
+          fixedOverflowWidgets: false,
           folding: true,
           fontFamily: "'JetBrains Mono', monospace",
           fontLigatures: false,
@@ -549,6 +555,9 @@
           model,
           dark,
           editorTheme,
+          language,
+          sessionToken,
+          onLspStatus,
           applying: false,
           suggestFrame: 0,
           applyIndent,
@@ -577,6 +586,13 @@
             });
           }
         });
+        record.lsp = window.esaLsp?.attach(
+          monaco,
+          model,
+          language,
+          sessionToken,
+          onLspStatus,
+        );
         editors.set(id, record);
         requestAnimationFrame(() => {
           recalibrate();
@@ -613,7 +629,17 @@
 
   function setLanguage(id, language) {
     const record = editors.get(id);
-    if (record) window.monaco.editor.setModelLanguage(record.model, language);
+    if (!record) return;
+    window.esaLsp?.detach(record.model);
+    window.monaco.editor.setModelLanguage(record.model, language);
+    record.language = language;
+    record.lsp = window.esaLsp?.attach(
+      window.monaco,
+      record.model,
+      language,
+      record.sessionToken,
+      record.onLspStatus,
+    );
   }
 
   function setTheme(id, dark) {
@@ -642,6 +668,7 @@
     const record = editors.get(id);
     if (!record) return;
     record.disposeMeasurements();
+    window.esaLsp?.detach(record.model);
     cancelAnimationFrame(record.suggestFrame);
     record.subscription.dispose();
     record.typeSubscription.dispose();

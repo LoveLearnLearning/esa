@@ -12,6 +12,8 @@ class MonacoEditor extends StatefulWidget {
     required this.indentSize,
     required this.editorTheme,
     required this.onChanged,
+    this.sessionToken = '',
+    this.onLspStatus,
   });
 
   final String value;
@@ -20,6 +22,8 @@ class MonacoEditor extends StatefulWidget {
   final int indentSize;
   final String editorTheme;
   final ValueChanged<String> onChanged;
+  final String sessionToken;
+  final ValueChanged<String>? onLspStatus;
 
   @override
   State<MonacoEditor> createState() => _MonacoEditorState();

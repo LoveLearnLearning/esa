@@ -18,7 +18,9 @@ external void _createEditor(
   bool dark,
   int indentSize,
   String editorTheme,
+  String sessionToken,
   JSFunction onChanged,
+  JSFunction onLspStatus,
 );
 
 @JS('esaMonaco.setValue')
@@ -48,6 +50,8 @@ class MonacoEditor extends StatefulWidget {
     required this.indentSize,
     required this.editorTheme,
     required this.onChanged,
+    this.sessionToken = '',
+    this.onLspStatus,
   });
 
   final String value;
@@ -56,6 +60,8 @@ class MonacoEditor extends StatefulWidget {
   final int indentSize;
   final String editorTheme;
   final ValueChanged<String> onChanged;
+  final String sessionToken;
+  final ValueChanged<String>? onLspStatus;
 
   @override
   State<MonacoEditor> createState() => _MonacoEditorState();
@@ -66,6 +72,7 @@ class _MonacoEditorState extends State<MonacoEditor> {
   late final String _editorId;
   late final String _viewType;
   late final JSFunction _onChanged;
+  late final JSFunction _onLspStatus;
 
   @override
   void initState() {
@@ -74,6 +81,9 @@ class _MonacoEditorState extends State<MonacoEditor> {
     _viewType = 'esa-monaco-view-$_editorId';
     _onChanged = ((JSString value) {
       widget.onChanged(value.toDart);
+    }).toJS;
+    _onLspStatus = ((JSString value) {
+      widget.onLspStatus?.call(value.toDart);
     }).toJS;
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (int viewId) {
       final element = web.HTMLDivElement()
@@ -94,7 +104,9 @@ class _MonacoEditorState extends State<MonacoEditor> {
         widget.dark,
         widget.indentSize,
         widget.editorTheme,
+        widget.sessionToken,
         _onChanged,
+        _onLspStatus,
       );
       return element;
     });

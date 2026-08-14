@@ -519,6 +519,7 @@ class _ChatPageState extends State<ChatPage> {
           language: code.language,
           indentSize: app.codeEditorIndentSize,
           editorTheme: app.codeEditorTheme,
+          sessionToken: app.api.sessionId ?? '',
           compact: compact,
           onChanged: (value) =>
               _updateCodeSession((_codeSession ?? code).copyWith(value: value)),

@@ -55,6 +55,23 @@ server {
         return 404;
     }
 
+    # LSP uses an authenticated WebSocket; keep Upgrade headers scoped to this
+    # endpoint so ordinary REST and SSE traffic retains its existing behavior.
+    location ^~ /api/lsp/ {
+        proxy_pass http://115.29.197.244:51024;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
     location ^~ /api/ {
         proxy_pass http://115.29.197.244:51024;
         proxy_http_version 1.1;

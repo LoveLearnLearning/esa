@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -81,6 +82,7 @@ class CodeEditorPane extends StatefulWidget {
     this.compact = false,
     this.indentSize = 2,
     this.editorTheme = 'vs-dark',
+    this.sessionToken = '',
   });
 
   final String value;
@@ -93,6 +95,7 @@ class CodeEditorPane extends StatefulWidget {
   final bool compact;
   final int indentSize;
   final String editorTheme;
+  final String sessionToken;
 
   @override
   State<CodeEditorPane> createState() => _CodeEditorPaneState();
@@ -100,7 +103,34 @@ class CodeEditorPane extends StatefulWidget {
 
 class _CodeEditorPaneState extends State<CodeEditorPane> {
   bool _copied = false;
+  late String _lspStatus;
   Timer? _copiedTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _lspStatus = kIsWeb && widget.sessionToken.isNotEmpty
+        ? 'connecting'
+        : 'fallback';
+  }
+
+  void _setLspStatus(String value) {
+    if (!mounted || value == _lspStatus) return;
+    setState(() => _lspStatus = value);
+  }
+
+  String get _lspStatusLabel => switch (_lspStatus) {
+    'connected' => 'LSP 已连接',
+    'connecting' => 'LSP 连接中',
+    'disconnected' => 'LSP 已断开',
+    _ => '本地补全',
+  };
+
+  Color get _lspStatusColor => switch (_lspStatus) {
+    'connected' => const Color(0xFF4ADE80),
+    'connecting' => const Color(0xFFFBBF24),
+    _ => const Color(0xFFE2E8F0),
+  };
 
   @override
   void dispose() {
@@ -230,21 +260,40 @@ class _CodeEditorPaneState extends State<CodeEditorPane> {
               dark: dark,
               indentSize: widget.indentSize,
               editorTheme: widget.editorTheme,
+              sessionToken: widget.sessionToken,
+              onLspStatus: _setLspStatus,
               onChanged: widget.onChanged,
             ),
           ),
           Container(
             height: 24,
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            alignment: Alignment.centerRight,
             color: EsaColors.accent,
-            child: Text(
-              'ESA EDITOR  ·  ${language.toUpperCase()}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontFamily: 'JetBrainsMono',
-                fontSize: 9.5,
-              ),
+            child: Row(
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: _lspStatusColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  _lspStatusLabel,
+                  style: const TextStyle(color: Colors.white, fontSize: 9.5),
+                ),
+                const Spacer(),
+                Text(
+                  'ESA EDITOR  ·  ${language.toUpperCase()}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'JetBrainsMono',
+                    fontSize: 9.5,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

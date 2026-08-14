@@ -5,6 +5,7 @@ import vm from 'node:vm';
 const providers = new Map();
 let didType;
 let suggestRuns = 0;
+let editorOptions;
 const source = [
   'ListNode* reverseListRecursive(ListNode* head) {',
   '  // 请尝试实现',
@@ -42,7 +43,10 @@ const editor = {
 const monaco = {
   Range: class Range {},
   editor: {
-    create: () => editor,
+    create: (_host, options) => {
+      editorOptions = options;
+      return editor;
+    },
     createModel: () => model,
     defineTheme() {},
     remeasureFonts() {},
@@ -101,6 +105,8 @@ window.esaMonaco.create(
   true,
   2,
   'vs-dark',
+  '',
+  () => {},
   () => {},
 );
 
@@ -115,6 +121,11 @@ const labels = suggestions.map((item) => item.label);
 assert(labels.includes('ListNode'), `ListNode missing from: ${labels.join(', ')}`);
 assert(labels.includes('reverseListRecursive'));
 assert(labels.includes('head'));
+assert.equal(
+  editorOptions.fixedOverflowWidgets,
+  false,
+  'suggestions must stay inside Flutter HtmlElementView coordinates',
+);
 
 didType('o');
 await new Promise((resolve) => setImmediate(resolve));
