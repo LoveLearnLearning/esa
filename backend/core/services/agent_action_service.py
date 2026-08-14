@@ -15,10 +15,19 @@ class AgentActionService:
         *,
         validators: dict[str, Callable[[dict[str, Any]], None]] | None = None,
         executors: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] | None = None,
+        policy_modes: dict[str, str] | None = None,
     ) -> None:
         self.store = store
         self.validators = validators or {}
         self.executors = executors or {}
+        self.policy_modes = policy_modes or {}
+        invalid = set(self.policy_modes.values()) - {
+            "automatic",
+            "approval_required",
+            "forbidden",
+        }
+        if invalid:
+            raise ValueError(f"invalid action policy modes: {sorted(invalid)}")
 
     @staticmethod
     def idempotency_key(
@@ -46,11 +55,33 @@ class AgentActionService:
         arguments: dict[str, Any],
         resource_snapshot: dict[str, Any],
         policy_id: str,
+        approval_mode: str | None = None,
         idempotency_key: str | None = None,
         ttl_minutes: int = 30,
     ) -> dict[str, Any]:
+        configured_mode = self.policy_modes.get(policy_id)
+        mode = approval_mode or configured_mode or "approval_required"
+        if mode == "forbidden":
+            raise ValueError("action is forbidden by policy")
+        if mode not in {"automatic", "approval_required"}:
+            raise ValueError(f"invalid action approval mode: {mode!r}")
+        if configured_mode is not None and configured_mode != mode:
+            raise ValueError("action approval mode does not match policy")
+        proposal = {
+            "status": "proposed",
+            "user_id": user_id,
+            "conversation_id": conversation_id,
+            "workspace_type": workspace_type,
+            "action_type": action_type,
+            "arguments": arguments,
+            "resource_snapshot": resource_snapshot,
+            "policy_id": policy_id,
+        }
+        validator = self.validators.get(action_type)
+        if validator:
+            validator(proposal)
         key = self.idempotency_key(user_id, action_type, arguments, idempotency_key)
-        return self.store.create(
+        created = self.store.create(
             user_id=user_id,
             conversation_id=conversation_id,
             workspace_type=workspace_type,
@@ -63,11 +94,22 @@ class AgentActionService:
                 datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
             ).isoformat(),
         )
+        if mode == "automatic" and created["status"] == "pending":
+            self.store.transition(
+                created["action_id"],
+                user_id,
+                expected=("pending",),
+                target="approved",
+            )
+            return self.execute(created["action_id"], user_id)
+        return created
 
     def approve(self, action_id: str, user_id: str) -> dict[str, Any]:
         action = self.store.get(action_id, user_id)
         if action is None:
             raise KeyError(action_id)
+        if self.policy_modes.get(action["policy_id"], "approval_required") != "approval_required":
+            raise ValueError("action policy does not permit approval")
         if action["status"] != "pending":
             if action["status"] in {"approved", "executing", "succeeded", "failed"}:
                 return action

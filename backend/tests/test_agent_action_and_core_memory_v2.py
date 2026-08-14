@@ -138,6 +138,47 @@ def test_agent_action_create_is_atomic_and_approval_executes_once(tmp_path):
     assert {item["action_id"] for item in results} == {action_id}
 
 
+def test_agent_action_policy_is_explicit_and_revalidates_each_transition(tmp_path):
+    database, conversation_id = _database(tmp_path)
+    validations: list[str] = []
+
+    def validate(action):
+        validations.append(action.get("status", "proposed"))
+
+    service = AgentActionService(
+        AgentActionStore(database),
+        validators={"start_frontier_tracking": validate},
+        executors={"start_frontier_tracking": lambda _action: {"job_id": "j1"}},
+        policy_modes={"research.v1": "approval_required"},
+    )
+    action = service.request(
+        user_id="u1",
+        conversation_id=conversation_id,
+        workspace_type="research",
+        action_type="start_frontier_tracking",
+        arguments={"query": "agents", "project_id": "p1"},
+        resource_snapshot={"project_id": "p1"},
+        policy_id="research.v1",
+        approval_mode="approval_required",
+    )
+    assert validations == ["proposed"]
+    service.approve(action["action_id"], "u1")
+    service.execute(action["action_id"], "u1")
+    assert validations == ["proposed", "pending", "approved"]
+
+    with pytest.raises(ValueError, match="forbidden"):
+        service.request(
+            user_id="u1",
+            conversation_id=conversation_id,
+            workspace_type="research",
+            action_type="start_frontier_tracking",
+            arguments={"query": "denied"},
+            resource_snapshot={"project_id": "p1"},
+            policy_id="research.v1",
+            approval_mode="forbidden",
+        )
+
+
 def test_agent_action_reject_expire_and_cross_user_guards(tmp_path):
     database, conversation_id = _database(tmp_path)
     service = AgentActionService(AgentActionStore(database))

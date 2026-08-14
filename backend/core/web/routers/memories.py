@@ -68,9 +68,9 @@ def _context(
         runtime_dependencies=AgentRuntimeDependencies(
             user_store=request.app.state.user_store,
             core_memory_service=_service(request),
-            extra={"username": user.username},
         ),
         request_id=uuid4().hex,
+        username=user.username,
     )
 
 

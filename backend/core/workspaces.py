@@ -1,15 +1,17 @@
-"""Workspace catalog and role-based access policy."""
+"""Workspace manifest and role policy derived from canonical definitions."""
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from typing import Literal, TypeAlias
 
+from backend.agent.workspaces.definitions import WORKSPACE_DEFINITIONS
+
 AccountRole: TypeAlias = Literal["student", "teacher"]
 WorkspaceType: TypeAlias = Literal["learning", "teaching", "research"]
 
 VALID_ACCOUNT_ROLES = frozenset({"student", "teacher"})
-VALID_WORKSPACE_TYPES = frozenset({"learning", "teaching", "research"})
+VALID_WORKSPACE_TYPES = frozenset(WORKSPACE_DEFINITIONS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,29 +28,22 @@ class WorkspaceDescriptor:
 
 
 WORKSPACE_CATALOG: dict[WorkspaceType, WorkspaceDescriptor] = {
-    "learning": WorkspaceDescriptor(
-        type="learning",
-        name="学习空间",
-        description="课程学习、练习、课表与知识掌握",
-        capabilities=("chat", "schedule", "knowledge_map", "mastery"),
-    ),
-    "teaching": WorkspaceDescriptor(
-        type="teaching",
-        name="教学空间",
-        description="教学设计与教师工作流",
-        capabilities=("chat",),
-    ),
-    "research": WorkspaceDescriptor(
-        type="research",
-        name="科研空间",
-        description="科研项目、文献、写作、趋势与数据分析",
-        capabilities=("chat", "research_projects", "attachments"),
-    ),
+    workspace_type: WorkspaceDescriptor(
+        type=workspace_type,
+        name=definition.display_name,
+        description=definition.description,
+        capabilities=definition.manifest_capabilities,
+    )
+    for workspace_type, definition in WORKSPACE_DEFINITIONS.items()
 }
 
 ROLE_WORKSPACES: dict[AccountRole, tuple[WorkspaceType, ...]] = {
-    "student": ("learning", "research"),
-    "teacher": ("teaching", "research"),
+    role: tuple(
+        workspace_type
+        for workspace_type, definition in WORKSPACE_DEFINITIONS.items()
+        if role in definition.allowed_roles
+    )
+    for role in VALID_ACCOUNT_ROLES
 }
 
 
@@ -76,17 +71,9 @@ class WorkspaceAccessPolicy:
 
 
 def workspace_prompt(workspace_type: str) -> str:
-    prompts = {
-        "learning": (
-            "当前处于学习空间。围绕课程学习、练习、知识掌握和学习规划提供帮助。"
-        ),
-        "teaching": (
-            "当前处于教学空间。围绕教学设计、课程组织和教师工作提供帮助；"
-            "不要把教师任务误判为学生答题。"
-        ),
-        "research": (
-            "当前处于科研空间。围绕科研项目、文献证据、学术写作、前沿趋势"
-            "和科研数据提供帮助；明确区分来源事实、分析结论与生成内容。"
-        ),
-    }
-    return prompts.get(workspace_type, prompts["learning"])
+    from backend.core.message.prompts import WORKSPACE_PROMPTS
+
+    definition = WORKSPACE_DEFINITIONS.get(
+        workspace_type, WORKSPACE_DEFINITIONS["learning"]
+    )
+    return WORKSPACE_PROMPTS[definition.prompt_key]

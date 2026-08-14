@@ -14,12 +14,11 @@ def build_workspace_route(
     return WorkspaceRoute(
         workspace_type=workspace,
         agent_profile_id=registration.profile_id,
-        skill_scopes=frozenset({"common", workspace}),
-        tool_scopes=frozenset({"common", workspace}),
+        skill_scopes=registration.skill_scopes,
+        tool_scopes=registration.tool_scopes,
         prompt_key=registration.prompt_key,
         profile_policy=registration.profile_policy,
         memory_policy_id=registration.memory_policy_id,
         resource_scope=resource_scope,
         action_policy=registration.action_policy,
     )
-

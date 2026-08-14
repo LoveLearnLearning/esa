@@ -6,7 +6,7 @@ import copy
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from backend.agent.tools.tool_register import ToolRegistry
 from backend.core.utils.tool_arguments import normalize_tool_arguments
@@ -26,7 +26,7 @@ COMMON_TOOLS = frozenset(
     {
         "get_weather", "get_time", "web_search", "arxiv_search", "calculator",
         "math_solver", "bitwise_calculator", "load_skill", "save_core_memory",
-        "propose_core_memory", "search_core_memories", "get_core_memories",
+        "propose_core_memory", "search_core_memories",
         "delete_core_memory",
         "parse_pdf_attachment", "parse_word_attachment",
         "parse_presentation_attachment", "parse_spreadsheet_attachment",
@@ -42,19 +42,83 @@ RESEARCH_TOOLS = frozenset(
     }
 )
 
-TEACHING_TOOLS = frozenset()
+TEACHING_TOOLS = frozenset({"get_teaching_context"})
+
+TOOL_RESOURCE_REQUIREMENTS: dict[str, frozenset[str]] = {
+    "start_frontier_tracking": frozenset({"research_project"}),
+    "start_research_writing": frozenset({"research_project"}),
+    "start_dataset_analysis": frozenset({"research_project"}),
+    "parse_pdf_attachment": frozenset({"attachments"}),
+    "parse_word_attachment": frozenset({"attachments"}),
+    "parse_presentation_attachment": frozenset({"attachments"}),
+    "parse_spreadsheet_attachment": frozenset({"attachments"}),
+    "parse_image_attachment": frozenset({"attachments"}),
+    "get_teaching_context": frozenset({"classroom"}),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class CapabilityDeclaration:
+    name: str
+    scope: str
+    version: int = 1
+    required_resource_capabilities: frozenset[str] = frozenset()
+    kind: Literal["tool", "action"] = "tool"
+    approval_mode: Literal[
+        "automatic", "approval_required", "forbidden"
+    ] | None = None
+    policy_version: str = "capability.v1"
+
+
+CAPABILITY_DECLARATIONS: dict[str, CapabilityDeclaration] = {
+    **{
+        name: CapabilityDeclaration(
+            name,
+            "common",
+            required_resource_capabilities=TOOL_RESOURCE_REQUIREMENTS.get(
+                name, frozenset()
+            ),
+        )
+        for name in COMMON_TOOLS
+    },
+    **{name: CapabilityDeclaration(name, "learning") for name in LEARNING_TOOLS},
+    **{
+        name: CapabilityDeclaration(
+            name,
+            "research",
+            required_resource_capabilities=TOOL_RESOURCE_REQUIREMENTS[name],
+            kind="action",
+            approval_mode="approval_required",
+            policy_version="research.v1",
+        )
+        for name in RESEARCH_TOOLS
+    },
+    **{
+        name: CapabilityDeclaration(
+            name,
+            "teaching",
+            required_resource_capabilities=TOOL_RESOURCE_REQUIREMENTS.get(
+                name, frozenset()
+            ),
+            policy_version="teaching.v1",
+        )
+        for name in TEACHING_TOOLS
+    },
+}
 
 
 def tool_scope(name: str) -> str:
-    if name in LEARNING_TOOLS:
-        return "learning"
-    if name in COMMON_TOOLS:
-        return "common"
-    if name in RESEARCH_TOOLS:
-        return "research"
-    if name in TEACHING_TOOLS:
-        return "teaching"
-    raise ValueError(f"tool {name!r} has no declared scope")
+    declaration = CAPABILITY_DECLARATIONS.get(name)
+    if declaration is None:
+        raise ValueError(f"tool {name!r} has no declared scope")
+    return declaration.scope
+
+
+def capability_declaration(name: str) -> CapabilityDeclaration:
+    try:
+        return CAPABILITY_DECLARATIONS[name]
+    except KeyError as error:
+        raise ValueError(f"tool {name!r} has no declared capability") from error
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,14 +130,33 @@ class ScopedToolView:
     fingerprint: str
 
     @classmethod
-    def compile(cls, registry: ToolRegistry, scopes: frozenset[str]) -> "ScopedToolView":
+    def compile(
+        cls,
+        registry: ToolRegistry,
+        scopes: frozenset[str],
+        *,
+        excluded_names: frozenset[str] = frozenset(),
+        resource_capabilities: frozenset[str] | None = None,
+    ) -> "ScopedToolView":
         entries = []
         for name, (schema, _handler) in registry.registered_tools.items():
-            if tool_scope(name) in scopes:
+            required = TOOL_RESOURCE_REQUIREMENTS.get(name, frozenset())
+            resource_allowed = (
+                resource_capabilities is None
+                or required.issubset(resource_capabilities)
+            )
+            if (
+                name not in excluded_names
+                and tool_scope(name) in scopes
+                and resource_allowed
+            ):
                 entries.append((name, copy.deepcopy(schema)))
         entries.sort(key=lambda item: item[0])
         canonical = json.dumps(
-            entries,
+            [
+                (name, CAPABILITY_DECLARATIONS[name].version, schema)
+                for name, schema in entries
+            ],
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),

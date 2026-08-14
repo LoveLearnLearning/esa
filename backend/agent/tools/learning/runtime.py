@@ -5,14 +5,12 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from backend.agent.tools.context import ToolExecutionContext
-from backend.agent.tools.learning.mastery import build_recommendation_reasons
+from backend.core.services.learning_insight_service import build_recommendation_reasons
 from backend.core.utils.models import UserRecord
 
 
 def _deps(context: ToolExecutionContext):
     deps = context.runtime_dependencies
-    if not deps.username:
-        raise RuntimeError("learning tools require a trusted username")
     if deps.knowledge_graph_store is None or deps.mastery_store is None:
         raise RuntimeError("learning stores are not configured")
     return deps
@@ -22,7 +20,7 @@ def execute_learning_tool(
     context: ToolExecutionContext, name: str, arguments: Mapping[str, Any]
 ) -> dict[str, Any]:
     deps = _deps(context)
-    user_name = deps.username
+    user_name = context.username
     if context.conversation_mode == "isolated" and name != "record_answer":
         return {"allowed": False, "action": name, "reason": "isolated mode"}
     if context.conversation_mode != "normal" and name in {
@@ -34,7 +32,7 @@ def execute_learning_tool(
     if name == "recommend_practice":
         course = str(arguments["course"])
         weeks = int(arguments["weeks_to_exam"])
-        total = deps.total_weeks or UserRecord.TOTAL_WEEKS_DEFAULT
+        total = context.total_weeks or UserRecord.TOTAL_WEEKS_DEFAULT
         ranking = mastery.get_priority_ranking(
             user_name=user_name, course=course, weeks_to_exam=weeks,
             total_weeks=total, kg_store=kg,

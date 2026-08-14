@@ -91,7 +91,7 @@ def _memory_context(mode: str) -> ToolExecutionContext:
     return ToolExecutionContext(
         user_id="u1", conversation_id="c1", workspace_route=route,
         authorized_resources=scope, conversation_mode=mode,
-        runtime_dependencies=AgentRuntimeDependencies(username="tester"),
+        runtime_dependencies=AgentRuntimeDependencies(), username="tester",
         request_id="r1",
     )
 

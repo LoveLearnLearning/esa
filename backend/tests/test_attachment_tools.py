@@ -55,9 +55,9 @@ def _context(store, sessions, attachment_ids=()) -> ToolExecutionContext:
         user_id="u1", conversation_id="c1", workspace_route=route,
         authorized_resources=scope, conversation_mode="normal",
         runtime_dependencies=AgentRuntimeDependencies(
-            username="alice", attachment_store=store,
+            attachment_store=store,
             multimodal_sessions=sessions,
-        ), request_id="r1",
+        ), request_id="r1", username="alice",
     )
 
 

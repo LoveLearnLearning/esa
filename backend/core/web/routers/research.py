@@ -25,17 +25,9 @@ CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 
 def _workflow_facade(request: Request) -> ResearchWorkflowFacade:
     facade = getattr(request.app.state, "research_workflow_facade", None)
-    if facade is not None:
-        return facade
-    return ResearchWorkflowFacade(
-        project_store=request.app.state.research_project_store,
-        frontier_store=request.app.state.frontier_tracking_store,
-        frontier_service=request.app.state.frontier_tracking_service,
-        writing_store=getattr(request.app.state, "research_writing_store", None),
-        writing_service=getattr(request.app.state, "research_writing_service", None),
-        data_store=getattr(request.app.state, "research_data_store", None),
-        data_service=getattr(request.app.state, "research_data_service", None),
-    )
+    if not isinstance(facade, ResearchWorkflowFacade):
+        raise RuntimeError("research workflow facade is not configured")
+    return facade
 
 
 def _require_research_access(request: Request, user_id: str) -> None:

@@ -3,10 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
-from backend.agent.tools.context import AgentRuntimeDependencies, ToolExecutionContext
-from backend.agent.tools.learning.runtime import execute_learning_tool
 from backend.agent.learning.knowledge_map_service import KnowledgeMapService
-from backend.core.router.models import ResourceScope, WorkspaceRoute
+from backend.core.services.learning_insight_service import LearningInsightService
 from backend.core.stores.user_store import UserStore
 from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
@@ -43,26 +41,10 @@ def _knowledge_map(request: Request) -> KnowledgeMapService:
     return request.app.state.knowledge_map_service
 
 
-def _learning_tool_context(request: Request, session: SessionPrincipal) -> ToolExecutionContext:
-    user = _prepare_user(request, session)
-    scope = ResourceScope(metadata={"conversation_id": "learning-api"})
-    route = WorkspaceRoute(
-        workspace_type="learning", agent_profile_id="learning.v1",
-        skill_scopes=frozenset({"common", "learning"}),
-        tool_scopes=frozenset({"common", "learning"}), prompt_key="learning.v1",
-        profile_policy="learning.profile.v1", memory_policy_id="learning.memory.v1",
-        resource_scope=scope, action_policy="learning.actions.v1",
-    )
-    return ToolExecutionContext(
-        user_id=user.id, conversation_id="learning-api", workspace_route=route,
-        authorized_resources=scope, conversation_mode="normal",
-        runtime_dependencies=AgentRuntimeDependencies(
-            username=user.username, total_weeks=user.total_weeks,
-            knowledge_graph_store=request.app.state.knowledge_graph_store,
-            mastery_store=request.app.state.mastery_store,
-            learning_evidence_store=request.app.state.learning_evidence_store,
-            learning_state_service=request.app.state.learning_state_service,
-        ), request_id="learning-api",
+def _learning_insights(request: Request) -> LearningInsightService:
+    return LearningInsightService(
+        request.app.state.knowledge_graph_store,
+        request.app.state.mastery_store,
     )
 
 
@@ -72,8 +54,10 @@ def mastery_report(
     session: CurrentSession,
     course: str = Query(default="", max_length=64),
 ) -> dict:
-    return execute_learning_tool(
-        _learning_tool_context(request, session), "get_mastery_report", {"course": course}
+    user = _prepare_user(request, session)
+    return _learning_insights(request).mastery_report(
+        user_name=user.username,
+        course=course,
     )
 
 
@@ -84,9 +68,12 @@ def practice_recommendations(
     course: str = Query(min_length=1, max_length=64),
     weeks_to_exam: int = Query(default=4, ge=0, le=52),
 ) -> dict:
-    result = execute_learning_tool(
-        _learning_tool_context(request, session), "recommend_practice",
-        {"course": course, "weeks_to_exam": weeks_to_exam},
+    user = _prepare_user(request, session)
+    result = _learning_insights(request).practice_recommendations(
+        user_name=user.username,
+        course=course,
+        weeks_to_exam=weeks_to_exam,
+        total_weeks=user.total_weeks,
     )
     if result.get("count", 0) == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, result.get("note", "暂无推荐"))
