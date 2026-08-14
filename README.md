@@ -1,47 +1,62 @@
-# ESA - Efficient Study Agent
+# ESA - 面向计算机学科建设的可信教学研智能体
 
-ESA 是一个面向学习场景的多用户 Agent 项目，由 FastAPI 后端、vLLM 推理服务和 Flutter 多端前端组成。
+ESA（Efficient Study Agent）服务于计算机学科的一流本科建设：以课程知识图谱、可追溯检索和受控智能体为底座，让学生学习、教师教学与科研协作不再是三个割裂的工具，而是一条由真实证据驱动的闭环。
 
-> 文档状态：2026-08-14。后端接口以 [API.md](API.md) 为准，剩余任务以
-> [TODO.md](TODO.md) 为准，已完成的工程改造见
-> [OPTIMIZATION_NOTES.md](OPTIMIZATION_NOTES.md)。
+它不把大模型当作“万能聊天框”。每次可靠的作答、教师复核和科研资料处理都被约束在明确的角色、课程、班级或项目边界中，并在需要时回到知识点、掌握度和下一步教学行动。
 
-## 当前能力
+> 当前聚焦计算机学科。完整竞赛产品叙事、评审映射和可对外使用的表述见 [PRODUCT_NARRATIVE.md](PRODUCT_NARRATIVE.md)。后端接口以 [API.md](API.md) 为准；待完成事项以 [TODO.md](TODO.md) 为准。
 
-- 邮箱验证码注册、邮箱或用户名登录、老用户绑定邮箱、修改密码和 7 天会话保持
-- Qwen3.5-122B 主模型通过 vLLM 异步引擎提供推理
-- 独占第 5 张 GPU 的 Qwen3.5-9B 辅助服务负责课表解析和离线对话压缩
-- 对话与消息持久化、同步回复和 SSE 流式回复
-- Learning、Teaching、Research 共用一个 Agent 循环，由 Core Router、Workspace
-  Profile 和 Scoped Skill/Tool View 注入可信身份、资源与能力边界
-- 聊天附件先持久化到 `backend/data/user`，模型按文件类型加载 Skill 后再调用解析 Tool
-- 同一对话跨 Worker 串行生成，不同对话可以并行
-- 模型思考内容、工具调用、Markdown、LaTeX 与代码高亮展示
-- CoreMemory V2（global/Workspace Scope、候选确认、版本、抑制、恢复与彻底遗忘）、
-  用户偏好、学情档案、Student Model V2、个人知识地图和复习推荐
-- 多用户课表、第一周日期自动定位、PDF/图片/HTML 智能导入和移动端磁贴课表
-- 数值计算、位运算、符号计算、Web 搜索和 arXiv 搜索等工具
-- 对话分组与分组内自定义指令（后端已实现，含分组级风格/语调/指令覆盖用户级，前端待对接）
-- 教师班级、精确用户名邀请、简答/代码作业、学生提交、AI 批量分析、教师复核与反馈发布
-- Teaching 对话可绑定班级/作业；Research 对话可绑定项目、Project Profile，并通过
-  强类型 Tool 与统一 Agent Action 确认后启动现有 Research Job
-- 作业证据写入个人掌握度、班级薄弱知识点、前置根因与规则预警；完整 Demo 见 [TEACHING_STUDENT_DEMO.md](TEACHING_STUDENT_DEMO.md)
-- Flutter Web、macOS、iOS 等多端构建基础
+## 三个真实场景
 
-## 目录
+| 场景 | 用户问题 | ESA 的闭环 |
+|---|---|---|
+| 助学 | 学生需要符合自身基础的讲解、练习与复习路径 | 将课程问答和真实作答映射到个人知识地图、掌握度、前置知识点与后续练习。 |
+| 助教 | 教师要高效处理开放题，又不能把评分责任交给模型 | 教师建班、发布作业，AI 提供受约束的分析建议，教师复核并发布，正式反馈再回流学生与班级学情。 |
+| 助研 | 科研检索、趋势判断与写作需要效率，更需要证据边界 | 项目化地组织资料、arXiv 前沿追踪和写作任务；缺少来源时明确标记，禁止虚构文献、数据和结论。 |
+
+## 核心能力
+
+- **计算机学科知识底座**：覆盖程序设计、数据结构与算法、系统、操作系统、网络、数据库、编译、软件工程和人工智能导论等课程的知识点及前置依赖。
+- **个性化学习支持**：Student Model V2、个人知识地图、掌握度、薄弱点、提示历史与复习建议共同调节讲解和练习；未知知识不被误判为薄弱。
+- **教师主导的作业诊断**：支持简答题和代码文本题、批量 AI 分析、逐题教师复核、反馈发布及班级薄弱知识点和前置根因分析。AI 不会自动发布成绩或提前改写学生掌握度。
+- **有边界的科研辅助**：研究项目、项目画像、文献检索、前沿追踪、研究数据与写作任务均有资源范围；写作助手仅使用已提供材料，不编造引用、实验数据或结论。
+- **可追溯、可治理**：RAG 返回来源定位；学习、教学和科研空间使用独立身份、资源和能力视图；关键教学操作写入只追加审计记录。
+- **可运行的工程基础**：FastAPI、vLLM、Flutter 和 SQLite 支持多用户认证、持久化、SSE 流式交互、受控工具调用、跨 Worker 对话串行化和 Web/macOS/iOS 构建。
+
+## 推荐 Demo
+
+用教师与学生两个真实账号完成以下流程，最能展示 ESA 的产品价值：
 
 ```text
-backend/                 FastAPI、Agent、vLLM、工具和数据存储
-frontend/                Flutter 前端
-API.md                   前后端接口约定
-TODO.md                  当前待办
-DATASET_GENERATION.md    Qwen3.5/LLaMA-Factory 数据集方案
-GROUP_FEATURE.md         对话分组功能设计
-TEACHING_STUDENT_DEMO.md 教师端与学生端完整 Demo 说明
-MEMORY_PROMPT_ANALYSIS.md 记忆与提示词评估
-OPTIMIZATION_NOTES.md    已完成的工程优化、修复与验证记录
-REQUEST.md               项目需求和阶段状态
-SUBMITTION.md            按时间追加的历史开发记录
+教师创建班级并发布带知识点标签的作业
+  -> 学生提交答案
+  -> ESA 输出结构化分析建议
+  -> 教师复核得分、错因与知识点并发布反馈
+  -> 反馈回流个人掌握度和班级学情
+  -> 学生获得针对性讲解与练习，教师看到薄弱点及前置关系
+```
+
+详见 [TEACHING_STUDENT_DEMO.md](TEACHING_STUDENT_DEMO.md)。
+
+## 可信边界
+
+- RAG 结果必须提供真实来源定位；没有检索证据时不得伪造引用。
+- 教师只能访问本人班级的教学证据，不能读取学生私人对话、记忆、科研项目或无关附件。
+- 学生只能读取自己的提交和已发布反馈；教师确认前的 AI 建议、评分规则和参考答案不会暴露给学生。
+- 用户、会话、记忆和项目资源按身份隔离；AI 生成内容、数据脱敏和部署合规材料需在提交前按赛题要求完善。
+
+## 项目地图
+
+```text
+backend/                  FastAPI、Agent、vLLM、RAG、工具、工作流与数据存储
+frontend/                 Flutter 多端前端
+PRODUCT_NARRATIVE.md      竞赛方案、答辩与 Demo 可复用的产品叙事
+TEACHING_STUDENT_DEMO.md  教师端与学生端的可运行闭环和双账号脚本
+API.md                    前后端接口约定
+TODO.md                   唯一待办清单与已知边界
+DATASET_GENERATION.md     Qwen3.5/LLaMA-Factory 数据集方案
+OPTIMIZATION_NOTES.md     已完成的工程优化、修复与验证记录
+REQUEST.md                项目需求和阶段状态
 ```
 
 ## 启动后端
