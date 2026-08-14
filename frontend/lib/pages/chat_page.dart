@@ -831,13 +831,7 @@ class _EmptyState extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              if (!mobile) ...[
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: _AssistantModeSelector(),
-                ),
-                const SizedBox(height: 52),
-              ],
+              if (!mobile) const SizedBox(height: 52),
               _AssistantOrb(compact: mobile),
               SizedBox(height: mobile ? 12 : 22),
               Text.rich(
@@ -994,35 +988,6 @@ class _SuggestionCard extends StatelessWidget {
       ),
     );
   }
-}
-
-class _AssistantModeSelector extends StatelessWidget {
-  const _AssistantModeSelector();
-
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 36,
-    padding: const EdgeInsets.symmetric(horizontal: 13),
-    decoration: BoxDecoration(
-      color: const Color(0xFF0A1725),
-      border: Border.all(color: context.n.divider),
-      borderRadius: BorderRadius.circular(18),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(
-          LucideIcons.messageCircleMore,
-          size: 16,
-          color: Color(0xFF5E9BFF),
-        ),
-        const SizedBox(width: 8),
-        Text('学习助手', style: TextStyle(fontSize: 13, color: context.n.n700)),
-        const SizedBox(width: 8),
-        Icon(LucideIcons.chevronDown, size: 14, color: context.n.n600),
-      ],
-    ),
-  );
 }
 
 class _AssistantOrb extends StatelessWidget {
