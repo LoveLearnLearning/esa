@@ -986,13 +986,17 @@ class _BrandPainter extends CustomPainter {
 class _Metrics extends StatelessWidget {
   const _Metrics();
 
+  // Real seeded knowledge graph: 473 knowledge points and 47 courses.
+  static const _conceptCount = 473;
+  static const _learningPathCount = 47;
+
   @override
   Widget build(BuildContext context) {
     return const Row(
       children: [
-        _Metric(value: '47', label: 'concepts'),
+        _Metric(value: _conceptCount, label: 'concepts'),
         SizedBox(width: 24),
-        _Metric(value: '6', label: 'learning paths'),
+        _Metric(value: _learningPathCount, label: 'learning paths'),
         SizedBox(width: 24),
         Text(
           'continuously evolving',
@@ -1003,30 +1007,69 @@ class _Metrics extends StatelessWidget {
   }
 }
 
-class _Metric extends StatelessWidget {
+class _Metric extends StatefulWidget {
   const _Metric({required this.value, required this.label});
-  final String value;
+
+  final int value;
   final String label;
 
   @override
+  State<_Metric> createState() => _MetricState();
+}
+
+class _MetricState extends State<_Metric>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _progress;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    );
+    _progress = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Text.rich(
-      TextSpan(
-        children: [
+    return AnimatedBuilder(
+      animation: _progress,
+      builder: (context, _) {
+        final displayed = (_progress.value * widget.value).round();
+        return Text.rich(
           TextSpan(
-            text: '$value  ',
-            style: const TextStyle(
-              color: Color(0xFFC6D0DF),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
+            children: [
+              TextSpan(
+                text: '$displayed  ',
+                style: const TextStyle(
+                  color: Color(0xFFC6D0DF),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              TextSpan(
+                text: widget.label,
+                style: const TextStyle(
+                  color: Color(0xFF738299),
+                  fontSize: 11,
+                ),
+              ),
+            ],
           ),
-          TextSpan(
-            text: label,
-            style: const TextStyle(color: Color(0xFF738299), fontSize: 11),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -1051,11 +1094,11 @@ class _HeroCopy extends StatelessWidget {
         SizedBox(
           width: 580,
           child: Text(
-            'Your knowledge\nis a network.',
+            'ESA-星知智链',
             style: TextStyle(
               color: _LoginPageState._text,
               fontSize: 58,
-              height: 1.02,
+              height: 1.12,
               fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
@@ -1092,7 +1135,7 @@ class _CompactHero extends StatelessWidget {
         ),
         SizedBox(height: 10),
         Text(
-          'Your knowledge is a network.',
+          'ESA-星知智链',
           style: TextStyle(
             color: _LoginPageState._text,
             fontSize: 34,
@@ -1253,6 +1296,51 @@ class _KnowledgeGraphPainter extends CustomPainter {
     (16, 6),
   ];
 
+  static const double _heroClearance = 30;
+
+  Rect _heroProtectedRect(Size size) {
+    if (compact) return Rect.zero;
+    final heroWidth = math.min(580.0, size.width * (15 / 24) - 122);
+    final left = 58.0;
+    final right = math.min(left + math.max(heroWidth, 120), size.width - 24);
+    final bottomInset = math.max(72.0, size.height * .09);
+    final top = size.height - bottomInset - 136;
+    return Rect.fromLTRB(
+      left,
+      top - 18,
+      right,
+      size.height - bottomInset + 10,
+    );
+  }
+
+  Offset _repelFromHero(Offset point, Size size) {
+    if (compact) return point;
+    final rect = _heroProtectedRect(size);
+    if (!rect.contains(point)) return point;
+    final dxLeft = point.dx - rect.left;
+    final dxRight = rect.right - point.dx;
+    final dyTop = point.dy - rect.top;
+    final dyBottom = rect.bottom - point.dy;
+    final minX = math.min(dxLeft, dxRight);
+    final minY = math.min(dyTop, dyBottom);
+    if (minX < minY) {
+      final shift = _heroClearance + minX;
+      return point + Offset(dxLeft < dxRight ? -shift : shift, 0);
+    }
+    final shift = _heroClearance + minY;
+    return point + Offset(0, dyTop < dyBottom ? -shift : shift);
+  }
+
+  bool _segmentIntersectsRect(Offset a, Offset b, Rect rect) {
+    final guard = rect.inflate(2);
+    if (guard.contains(a) || guard.contains(b)) return true;
+    for (var t = .1; t < 1; t += .1) {
+      final sample = Offset.lerp(a, b, t);
+      if (sample != null && guard.contains(sample)) return true;
+    }
+    return false;
+  }
+
   Offset _point(
     _GraphNode node,
     Size size,
@@ -1265,9 +1353,12 @@ class _KnowledgeGraphPainter extends CustomPainter {
     final depth = .45 + (index % 4) * .15;
     final dx = math.sin(phase + index * .73) * 2.4;
     final dy = math.cos(phase * .83 + index * .61) * 2.4;
-    return Offset(
-      xShift + node.x * width + dx + parallax.dx * depth,
-      node.y * size.height + dy + parallax.dy * depth,
+    return _repelFromHero(
+      Offset(
+        xShift + node.x * width + dx + parallax.dx * depth,
+        node.y * size.height + dy + parallax.dy * depth,
+      ),
+      size,
     );
   }
 
@@ -1286,6 +1377,7 @@ class _KnowledgeGraphPainter extends CustomPainter {
       ((_smoothedPointer.dx / size.width) - .5) * 22 * _hoverAmount,
       ((_smoothedPointer.dy / size.height) - .5) * 16 * _hoverAmount,
     );
+    final heroRect = compact ? null : _heroProtectedRect(size);
     final visibleCount = compact ? 13 : nodes.length;
     for (var i = 0; i < visibleCount; i++) {
       _points[i] = _point(nodes[i], size, i, phase, parallax);
@@ -1294,6 +1386,14 @@ class _KnowledgeGraphPainter extends CustomPainter {
     for (var i = 0; i < edges.length; i++) {
       final edge = edges[i];
       if (edge.$1 >= visibleCount || edge.$2 >= visibleCount) continue;
+      if (heroRect != null &&
+          _segmentIntersectsRect(
+            _points[edge.$1],
+            _points[edge.$2],
+            heroRect,
+          )) {
+        continue;
+      }
       final proximity = math.max(
         _proximity(_points[edge.$1]),
         _proximity(_points[edge.$2]),

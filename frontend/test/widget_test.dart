@@ -131,7 +131,7 @@ void main() {
     await tester.pumpWidget(const EsaApp());
     await tester.pump();
 
-    expect(find.text('Your knowledge\nis a network.'), findsOneWidget);
+    expect(find.text('ESA-星知智链'), findsOneWidget);
     expect(find.text('欢迎回来'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -165,7 +165,7 @@ void main() {
     await tester.pumpWidget(const EsaApp());
     await tester.pump();
 
-    expect(find.text('Your knowledge is a network.'), findsOneWidget);
+    expect(find.text('ESA-星知智链'), findsOneWidget);
     expect(find.text('进入 ESA'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
