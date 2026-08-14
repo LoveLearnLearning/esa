@@ -182,3 +182,5 @@ frpc.ini
 /frp_*.tar.gz
 !frpc.example.toml
 !frpc.example.ini
+
+output/

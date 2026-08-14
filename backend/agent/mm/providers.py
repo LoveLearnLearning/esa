@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -63,7 +64,8 @@ class OpenAICompatibleVisionProvider:
                 "base_url": self.base_url.rstrip("/"),
                 "model": self.model_name,
                 "revision": self.model_revision,
-                "response_contract": "mm-visual-analysis-0.1",
+                "response_contract": "mm-visual-analysis-0.2",
+                "thinking": False,
             }
         )
 
@@ -74,6 +76,8 @@ class OpenAICompatibleVisionProvider:
         payload = {
             "model": self.model_name,
             "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "chat_template_kwargs": {"enable_thinking": False},
             "messages": [
                 {
                     "role": "user",
@@ -125,11 +129,27 @@ class OpenAICompatibleVisionProvider:
 def _parse_visual_analysis(content: object) -> VisualAnalysis:
     if not isinstance(content, str) or not content.strip():
         raise ValueError("VLM response content must be a non-empty string")
-    value = content.strip()
-    if value.startswith("```"):
-        lines = value.splitlines()
-        value = "\n".join(lines[1:-1]).strip()
-    parsed = json.loads(value)
+    value = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+    decoder = json.JSONDecoder()
+    last_error: ValueError | None = None
+    for position, character in enumerate(value):
+        if character != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(value, position)
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            continue
+        try:
+            return _visual_analysis_from_mapping(parsed)
+        except ValueError as exc:
+            last_error = exc
+    if last_error is not None:
+        raise ValueError("VLM response contains no valid visual analysis JSON") from last_error
+    raise ValueError("VLM response contains no JSON object")
+
+
+def _visual_analysis_from_mapping(parsed: object) -> VisualAnalysis:
     if not isinstance(parsed, dict):
         raise ValueError("VLM response must be a JSON object")
     description = parsed.get("description")

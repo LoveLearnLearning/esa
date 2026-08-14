@@ -16,6 +16,7 @@ void main() {
   ) async {
     var value = 'print(2)';
     var closed = false;
+    var sent = false;
     await tester.pumpWidget(
       MaterialApp(
         theme: esaTheme(brightness: Brightness.dark),
@@ -28,6 +29,7 @@ void main() {
             editorTheme: 'hc-black',
             onChanged: (next) => value = next,
             onLanguageChanged: (_) {},
+            onSendToAgent: () => sent = true,
             onClose: () => closed = true,
           ),
         ),
@@ -37,6 +39,9 @@ void main() {
     expect(find.text('main.py'), findsOneWidget);
     expect(find.text('草稿已保存'), findsOneWidget);
     expect(find.text('智能补全 · 括号补全 · 自动缩进'), findsNothing);
+
+    await tester.tap(find.byTooltip('将修改后的代码发送给 Agent'));
+    expect(sent, isTrue);
 
     await tester.tap(find.byTooltip('重置为模型生成内容'));
     await tester.pump();

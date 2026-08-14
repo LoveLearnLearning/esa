@@ -10,6 +10,7 @@ import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 import '../widgets/profile_sheet.dart';
 import '../widgets/memory_sheet.dart';
+import '../widgets/history_drawer.dart';
 import '../widgets/agent_action_sheet.dart';
 import 'chat_page.dart';
 import 'knowledge_map_page.dart';
@@ -29,6 +30,7 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
+  final _mobileScaffoldKey = GlobalKey<ScaffoldState>();
   StudentSection _section = StudentSection.assistant;
   bool _sidebarCollapsed = false;
   bool _sidebarRequested = false;
@@ -116,12 +118,12 @@ class _HomeShellState extends State<HomeShell> {
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(
+            SizedBox(
               height: 26,
               child: Center(
                 child: Text(
                   'ESA 星知智链',
-                  style: TextStyle(fontSize: 11, color: Color(0xFFADB8C9)),
+                  style: TextStyle(fontSize: 11, color: context.n.n600),
                 ),
               ),
             ),
@@ -206,10 +208,15 @@ class _HomeShellState extends State<HomeShell> {
     final conversationActive =
         (_section == StudentSection.assistant && app.messages.isNotEmpty) ||
         _researchProjectChatOpen;
+    final historyAvailable =
+        _section == StudentSection.assistant || _researchProjectChatOpen;
     final researchProjectActive =
         _section == StudentSection.research && _activeResearchProject != null;
     return Scaffold(
+      key: _mobileScaffoldKey,
       resizeToAvoidBottomInset: false,
+      drawer: historyAvailable ? const HistoryDrawer() : null,
+      drawerEnableOpenDragGesture: historyAvailable,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -222,6 +229,7 @@ class _HomeShellState extends State<HomeShell> {
                 onBack: _researchProjectChatOpen
                     ? () => setState(() => _researchProjectChatOpen = false)
                     : app.newConversation,
+                onHistory: () => _mobileScaffoldKey.currentState?.openDrawer(),
               )
             else if (!researchProjectActive)
               _MobileHeader(
@@ -230,6 +238,9 @@ class _HomeShellState extends State<HomeShell> {
                 onProfile: () => showProfileSheet(context),
                 onMemory: () => showMemorySheet(context),
                 onActions: () => showAgentActionSheet(context),
+                onHistory: _section == StudentSection.assistant
+                    ? () => _mobileScaffoldKey.currentState?.openDrawer()
+                    : null,
               ),
             if (!_inResearch)
               _MobileLearningTabs(
@@ -259,7 +270,7 @@ class _SurfaceFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
-      color: EsaColors.dSurface,
+      color: context.scheme.surface,
       borderRadius: BorderRadius.circular(8),
       border: Border.all(color: context.n.divider),
     ),
@@ -287,7 +298,7 @@ class _GlobalRail extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     width: 68,
     decoration: BoxDecoration(
-      color: const Color(0xFF07111D),
+      color: context.n.n100,
       border: Border.all(color: context.n.divider),
       borderRadius: BorderRadius.circular(10),
     ),
@@ -394,7 +405,7 @@ class _WorkspaceSidebar extends StatelessWidget {
     final research = section == StudentSection.research;
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF091521),
+        color: context.n.n100,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: context.n.divider),
       ),
@@ -447,7 +458,7 @@ class _WorkspaceSidebar extends StatelessWidget {
             Text('功能', style: context.texts.labelSmall),
             const SizedBox(height: 6),
             _SideEntry(
-              icon: LucideIcons.messageCircle,
+              icon: LucideIcons.bot,
               label: '学习助手',
               selected: section == StudentSection.assistant,
               onTap: () => onSelect(StudentSection.assistant),
@@ -476,7 +487,7 @@ class _WorkspaceSidebar extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  research ? '项目' : '课程',
+                  research ? '项目' : '对话分组',
                   style: context.texts.labelSmall,
                 ),
               ),
@@ -577,36 +588,29 @@ class _WorkspaceSidebar extends StatelessWidget {
   }
 
   List<Widget> _learningEntries(BuildContext context, AppState app) => [
-    for (final courseName
-        in app.scheduleCourses
-            .map((item) => item.name)
-            .where((name) => name.trim().isNotEmpty)
-            .toSet())
-      _ExpandableSidebarRow(
-        icon: LucideIcons.bookOpen,
-        label: courseName,
-        children: const [
-          _TreeLeaf(label: '课程资料'),
-          _TreeLeaf(label: '学习记录'),
-        ],
-      ),
-    for (final group in app.groups)
-      _ExpandableSidebarRow(
-        icon: LucideIcons.folder,
-        label: group.name,
-        children: app
-            .conversationsInGroup(group.id)
-            .map(
-              (conversation) => _ConversationEntry(
-                conversation: conversation,
-                onTap: () {
-                  unawaited(app.setActive(conversation.id));
-                  onSelect(StudentSection.assistant);
-                },
-              ),
-            )
-            .toList(),
-      ),
+    if (app.groups.isEmpty)
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Text('暂无对话分组', style: context.texts.bodySmall),
+      )
+    else
+      for (final group in app.groups)
+        _ExpandableSidebarRow(
+          icon: LucideIcons.folder,
+          label: group.name,
+          children: app
+              .conversationsInGroup(group.id)
+              .map(
+                (conversation) => _ConversationEntry(
+                  conversation: conversation,
+                  onTap: () {
+                    unawaited(app.setActive(conversation.id));
+                    onSelect(StudentSection.assistant);
+                  },
+                ),
+              )
+              .toList(),
+        ),
     const SizedBox(height: 12),
     Text('最近对话', style: context.texts.labelSmall),
     const SizedBox(height: 6),
@@ -767,30 +771,6 @@ class _ExpandableSidebarRowState extends State<_ExpandableSidebarRow> {
           child: Column(children: widget.children),
         ),
     ],
-  );
-}
-
-class _TreeLeaf extends StatelessWidget {
-  const _TreeLeaf({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 7, 6, 7),
-    child: Row(
-      children: [
-        Container(
-          width: 4,
-          height: 4,
-          decoration: BoxDecoration(
-            color: context.n.n500,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 9),
-        Expanded(child: Text(label, style: context.texts.bodySmall)),
-      ],
-    ),
   );
 }
 
@@ -1037,7 +1017,7 @@ class _ContextCard extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 10),
     padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
     decoration: BoxDecoration(
-      color: const Color(0xFF0B1724),
+      color: context.n.n100,
       border: Border.all(color: context.n.divider),
       borderRadius: BorderRadius.circular(11),
     ),
@@ -1072,7 +1052,7 @@ class _ProgressContextCard extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 10),
     padding: const EdgeInsets.all(15),
     decoration: BoxDecoration(
-      color: const Color(0xFF0B1724),
+      color: context.n.n100,
       border: Border.all(color: context.n.divider),
       borderRadius: BorderRadius.circular(11),
     ),
@@ -1167,12 +1147,14 @@ class _MobileHeader extends StatelessWidget {
     required this.onProfile,
     required this.onMemory,
     required this.onActions,
+    this.onHistory,
   });
   final StudentSection section;
   final ValueChanged<StudentSection> onSelect;
   final VoidCallback onProfile;
   final VoidCallback onMemory;
   final VoidCallback onActions;
+  final VoidCallback? onHistory;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -1200,6 +1182,12 @@ class _MobileHeader extends StatelessWidget {
           onPressed: onActions,
           icon: const Icon(LucideIcons.shieldCheck),
         ),
+        if (onHistory != null)
+          IconButton(
+            tooltip: '历史对话',
+            onPressed: onHistory,
+            icon: const Icon(LucideIcons.panelLeftOpen),
+          ),
         IconButton(
           tooltip: '设置',
           onPressed: onProfile,
@@ -1211,10 +1199,15 @@ class _MobileHeader extends StatelessWidget {
 }
 
 class _MobileConversationHeader extends StatelessWidget {
-  const _MobileConversationHeader({required this.title, required this.onBack});
+  const _MobileConversationHeader({
+    required this.title,
+    required this.onBack,
+    required this.onHistory,
+  });
 
   final String title;
   final VoidCallback onBack;
+  final VoidCallback onHistory;
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -1238,14 +1231,9 @@ class _MobileConversationHeader extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: '搜索对话',
-            onPressed: () {},
-            icon: const Icon(LucideIcons.search, size: 21),
-          ),
-          IconButton(
-            tooltip: '更多',
-            onPressed: () {},
-            icon: const Icon(LucideIcons.ellipsis, size: 21),
+            tooltip: '历史对话',
+            onPressed: onHistory,
+            icon: const Icon(LucideIcons.panelLeftOpen, size: 21),
           ),
         ],
       ),
@@ -1320,7 +1308,7 @@ class _MobileBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     decoration: BoxDecoration(
-      color: EsaColors.dSurface,
+      color: context.scheme.surface,
       border: Border(top: BorderSide(color: context.n.divider)),
     ),
     child: SafeArea(

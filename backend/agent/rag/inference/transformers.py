@@ -91,6 +91,11 @@ class TransformersEmbeddingProvider:
             .eval()
         )
 
+    def warmup(self) -> None:
+        """Load model weights during application startup."""
+
+        self._load()
+
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """按固定批大小执行编码，避免整库 Padding 和显存峰值。"""
 
@@ -220,6 +225,11 @@ class TransformersReranker:
             suffix,
             add_special_tokens=False,
         )
+
+    def warmup(self) -> None:
+        """Load model weights during application startup."""
+
+        self._load()
 
     def score(self, query: str, documents: Sequence[str]) -> list[float]:
         """为每个候选计算归一化的 yes 概率。"""

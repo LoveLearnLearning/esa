@@ -12,6 +12,8 @@ source → MinerU → DocIR → VLM descriptions → final DocIR → Markdown
   `MM_TOKENIZER_PATH` 指向的真实 tokenizer 精确计数。
 - VLM 使用 OpenAI-compatible `/chat/completions`，配置为 `MM_VLM_BASE_URL`、
   `MM_VLM_MODEL` 和可选的 `MM_VLM_API_KEY`。
+- VLM 只补充仍缺少机器可读语义的视觉元素；MinerU 已输出 HTML 的表格、
+  已输出 LaTeX 的公式和已有结构化内容的图表不会重复请求辅助模型。
 - 工件保存在 `MM_ARTIFACT_ROOT`（默认 `runtime/mm`），以源文件和 pipeline
   指纹隔离；索引只保存在 `PreparedAttachment` 的进程内生命周期中。
 - 每个文件独立路由。Web 层已通过
@@ -34,4 +36,3 @@ context_or_response = attachment.context_for("这份资料的网络拓扑是什�
 python -m backend.agent.mm.cli ingest notes.pdf diagram.png
 python -m backend.agent.mm.cli query notes.pdf --query "总结关键结论"
 ```
-

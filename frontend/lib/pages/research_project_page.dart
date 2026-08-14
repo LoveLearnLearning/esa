@@ -545,7 +545,8 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
                 ],
               ),
             ),
-            TextButton.icon(
+            FilledButton.icon(
+              key: const ValueKey('open-research-project-chat'),
               onPressed: _openChat,
               icon: const Icon(LucideIcons.messageCircle, size: 17),
               label: const Text('项目对话'),
@@ -586,9 +587,7 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
           title: '项目目标',
           trailing: _ProjectProgress(project: _project),
           child: Text(
-            _project.description.isEmpty
-                ? '暂无项目描述'
-                : _project.description,
+            _project.description.isEmpty ? '暂无项目描述' : _project.description,
             style: context.texts.bodyMedium?.copyWith(color: context.n.n600),
           ),
         ),
@@ -613,12 +612,8 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
             runSpacing: 8,
             children: [
               _Tag(text: '研究主题  ${_project.name}'),
-              _Tag(
-                text: '项目状态  ${_researchStatusLabel(_project.status)}',
-              ),
-              _Tag(
-                text: '最近更新  ${_researchDateLabel(_project.updatedAt)}',
-              ),
+              _Tag(text: '项目状态  ${_researchStatusLabel(_project.status)}'),
+              _Tag(text: '最近更新  ${_researchDateLabel(_project.updatedAt)}'),
             ],
           ),
         ),
@@ -678,12 +673,13 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text('当前状态', style: context.texts.bodySmall),
-                        const SizedBox(width: 10),
                         _Tag(text: _researchStatusLabel(_project.status)),
-                        const Spacer(),
                         Text(
                           '更新于 ${_researchDateLabel(_project.updatedAt)}',
                           style: context.texts.bodySmall,
@@ -699,7 +695,9 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
                     ),
                     const SizedBox(height: 10),
                     TextField(
-                      key: const ValueKey('research-project-settings-description'),
+                      key: const ValueKey(
+                        'research-project-settings-description',
+                      ),
                       controller: _projectDescription,
                       minLines: 3,
                       maxLines: 6,
@@ -833,101 +831,115 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
     ],
   );
 
-  Widget _writingTab() => ListView(
-    padding: const EdgeInsets.all(24),
-    children: [
-      Row(
-        children: [
-          Expanded(child: Text('科研文档', style: context.texts.titleLarge)),
-          FilledButton.icon(
-            onPressed: _createDocument,
-            icon: const Icon(LucideIcons.plus, size: 17),
-            label: const Text('新建文档'),
-          ),
-        ],
-      ),
-      const SizedBox(height: 12),
-      if (_documents.isEmpty)
-        const _EmptyState(text: '先建立论文大纲、文献综述或研究笔记。')
-      else ...[
-        DropdownButtonFormField<String>(
-          initialValue: _selectedDocument?.id,
-          decoration: const InputDecoration(labelText: '当前文档'),
-          items: _documents
-              .map(
-                (document) => DropdownMenuItem(
-                  value: document.id,
-                  child: Text('${document.title} · v${document.version}'),
-                ),
-              )
-              .toList(),
-          onChanged: (id) => setState(() {
-            _selectedDocument = _documents.firstWhere((item) => item.id == id);
-            _documentContent.text = _selectedDocument!.content;
-          }),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _documentContent,
-          minLines: 5,
-          maxLines: 12,
-          decoration: const InputDecoration(
-            labelText: '原始材料或待处理正文',
-            hintText: '粘贴可靠材料、已有正文或带引用的笔记。材料不足处会标记为 [待补来源]。',
-            alignLabelWithHint: true,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          crossAxisAlignment: WrapCrossAlignment.end,
+  Widget _writingTab() => LayoutBuilder(
+    builder: (context, constraints) => ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Row(
           children: [
-            SizedBox(
-              width: 220,
-              child: DropdownButtonFormField<String>(
-                initialValue: _writingOperation,
-                decoration: const InputDecoration(labelText: '写作操作'),
-                items: const [
-                  DropdownMenuItem(value: 'outline', child: Text('搭建大纲')),
-                  DropdownMenuItem(
-                    value: 'literature_review',
-                    child: Text('生成综述'),
-                  ),
-                  DropdownMenuItem(value: 'polish', child: Text('语言润色')),
-                  DropdownMenuItem(value: 'format_check', child: Text('规范检查')),
-                ],
-                onChanged: (value) =>
-                    setState(() => _writingOperation = value!),
-              ),
-            ),
-            SizedBox(
-              width: 420,
-              child: TextField(
-                controller: _writingInstruction,
-                decoration: const InputDecoration(labelText: '补充要求（可选）'),
-              ),
-            ),
+            Expanded(child: Text('科研文档', style: context.texts.titleLarge)),
             FilledButton.icon(
-              onPressed: _submitting ? null : _startWriting,
-              icon: const Icon(LucideIcons.sparkles, size: 17),
-              label: Text(_submitting ? '处理中…' : '执行并保存新版本'),
+              onPressed: _createDocument,
+              icon: const Icon(LucideIcons.plus, size: 17),
+              label: const Text('新建文档'),
             ),
           ],
         ),
-        const SizedBox(height: 18),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: SelectableText(
-              _selectedDocument?.content.isNotEmpty == true
-                  ? _selectedDocument!.content
-                  : '文档当前为空。运行“大纲”或粘贴材料后开始。',
-            ),
+        const SizedBox(height: 12),
+        if (_documents.isEmpty)
+          const _EmptyState(text: '先建立论文大纲、文献综述或研究笔记。')
+        else ...[
+          DropdownButtonFormField<String>(
+            initialValue: _selectedDocument?.id,
+            decoration: const InputDecoration(labelText: '当前文档'),
+            items: _documents
+                .map(
+                  (document) => DropdownMenuItem(
+                    value: document.id,
+                    child: Text('${document.title} · v${document.version}'),
+                  ),
+                )
+                .toList(),
+            onChanged: (id) {
+              if (id == null) return;
+              setState(() {
+                _selectedDocument = _documents.firstWhere(
+                  (item) => item.id == id,
+                );
+                _documentContent.text = _selectedDocument!.content;
+                _documentDirty = false;
+              });
+            },
           ),
-        ),
+          const SizedBox(height: 12),
+          _WritingEditor(
+            controller: _documentContent,
+            preview: EsaMarkdown(
+              data: _documentContent.text.isEmpty
+                  ? '文档当前为空。开始记录研究笔记，或执行写作操作生成初稿。'
+                  : _documentContent.text,
+              selectable: true,
+            ),
+            stacked: constraints.maxWidth < 900,
+            onChanged: (_) => setState(() => _documentDirty = true),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              FilledButton.icon(
+                onPressed: _documentDirty && !_documentSaving
+                    ? _saveDocument
+                    : null,
+                icon: _documentSaving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(LucideIcons.save, size: 17),
+                label: Text(_documentSaving ? '保存中…' : '保存文档'),
+              ),
+              SizedBox(
+                width: 210,
+                child: DropdownButtonFormField<String>(
+                  initialValue: _writingOperation,
+                  decoration: const InputDecoration(labelText: '写作操作'),
+                  items: const [
+                    DropdownMenuItem(value: 'outline', child: Text('搭建大纲')),
+                    DropdownMenuItem(
+                      value: 'literature_review',
+                      child: Text('生成综述'),
+                    ),
+                    DropdownMenuItem(value: 'polish', child: Text('语言润色')),
+                    DropdownMenuItem(
+                      value: 'format_check',
+                      child: Text('规范检查'),
+                    ),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _writingOperation = value!),
+                ),
+              ),
+              SizedBox(
+                width: constraints.maxWidth < 640 ? double.infinity : 360,
+                child: TextField(
+                  controller: _writingInstruction,
+                  decoration: const InputDecoration(labelText: '补充要求（可选）'),
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: _submitting ? null : _startWriting,
+                icon: const Icon(LucideIcons.sparkles, size: 17),
+                label: Text(_submitting ? '处理中…' : '基于当前内容执行'),
+              ),
+            ],
+          ),
+        ],
       ],
-    ],
+    ),
   );
 
   Widget _dataTab() => ListView(
@@ -1538,6 +1550,106 @@ class _MethodNote extends StatelessWidget {
           ),
         )
       : const SizedBox.shrink();
+}
+
+class _WritingEditor extends StatelessWidget {
+  const _WritingEditor({
+    required this.controller,
+    required this.preview,
+    required this.stacked,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final Widget preview;
+  final bool stacked;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final border = BorderSide(color: context.n.divider);
+    final editor = _WritingPane(
+      title: 'Markdown 编辑',
+      border: border,
+      child: TextField(
+        controller: controller,
+        expands: true,
+        maxLines: null,
+        minLines: null,
+        keyboardType: TextInputType.multiline,
+        textAlignVertical: TextAlignVertical.top,
+        style: context.texts.bodyMedium?.copyWith(height: 1.55),
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.all(16),
+          hintText: '使用 Markdown 记录你的研究内容…',
+        ),
+        onChanged: onChanged,
+      ),
+    );
+    final rendered = _WritingPane(
+      title: '实时预览',
+      border: border,
+      child: SelectionArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: preview,
+        ),
+      ),
+    );
+
+    if (stacked) {
+      return Column(
+        children: [
+          SizedBox(height: 420, child: editor),
+          const SizedBox(height: 12),
+          SizedBox(height: 420, child: rendered),
+        ],
+      );
+    }
+    return SizedBox(
+      height: 520,
+      child: Row(
+        children: [
+          Expanded(child: editor),
+          const SizedBox(width: 12),
+          Expanded(child: rendered),
+        ],
+      ),
+    );
+  }
+}
+
+class _WritingPane extends StatelessWidget {
+  const _WritingPane({
+    required this.title,
+    required this.border,
+    required this.child,
+  });
+
+  final String title;
+  final BorderSide border;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: context.scheme.surface,
+      border: Border.fromBorderSide(border),
+      borderRadius: BorderRadius.circular(EsaRadii.toolCard),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Text(title, style: context.texts.labelLarge),
+        ),
+        Divider(height: 1, color: border.color),
+        Expanded(child: child),
+      ],
+    ),
+  );
 }
 
 class _EmptyState extends StatelessWidget {

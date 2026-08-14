@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import mimetypes
+import shutil
 import subprocess
+import tempfile
 import time
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+
+import httpx
 
 from backend.agent.DocIR.adapters.mineru import convert_bundle, load_bundle
 from backend.agent.DocIR.tools.batch_corpus import (
@@ -29,6 +35,7 @@ class MinerUDocumentParser:
     command: Path
     timeout_seconds: int = 7200
     attempts: int = 2
+    api_url: str | None = None
 
     @property
     def configuration_fingerprint(self) -> str:
@@ -36,6 +43,7 @@ class MinerUDocumentParser:
             {
                 "adapter": "mineru-docir-0.1",
                 "command": str(self.command),
+                "api_url": self.api_url,
                 "backend": "pipeline",
                 "method": "auto",
                 "language": "ch",
@@ -47,15 +55,11 @@ class MinerUDocumentParser:
 
     def parse(self, source: Path, document_root: Path) -> ParsedAttachment:
         source = Path(source).resolve(strict=True)
-        if not self.command.is_file():
+        if self.api_url is None and not self.command.is_file():
             raise FileNotFoundError(f"MinerU command not found: {self.command}")
         raw_root = document_root / "mineru"
         raw_root.mkdir(parents=True, exist_ok=True)
         log_path = document_root / "mineru.log"
-        command = [
-            str(self.command), "-p", str(source), "-o", str(raw_root),
-            "-b", "pipeline", "-m", "auto", "-l", "ch",
-        ]
         failures: list[str] = []
         logger.info("MinerU parse started source=%s", source.name)
         for attempt in range(1, self.attempts + 1):
@@ -63,13 +67,28 @@ class MinerUDocumentParser:
                 stream.write(f"\n=== attempt {attempt}/{self.attempts} ===\n")
                 started = time.monotonic()
                 try:
-                    result = subprocess.run(
-                        command,
-                        stdout=stream,
-                        stderr=subprocess.STDOUT,
-                        timeout=self.timeout_seconds,
-                        check=False,
+                    if self.api_url is not None:
+                        self._parse_with_api(source, raw_root)
+                        exit_code = 0
+                    else:
+                        result = subprocess.run(
+                            self._cli_command(source, raw_root),
+                            stdout=stream,
+                            stderr=subprocess.STDOUT,
+                            timeout=self.timeout_seconds,
+                            check=False,
+                        )
+                        exit_code = result.returncode
+                except (httpx.HTTPError, OSError, ValueError, zipfile.BadZipFile) as exc:
+                    failures.append(
+                        f"attempt {attempt}: {type(exc).__name__}"
                     )
+                    logger.warning(
+                        "MinerU attempt failed attempt=%d error_type=%s",
+                        attempt,
+                        type(exc).__name__,
+                    )
+                    continue
                 except subprocess.TimeoutExpired:
                     failures.append(f"attempt {attempt}: timeout")
                     logger.warning(
@@ -78,18 +97,18 @@ class MinerUDocumentParser:
                         self.attempts,
                     )
                     continue
-                if result.returncode == 0:
+                if exit_code == 0:
                     logger.info(
                         "MinerU attempt completed attempt=%d elapsed_seconds=%.3f",
                         attempt,
                         time.monotonic() - started,
                     )
                     break
-                failures.append(f"attempt {attempt}: exit_code={result.returncode}")
+                failures.append(f"attempt {attempt}: exit_code={exit_code}")
                 logger.warning(
                     "MinerU attempt failed attempt=%d exit_code=%d",
                     attempt,
-                    result.returncode,
+                    exit_code,
                 )
                 stream.write(f"elapsed_seconds={time.monotonic() - started:.3f}\n")
         else:
@@ -124,3 +143,72 @@ class MinerUDocumentParser:
             len(document.assets),
         )
         return ParsedAttachment(document=document, document_root=document_root)
+
+    def _cli_command(self, source: Path, raw_root: Path) -> list[str]:
+        return [
+            str(self.command),
+            "-p",
+            str(source),
+            "-o",
+            str(raw_root),
+            "-b",
+            "pipeline",
+            "-m",
+            "auto",
+            "-l",
+            "ch",
+        ]
+
+    def _parse_with_api(self, source: Path, raw_root: Path) -> None:
+        """Use the process-resident MinerU API and materialize its ZIP bundle."""
+
+        assert self.api_url is not None
+        form = {
+            "lang_list": "ch",
+            "backend": "pipeline",
+            "parse_method": "auto",
+            "return_md": "true",
+            "return_middle_json": "true",
+            "return_model_output": "true",
+            "return_content_list": "true",
+            "return_images": "true",
+            "response_format_zip": "true",
+        }
+        media_type = mimetypes.guess_type(source.name)[0] or "application/octet-stream"
+        timeout = httpx.Timeout(float(self.timeout_seconds), connect=10.0)
+        with tempfile.TemporaryDirectory(
+            prefix=".mineru-api-", dir=raw_root.parent
+        ) as temporary:
+            temporary_root = Path(temporary)
+            zip_path = temporary_root / "result.zip"
+            extract_root = temporary_root / "result"
+            extract_root.mkdir()
+            with source.open("rb") as source_stream, httpx.Client(
+                timeout=timeout,
+                trust_env=False,
+            ) as client:
+                with client.stream(
+                    "POST",
+                    f"{self.api_url}/file_parse",
+                    data=form,
+                    files={"files": (source.name, source_stream, media_type)},
+                ) as response:
+                    response.raise_for_status()
+                    with zip_path.open("wb") as zip_stream:
+                        for chunk in response.iter_bytes():
+                            zip_stream.write(chunk)
+            _safe_extract_zip(zip_path, extract_root)
+            find_parse_dir(extract_root)
+            if raw_root.exists():
+                shutil.rmtree(raw_root)
+            shutil.move(extract_root, raw_root)
+
+
+def _safe_extract_zip(archive: Path, destination: Path) -> None:
+    destination = destination.resolve()
+    with zipfile.ZipFile(archive) as bundle:
+        for member in bundle.infolist():
+            target = (destination / member.filename).resolve()
+            if target != destination and destination not in target.parents:
+                raise ValueError("MinerU ZIP contains an unsafe path")
+        bundle.extractall(destination)

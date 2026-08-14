@@ -53,6 +53,11 @@ class SentenceTransformersEmbeddingProvider:
             self._model = SentenceTransformer(self.model_name, device=self.device)
         return self._model
 
+    def warmup(self) -> None:
+        """Load model weights during application startup."""
+
+        self._load()
+
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """编码并归一化一批普通文本。"""
 
@@ -114,6 +119,11 @@ class SentenceTransformersReranker:
                 ) from exc
             self._model = CrossEncoder(self.model_name, device=self.device)
         return self._model
+
+    def warmup(self) -> None:
+        """Load model weights during application startup."""
+
+        self._load()
 
     def score(self, query: str, documents: Sequence[str]) -> list[float]:
         """为全部查询与文档组合批量评分。"""

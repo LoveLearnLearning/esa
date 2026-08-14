@@ -393,7 +393,7 @@ class Agent:
                             timeout=run_spec.loop_policy.tool_timeout_seconds,
                         )
                         break
-                    except TimeoutError:
+                    except asyncio.TimeoutError:
                         yield AgentStreamEvent(
                             event="tool_progress",
                             data={

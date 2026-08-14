@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../models/models.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 import '../utils/clipboard.dart';
@@ -21,6 +22,9 @@ class UserBubble extends StatefulWidget {
     this.onOpenCodeEditorWithId,
     this.onCodeChangedWithId,
     this.codeOverrideVersion = 0,
+    this.attachments = const [],
+    this.onOpenAttachment,
+    this.onEdit,
   });
 
   final String text;
@@ -32,6 +36,9 @@ class UserBubble extends StatefulWidget {
   final void Function(String blockId, String code, String language)?
   onCodeChangedWithId;
   final int codeOverrideVersion;
+  final List<DocumentAttachment> attachments;
+  final ValueChanged<DocumentAttachment>? onOpenAttachment;
+  final Future<void> Function(String text)? onEdit;
 
   @override
   State<UserBubble> createState() => _UserBubbleState();
@@ -39,11 +46,27 @@ class UserBubble extends StatefulWidget {
 
 class _UserBubbleState extends State<UserBubble> {
   bool _copied = false;
+  late final TextEditingController _editor;
+  bool _editing = false;
+  bool _savingEdit = false;
   Timer? _copyTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _editor = TextEditingController(text: widget.text);
+  }
+
+  @override
+  void didUpdateWidget(covariant UserBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_editing && oldWidget.text != widget.text) _editor.text = widget.text;
+  }
 
   @override
   void dispose() {
     _copyTimer?.cancel();
+    _editor.dispose();
     super.dispose();
   }
 
@@ -61,6 +84,24 @@ class _UserBubbleState extends State<UserBubble> {
     _copyTimer = Timer(const Duration(milliseconds: 1400), () {
       if (mounted) setState(() => _copied = false);
     });
+  }
+
+  Future<void> _saveEdit() async {
+    final input = _editor.text.trim();
+    if (input.isEmpty || _savingEdit || widget.onEdit == null) return;
+    setState(() => _savingEdit = true);
+    try {
+      await widget.onEdit!(input);
+      if (!mounted) return;
+      setState(() => _editing = false);
+    } finally {
+      if (mounted) setState(() => _savingEdit = false);
+    }
+  }
+
+  void _cancelEdit() {
+    _editor.text = widget.text;
+    setState(() => _editing = false);
   }
 
   @override
@@ -83,47 +124,174 @@ class _UserBubbleState extends State<UserBubble> {
                 border: Border.all(color: const Color(0xFF24436E)),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: widget.markdown || containsFencedCode(widget.text)
-                  ? EsaMarkdown(
-                      data: widget.text,
-                      selectable: true,
-                      codeBlockPrefix: widget.codeBlockPrefix,
-                      codeOverrideFor: widget.codeOverrideFor,
-                      onOpenCodeEditorWithId: widget.onOpenCodeEditorWithId,
-                      onCodeChangedWithId: widget.onCodeChangedWithId,
-                      codeOverrideVersion: widget.codeOverrideVersion,
-                    )
-                  : CopyableSelectionArea(
-                      child: Text(widget.text, style: context.texts.bodyMedium),
+              child: _editing
+                  ? _editField(context)
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        widget.markdown || containsFencedCode(widget.text)
+                            ? EsaMarkdown(
+                                data: widget.text,
+                                selectable: true,
+                                codeBlockPrefix: widget.codeBlockPrefix,
+                                codeOverrideFor: widget.codeOverrideFor,
+                                onOpenCodeEditorWithId:
+                                    widget.onOpenCodeEditorWithId,
+                                onCodeChangedWithId: widget.onCodeChangedWithId,
+                                codeOverrideVersion: widget.codeOverrideVersion,
+                              )
+                            : CopyableSelectionArea(
+                                child: Text(
+                                  widget.text,
+                                  style: context.texts.bodyMedium,
+                                ),
+                              ),
+                        if (widget.attachments.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final attachment in widget.attachments)
+                                _MessageAttachmentChip(
+                                  attachment: attachment,
+                                  onTap: widget.onOpenAttachment == null
+                                      ? null
+                                      : () => widget.onOpenAttachment!(
+                                          attachment,
+                                        ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
             ),
             const SizedBox(height: 4),
-            Tooltip(
-              message: _copied ? '已复制' : '复制',
-              child: Material(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(EsaRadii.iconButton),
-                child: InkWell(
-                  onTap: () {
-                    _copy();
-                  },
-                  borderRadius: BorderRadius.circular(EsaRadii.iconButton),
-                  child: SizedBox(
-                    // 触屏最小命中区；图标尺寸不变
-                    width: 42,
-                    height: 42,
-                    child: Icon(
-                      _copied ? LucideIcons.check : LucideIcons.copy,
-                      size: 15,
-                      color: _copied ? EsaColors.accent : context.n.n600,
-                    ),
+            if (!_editing)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _bubbleAction(
+                    tooltip: _copied ? '已复制' : '复制',
+                    icon: _copied ? LucideIcons.check : LucideIcons.copy,
+                    color: _copied ? EsaColors.accent : context.n.n600,
+                    onTap: _copy,
                   ),
-                ),
+                  if (widget.onEdit != null)
+                    _bubbleAction(
+                      tooltip: '编辑消息',
+                      icon: LucideIcons.pencil,
+                      color: context.n.n600,
+                      onTap: () => setState(() => _editing = true),
+                    ),
+                ],
               ),
-            ),
           ],
         ),
       ),
     );
   }
+
+  Widget _editField(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      TextField(
+        controller: _editor,
+        autofocus: true,
+        minLines: 2,
+        maxLines: 10,
+        keyboardType: TextInputType.multiline,
+        style: context.texts.bodyMedium,
+        decoration: const InputDecoration(isDense: true, hintText: '修改这条消息'),
+        onSubmitted: (_) => _saveEdit(),
+      ),
+      const SizedBox(height: 10),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: _savingEdit ? null : _cancelEdit,
+            child: const Text('取消'),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.icon(
+            onPressed: _savingEdit ? null : _saveEdit,
+            icon: _savingEdit
+                ? const SizedBox.square(
+                    dimension: 15,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(LucideIcons.check, size: 16),
+            label: const Text('重新发送'),
+          ),
+        ],
+      ),
+    ],
+  );
+
+  Widget _bubbleAction({
+    required String tooltip,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) => Tooltip(
+    message: tooltip,
+    child: Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(EsaRadii.iconButton),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(EsaRadii.iconButton),
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: Icon(icon, size: 15, color: color),
+        ),
+      ),
+    ),
+  );
+}
+
+class _MessageAttachmentChip extends StatelessWidget {
+  const _MessageAttachmentChip({required this.attachment, this.onTap});
+
+  final DocumentAttachment attachment;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.transparent,
+    borderRadius: BorderRadius.circular(EsaRadii.field),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(EsaRadii.field),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 260),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: .08),
+          border: Border.all(color: Colors.white.withValues(alpha: .18)),
+          borderRadius: BorderRadius.circular(EsaRadii.field),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(LucideIcons.paperclip, size: 15),
+            const SizedBox(width: 7),
+            Flexible(
+              child: Text(
+                attachment.filename,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12.5),
+              ),
+            ),
+            const SizedBox(width: 5),
+            Icon(LucideIcons.chevronRight, size: 15, color: context.n.n600),
+          ],
+        ),
+      ),
+    ),
+  );
 }
