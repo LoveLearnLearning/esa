@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from backend.core.stores.research_project_store import ResearchProjectStore
 from backend.core.stores.frontier_tracking_store import FrontierTrackingStore
-from backend.core.services.frontier_tracking_service import FrontierTrackingService
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal
 from backend.core.web.deps import get_current_session
@@ -14,11 +13,29 @@ from backend.core.web.schemas import (
     ResearchProjectCreateRequest,
     ResearchProjectUpdateRequest,
     FrontierTrackingCreateRequest,
+    ResearchProjectProfileUpdateRequest,
 )
+from backend.agent.memories.core_memory_models import MemoryRevisionConflict
 from backend.core.workspaces import WorkspaceAccessPolicy
+from backend.core.workflows.research import ResearchWorkflowFacade
 
 router = APIRouter(prefix="/research", tags=["research"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
+
+
+def _workflow_facade(request: Request) -> ResearchWorkflowFacade:
+    facade = getattr(request.app.state, "research_workflow_facade", None)
+    if facade is not None:
+        return facade
+    return ResearchWorkflowFacade(
+        project_store=request.app.state.research_project_store,
+        frontier_store=request.app.state.frontier_tracking_store,
+        frontier_service=request.app.state.frontier_tracking_service,
+        writing_store=getattr(request.app.state, "research_writing_store", None),
+        writing_service=getattr(request.app.state, "research_writing_service", None),
+        data_store=getattr(request.app.state, "research_data_store", None),
+        data_service=getattr(request.app.state, "research_data_service", None),
+    )
 
 
 def _require_research_access(request: Request, user_id: str) -> None:
@@ -88,6 +105,42 @@ def update_project(
     return project
 
 
+@router.get("/projects/{project_id}/profile")
+def get_project_profile(project_id: str, request: Request, session: CurrentSession) -> dict:
+    _require_research_access(request, session.user_id)
+    service = request.app.state.research_project_profile_service
+    try:
+        return service.get(project_id, session.user_id) or {
+            "project_id": project_id,
+            "user_id": session.user_id,
+            "agent_instructions": "",
+            "format_version": 1,
+            "revision": 0,
+        }
+    except KeyError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "科研项目不存在") from error
+
+
+@router.put("/projects/{project_id}/profile")
+def update_project_profile(project_id: str, body: ResearchProjectProfileUpdateRequest,
+                           request: Request, session: CurrentSession) -> dict:
+    _require_research_access(request, session.user_id)
+    try:
+        return request.app.state.research_project_profile_service.upsert(
+            project_id, session.user_id,
+            agent_instructions=body.agent_instructions,
+            expected_revision=body.expected_revision,
+        )
+    except MemoryRevisionConflict as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, {
+            "code": "revision_conflict", "current_revision": error.current_revision,
+        }) from error
+    except KeyError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "科研项目不存在") from error
+    except ValueError as error:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+
+
 def _load_active_project(
     project_id: str,
     request: Request,
@@ -126,17 +179,14 @@ def create_frontier_job(
 ) -> dict:
     _require_research_access(request, session.user_id)
     _load_active_project(project_id, request, session.user_id)
-    store: FrontierTrackingStore = request.app.state.frontier_tracking_store
-    job = store.create_job(
+    run = _workflow_facade(request).start_frontier_tracking(
         project_id=project_id,
         user_id=session.user_id,
         query=body.query.strip(),
         time_window_years=body.time_window_years,
         max_results=body.max_results,
     )
-    service: FrontierTrackingService = request.app.state.frontier_tracking_service
-    service.submit(job["job_id"])
-    return job
+    return run.payload
 
 
 @router.get("/frontier-jobs/{job_id}")

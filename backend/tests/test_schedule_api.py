@@ -11,6 +11,7 @@ from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
 from backend.core.web.deps import get_current_session
 from backend.core.web.routers import schedule
+from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 
 
 class _LLMClient:
@@ -57,11 +58,14 @@ def _app(tmp_path, monkeypatch):
     app.state.schedule_store = ScheduleStore(database)
     app.state.user_course_store = UserCourseStore(database)
     app.state.auxiliary_llm_client = _LLMClient()
+    app.state.knowledge_graph_store = KnowledgeGraphStore(tmp_path / "kg.db")
     app.include_router(schedule.router)
     app.dependency_overrides[get_current_session] = lambda: SessionPrincipal(
         session_id="session", user_id=user.id
     )
-    monkeypatch.setattr(schedule.kg_store, "resolve_course_name", lambda name: name)
+    monkeypatch.setattr(
+        app.state.knowledge_graph_store, "resolve_course_name", lambda name: name
+    )
     return app
 
 

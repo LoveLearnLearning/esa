@@ -13,6 +13,7 @@ import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 import '../widgets/assistant_message.dart';
+import '../widgets/agent_action_sheet.dart';
 import '../widgets/composer.dart';
 import '../widgets/code_editor/code_editor_pane.dart';
 import '../widgets/history_drawer.dart';
@@ -43,10 +44,17 @@ class _CodeSession {
 }
 
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key, this.embedded = false});
+  const ChatPage({
+    super.key,
+    this.embedded = false,
+    this.embeddedTitle,
+    this.onExitEmbedded,
+  });
 
   /// The home shell owns global navigation and page chrome in embedded mode.
   final bool embedded;
+  final String? embeddedTitle;
+  final VoidCallback? onExitEmbedded;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -274,7 +282,24 @@ class _ChatPageState extends State<ChatPage> {
     final narrow = pageWidth < (widget.embedded ? 1040 : 600);
 
     final embeddedHeader =
-        widget.embedded && app.messages.isNotEmpty && !narrow;
+        widget.embedded &&
+        (app.messages.isNotEmpty || widget.onExitEmbedded != null) &&
+        !narrow;
+    final conversation = app.activeConversation;
+    final bindingLabel = switch (conversation?.workspaceType) {
+      WorkspaceType.research =>
+        app.researchProjects
+            .where((item) => item.id == conversation?.researchProjectId)
+            .map((item) => '项目 · ${item.name}')
+            .firstOrNull,
+      WorkspaceType.teaching =>
+        conversation?.assignmentTitle != null
+            ? '课堂 · ${conversation?.className ?? conversation?.classId} / ${conversation?.assignmentTitle}'
+            : conversation?.classId != null
+            ? '课堂 · ${conversation?.className ?? conversation?.classId}'
+            : null,
+      _ => null,
+    };
     final composer = Composer(
       key: _composerKey,
       busy: app.busy,
@@ -428,10 +453,18 @@ class _ChatPageState extends State<ChatPage> {
                 : null,
             onMemory: app.activeWorkspace == WorkspaceType.learning
                 ? () => showMemorySheet(context)
-                : null,
+                : () => showMemorySheet(context),
+            onActions: () => showAgentActionSheet(context),
+            bindingLabel: bindingLabel,
           ),
         if (embeddedHeader)
-          _EmbeddedChatHeader(title: app.activeConversation?.title ?? '新对话'),
+          _EmbeddedChatHeader(
+            title: widget.embeddedTitle ?? app.activeConversation?.title ?? '新对话',
+            bindingLabel: bindingLabel,
+            onMemory: () => showMemorySheet(context),
+            onActions: () => showAgentActionSheet(context),
+            onBack: widget.onExitEmbedded,
+          ),
         pageBody,
         if (_codeSession == null && !mobileLanding) composer,
       ],
@@ -550,8 +583,18 @@ class _ChatPageState extends State<ChatPage> {
 }
 
 class _EmbeddedChatHeader extends StatelessWidget {
-  const _EmbeddedChatHeader({required this.title});
+  const _EmbeddedChatHeader({
+    required this.title,
+    required this.onMemory,
+    required this.onActions,
+    this.bindingLabel,
+    this.onBack,
+  });
   final String title;
+  final String? bindingLabel;
+  final VoidCallback onMemory;
+  final VoidCallback onActions;
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -562,15 +605,45 @@ class _EmbeddedChatHeader extends StatelessWidget {
     ),
     child: Row(
       children: [
+        if (onBack != null)
+          IconButton(
+            tooltip: '返回项目',
+            onPressed: onBack,
+            icon: const Icon(LucideIcons.arrowLeft, size: 18),
+          ),
         Expanded(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: context.texts.titleMedium?.copyWith(fontSize: 16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.texts.titleMedium?.copyWith(fontSize: 16),
+              ),
+              if (bindingLabel != null)
+                Text(
+                  bindingLabel!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.texts.labelSmall?.copyWith(
+                    color: context.n.n600,
+                  ),
+                ),
+            ],
           ),
         ),
-        Icon(LucideIcons.panelRightOpen, size: 18, color: context.n.n600),
+        IconButton(
+          tooltip: '长期记忆',
+          onPressed: onMemory,
+          icon: const Icon(LucideIcons.brain, size: 18),
+        ),
+        IconButton(
+          tooltip: '待确认动作',
+          onPressed: onActions,
+          icon: const Icon(LucideIcons.shieldCheck, size: 18),
+        ),
       ],
     ),
   );
@@ -585,6 +658,8 @@ class _TopBar extends StatelessWidget {
     required this.workspace,
     required this.onLearning,
     required this.onMemory,
+    required this.onActions,
+    this.bindingLabel,
   });
 
   final bool narrow;
@@ -594,6 +669,8 @@ class _TopBar extends StatelessWidget {
   final WorkspaceType workspace;
   final VoidCallback? onLearning;
   final VoidCallback? onMemory;
+  final VoidCallback onActions;
+  final String? bindingLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -624,11 +701,12 @@ class _TopBar extends StatelessWidget {
                   style: context.texts.titleMedium,
                 ),
                 Text(
-                  'ESA · ${workspace == WorkspaceType.learning
-                      ? 'STUDY'
-                      : workspace == WorkspaceType.teaching
-                      ? 'TEACHING'
-                      : 'RESEARCH'} AGENT',
+                  bindingLabel ??
+                      'ESA · ${workspace == WorkspaceType.learning
+                          ? 'STUDY'
+                          : workspace == WorkspaceType.teaching
+                          ? 'TEACHING'
+                          : 'RESEARCH'} AGENT',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -645,6 +723,8 @@ class _TopBar extends StatelessWidget {
           ],
           if (onMemory != null)
             _OutlineIconButton(icon: LucideIcons.brain, onTap: onMemory!),
+          const SizedBox(width: 8),
+          _OutlineIconButton(icon: LucideIcons.shieldCheck, onTap: onActions),
         ],
       ),
     );

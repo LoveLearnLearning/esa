@@ -66,10 +66,11 @@ class _MMSessions:
 
 class _Agent:
     def __init__(self):
-        self.prompt_ctx = None
+        self.run_spec = None
 
-    async def run(self, content, username, **kwargs):
-        self.prompt_ctx = kwargs["prompt_ctx"]
+    async def run(self, run_spec):
+        self.run_spec = run_spec
+        content = run_spec.messages[-1]["content"]
         return [
             {"role": "user", "content": content, "is_visible": True},
             {"role": "assistant", "content": "done", "is_visible": True},
@@ -173,13 +174,13 @@ def test_selected_attachment_is_exposed_as_unparsed_tool_context(tmp_path):
         )
     )
 
-    assert "尚未解析" in agent.prompt_ctx.attachment_context
-    assert stored.attachment_id in agent.prompt_ctx.attachment_context
-    assert "二叉树课程讲义" not in agent.prompt_ctx.attachment_context
-    assert agent.prompt_ctx.attachment_tool_context.user_id == "u1"
-    assert agent.prompt_ctx.attachment_tool_context.allowed_attachment_ids == {
-        stored.attachment_id
-    }
+    context = agent.run_spec.execution_context
+    assert context.user_id == "u1"
+    assert context.authorized_resources.attachment_ids == (stored.attachment_id,)
+    prompt = agent.run_spec.messages[0]["content"]
+    assert "尚未解析" in prompt
+    assert stored.attachment_id in prompt
+    assert "二叉树课程讲义" not in prompt
     assert state.mm_sessions.prepare_calls == 0
     stored = chat_store.get_model_messages(conversation_id)
     assert stored[0]["content"] == "总结附件"

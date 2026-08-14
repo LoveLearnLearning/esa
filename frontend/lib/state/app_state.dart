@@ -815,13 +815,33 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> createResearchProject(String name, String description) async {
+  Future<ResearchProject> createResearchProject(
+    String name,
+    String description,
+  ) async {
     final project = await api.createResearchProject(
       name.trim(),
       description.trim(),
     );
     researchProjects.insert(0, project);
     notifyListeners();
+    return project;
+  }
+
+  Future<ResearchProject> updateResearchProject(
+    String id, {
+    required String name,
+    required String description,
+  }) async {
+    final updated = await api.updateResearchProject(
+      id,
+      name: name.trim(),
+      description: description.trim(),
+    );
+    final index = researchProjects.indexWhere((item) => item.id == id);
+    if (index >= 0) researchProjects[index] = updated;
+    notifyListeners();
+    return updated;
   }
 
   Future<void> archiveResearchProject(String id) async {
@@ -841,6 +861,32 @@ class AppState extends ChangeNotifier {
     final conversation = await api.createWorkspaceConversation(
       WorkspaceType.research,
       researchProjectId: project.id,
+    );
+    conversations.insert(0, conversation);
+    _messages[conversation.id] = [];
+    activeId = conversation.id;
+    notifyListeners();
+  }
+
+  Future<void> openTeachingContext(
+    TeachingClass classroom, {
+    TeachingAssignment? assignment,
+  }) async {
+    if (activeWorkspace != WorkspaceType.teaching) {
+      await switchWorkspace(WorkspaceType.teaching);
+    }
+    final existing = conversations.where(
+      (item) =>
+          item.classId == classroom.id && item.assignmentId == assignment?.id,
+    );
+    if (existing.isNotEmpty) {
+      await setActive(existing.first.id);
+      return;
+    }
+    final conversation = await api.createWorkspaceConversation(
+      WorkspaceType.teaching,
+      classId: classroom.id,
+      assignmentId: assignment?.id,
     );
     conversations.insert(0, conversation);
     _messages[conversation.id] = [];

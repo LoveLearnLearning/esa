@@ -20,6 +20,7 @@ class RegisterRequest(BaseModel):
     verification_code: str = Field(pattern=r"^\d{6}$")
     username: str = Field(min_length=1, max_length=32)
     password: str = Field(min_length=8, max_length=128)
+    account_role: Literal["student", "teacher"] = "student"
 
 
 class LoginRequest(BaseModel):
@@ -98,11 +99,76 @@ class ResearchAnalysisJobCreateRequest(BaseModel):
 class ConversationCreateRequest(BaseModel):
     title: str = Field(default="新对话", min_length=1, max_length=64)
     group_id: str | None = Field(default=None)
+    workspace_type: Literal["learning", "teaching", "research"] = "learning"
+    research_project_id: str | None = None
+    class_id: str | None = None
+    assignment_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_resource_bindings(self):
+        if self.research_project_id and self.workspace_type != "research":
+            raise ValueError("research_project_id requires the research workspace")
+        if (self.class_id or self.assignment_id) and self.workspace_type != "teaching":
+            raise ValueError("classroom bindings require the teaching workspace")
+        if self.assignment_id and not self.class_id:
+            raise ValueError("assignment_id requires class_id")
+        return self
+
+
+class ResearchProjectCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=1000)
+
+
+class ResearchProjectUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=1000)
+    status: Literal["active", "archived"] | None = None
+
+    @model_validator(mode="after")
+    def require_an_update(self):
+        if not self.model_fields_set or all(
+            getattr(self, field) is None for field in self.model_fields_set
+        ):
+            raise ValueError("at least one project field must be provided")
+        return self
+
+
+class FrontierTrackingCreateRequest(BaseModel):
+    query: str = Field(min_length=2, max_length=300)
+    time_window_years: int = Field(default=5, ge=1, le=20)
+    max_results: int = Field(default=20, ge=5, le=40)
+
+
+class ResearchDocumentCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    document_type: Literal["outline", "literature_review", "paper", "notes"]
+    content: str = Field(default="", max_length=200_000)
+
+
+class ResearchWritingJobCreateRequest(BaseModel):
+    operation: Literal["outline", "literature_review", "polish", "format_check"]
+    instruction: str = Field(default="", max_length=4000)
+    source_text: str = Field(default="", max_length=200_000)
+
+
+class ResearchAnalysisJobCreateRequest(BaseModel):
+    analysis_type: Literal[
+        "descriptive", "correlation", "group_compare", "text_frequency"
+    ]
+    parameters: dict[str, str] = Field(default_factory=dict)
 
 
 class ConversationPatchRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=64)
     group_id: str | None = Field(default=None)
+    class_id: str | None = None
+    assignment_id: str | None = None
+
+
+class ResearchProjectProfileUpdateRequest(BaseModel):
+    agent_instructions: str = Field(default="", max_length=12000)
+    expected_revision: int | None = Field(default=None, ge=0)
 
 
 class GroupCreateRequest(BaseModel):
@@ -125,6 +191,31 @@ class CoreMemoryUpsertRequest(BaseModel):
     memory_key: str = Field(min_length=1, max_length=64)
     content: str = Field(min_length=1, max_length=1000)
     category: str = Field(default="general", max_length=32)
+
+
+class CoreMemoryCreateRequest(BaseModel):
+    memory_key: str = Field(min_length=1, max_length=64)
+    content: str = Field(min_length=1, max_length=4000)
+    category: str = Field(default="general", max_length=32)
+    scope_type: str = Field(default="global", pattern="^(global|workspace)$")
+    workspace_type: Literal["learning", "teaching", "research"] | None = None
+
+
+class CoreMemoryUpdateRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    content: str | None = Field(default=None, min_length=1, max_length=4000)
+    category: str | None = Field(default=None, max_length=32)
+
+
+class CoreMemoryRestoreRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+
+
+class MemoryCandidateDecisionRequest(BaseModel):
+    content: str | None = Field(default=None, min_length=1, max_length=4000)
+    category: str | None = Field(default=None, max_length=32)
+    scope_type: str | None = Field(default=None, pattern="^(global|workspace)$")
+    workspace_type: Literal["learning", "teaching", "research"] | None = None
 
 
 class UserPreferencesOut(BaseModel):
@@ -159,8 +250,10 @@ class UpdateUserProfileRequest(BaseModel):
 
 # ===== Profile V2 Schema =====
 
+
 class ProfileFieldOut(BaseModel):
     """单个画像维度 含来源与置信度"""
+
     field: str
     value: object
     origin: str
@@ -190,6 +283,7 @@ class ProfileViewOut(BaseModel):
 
 class ProfileSourcesOut(BaseModel):
     """画像字段来源解释"""
+
     field_key: str
     origin: str
     confidence: float
@@ -200,6 +294,7 @@ class ProfileSourcesOut(BaseModel):
 
 class UpdateProfileExplicitRequest(BaseModel):
     """更新显式画像字段 只允许更新显式设置项"""
+
     major: str | None = Field(None)
     grade: str | None = Field(None, max_length=32)
     current_week: int | None = Field(None, ge=1, le=30)
@@ -211,6 +306,7 @@ class UpdateProfileExplicitRequest(BaseModel):
 
 class MemorySettingsOut(BaseModel):
     """记忆与画像开关"""
+
     learning_profile_enabled: bool
     inferred_profile_enabled: bool
     default_conversation_mode: str = "normal"
@@ -218,6 +314,7 @@ class MemorySettingsOut(BaseModel):
 
 class UpdateMemorySettingsRequest(BaseModel):
     """更新记忆与画像开关"""
+
     learning_profile_enabled: bool | None = Field(None)
     inferred_profile_enabled: bool | None = Field(None)
     default_conversation_mode: str | None = Field(None)
@@ -229,6 +326,7 @@ class LoginResponse(BaseModel):
     user_id: str
     username: str
     email: str | None = None
+    account_role: Literal["student", "teacher"]
     expires_at: datetime
 
 

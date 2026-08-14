@@ -2,7 +2,7 @@
 
 ESA 是一个面向学习场景的多用户 Agent 项目，由 FastAPI 后端、vLLM 推理服务和 Flutter 多端前端组成。
 
-> 文档状态：2026-08-09。后端接口以 [API.md](API.md) 为准，剩余任务以
+> 文档状态：2026-08-14。后端接口以 [API.md](API.md) 为准，剩余任务以
 > [TODO.md](TODO.md) 为准，已完成的工程改造见
 > [OPTIMIZATION_NOTES.md](OPTIMIZATION_NOTES.md)。
 
@@ -12,14 +12,19 @@ ESA 是一个面向学习场景的多用户 Agent 项目，由 FastAPI 后端、
 - Qwen3.5-122B 主模型通过 vLLM 异步引擎提供推理
 - 独占第 5 张 GPU 的 Qwen3.5-9B 辅助服务负责课表解析和离线对话压缩
 - 对话与消息持久化、同步回复和 SSE 流式回复
+- Learning、Teaching、Research 共用一个 Agent 循环，由 Core Router、Workspace
+  Profile 和 Scoped Skill/Tool View 注入可信身份、资源与能力边界
 - 聊天附件先持久化到 `backend/data/user`，模型按文件类型加载 Skill 后再调用解析 Tool
 - 同一对话跨 Worker 串行生成，不同对话可以并行
 - 模型思考内容、工具调用、Markdown、LaTeX 与代码高亮展示
-- 核心记忆管理、用户偏好、学情档案、Student Model V2、个人知识地图和复习推荐
+- CoreMemory V2（global/Workspace Scope、候选确认、版本、抑制、恢复与彻底遗忘）、
+  用户偏好、学情档案、Student Model V2、个人知识地图和复习推荐
 - 多用户课表、第一周日期自动定位、PDF/图片/HTML 智能导入和移动端磁贴课表
 - 数值计算、位运算、符号计算、Web 搜索和 arXiv 搜索等工具
 - 对话分组与分组内自定义指令（后端已实现，含分组级风格/语调/指令覆盖用户级，前端待对接）
 - 教师班级、精确用户名邀请、简答/代码作业、学生提交、AI 批量分析、教师复核与反馈发布
+- Teaching 对话可绑定班级/作业；Research 对话可绑定项目、Project Profile，并通过
+  强类型 Tool 与统一 Agent Action 确认后启动现有 Research Job
 - 作业证据写入个人掌握度、班级薄弱知识点、前置根因与规则预警；完整 Demo 见 [TEACHING_STUDENT_DEMO.md](TEACHING_STUDENT_DEMO.md)
 - Flutter Web、macOS、iOS 等多端构建基础
 

@@ -438,6 +438,9 @@ class UserStore(BaseSQLiteStore):
         if row is not None:
             return MemorySettings(
                 user_id=row["user_id"],
+                saved_memory_enabled=bool(row["saved_memory_enabled"]),
+                chat_history_enabled=bool(row["chat_history_enabled"]),
+                auto_extract_enabled=bool(row["auto_extract_enabled"]),
                 learning_profile_enabled=bool(row["learning_profile_enabled"]),
                 inferred_profile_enabled=bool(row["inferred_profile_enabled"]),
                 default_conversation_mode=row["default_conversation_mode"],

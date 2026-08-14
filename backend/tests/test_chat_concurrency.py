@@ -22,7 +22,8 @@ class _Agent:
         self.active_runs = 0
         self.max_active_runs = 0
 
-    async def run(self, content, username, **kwargs):
+    async def run(self, run_spec):
+        content = run_spec.messages[-1]["content"]
         self.active_runs += 1
         self.max_active_runs = max(self.max_active_runs, self.active_runs)
         try:

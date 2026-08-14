@@ -11,18 +11,29 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from backend.agent.agent import Agent
 from backend.agent.memories.kg_loader import ensure_knowledge_graph_seeded
+from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
+from backend.agent.learning.evidence_store import LearningEvidenceStore
+from backend.agent.learning.learning_state_service import LearningStateService
+from backend.agent.learning.knowledge_map_service import KnowledgeMapService
 from backend.agent.memories.kp_resolver import KnowledgePointResolver
-from backend.agent.memories.paths import USER_DB_PATH
+from backend.agent.memories.core_memory_service import CoreMemoryService
+from backend.agent.memories.paths import (
+    KNOWLEDGE_GRAPH_DB_PATH,
+    LEARNING_EVIDENCE_DB_PATH,
+    MASTERY_DB_PATH,
+    USER_DB_PATH,
+)
 from backend.agent.memories.profile_builder import ProfileBuilder
+from backend.agent.memories.profile_projection import ProfileProjection
 from backend.agent.mm import (
     MMConfig,
     MultimodalIngestionService,
     MultimodalSessionService,
 )
 from backend.agent.rag.lifecycle import RAGApplicationLifecycle
-from backend.agent.tools.learning_tools import evidence_store
-from backend.agent.tools.mastery_tools import kg_store, mastery_store
+from backend.agent.tools.learning.mastery import EsaMasteryStore
 from backend.core.services.auth_service import AuthService
+from backend.core.services.agent_action_service import AgentActionService
 from backend.core.services.auxiliary_llm_service import AuxiliaryLLMClient
 from backend.core.services.conversation_compression_service import (
     ConversationCompressionService,
@@ -34,10 +45,16 @@ from backend.core.services.email_verification_service import (
 )
 from backend.core.services.frontier_tracking_service import FrontierTrackingService
 from backend.core.services.research_data_service import ResearchDataService
+from backend.core.services.research_project_profile_service import (
+    ResearchProjectProfileService,
+)
 from backend.core.services.research_writing_service import ResearchWritingService
 from backend.core.services.teaching_analysis_service import TeachingAnalysisService
 from backend.core.services.user_attachment_service import UserAttachmentStore
 from backend.core.stores.chat_store import ChatStore
+from backend.core.stores.agent_action_store import AgentActionStore
+from backend.core.stores.classroom_conversation_store import ClassroomConversationStore
+from backend.core.stores.core_memory_store import CoreMemoryStore
 from backend.core.stores.conversation_summary_store import ConversationSummaryStore
 from backend.core.stores.email_verification_store import EmailVerificationStore
 from backend.core.stores.frontier_tracking_store import FrontierTrackingStore
@@ -46,6 +63,9 @@ from backend.core.stores.migrations import run_migrations
 from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.research_data_store import ResearchDataStore
 from backend.core.stores.research_project_store import ResearchProjectStore
+from backend.core.stores.research_project_profile_store import (
+    ResearchProjectProfileStore,
+)
 from backend.core.stores.research_writing_store import ResearchWritingStore
 from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.session_store import SessionStore
@@ -95,6 +115,7 @@ from backend.core.utils.config import (
 )
 from backend.core.web.concurrency import ConversationTurnCoordinator
 from backend.core.web.routers import (
+    agent_actions,
     auth,
     chat,
     groups,
@@ -107,6 +128,12 @@ from backend.core.web.routers import (
     student_teaching,
     teaching,
     workspaces,
+)
+from backend.core.workflows.research import (
+    RESEARCH_ACTION_TYPES,
+    ResearchWorkflowFacade,
+    execute_research_action,
+    validate_research_action,
 )
 
 DB_PATH = USER_DB_PATH
@@ -129,9 +156,37 @@ async def lifespan(app: FastAPI):
         max_bytes=USER_ATTACHMENT_MAX_BYTES,
     )
     app.state.teaching_store = TeachingStore(DB_PATH)
+    app.state.knowledge_graph_store = KnowledgeGraphStore(KNOWLEDGE_GRAPH_DB_PATH)
+    app.state.mastery_store = EsaMasteryStore(MASTERY_DB_PATH)
+    app.state.learning_evidence_store = LearningEvidenceStore(LEARNING_EVIDENCE_DB_PATH)
+    app.state.learning_state_service = LearningStateService(
+        kg_store=app.state.knowledge_graph_store,
+        mastery_store=app.state.mastery_store,
+        evidence_store=app.state.learning_evidence_store,
+    )
+    app.state.knowledge_map_service = KnowledgeMapService(
+        kg_store=app.state.knowledge_graph_store,
+        mastery_store=app.state.mastery_store,
+        evidence_store=app.state.learning_evidence_store,
+    )
 
     run_migrations(DB_PATH)
+    app.state.core_memory_store = CoreMemoryStore(DB_PATH)
+    app.state.profile_projection = ProfileProjection(
+        app.state.user_store,
+        app.state.profile_store,
+    )
+    app.state.core_memory_service = CoreMemoryService(
+        app.state.core_memory_store,
+        projection=app.state.profile_projection,
+    )
     app.state.research_project_store = ResearchProjectStore(DB_PATH)
+    app.state.classroom_conversation_store = ClassroomConversationStore(DB_PATH)
+    app.state.research_project_profile_store = ResearchProjectProfileStore(DB_PATH)
+    app.state.research_project_profile_service = ResearchProjectProfileService(
+        app.state.research_project_profile_store,
+        app.state.research_project_store,
+    )
     app.state.frontier_tracking_store = FrontierTrackingStore(DB_PATH)
     app.state.frontier_tracking_service = FrontierTrackingService(
         app.state.frontier_tracking_store
@@ -141,6 +196,15 @@ async def lifespan(app: FastAPI):
     app.state.research_data_service = ResearchDataService(
         app.state.research_data_store,
         DB_PATH.parent / "research_data",
+    )
+    app.state.research_workflow_facade = ResearchWorkflowFacade(
+        project_store=app.state.research_project_store,
+        frontier_store=app.state.frontier_tracking_store,
+        frontier_service=app.state.frontier_tracking_service,
+        writing_store=app.state.research_writing_store,
+        writing_service=None,
+        data_store=app.state.research_data_store,
+        data_service=app.state.research_data_service,
     )
     app.state.email_verification_store = EmailVerificationStore(DB_PATH)
     app.state.email_verification_service = None
@@ -183,6 +247,27 @@ async def lifespan(app: FastAPI):
         app.state.research_writing_store,
         app.state.auxiliary_llm_client,
     )
+    app.state.research_workflow_facade.writing_service = (
+        app.state.research_writing_service
+    )
+    app.state.agent_action_store = AgentActionStore(DB_PATH)
+
+    def _validate_research_action(action: dict) -> None:
+        validate_research_action(
+            action,
+            project_store=app.state.research_project_store,
+            writing_store=app.state.research_writing_store,
+            data_store=app.state.research_data_store,
+        )
+
+    def _execute_research_action(action: dict) -> dict:
+        return execute_research_action(action, app.state.research_workflow_facade)
+
+    app.state.agent_action_service = AgentActionService(
+        app.state.agent_action_store,
+        validators={name: _validate_research_action for name in RESEARCH_ACTION_TYPES},
+        executors={name: _execute_research_action for name in RESEARCH_ACTION_TYPES},
+    )
     app.state.teaching_analysis_service = TeachingAnalysisService(
         app.state.teaching_store,
         app.state.auxiliary_llm_client,
@@ -198,15 +283,17 @@ async def lifespan(app: FastAPI):
     for job_id in app.state.research_data_store.requeue_interrupted():
         app.state.research_data_service.submit(job_id)
 
-    synced_points, synced_edges = ensure_knowledge_graph_seeded(kg_store)
-    if kg_store.count_points() <= 0:
+    synced_points, synced_edges = ensure_knowledge_graph_seeded(
+        app.state.knowledge_graph_store
+    )
+    if app.state.knowledge_graph_store.count_points() <= 0:
         raise RuntimeError("Knowledge Graph 初始化失败：未从 YAML 加载任何知识点")
     logger.info(
         "Knowledge Graph 已同步：points=%s, edges=%s",
         synced_points,
         synced_edges,
     )
-    app.state.kp_resolver = KnowledgePointResolver(kg_store)
+    app.state.kp_resolver = KnowledgePointResolver(app.state.knowledge_graph_store)
     app.state.auth = AuthService(
         app.state.user_store,
         app.state.session_store,
@@ -225,10 +312,10 @@ async def lifespan(app: FastAPI):
     )
     app.state.profile_builder = ProfileBuilder(
         user_store=app.state.user_store,
-        mastery_store=mastery_store,
-        kg_store=kg_store,
+        mastery_store=app.state.mastery_store,
+        kg_store=app.state.knowledge_graph_store,
         profile_store=app.state.profile_store,
-        evidence_store=evidence_store,
+        evidence_store=app.state.learning_evidence_store,
     )
     app.state.conversation_compression_service = ConversationCompressionService(
         llm_client=app.state.auxiliary_llm_client,
@@ -271,6 +358,7 @@ async def lifespan(app: FastAPI):
 
 business_router = APIRouter()
 business_router.include_router(auth.router)
+business_router.include_router(agent_actions.router)
 business_router.include_router(chat.router)
 business_router.include_router(groups.router)
 business_router.include_router(preferences.router)

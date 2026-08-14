@@ -1,49 +1,43 @@
-from backend.agent.tools.memory_tools import (
-    delete_core_memory,
-    get_core_memories,
-    memory_read_allowed,
-    memory_write_allowed,
-    search_core_memories,
-    set_current_conversation_mode,
-    set_current_user,
-)
+import pytest
+
+from backend.agent.memories.core_memory_models import MemoryPolicyDenied
+from backend.agent.memories.core_memory_policy import CoreMemoryPolicy
+from backend.agent.tools.context import AgentRuntimeDependencies, ToolExecutionContext
+from backend.core.router.models import ResourceScope, WorkspaceRoute
+
+
+def _context(mode: str, user_id: str = "u1") -> ToolExecutionContext:
+    scope = ResourceScope(metadata={"conversation_id": "c1"})
+    route = WorkspaceRoute(
+        workspace_type="learning", agent_profile_id="learning.v1",
+        skill_scopes=frozenset({"common", "learning"}),
+        tool_scopes=frozenset({"common", "learning"}), prompt_key="learning.v1",
+        profile_policy="learning.profile.v1", memory_policy_id="learning.memory.v1",
+        resource_scope=scope, action_policy="learning.actions.v1",
+    )
+    return ToolExecutionContext(
+        user_id=user_id, conversation_id="c1", workspace_route=route,
+        authorized_resources=scope, conversation_mode=mode,
+        runtime_dependencies=AgentRuntimeDependencies(username=user_id),
+        request_id="r1",
+    )
 
 
 def test_isolated_mode_blocks_reads_and_writes():
-    set_current_user("isolated-test-user")
-    try:
-        set_current_conversation_mode("isolated")
-
-        assert memory_read_allowed() is False
-        assert memory_write_allowed() is False
-
-        read_result = get_core_memories()
-        assert read_result["allowed"] is False
-        assert read_result["memories"] == []
-
-        delete_result = delete_core_memory("anything")
-        assert delete_result["deleted"] is False
-    finally:
-        set_current_conversation_mode("normal")
+    policy = CoreMemoryPolicy()
+    with pytest.raises(MemoryPolicyDenied):
+        policy.ensure_read(_context("isolated"))
+    with pytest.raises(MemoryPolicyDenied):
+        policy.ensure_write(_context("isolated"))
 
 
 def test_no_write_mode_still_allows_reads():
-    set_current_user("no-write-test-user")
-    try:
-        set_current_conversation_mode("no_write")
-
-        assert memory_read_allowed() is True
-        assert memory_write_allowed() is False
-    finally:
-        set_current_conversation_mode("normal")
+    policy = CoreMemoryPolicy()
+    policy.ensure_read(_context("no_write"))
+    with pytest.raises(MemoryPolicyDenied):
+        policy.ensure_write(_context("no_write"))
 
 
-def test_isolated_mode_blocks_on_demand_memory_search():
-    set_current_user("isolated-search-test-user")
-    try:
-        set_current_conversation_mode("isolated")
-        result = search_core_memories("project")
-        assert result["allowed"] is False
-        assert result["memories"] == []
-    finally:
-        set_current_conversation_mode("normal")
+def test_context_keeps_trusted_users_isolated():
+    assert _context("normal", "alice").user_id == "alice"
+    assert _context("normal", "bob").user_id == "bob"

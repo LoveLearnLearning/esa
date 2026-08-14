@@ -896,6 +896,178 @@ def _migrate_research_capabilities(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_workspace_runtime_domains(connection: sqlite3.Connection) -> None:
+    """Install resource bindings, approvals, and CoreMemory V2 atomically."""
+    _execute_script_atomically(
+        connection,
+        """
+        CREATE TABLE IF NOT EXISTS classroom_conversation_bindings (
+            conversation_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            class_id TEXT NOT NULL,
+            assignment_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_classroom_bindings_user_class
+        ON classroom_conversation_bindings(user_id, class_id);
+
+        CREATE TABLE IF NOT EXISTS research_project_profiles (
+            project_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            agent_instructions TEXT NOT NULL DEFAULT '',
+            format_version INTEGER NOT NULL DEFAULT 1,
+            revision INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES research_projects(project_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(format_version >= 1),
+            CHECK(revision >= 1)
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_project_profiles_user
+        ON research_project_profiles(user_id, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS agent_action_requests (
+            action_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            workspace_type TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            arguments_json TEXT NOT NULL,
+            resource_snapshot_json TEXT NOT NULL DEFAULT '{}',
+            policy_id TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            result_json TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            decided_at TEXT,
+            executed_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+            UNIQUE(user_id, idempotency_key),
+            CHECK(workspace_type IN ('learning', 'teaching', 'research')),
+            CHECK(status IN ('pending','approved','executing','succeeded','failed','rejected','expired'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_actions_user_status
+        ON agent_action_requests(user_id, status, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS core_memories (
+            memory_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            memory_key TEXT NOT NULL,
+            content TEXT NOT NULL,
+            normalized_content_hash TEXT NOT NULL,
+            category TEXT NOT NULL,
+            scope_type TEXT NOT NULL,
+            workspace_type TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            source_type TEXT NOT NULL,
+            source_conversation_id TEXT,
+            revision INTEGER NOT NULL DEFAULT 1,
+            confirmed_at TEXT,
+            review_after TEXT,
+            expires_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(source_conversation_id) REFERENCES conversations(conversation_id) ON DELETE SET NULL,
+            UNIQUE(user_id, scope_type, workspace_type, memory_key),
+            CHECK(scope_type IN ('global','workspace')),
+            CHECK((scope_type='global' AND workspace_type IS NULL) OR
+                  (scope_type='workspace' AND workspace_type IN ('learning','teaching','research'))),
+            CHECK(status IN ('active','suppressed')),
+            CHECK(revision >= 1)
+        );
+        CREATE INDEX IF NOT EXISTS idx_core_memories_visible
+        ON core_memories(user_id, scope_type, workspace_type, status, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS core_memory_candidates (
+            candidate_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            memory_id TEXT,
+            memory_key TEXT NOT NULL,
+            proposed_content TEXT,
+            normalized_content_hash TEXT NOT NULL,
+            category TEXT NOT NULL,
+            scope_type TEXT NOT NULL,
+            workspace_type TEXT,
+            candidate_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            expected_revision INTEGER,
+            source_conversation_id TEXT,
+            resulting_memory_id TEXT,
+            created_at TEXT NOT NULL,
+            decided_at TEXT,
+            expires_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(memory_id) REFERENCES core_memories(memory_id) ON DELETE CASCADE,
+            FOREIGN KEY(resulting_memory_id) REFERENCES core_memories(memory_id) ON DELETE SET NULL,
+            FOREIGN KEY(source_conversation_id) REFERENCES conversations(conversation_id) ON DELETE SET NULL,
+            CHECK(scope_type IN ('global','workspace')),
+            CHECK((scope_type='global' AND workspace_type IS NULL) OR
+                  (scope_type='workspace' AND workspace_type IN ('learning','teaching','research'))),
+            CHECK(candidate_type IN ('create','update','replace')),
+            CHECK(status IN ('pending','accepted','rejected','expired'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_candidates_user_status
+        ON core_memory_candidates(user_id, status, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS core_memory_versions (
+            version_id TEXT PRIMARY KEY,
+            memory_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            category TEXT NOT NULL,
+            scope_type TEXT NOT NULL,
+            workspace_type TEXT,
+            change_type TEXT NOT NULL,
+            changed_via TEXT NOT NULL,
+            source_candidate_id TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(memory_id) REFERENCES core_memories(memory_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(memory_id, revision),
+            CHECK(change_type IN ('create','update','replace','restore','migration'))
+        );
+        CREATE TABLE IF NOT EXISTS core_memory_tombstones (
+            memory_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            deleted_at TEXT NOT NULL,
+            final_revision INTEGER NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS core_memory_audit_log (
+            event_id TEXT PRIMARY KEY,
+            memory_id TEXT,
+            user_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            scope_type TEXT,
+            workspace_type TEXT,
+            revision INTEGER,
+            content_hash TEXT,
+            request_id TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_audit_user_created
+        ON core_memory_audit_log(user_id, created_at DESC);
+        CREATE TABLE IF NOT EXISTS core_memory_user_revisions (
+            user_id TEXT PRIMARY KEY,
+            revision INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        """,
+    )
+
+
 MIGRATIONS: list[MigrationDef] = [
     (
         1,
@@ -1092,6 +1264,11 @@ MIGRATIONS: list[MigrationDef] = [
     ),
     (
         11,
+        "create_workspace_runtime_domains",
+        _migrate_workspace_runtime_domains,
+    ),
+    (
+        12,
         "persist_message_attachments",
         _migrate_message_attachments,
     ),

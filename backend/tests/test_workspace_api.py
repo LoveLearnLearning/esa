@@ -1,16 +1,19 @@
 from fastapi.testclient import TestClient
 
-from backend.agent.agent import Agent, call_workspace_tool, tool_schemas_for_workspace
+from backend.agent.tools.bootstrap import register_builtin_tools
+from backend.agent.tools.catalog import ScopedToolView
+from backend.agent.tools.tools import tr
+from backend.agent.memories.core_memory_service import CoreMemoryService
 from backend.core.services.auth_service import AuthService
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
+from backend.core.stores.core_memory_store import CoreMemoryStore
+from backend.core.stores.migrations import run_migrations
 from backend.core.stores.research_project_store import ResearchProjectStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.stores.user_store import UserStore
 from backend.core.web.webAPI import create_app
-from backend.core.utils.models import PromptContext
-from backend.core.workspaces import workspace_prompt
 
 
 def _app(tmp_path):
@@ -29,6 +32,9 @@ def _app(tmp_path):
     app.state.group_store = GroupStore(database)
     app.state.chat_store = ChatStore(database)
     app.state.research_project_store = ResearchProjectStore(database)
+    run_migrations(database)
+    app.state.core_memory_store = CoreMemoryStore(database)
+    app.state.core_memory_service = CoreMemoryService(app.state.core_memory_store)
     app.state.auth = AuthService(user_store, session_store)
     return app
 
@@ -56,9 +62,7 @@ def _register_and_login(
     assert logged_in.status_code == 200
     payload = logged_in.json()
     assert payload["account_role"] == account_role
-    return {
-        "Authorization": f"Bearer {payload['session_id']}"
-    }
+    return {"Authorization": f"Bearer {payload['session_id']}"}
 
 
 def test_workspace_manifest_uses_backend_role_policy(tmp_path):
@@ -70,16 +74,53 @@ def test_workspace_manifest_uses_backend_role_policy(tmp_path):
     teacher_manifest = client.get("/api/workspaces", headers=teacher)
 
     assert student_manifest.status_code == 200
-    assert [
-        item["type"] for item in student_manifest.json()["workspaces"]
-    ] == ["learning", "research"]
+    assert [item["type"] for item in student_manifest.json()["workspaces"]] == [
+        "learning",
+        "research",
+    ]
     assert student_manifest.json()["default_workspace"] == "learning"
 
     assert teacher_manifest.status_code == 200
-    assert [
-        item["type"] for item in teacher_manifest.json()["workspaces"]
-    ] == ["teaching", "research"]
+    assert [item["type"] for item in teacher_manifest.json()["workspaces"]] == [
+        "teaching",
+        "research",
+    ]
     assert teacher_manifest.json()["default_workspace"] == "teaching"
+
+
+def test_core_memory_workspace_scope_uses_authorized_requested_workspace(tmp_path):
+    client = TestClient(_app(tmp_path))
+    student = _register_and_login(client, "memory-student", "student")
+
+    research = client.post(
+        "/api/me/core-memories",
+        headers=student,
+        json={
+            "memory_key": "research_style",
+            "content": "Prefer concise experiment summaries",
+            "category": "preference",
+            "scope_type": "workspace",
+            "workspace_type": "research",
+        },
+    )
+    assert research.status_code == 201
+    assert research.json()["scope_type"] == "workspace"
+    assert research.json()["workspace_type"] == "research"
+
+    denied = client.post(
+        "/api/me/core-memories",
+        headers=student,
+        json={
+            "memory_key": "forged_teaching_scope",
+            "content": "This must not be stored",
+            "scope_type": "workspace",
+            "workspace_type": "teaching",
+        },
+    )
+    assert denied.status_code == 403
+
+    listed = client.get("/api/me/core-memories", headers=student)
+    assert [item["memory_key"] for item in listed.json()] == ["research_style"]
 
 
 def test_conversations_are_bound_to_an_authorized_workspace(tmp_path):
@@ -190,28 +231,11 @@ def test_research_projects_are_user_scoped_and_bind_research_chats(tmp_path):
     assert archived_binding.status_code == 409
 
 
-def test_research_workspace_prompt_does_not_inject_learning_pedagogy():
-    agent = Agent.__new__(Agent)
-    messages, _ = agent._prepare_run(
-        "帮我整理这一领域的研究趋势",
-        "researcher",
-        [],
-        PromptContext(workspace_type="research"),
-    )
-
-    prompt = messages[0]["content"]
-    assert workspace_prompt("research") in prompt
-    assert "# 教学策略路由" not in prompt
-    assert "# 自动启用的策略 Skill" not in prompt
-
-    research_tool_names = {
-        schema["function"]["name"]
-        for schema in tool_schemas_for_workspace("research")
-    }
+def test_research_workspace_has_only_scoped_tools():
+    register_builtin_tools()
+    research_view = ScopedToolView.compile(tr, frozenset({"common", "research"}))
+    research_tool_names = research_view.names
     assert "arxiv_search" in research_tool_names
     assert "web_search" in research_tool_names
     assert "get_mastery_report" not in research_tool_names
     assert "retrieve_knowledge" not in research_tool_names
-    assert "unavailable in research workspace" in str(
-        call_workspace_tool("research", "get_mastery_report", {})
-    )

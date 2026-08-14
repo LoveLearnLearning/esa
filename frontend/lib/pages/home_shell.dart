@@ -9,12 +9,15 @@ import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 import '../widgets/profile_sheet.dart';
+import '../widgets/memory_sheet.dart';
+import '../widgets/agent_action_sheet.dart';
 import 'chat_page.dart';
 import 'knowledge_map_page.dart';
 import 'research_project_page.dart';
 import 'research_workspace_page.dart';
 import 'schedule_page.dart';
 import 'student_assignments_page.dart';
+import 'teaching_workspace_page.dart';
 
 enum StudentSection { assistant, assignments, schedule, knowledge, research }
 
@@ -30,6 +33,7 @@ class _HomeShellState extends State<HomeShell> {
   bool _sidebarCollapsed = false;
   bool _sidebarRequested = false;
   ResearchProject? _activeResearchProject;
+  bool _researchProjectChatOpen = false;
 
   bool get _inResearch => _section == StudentSection.research;
 
@@ -38,17 +42,27 @@ class _HomeShellState extends State<HomeShell> {
     final app = AppScope.of(context);
     final target = section == StudentSection.research
         ? WorkspaceType.research
+        : section == StudentSection.assignments && app.accountRole == 'teacher'
+        ? WorkspaceType.teaching
         : WorkspaceType.learning;
     if (app.activeWorkspace != target) await app.switchWorkspace(target);
     if (!mounted) return;
-    setState(() => _section = section);
+    setState(() {
+      _section = section;
+      if (section != StudentSection.research) _researchProjectChatOpen = false;
+    });
   }
 
   Widget _page() => switch (_section) {
     StudentSection.assistant => const ChatPage(embedded: true),
-    StudentSection.assignments => StudentAssignmentsPage(
-      onOpenChat: () => unawaited(_select(StudentSection.assistant)),
-    ),
+    StudentSection.assignments =>
+      AppScope.of(context).accountRole == 'teacher'
+          ? TeachingWorkspacePage(
+              onOpenChat: () => unawaited(_select(StudentSection.assistant)),
+            )
+          : StudentAssignmentsPage(
+              onOpenChat: () => unawaited(_select(StudentSection.assistant)),
+            ),
     StudentSection.schedule => const SchedulePage(),
     StudentSection.knowledge => KnowledgeMapPage(
       embedded: true,
@@ -59,14 +73,28 @@ class _HomeShellState extends State<HomeShell> {
       _activeResearchProject == null
           ? ResearchWorkspacePage(
               onOpenChat: () => unawaited(_select(StudentSection.research)),
-              onOpenProject: (project) =>
-                  setState(() => _activeResearchProject = project),
+              onOpenProject: (project) => setState(() {
+                _activeResearchProject = project;
+                _researchProjectChatOpen = false;
+              }),
+            )
+          : _researchProjectChatOpen
+          ? ChatPage(
+              embedded: true,
+              embeddedTitle: _activeResearchProject!.name,
+              onExitEmbedded: () =>
+                  setState(() => _researchProjectChatOpen = false),
             )
           : ResearchProjectPage(
               project: _activeResearchProject!,
               embedded: true,
-              onBack: () => setState(() => _activeResearchProject = null),
-              onOpenChat: () => unawaited(_select(StudentSection.research)),
+              onBack: () => setState(() {
+                _activeResearchProject = null;
+                _researchProjectChatOpen = false;
+              }),
+              onProjectUpdated: (project) =>
+                  setState(() => _activeResearchProject = project),
+              onOpenChat: () => setState(() => _researchProjectChatOpen = true),
             ),
   };
 
@@ -116,6 +144,8 @@ class _HomeShellState extends State<HomeShell> {
                         unawaited(_select(section));
                       },
                       onProfile: () => showProfileSheet(context),
+                      onMemory: () => showMemorySheet(context),
+                      onActions: () => showAgentActionSheet(context),
                     ),
                     if (showSidebar) ...[
                       const SizedBox(width: 8),
@@ -128,9 +158,10 @@ class _HomeShellState extends State<HomeShell> {
                                 section: _section,
                                 onSelect: (section) =>
                                     unawaited(_select(section)),
-                                onOpenProject: (project) => setState(
-                                  () => _activeResearchProject = project,
-                                ),
+                                onOpenProject: (project) => setState(() {
+                                  _activeResearchProject = project;
+                                  _researchProjectChatOpen = false;
+                                }),
                                 onCollapse: () =>
                                     setState(() => _sidebarCollapsed = true),
                               ),
@@ -173,7 +204,8 @@ class _HomeShellState extends State<HomeShell> {
     final app = AppScope.of(context);
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final conversationActive =
-        _section == StudentSection.assistant && app.messages.isNotEmpty;
+        (_section == StudentSection.assistant && app.messages.isNotEmpty) ||
+        _researchProjectChatOpen;
     final researchProjectActive =
         _section == StudentSection.research && _activeResearchProject != null;
     return Scaffold(
@@ -184,14 +216,20 @@ class _HomeShellState extends State<HomeShell> {
           children: [
             if (conversationActive)
               _MobileConversationHeader(
-                title: app.activeConversation?.title ?? '新对话',
-                onBack: app.newConversation,
+                title: _researchProjectChatOpen
+                    ? _activeResearchProject?.name ?? '项目对话'
+                    : app.activeConversation?.title ?? '新对话',
+                onBack: _researchProjectChatOpen
+                    ? () => setState(() => _researchProjectChatOpen = false)
+                    : app.newConversation,
               )
             else if (!researchProjectActive)
               _MobileHeader(
                 section: _section,
                 onSelect: (section) => unawaited(_select(section)),
                 onProfile: () => showProfileSheet(context),
+                onMemory: () => showMemorySheet(context),
+                onActions: () => showAgentActionSheet(context),
               ),
             if (!_inResearch)
               _MobileLearningTabs(
@@ -235,11 +273,15 @@ class _GlobalRail extends StatelessWidget {
     required this.section,
     required this.onSelect,
     required this.onProfile,
+    required this.onMemory,
+    required this.onActions,
   });
 
   final StudentSection section;
   final ValueChanged<StudentSection> onSelect;
   final VoidCallback onProfile;
+  final VoidCallback onMemory;
+  final VoidCallback onActions;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -273,6 +315,18 @@ class _GlobalRail extends StatelessWidget {
           onTap: () => onSelect(StudentSection.research),
         ),
         const Spacer(),
+        _RailButton(
+          icon: LucideIcons.brain,
+          tooltip: '长期记忆',
+          active: false,
+          onTap: onMemory,
+        ),
+        _RailButton(
+          icon: LucideIcons.shieldCheck,
+          tooltip: '待确认动作',
+          active: false,
+          onTap: onActions,
+        ),
         _RailButton(
           icon: LucideIcons.settings,
           tooltip: '设置',
@@ -368,7 +422,7 @@ class _WorkspaceSidebar extends StatelessWidget {
           const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: research
-                ? () => onSelect(StudentSection.research)
+                ? () => _createResearchProject(context, app)
                 : () {
                     unawaited(app.newConversation());
                     onSelect(StudentSection.assistant);
@@ -388,17 +442,10 @@ class _WorkspaceSidebar extends StatelessWidget {
               isDense: true,
             ),
           ),
-          const SizedBox(height: 14),
-          Text('功能', style: context.texts.labelSmall),
-          const SizedBox(height: 6),
-          if (research)
-            _SideEntry(
-              icon: LucideIcons.flaskConical,
-              label: '科研项目',
-              selected: true,
-              onTap: () => onSelect(StudentSection.research),
-            )
-          else ...[
+          if (!research) ...[
+            const SizedBox(height: 14),
+            Text('功能', style: context.texts.labelSmall),
+            const SizedBox(height: 6),
             _SideEntry(
               icon: LucideIcons.messageCircle,
               label: '学习助手',
@@ -407,7 +454,7 @@ class _WorkspaceSidebar extends StatelessWidget {
             ),
             _SideEntry(
               icon: LucideIcons.clipboardCheck,
-              label: '作业',
+              label: app.accountRole == 'teacher' ? '教学工作台' : '作业',
               selected: section == StudentSection.assignments,
               onTap: () => onSelect(StudentSection.assignments),
             ),
@@ -436,7 +483,7 @@ class _WorkspaceSidebar extends StatelessWidget {
               IconButton(
                 tooltip: research ? '新建项目' : '新建分组',
                 onPressed: research
-                    ? () => onSelect(StudentSection.research)
+                    ? () => _createResearchProject(context, app)
                     : () => _showCreateGroup(context, app),
                 icon: const Icon(LucideIcons.plus, size: 16),
               ),
@@ -473,6 +520,60 @@ class _WorkspaceSidebar extends StatelessWidget {
           onTap: () => onOpenProject(project),
         ),
     ];
+  }
+
+  Future<void> _createResearchProject(
+    BuildContext context,
+    AppState app,
+  ) async {
+    final name = TextEditingController();
+    final description = TextEditingController();
+    final create = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('新建科研项目'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: '项目名称'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: description,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(labelText: '研究目标或说明'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, name.text.trim().isNotEmpty),
+            child: const Text('创建并打开'),
+          ),
+        ],
+      ),
+    );
+    if (create == true && context.mounted) {
+      final project = await app.createResearchProject(
+        name.text,
+        description.text,
+      );
+      if (context.mounted) onOpenProject(project);
+    }
+    name.dispose();
+    description.dispose();
   }
 
   List<Widget> _learningEntries(BuildContext context, AppState app) => [
@@ -1064,10 +1165,14 @@ class _MobileHeader extends StatelessWidget {
     required this.section,
     required this.onSelect,
     required this.onProfile,
+    required this.onMemory,
+    required this.onActions,
   });
   final StudentSection section;
   final ValueChanged<StudentSection> onSelect;
   final VoidCallback onProfile;
+  final VoidCallback onMemory;
+  final VoidCallback onActions;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -1086,9 +1191,14 @@ class _MobileHeader extends StatelessWidget {
           }, style: context.texts.headlineSmall),
         ),
         IconButton(
-          tooltip: '通知',
-          onPressed: () {},
-          icon: const Icon(LucideIcons.bell),
+          tooltip: '长期记忆',
+          onPressed: onMemory,
+          icon: const Icon(LucideIcons.brain),
+        ),
+        IconButton(
+          tooltip: '待确认动作',
+          onPressed: onActions,
+          icon: const Icon(LucideIcons.shieldCheck),
         ),
         IconButton(
           tooltip: '设置',

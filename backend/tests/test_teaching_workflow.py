@@ -11,7 +11,6 @@ from backend.core.stores.session_store import SessionStore
 from backend.core.stores.teaching_store import TeachingStore
 from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.stores.user_store import UserStore
-from backend.core.web.routers import teaching
 from backend.core.web.webAPI import create_app
 
 
@@ -32,9 +31,9 @@ def _app(tmp_path, monkeypatch):
 
     kg = KnowledgeGraphStore(tmp_path / "kg.db")
     kg.add_point("binary_search", "二分查找", "数据结构", 1.0, "algorithm")
-    monkeypatch.setattr(teaching, "kg_store", kg)
-    monkeypatch.setattr(teaching, "evidence_store", LearningEvidenceStore(tmp_path / "evidence.db"))
-    monkeypatch.setattr(teaching, "mastery_store", MasteryStore(tmp_path / "mastery.db"))
+    app.state.knowledge_graph_store = kg
+    app.state.learning_evidence_store = LearningEvidenceStore(tmp_path / "evidence.db")
+    app.state.mastery_store = MasteryStore(tmp_path / "mastery.db")
     return app
 
 

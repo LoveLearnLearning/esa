@@ -637,20 +637,117 @@ class KnowledgePointDetail {
 
 class CoreMemoryItem {
   const CoreMemoryItem({
+    required this.id,
     required this.key,
     required this.content,
     required this.category,
+    this.scopeType = 'global',
+    this.workspaceType,
+    this.status = 'active',
+    this.revision = 1,
   });
 
+  final String id;
   final String key;
   final String content;
   final String category;
+  final String scopeType;
+  final String? workspaceType;
+  final String status;
+  final int revision;
 
   factory CoreMemoryItem.fromJson(Map<String, dynamic> json) => CoreMemoryItem(
+    id: json['memory_id'] as String? ?? json['memory_key'] as String? ?? '',
     key: json['memory_key'] as String? ?? '',
     content: json['content'] as String? ?? '',
     category: json['category'] as String? ?? 'general',
+    scopeType: json['scope_type'] as String? ?? 'global',
+    workspaceType: json['workspace_type'] as String?,
+    status: json['status'] as String? ?? 'active',
+    revision: json['revision'] as int? ?? 1,
   );
+}
+
+class MemoryCandidateItem {
+  const MemoryCandidateItem({
+    required this.id,
+    required this.key,
+    required this.content,
+    required this.category,
+    required this.scopeType,
+    this.workspaceType,
+  });
+  final String id;
+  final String key;
+  final String content;
+  final String category;
+  final String scopeType;
+  final String? workspaceType;
+
+  factory MemoryCandidateItem.fromJson(Map<String, dynamic> json) =>
+      MemoryCandidateItem(
+        id: json['candidate_id'] as String? ?? '',
+        key: json['memory_key'] as String? ?? '',
+        content: json['proposed_content'] as String? ?? '',
+        category: json['category'] as String? ?? 'general',
+        scopeType: json['scope_type'] as String? ?? 'global',
+        workspaceType: json['workspace_type'] as String?,
+      );
+}
+
+class ResearchProjectProfile {
+  const ResearchProjectProfile({
+    required this.instructions,
+    required this.revision,
+  });
+  final String instructions;
+  final int revision;
+  factory ResearchProjectProfile.fromJson(Map<String, dynamic> json) =>
+      ResearchProjectProfile(
+        instructions: json['agent_instructions'] as String? ?? '',
+        revision: json['revision'] as int? ?? 0,
+      );
+}
+
+class AgentActionItem {
+  const AgentActionItem({
+    required this.id,
+    required this.type,
+    required this.status,
+    required this.workspaceType,
+    required this.arguments,
+    required this.resourceSnapshot,
+    required this.createdAt,
+    required this.expiresAt,
+    this.error,
+  });
+
+  final String id;
+  final String type;
+  final String status;
+  final String workspaceType;
+  final Map<String, dynamic> arguments;
+  final Map<String, dynamic> resourceSnapshot;
+  final DateTime? createdAt;
+  final DateTime? expiresAt;
+  final String? error;
+
+  factory AgentActionItem.fromJson(Map<String, dynamic> json) =>
+      AgentActionItem(
+        id: json['action_id']?.toString() ?? '',
+        type: json['action_type']?.toString() ?? '',
+        status: json['status']?.toString() ?? 'pending',
+        workspaceType: json['workspace_type']?.toString() ?? '',
+        arguments: json['arguments'] is Map
+            ? Map<String, dynamic>.from(json['arguments'] as Map)
+            : const {},
+        resourceSnapshot: json['resource_snapshot'] is Map
+            ? Map<String, dynamic>.from(json['resource_snapshot'] as Map)
+            : const {},
+        createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
+        expiresAt: DateTime.tryParse(json['expires_at']?.toString() ?? ''),
+        error: json['error']?.toString(),
+      );
 }
 
 enum MessageRole { user, assistant, tool }
@@ -987,6 +1084,10 @@ class ChatConversation {
     this.pinned = false,
     this.workspaceType = WorkspaceType.learning,
     this.researchProjectId,
+    this.classId,
+    this.className,
+    this.assignmentId,
+    this.assignmentTitle,
     this.groupId,
   });
 
@@ -995,10 +1096,17 @@ class ChatConversation {
   DateTime updatedAt;
   final WorkspaceType workspaceType;
   final String? researchProjectId;
+  final String? classId;
+  final String? className;
+  final String? assignmentId;
+  final String? assignmentTitle;
   String? groupId;
   bool pinned; // 置顶 后端暂无字段 仅前端本地状态
 
   factory ChatConversation.fromJson(Map<String, dynamic> j) {
+    final binding = j['classroom_binding'] is Map
+        ? Map<String, dynamic>.from(j['classroom_binding'] as Map)
+        : const <String, dynamic>{};
     return ChatConversation(
       id: j['conversation_id'] as String,
       title: (j['title'] as String?) ?? '新对话',
@@ -1007,6 +1115,10 @@ class ChatConversation {
           DateTime.now(),
       workspaceType: WorkspaceType.fromWire(j['workspace_type'] as String?),
       researchProjectId: j['research_project_id'] as String?,
+      classId: binding['class_id']?.toString(),
+      className: binding['class_name']?.toString(),
+      assignmentId: binding['assignment_id']?.toString(),
+      assignmentTitle: binding['assignment_title']?.toString(),
       groupId: j['group_id'] as String?,
     );
   }

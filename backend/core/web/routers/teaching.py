@@ -5,8 +5,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from backend.agent.tools.learning_tools import evidence_store
-from backend.agent.tools.mastery_tools import kg_store, mastery_store
 from backend.core.services.teaching_analysis_service import TeachingAnalysisService
 from backend.core.stores.teaching_store import TeachingStore
 from backend.core.stores.user_store import UserStore
@@ -67,7 +65,7 @@ def classes(request: Request, session: CurrentSession) -> list[dict]:
 @router.post("/classes", status_code=status.HTTP_201_CREATED)
 def create_class(body: ClassCreateRequest, request: Request, session: CurrentSession) -> dict:
     user, store = _context(request, session)
-    course = kg_store.resolve_course_name(body.canonical_course)
+    course = request.app.state.knowledge_graph_store.resolve_course_name(body.canonical_course)
     if course is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "课程知识图谱不存在")
     try:
@@ -131,10 +129,10 @@ def create_assignment(
     for question in body.questions:
         payload = question.model_dump()
         if payload["kp_id"]:
-            resolved = kg_store.resolve_kp_id(payload["kp_id"])
+            resolved = request.app.state.knowledge_graph_store.resolve_kp_id(payload["kp_id"])
             if resolved is None:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "知识点不存在")
-            point = kg_store.get_point(resolved)
+            point = request.app.state.knowledge_graph_store.get_point(resolved)
             if point is None or point["course"] != classroom["canonical_course"]:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "知识点不属于班级课程")
             payload["kp_id"] = resolved
@@ -224,7 +222,7 @@ def review_submission(
         answer = answers[review.answer_id]
         if review.score > float(answer["max_points"]):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "得分不能超过题目满分")
-        if review.kp_id and kg_store.resolve_kp_id(review.kp_id) is None:
+        if review.kp_id and request.app.state.knowledge_graph_store.resolve_kp_id(review.kp_id) is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "知识点不存在")
     return store.review_submission(
         submission_id=submission_id,
@@ -246,7 +244,7 @@ def publish_feedback(submission_id: str, request: Request, session: CurrentSessi
                 continue
             ratio = float(answer["final_score"]) / max(0.001, float(answer["max_points"]))
             correct = ratio >= 0.6
-            evidence = evidence_store.record(
+            evidence = request.app.state.learning_evidence_store.record(
                 user_name=student.username,
                 kp_id=kp_id,
                 activity_type="homework",
@@ -256,7 +254,7 @@ def publish_feedback(submission_id: str, request: Request, session: CurrentSessi
                 error_type=None if correct else (answer.get("final_error_type") or "unknown"),
                 misconception=None if correct else answer.get("final_feedback"),
             )
-            mastery_store.apply_evidence(
+            request.app.state.mastery_store.apply_evidence(
                 user_name=student.username,
                 kp_id=kp_id,
                 activity_type="homework",
@@ -282,7 +280,7 @@ def class_dashboard(class_id: str, request: Request, session: CurrentSession) ->
         by_student[row["student_id"]].append(row)
     knowledge = []
     for kp_id, evidence in by_kp.items():
-        point = kg_store.get_point(kp_id) or {"name": kp_id}
+        point = request.app.state.knowledge_graph_store.get_point(kp_id) or {"name": kp_id}
         ratios = [float(item["final_score"]) / max(.001, float(item["max_points"])) for item in evidence]
         knowledge.append({
             "kp_id": kp_id,
@@ -311,7 +309,7 @@ def class_dashboard(class_id: str, request: Request, session: CurrentSession) ->
     for item in knowledge:
         if item["average_score_ratio"] >= 0.6:
             continue
-        for prerequisite in kg_store.get_prerequisites(item["kp_id"], max_depth=3):
+        for prerequisite in request.app.state.knowledge_graph_store.get_prerequisites(item["kp_id"], max_depth=3):
             if prerequisite["depth"] == 0:
                 continue
             prerequisite_stats = knowledge_by_id.get(prerequisite["kp_id"])

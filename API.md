@@ -2,7 +2,7 @@
 
 > 在这里记录前后端网络 endpoint 前端照此对接 后端改动接口时同步更新本文档
 >
-> 最后核对：2026-08-12。
+> 最后核对：2026-08-14。
 
 - Base URL（`python -m backend.main`）: `http://127.0.0.1:51024/api`
 - 生产 Base URL: `https://esa.lovelearnlearning.cn/api`
@@ -210,6 +210,20 @@ Authorization: Bearer <session_id>
 
 PATCH 可传 `name`、`description`、`status`，其中 `status` 为 `active` 或 `archived`。项目不存在或不属于当前用户均返回 `404`。
 
+### GET/PUT /research/projects/{project_id}/profile — Project Profile
+
+读取或更新项目级 Agent 指令。PUT 请求体：
+
+```json
+{
+  "agent_instructions": "引用采用 APA 7，并明确标注证据不足处",
+  "expected_revision": 2
+}
+```
+
+`expected_revision` 用于乐观并发控制；冲突返回 `409` 和当前 revision。Project Profile
+只注入绑定该项目的 Research 对话，并作为受限用户配置，不能覆盖系统安全规则或能力边界。
+
 ### 领域前沿追踪
 
 - `GET /research/projects/{project_id}/frontier-jobs`：列出项目的追踪任务。
@@ -274,11 +288,16 @@ PATCH 可传 `name`、`description`、`status`，其中 `status` 为 `active` �
   "title": "线性代数问题",
   "group_id": "分组uuid",
   "workspace_type": "learning",
-  "research_project_id": null
+  "research_project_id": null,
+  "class_id": null,
+  "assignment_id": null
 }
 ```
 
-响应 `201`: 单个对话对象 结构同上
+响应 `201`: 单个对话对象，包含上述资源绑定字段。Research 对话可绑定一个归属当前
+用户的 `research_project_id`；Teaching 对话可绑定一个教师拥有的 `class_id`，并可选
+绑定该班级的 `assignment_id`。资源归属不匹配返回 `404/403`，跨 Workspace 绑定返回
+`422`。这些绑定由服务端验证后交给 Runtime，消息内容和 Tool 参数不能覆盖。
 
 `group_id` 不存在或不属于当前用户: `404`。无权进入所选 Workspace 返回 `403`；科研项目不存在或不属于当前用户返回 `404`；非科研 Workspace 绑定科研项目返回 `422`。
 
@@ -600,7 +619,62 @@ PDF、DOCX、PPTX、XLSX 与常见图片先经过 `MinerU → DocIR → Markdown
 
 ## 长期记忆接口
 
-以下接口均需要认证，并且只能管理当前用户的记忆。
+以下接口均需要认证，并且只能管理当前用户的记忆。`/me/core-memories` 是正式
+CoreMemory V2 接口；`/me/memories` 仅为迁移期 global 兼容接口，新客户端不得依赖。
+
+### GET/POST /me/core-memories
+
+GET 支持 `limit`、`offset`，返回当前用户拥有的记忆（包括 scope、状态、revision、
+复核和过期信息）。POST 创建显式记忆：
+
+```json
+{
+  "memory_key": "citation_style",
+  "content": "优先使用 APA 7",
+  "category": "preference",
+  "scope_type": "workspace",
+  "workspace_type": "research"
+}
+```
+
+`scope_type` 为 `global|workspace`；Workspace scope 必须与当前账号允许进入的
+`workspace_type` 一致。模型从对话中推断的信息不会直接进入正式记忆，只会创建候选。
+
+### PATCH/DELETE /me/core-memories/{memory_id}
+
+PATCH 请求包含 `expected_revision`，以及可选的 `content`、`category`；并发冲突返回
+`409` 和当前 revision。DELETE 按稳定 `memory_id` 彻底遗忘正文、版本、候选及派生投影，
+成功响应 `204`。
+
+### POST /me/core-memories/{memory_id}/suppress|restore
+
+抑制会停止检索与画像投影但保留可恢复数据；restore 恢复使用。两者返回最新记忆记录。
+
+### GET /me/core-memories/{memory_id}/versions
+
+返回版本历史。`POST /me/core-memories/{memory_id}/versions/{revision}/restore` 使用
+`{ "expected_revision": 3 }` 恢复指定版本，并生成一个新 revision。
+
+### GET /me/memory-candidates
+
+列出待确认候选。候选与 Agent Action 是不同状态机，候选接受前不会成为有效记忆。
+
+### POST /me/memory-candidates/{candidate_id}/accept|reject
+
+accept 可用以下可选字段在确认前编辑候选：
+
+```json
+{
+  "content": "编辑后的内容",
+  "category": "preference",
+  "scope_type": "workspace",
+  "workspace_type": "research"
+}
+```
+
+reject 无请求体，成功响应 `204`。过期候选不能接受。
+
+### 兼容接口：GET/PUT/DELETE /me/memories
 
 ### GET /me/memories
 
@@ -621,6 +695,21 @@ PDF、DOCX、PPTX、XLSX 与常见图片先经过 `MinerU → DocIR → Markdown
 ### DELETE /me/memories/{memory_key}
 
 删除指定记忆，成功响应 `204`。
+
+---
+
+## Agent Action 确认接口
+
+Research Workflow 等高影响 Agent Tool 只创建待确认 Action，不会立即启动业务任务。
+
+- `GET /me/agent-actions?status=pending`：列出当前用户的 Action，可按状态过滤。
+- `GET /me/agent-actions/{action_id}`：读取单个 Action。
+- `POST /me/agent-actions/{action_id}/approve`：重新校验身份、资源和策略后幂等执行。
+- `POST /me/agent-actions/{action_id}/reject`：拒绝待确认 Action。
+
+状态为 `pending -> approved -> executing -> succeeded|failed`，或
+`pending -> rejected|expired`。重复批准不会重复创建 Research Job；Action 的
+`succeeded` 仅表示权威 Job 已成功创建，任务最终状态仍查询对应 Research Job 接口。
 
 ---
 

@@ -3,16 +3,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
+from backend.agent.tools.context import AgentRuntimeDependencies, ToolExecutionContext
+from backend.agent.tools.learning.runtime import execute_learning_tool
 from backend.agent.learning.knowledge_map_service import KnowledgeMapService
-from backend.agent.tools.learning_tools import evidence_store
-from backend.agent.tools.mastery_tools import (
-    get_mastery_report,
-    kg_store,
-    mastery_store,
-    recommend_practice,
-    set_current_total_weeks,
-)
-from backend.agent.tools.memory_tools import set_current_user
+from backend.core.router.models import ResourceScope, WorkspaceRoute
 from backend.core.stores.user_store import UserStore
 from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
@@ -20,13 +14,6 @@ from backend.core.web.deps import get_current_session
 
 router = APIRouter(prefix="/me/learning", tags=["learning"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
-knowledge_map_service = KnowledgeMapService(
-    kg_store=kg_store,
-    mastery_store=mastery_store,
-    evidence_store=evidence_store,
-)
-
-
 class UserCourseInput(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     source: str = Field(default="manual", pattern="^(manual|timetable)$")
@@ -45,9 +32,38 @@ def _prepare_user(request: Request, session: SessionPrincipal) -> UserRecord:
     user = user_store.get_by_id(session.user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "用户不存在")
-    set_current_user(user.username)
-    set_current_total_weeks(user.total_weeks)
     return user
+
+
+def _kg(request: Request):
+    return request.app.state.knowledge_graph_store
+
+
+def _knowledge_map(request: Request) -> KnowledgeMapService:
+    return request.app.state.knowledge_map_service
+
+
+def _learning_tool_context(request: Request, session: SessionPrincipal) -> ToolExecutionContext:
+    user = _prepare_user(request, session)
+    scope = ResourceScope(metadata={"conversation_id": "learning-api"})
+    route = WorkspaceRoute(
+        workspace_type="learning", agent_profile_id="learning.v1",
+        skill_scopes=frozenset({"common", "learning"}),
+        tool_scopes=frozenset({"common", "learning"}), prompt_key="learning.v1",
+        profile_policy="learning.profile.v1", memory_policy_id="learning.memory.v1",
+        resource_scope=scope, action_policy="learning.actions.v1",
+    )
+    return ToolExecutionContext(
+        user_id=user.id, conversation_id="learning-api", workspace_route=route,
+        authorized_resources=scope, conversation_mode="normal",
+        runtime_dependencies=AgentRuntimeDependencies(
+            username=user.username, total_weeks=user.total_weeks,
+            knowledge_graph_store=request.app.state.knowledge_graph_store,
+            mastery_store=request.app.state.mastery_store,
+            learning_evidence_store=request.app.state.learning_evidence_store,
+            learning_state_service=request.app.state.learning_state_service,
+        ), request_id="learning-api",
+    )
 
 
 @router.get("/mastery")
@@ -56,8 +72,9 @@ def mastery_report(
     session: CurrentSession,
     course: str = Query(default="", max_length=64),
 ) -> dict:
-    _prepare_user(request, session)
-    return get_mastery_report(course)
+    return execute_learning_tool(
+        _learning_tool_context(request, session), "get_mastery_report", {"course": course}
+    )
 
 
 @router.get("/recommendations")
@@ -67,8 +84,10 @@ def practice_recommendations(
     course: str = Query(min_length=1, max_length=64),
     weeks_to_exam: int = Query(default=4, ge=0, le=52),
 ) -> dict:
-    _prepare_user(request, session)
-    result = recommend_practice(course, weeks_to_exam)
+    result = execute_learning_tool(
+        _learning_tool_context(request, session), "recommend_practice",
+        {"course": course, "weeks_to_exam": weeks_to_exam},
+    )
     if result.get("count", 0) == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, result.get("note", "暂无推荐"))
     return result
@@ -82,7 +101,7 @@ def learning_courses(request: Request, session: CurrentSession) -> dict:
     for item in associations:
         if item["canonical_course"]:
             continue
-        resolved = kg_store.resolve_course_name(item["name"])
+        resolved = _kg(request).resolve_course_name(item["name"])
         if resolved is None:
             continue
         store.upsert(
@@ -110,7 +129,7 @@ def learning_courses(request: Request, session: CurrentSession) -> dict:
     ]
     summaries = {
         item["name"]: item
-        for item in knowledge_map_service.get_courses(
+        for item in _knowledge_map(request).get_courses(
             user_name=user.username,
             course_names=supported_names,
         )["courses"]
@@ -151,12 +170,12 @@ def learning_course_catalog(
     needle = "".join(query.split()).casefold()
     alias_matches = {
         item["course"]
-        for item in kg_store.list_course_aliases()
+        for item in _kg(request).list_course_aliases()
         if needle and needle in item["alias"]
     }
     courses = [
         {"name": name, "added": name in added}
-        for name in kg_store.list_courses()
+        for name in _kg(request).list_courses()
         if not needle
         or needle in "".join(name.split()).casefold()
         or name in alias_matches
@@ -175,7 +194,7 @@ def add_learning_courses(
     added = []
     for item in payload.courses:
         name = item.name.strip()
-        canonical = kg_store.resolve_course_name(name)
+        canonical = _kg(request).resolve_course_name(name)
         if item.source == "manual" and canonical is None:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -216,7 +235,7 @@ def bind_learning_course(
     )
     if association is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "课程不在我的学习空间中")
-    canonical = kg_store.resolve_course_name(payload.canonical_course)
+    canonical = _kg(request).resolve_course_name(payload.canonical_course)
     if canonical is None:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -257,7 +276,7 @@ def knowledge_map(
     course: str = Query(min_length=1, max_length=64),
 ) -> dict:
     user = _prepare_user(request, session)
-    result = knowledge_map_service.get_course_map(
+    result = _knowledge_map(request).get_course_map(
         user_name=user.username,
         course=course,
     )
@@ -273,7 +292,7 @@ def knowledge_point_detail(
     session: CurrentSession,
 ) -> dict:
     user = _prepare_user(request, session)
-    result = knowledge_map_service.get_point_detail(
+    result = _knowledge_map(request).get_point_detail(
         user_name=user.username,
         kp_id=kp_id,
     )
@@ -289,7 +308,7 @@ def review_queue(
     course: str = Query(default="", max_length=64),
 ) -> dict:
     user = _prepare_user(request, session)
-    return knowledge_map_service.get_review_queue(
+    return _knowledge_map(request).get_review_queue(
         user_name=user.username,
         course=course.strip() or None,
     )
