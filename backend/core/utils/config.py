@@ -248,6 +248,41 @@ EMAIL_CODE_MAX_ATTEMPTS: int = 5
 EMAIL_CODE_EMAIL_HOURLY_LIMIT: int = 5
 EMAIL_CODE_IP_HOURLY_LIMIT: int = 20
 
+# Language Server Protocol. The backend proxies authenticated WebSocket
+# sessions to local stdio language servers. Missing executables only disable
+# that language; Monaco keeps its local completion fallback.
+LSP_ENABLED: bool = True
+LSP_MAX_SESSIONS: int = 24
+LSP_MAX_SESSIONS_PER_USER: int = 2
+LSP_AUTH_TIMEOUT_SECONDS: float = 8.0
+LSP_MAX_MESSAGE_BYTES: int = 2 * 1024 * 1024
+LSP_ALLOWED_ORIGINS: tuple[str, ...] = (
+    "https://www.lovelearnlearning.cn",
+    "https://esa.lovelearnlearning.cn",
+)
+LSP_SERVER_COMMANDS: dict[str, tuple[str, ...]] = {
+    "c": ("clangd",),
+    "cpp": ("clangd",),
+    "python": ("pyright-langserver", "--stdio"),
+    "javascript": ("typescript-language-server", "--stdio"),
+    "typescript": ("typescript-language-server", "--stdio"),
+    "dart": ("dart", "language-server", "--protocol=lsp"),
+    "java": ("jdtls",),
+    "go": ("gopls",),
+    "rust": ("rust-analyzer",),
+}
+LSP_DOCUMENT_FILENAMES: dict[str, str] = {
+    "c": "main.c",
+    "cpp": "main.cpp",
+    "python": "main.py",
+    "javascript": "main.js",
+    "typescript": "main.ts",
+    "dart": "main.dart",
+    "java": "Main.java",
+    "go": "main.go",
+    "rust": "main.rs",
+}
+
 
 # collection and deployment
 RAG_ENABLED: bool = _bool_from_env("RAG_ENABLED", False)

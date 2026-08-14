@@ -44,6 +44,7 @@ from backend.core.services.email_verification_service import (
     VerificationPolicy,
 )
 from backend.core.services.frontier_tracking_service import FrontierTrackingService
+from backend.core.services.lsp_service import LspService
 from backend.core.services.research_data_service import ResearchDataService
 from backend.core.services.research_project_profile_service import (
     ResearchProjectProfileService,
@@ -99,6 +100,13 @@ from backend.core.utils.config import (
     EMAIL_VERIFICATION_SECRET,
     ENABLE_LEGACY_API_ROUTES,
     FORWARDED_ALLOW_IPS,
+    LSP_ALLOWED_ORIGINS,
+    LSP_DOCUMENT_FILENAMES,
+    LSP_ENABLED,
+    LSP_MAX_MESSAGE_BYTES,
+    LSP_MAX_SESSIONS,
+    LSP_MAX_SESSIONS_PER_USER,
+    LSP_SERVER_COMMANDS,
     MODEL_DTYPE,
     MODEL_GPU_MEMORY_UTILIZATION,
     MODEL_KV_CACHE_DTYPE,
@@ -120,6 +128,7 @@ from backend.core.web.routers import (
     chat,
     groups,
     learning,
+    lsp,
     memories,
     preferences,
     research,
@@ -234,6 +243,14 @@ async def lifespan(app: FastAPI):
     app.state.user_course_store = UserCourseStore(DB_PATH)
     app.state.schedule_store = ScheduleStore(DB_PATH)
     app.state.user_presence_store = UserPresenceStore(DB_PATH)
+    app.state.lsp_service = LspService(
+        commands=LSP_SERVER_COMMANDS,
+        filenames=LSP_DOCUMENT_FILENAMES,
+        enabled=LSP_ENABLED,
+        max_sessions=LSP_MAX_SESSIONS,
+        max_sessions_per_user=LSP_MAX_SESSIONS_PER_USER,
+        max_message_bytes=LSP_MAX_MESSAGE_BYTES,
+    )
     app.state.conversation_summary_store = ConversationSummaryStore(DB_PATH)
     app.state.conversation_turn_coordinator = ConversationTurnCoordinator(DB_PATH)
     app.state.auxiliary_llm_client = AuxiliaryLLMClient(
@@ -365,6 +382,7 @@ business_router.include_router(preferences.router)
 business_router.include_router(preferences.profile_router)
 business_router.include_router(preferences.memory_settings_router)
 business_router.include_router(learning.router)
+business_router.include_router(lsp.router)
 business_router.include_router(schedule.router)
 business_router.include_router(memories.router)
 business_router.include_router(workspaces.router)
@@ -415,11 +433,13 @@ def create_app(
     cors_allowed_origins: tuple[str, ...] = CORS_ALLOWED_ORIGINS,
     trusted_hosts: tuple[str, ...] = TRUSTED_HOSTS,
     forwarded_allow_ips: tuple[str, ...] = FORWARDED_ALLOW_IPS,
+    lsp_allowed_origins: tuple[str, ...] = LSP_ALLOWED_ORIGINS,
     enable_legacy_routes: bool = ENABLE_LEGACY_API_ROUTES,
 ) -> FastAPI:
     """Build the HTTP application with an explicit reverse-proxy contract."""
 
     application = FastAPI(lifespan=app_lifespan)
+    application.state.lsp_allowed_origins = tuple(lsp_allowed_origins)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=list(cors_allowed_origins),
