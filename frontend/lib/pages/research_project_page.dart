@@ -863,12 +863,12 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
               .toList(),
           onChanged: (id) => setState(() {
             _selectedDocument = _documents.firstWhere((item) => item.id == id);
-            _writingSource.text = _selectedDocument!.content;
+            _documentContent.text = _selectedDocument!.content;
           }),
         ),
         const SizedBox(height: 12),
         TextField(
-          controller: _writingSource,
+          controller: _documentContent,
           minLines: 5,
           maxLines: 12,
           decoration: const InputDecoration(
