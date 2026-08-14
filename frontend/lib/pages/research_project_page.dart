@@ -850,7 +850,7 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
           const _EmptyState(text: '先建立论文大纲、文献综述或研究笔记。')
         else ...[
           DropdownButtonFormField<String>(
-            value: _selectedDocument?.id,
+            initialValue: _selectedDocument?.id,
             decoration: const InputDecoration(labelText: '当前文档'),
             items: _documents
                 .map(
@@ -905,7 +905,7 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
               SizedBox(
                 width: 210,
                 child: DropdownButtonFormField<String>(
-                  value: _writingOperation,
+                  initialValue: _writingOperation,
                   decoration: const InputDecoration(labelText: '写作操作'),
                   items: const [
                     DropdownMenuItem(value: 'outline', child: Text('搭建大纲')),

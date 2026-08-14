@@ -10,9 +10,12 @@ from backend.agent.DocIR import (
     AssetKind,
     Document,
     FigureElement,
+    FormulaElement,
+    Locator,
     ParseRevision,
     Section,
     SourceVersion,
+    TableElement,
     TextOrigin,
     ValidationStatus,
     ValidationSummary,
@@ -65,6 +68,13 @@ class FakeParser:
             section_id="root",
             asset_id="visual",
             source_type="image",
+            locators=(
+                Locator(
+                    locator_id="locator_figure_1",
+                    kind="page",
+                    label="第 1 页",
+                ),
+            ),
         )
         document = Document(
             document_id="document_1",
@@ -155,6 +165,8 @@ def test_visual_enrichment_is_attached_after_parent(tmp_path: Path) -> None:
     ]
     derived = result.document.elements[1]
     assert derived.parent_element_id == "figure_1"
+    assert derived.locators[0].locator_id != "locator_figure_1"
+    assert derived.locators[0].label == "第 1 页"
     assert derived.text.layers[0].origin is TextOrigin.VLM_DERIVED
     assert derived.text.layers[0].quote_eligible is False
     assert result.document.sections[0].element_ids[-1] == derived.element_id
@@ -189,6 +201,11 @@ def test_same_visual_bytes_are_analyzed_once(tmp_path: Path) -> None:
             "element_id": "figure_2",
             "document_order": 1,
             "asset_id": "visual_2",
+            "locators": (
+                parsed.document.elements[0].locators[0].model_copy(
+                    update={"locator_id": "locator_figure_2"}
+                ),
+            ),
         }
     )
     document = Document.model_validate(
@@ -209,6 +226,94 @@ def test_same_visual_bytes_are_analyzed_once(tmp_path: Path) -> None:
     assert vision.calls == 1
     assert result.analyzed_assets == 1
     assert len(result.document.elements) == 4
+
+
+def test_structured_tables_formulas_and_charts_skip_vlm(tmp_path: Path) -> None:
+    source = tmp_path / "note.png"
+    source.write_bytes(b"image")
+    parsed = FakeParser().parse(source, tmp_path / "doc")
+    assets = list(parsed.document.assets)
+    elements = list(parsed.document.elements)
+    section_ids = ["figure_1"]
+    for asset_id, kind, filename, element in (
+        (
+            "table",
+            AssetKind.TABLE,
+            "table.png",
+            TableElement(
+                element_id="table_1",
+                document_order=1,
+                section_id="root",
+                source_type="table",
+                html="<table><tr><td>already parsed</td></tr></table>",
+                asset_id="table",
+                locators=(Locator(locator_id="locator_table_1", kind="page"),),
+            ),
+        ),
+        (
+            "formula",
+            AssetKind.FIGURE,
+            "formula.png",
+            FormulaElement(
+                element_id="formula_1",
+                document_order=2,
+                section_id="root",
+                source_type="equation_interline",
+                latex="x = 1",
+                asset_id="formula",
+                locators=(Locator(locator_id="locator_formula_1", kind="page"),),
+            ),
+        ),
+        (
+            "chart",
+            AssetKind.FIGURE,
+            "chart.png",
+            FigureElement(
+                element_id="chart_1",
+                document_order=3,
+                section_id="root",
+                source_type="chart",
+                structured_content="x-axis: time; y-axis: score",
+                asset_id="chart",
+                locators=(Locator(locator_id="locator_chart_1", kind="page"),),
+            ),
+        ),
+    ):
+        payload = asset_id.encode()
+        digest = hashlib.sha256(payload).hexdigest()
+        (parsed.document_root / "assets" / filename).write_bytes(payload)
+        assets.append(
+            Asset(
+                asset_id=asset_id,
+                kind=kind,
+                path=f"assets/{filename}",
+                media_type="image/png",
+                byte_size=len(payload),
+                sha256=digest,
+            )
+        )
+        elements.append(element)
+        section_ids.append(element.element_id)
+    document = Document.model_validate(
+        {
+            **parsed.document.model_dump(mode="python"),
+            "assets": tuple(assets),
+            "elements": tuple(elements),
+            "sections": (
+                parsed.document.sections[0].model_copy(
+                    update={"element_ids": tuple(section_ids)}
+                ),
+            ),
+        }
+    )
+    vision = FakeVision()
+    result = asyncio.run(
+        enrich_visual_assets(document, parsed.document_root, vision)
+    )
+
+    assert vision.calls == 1
+    assert result.analyzed_assets == 1
+    assert len(result.document.elements) == 5
 
 
 def test_direct_route_and_persistent_cache(tmp_path: Path) -> None:

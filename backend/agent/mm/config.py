@@ -41,6 +41,7 @@ class MMConfig:
     vlm_max_concurrency: int
     embedding_model: str
     embedding_device: str
+    mineru_api_url: str | None = None
     enabled: bool = False
     vlm_api_key: str | None = None
 
@@ -82,6 +83,9 @@ class MMConfig:
             embedding_device=os.environ.get(
                 "MM_EMBEDDING_DEVICE", app_config.RAG_EMBEDDING_DEVICE
             ),
+            mineru_api_url=(
+                os.environ.get("MM_MINERU_API_URL", "").strip().rstrip("/") or None
+            ),
             enabled=enabled in {"1", "true", "yes", "on"},
             vlm_api_key=os.environ.get("MM_VLM_API_KEY") or None,
         )
@@ -90,6 +94,10 @@ class MMConfig:
         """Validate external executables and local paths when MM is enabled."""
 
         if not self.enabled:
+            return
+        if self.mineru_api_url is not None:
+            if not self.mineru_api_url.startswith(("http://", "https://")):
+                raise RuntimeError("MM_MINERU_API_URL must be an HTTP(S) URL")
             return
         command = str(self.mineru_command)
         if not self.mineru_command.is_file() and shutil.which(command) is None:

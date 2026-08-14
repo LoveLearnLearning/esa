@@ -47,6 +47,11 @@ export TORCH_CUDA_ARCH_LIST='8.0'
 export CMAKE_CUDA_ARCHITECTURES='80'
 export VLLM_TARGET_DEVICE='cuda'
 
+case "${MM_ENABLED:-false}" in
+    1|true|TRUE|yes|YES|on|ON) mm_enabled=1 ;;
+    *) mm_enabled=0 ;;
+esac
+
 read -r \
     main_model main_tp \
     auxiliary_model auxiliary_name auxiliary_port auxiliary_dtype \
@@ -125,6 +130,14 @@ auxiliary_cache="$runtime_root/triton-auxiliary"
 main_cache="$runtime_root/triton-main"
 mkdir -p "$auxiliary_cache" "$main_cache" logs
 
+mineru_api_port="${MM_MINERU_API_PORT:-51026}"
+mineru_api_url="${MM_MINERU_API_URL:-http://127.0.0.1:${mineru_api_port}}"
+mineru_api_bin="${MINERU_API_BIN:-$PROJECT_ROOT/runtime/mineru-env/bin/mineru-api}"
+mineru_library_path="${MINERU_LIBRARY_PATH:-}"
+mineru_output_root="${MINERU_API_OUTPUT_ROOT:-$runtime_root/mineru-output}"
+mineru_task_retention_seconds="${MINERU_API_TASK_RETENTION_SECONDS:-300}"
+mineru_api_pid=''
+
 auxiliary_pid=''
 backend_pid=''
 qdrant_pid=''
@@ -135,12 +148,12 @@ cleanup() {
         return
     fi
     cleanup_started=1
-    for pid in "$backend_pid" "$auxiliary_pid" "$qdrant_pid"; do
+    for pid in "$backend_pid" "$auxiliary_pid" "$mineru_api_pid" "$qdrant_pid"; do
         if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
             kill "$pid" 2>/dev/null || true
         fi
     done
-    for pid in "$backend_pid" "$auxiliary_pid" "$qdrant_pid"; do
+    for pid in "$backend_pid" "$auxiliary_pid" "$mineru_api_pid" "$qdrant_pid"; do
         if [[ -n "$pid" ]]; then
             wait "$pid" 2>/dev/null || true
         fi
@@ -153,6 +166,7 @@ echo "AllocatedGPUs=${CUDA_VISIBLE_DEVICES:-all}"
 echo "MainModel=$main_model MainGPUs=$main_devices TP=$main_tp"
 echo "AuxiliaryModel=$auxiliary_model AuxiliaryGPU=$auxiliary_device"
 echo "AuxiliaryEndpoint=http://127.0.0.1:${auxiliary_port}/v1"
+echo "MinerUEndpoint=$mineru_api_url"
 if (( rag_gpu_count == 1 )); then
     echo "RAGEmbeddingGPU=$rag_device RuntimeDevice=$RAG_EMBEDDING_RUNTIME_DEVICE"
 fi
@@ -241,6 +255,7 @@ python -m vllm.entrypoints.openai.api_server \
     --max-num-seqs "$auxiliary_max_num_seqs" \
     --limit-mm-per-prompt "{\"image\": ${auxiliary_max_images}}" \
     --generation-config vllm \
+    --default-chat-template-kwargs '{"enable_thinking":false}' \
     --enable-prefix-caching \
     --disable-log-stats \
     >logs/auxiliary-model.log 2>&1 &
@@ -268,6 +283,64 @@ if (( auxiliary_ready == 0 )); then
     exit 1
 fi
 
+if [[ "$mm_enabled" == "1" ]]; then
+    if [[ ! -x "$mineru_api_bin" ]]; then
+        echo "ERROR: MM enabled but MinerU API executable not found: $mineru_api_bin" >&2
+        exit 1
+    fi
+    if (( rag_gpu_count == 1 )); then
+        mineru_device="${MINERU_API_DEVICE_MODE:-cuda:0}"
+        mineru_visible_device="$rag_device"
+    else
+        mineru_device="${MINERU_API_DEVICE_MODE:-${MINERU_DEVICE_MODE:-cpu}}"
+        mineru_visible_device="${CUDA_VISIBLE_DEVICES:-0}"
+    fi
+    echo "===== Starting resident MinerU API ====="
+    mkdir -p "$mineru_output_root"
+    CUDA_VISIBLE_DEVICES="$mineru_visible_device" \
+    MINERU_DEVICE_MODE="$mineru_device" \
+    MINERU_API_OUTPUT_ROOT="$mineru_output_root" \
+    MINERU_API_TASK_RETENTION_SECONDS="$mineru_task_retention_seconds" \
+    LD_LIBRARY_PATH="${mineru_library_path}${mineru_library_path:+${LD_LIBRARY_PATH:+:}}${LD_LIBRARY_PATH:-}" \
+    "$mineru_api_bin" --host 127.0.0.1 --port "$mineru_api_port" \
+        >logs/mineru-api.log 2>&1 &
+    mineru_api_pid=$!
+    mineru_ready=0
+    for _ in $(seq 1 180); do
+        if ! kill -0 "$mineru_api_pid" 2>/dev/null; then
+            echo "ERROR: MinerU API 启动失败，最后日志如下：" >&2
+            tail -n 80 logs/mineru-api.log >&2 || true
+            exit 1
+        fi
+        if curl -q --noproxy '*' --silent --show-error --fail \
+            --max-time 2 "${mineru_api_url%/}/health" >/dev/null 2>&1; then
+            mineru_ready=1
+            break
+        fi
+        sleep 1
+    done
+    if (( mineru_ready == 0 )); then
+        echo "ERROR: MinerU API 在 180 秒内未就绪。" >&2
+        tail -n 80 logs/mineru-api.log >&2 || true
+        exit 1
+    fi
+    echo "===== Warming resident MinerU pipeline ====="
+    if ! python -m backend.scripts.warmup_mineru \
+        --api-url "$mineru_api_url" \
+        --timeout-seconds "${MM_MINERU_TIMEOUT_SECONDS:-7200}"; then
+        echo "ERROR: MinerU pipeline 预热失败，最后日志如下：" >&2
+        tail -n 80 logs/mineru-api.log >&2 || true
+        exit 1
+    fi
+    if ! kill -0 "$mineru_api_pid" 2>/dev/null; then
+        echo "ERROR: MinerU API 在预热后退出。" >&2
+        tail -n 80 logs/mineru-api.log >&2 || true
+        exit 1
+    fi
+    echo "===== Resident MinerU pipeline ready ====="
+    export MM_MINERU_API_URL="$mineru_api_url"
+fi
+
 echo "===== Starting ESA backend ====="
 CUDA_VISIBLE_DEVICES="$backend_devices" \
 TRITON_CACHE_DIR="$main_cache" \
@@ -275,6 +348,9 @@ python -m backend.main &
 backend_pid=$!
 
 wait_targets=("$auxiliary_pid" "$backend_pid")
+if [[ -n "$mineru_api_pid" ]]; then
+    wait_targets+=("$mineru_api_pid")
+fi
 if [[ -n "$qdrant_pid" ]]; then
     wait_targets+=("$qdrant_pid")
 fi
@@ -290,6 +366,10 @@ if (( cleanup_started == 0 )); then
     fi
     if ! kill -0 "$backend_pid" 2>/dev/null; then
         echo "ESA backend exited with status $status." >&2
+    fi
+    if [[ -n "$mineru_api_pid" ]] && ! kill -0 "$mineru_api_pid" 2>/dev/null; then
+        echo "ERROR: MinerU API 服务意外退出。" >&2
+        tail -n 80 logs/mineru-api.log >&2 || true
     fi
     if [[ -n "$qdrant_pid" ]] && ! kill -0 "$qdrant_pid" 2>/dev/null; then
         echo "ERROR: Qdrant 服务意外退出。" >&2
