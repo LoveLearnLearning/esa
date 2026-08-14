@@ -52,8 +52,9 @@ AUXILIARY_MODEL_MAX_NUM_SEQS: int = 8
 AUXILIARY_MODEL_MAX_IMAGES_PER_PROMPT: int = 4
 AUXILIARY_MODEL_REQUEST_TIMEOUT: float = 180.0
 
-# agent
+# agent runtime
 AGENT_LOOP_TIME: int = 10
+AGENT_TOOL_TIMEOUT_SECONDS: float = 30.0
 
 # Offline conversation context compression. Original messages are retained;
 # the summary only replaces old messages in the next model prompt.

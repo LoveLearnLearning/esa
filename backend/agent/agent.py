@@ -128,7 +128,6 @@ class Agent:
     def __init__(
         self,
         model_path: str | Path,
-        loop_times: int = 3,
         quantization: QuantizationMethods | None = None,
         dtype: ModelDType = "auto",
         kv_cache_dtype: CacheDType = "auto",
@@ -148,7 +147,6 @@ class Agent:
         # vLLM 保持延迟导入，确保测试/工具脚本可以在未安装 vLLM 时导入 Agent。
         from backend.core.services.vllm_service import LLMProvider
 
-        self.loop_times = loop_times
         self.llm_provider = LLMProvider(
             model_path=model_path,
             quantization=quantization,
