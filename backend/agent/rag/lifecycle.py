@@ -10,6 +10,8 @@ from backend.core.log.logger import get_pipeline_logger
 
 
 logger = get_pipeline_logger("RAG", __name__)
+
+
 class RAGApplicationLifecycle:
     """Start and stop the single retrieval service owned by an ESA process."""
 
@@ -42,8 +44,14 @@ class RAGApplicationLifecycle:
         if self.service is not None:
             return self.service
         logger.info("application RAG startup started")
-        self.service = self._factory()
-        configure_retrieval_service(self.service)
+        service = self._factory()
+        warmup = getattr(service, "warmup", None)
+        if callable(warmup):
+            logger.info("application RAG model warmup started")
+            warmup()
+            logger.info("application RAG model warmup completed")
+        configure_retrieval_service(service)
+        self.service = service
         logger.info("application RAG startup completed")
         return self.service
 

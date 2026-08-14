@@ -12,9 +12,12 @@ from backend.agent.DocIR import (
     Document,
     ElementRole,
     EnrichmentRevision,
+    FigureElement,
+    FormulaElement,
     ParagraphElement,
     QualityIssue,
     Severity,
+    TableElement,
     TextContent,
     TextLayer,
     TextOrigin,
@@ -53,6 +56,25 @@ class EnrichmentResult:
     failed_assets: tuple[str, ...]
 
 
+def _needs_visual_enrichment(element: object) -> bool:
+    """Return whether the element still needs semantic image understanding.
+
+    MinerU already supplies machine-readable content for many visual assets.
+    Sending those rasterizations to the VLM only duplicates work and can make
+    formula-heavy or table-heavy PDFs need dozens of auxiliary-model calls.
+    """
+
+    if isinstance(element, TableElement):
+        return not bool(element.html and element.html.strip())
+    if isinstance(element, FormulaElement):
+        return not bool(element.latex and element.latex.strip())
+    if isinstance(element, FigureElement):
+        return not bool(
+            element.structured_content and element.structured_content.strip()
+        )
+    return False
+
+
 async def enrich_visual_assets(
     document: Document,
     document_root: Path,
@@ -69,7 +91,8 @@ async def enrich_visual_assets(
     element_assets = {
         element.element_id: asset_id
         for element in document.elements
-        if (asset_id := getattr(element, "asset_id", None)) is not None
+        if _needs_visual_enrichment(element)
+        and (asset_id := getattr(element, "asset_id", None)) is not None
     }
     unique_assets = {
         asset_id: asset_by_id[asset_id]
@@ -178,12 +201,21 @@ async def enrich_visual_assets(
             (revision_id, element.element_id, asset_id, analysis.as_text())
         )[:24]
         layer_id = "text_" + child_id
+        child_locators = tuple(
+            locator.model_copy(
+                update={
+                    "locator_id": "locator_vlm_"
+                    + _sha((child_id, locator.locator_id, index))[:24]
+                }
+            )
+            for index, locator in enumerate(element.locators)
+        )
         child_by_parent[element.element_id] = ParagraphElement(
             element_id=child_id,
             document_order=0,
             role=ElementRole.VLM_DESCRIPTION,
             section_id=element.section_id,
-            locators=element.locators,
+            locators=child_locators,
             text=TextContent(
                 primary_layer_id=layer_id,
                 layers=(

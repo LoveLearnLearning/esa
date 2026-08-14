@@ -83,6 +83,14 @@ class RetrievalService:
             getattr(self.embedding, "count_tokens", None),
         )
 
+    def warmup(self) -> None:
+        """Eagerly load process-owned local inference models."""
+
+        for provider in (self.embedding, self.reranker):
+            warmup = getattr(provider, "warmup", None)
+            if callable(warmup):
+                warmup()
+
     def _build_hit(
         self,
         item: RankedItem,

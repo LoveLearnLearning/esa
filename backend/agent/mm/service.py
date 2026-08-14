@@ -81,9 +81,10 @@ class MultimodalIngestionService:
     ) -> None:
         self.config = config or MMConfig.from_env()
         self.parser = parser or MinerUDocumentParser(
-            self.config.mineru_command,
-            self.config.mineru_timeout_seconds,
-            self.config.mineru_attempts,
+            command=self.config.mineru_command,
+            timeout_seconds=self.config.mineru_timeout_seconds,
+            attempts=self.config.mineru_attempts,
+            api_url=self.config.mineru_api_url,
         )
         self.vision = vision or OpenAICompatibleVisionProvider(
             base_url=self.config.vlm_base_url,
@@ -154,7 +155,7 @@ class MultimodalIngestionService:
                     document_root,
                 )
                 logger.info(
-                    "visual enrichment started document_id=%s assets=%d",
+                    "visual enrichment started document_id=%s document_assets=%d",
                     parsed.document.document_id,
                     len(parsed.document.assets),
                 )
@@ -257,7 +258,7 @@ class MultimodalIngestionService:
     def _pipeline_fingerprint(self) -> str:
         return _canonical_sha256(
             {
-                "schema": "mm-pipeline-0.1",
+                "schema": "mm-pipeline-0.2",
                 "parser": self.parser.configuration_fingerprint,
                 "vision": self.vision.configuration_fingerprint,
                 "prompt_sha256": hashlib.sha256(
