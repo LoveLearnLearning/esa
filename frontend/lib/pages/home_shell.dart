@@ -10,6 +10,7 @@ import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 import '../widgets/profile_sheet.dart';
 import '../widgets/memory_sheet.dart';
+import '../widgets/history_drawer.dart';
 import '../widgets/agent_action_sheet.dart';
 import 'chat_page.dart';
 import 'knowledge_map_page.dart';
@@ -29,6 +30,7 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
+  final _mobileScaffoldKey = GlobalKey<ScaffoldState>();
   StudentSection _section = StudentSection.assistant;
   bool _sidebarCollapsed = false;
   bool _sidebarRequested = false;
@@ -206,10 +208,15 @@ class _HomeShellState extends State<HomeShell> {
     final conversationActive =
         (_section == StudentSection.assistant && app.messages.isNotEmpty) ||
         _researchProjectChatOpen;
+    final historyAvailable =
+        _section == StudentSection.assistant || _researchProjectChatOpen;
     final researchProjectActive =
         _section == StudentSection.research && _activeResearchProject != null;
     return Scaffold(
+      key: _mobileScaffoldKey,
       resizeToAvoidBottomInset: false,
+      drawer: historyAvailable ? const HistoryDrawer() : null,
+      drawerEnableOpenDragGesture: historyAvailable,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -222,6 +229,7 @@ class _HomeShellState extends State<HomeShell> {
                 onBack: _researchProjectChatOpen
                     ? () => setState(() => _researchProjectChatOpen = false)
                     : app.newConversation,
+                onHistory: () => _mobileScaffoldKey.currentState?.openDrawer(),
               )
             else if (!researchProjectActive)
               _MobileHeader(
@@ -230,6 +238,9 @@ class _HomeShellState extends State<HomeShell> {
                 onProfile: () => showProfileSheet(context),
                 onMemory: () => showMemorySheet(context),
                 onActions: () => showAgentActionSheet(context),
+                onHistory: _section == StudentSection.assistant
+                    ? () => _mobileScaffoldKey.currentState?.openDrawer()
+                    : null,
               ),
             if (!_inResearch)
               _MobileLearningTabs(
@@ -1167,12 +1178,14 @@ class _MobileHeader extends StatelessWidget {
     required this.onProfile,
     required this.onMemory,
     required this.onActions,
+    this.onHistory,
   });
   final StudentSection section;
   final ValueChanged<StudentSection> onSelect;
   final VoidCallback onProfile;
   final VoidCallback onMemory;
   final VoidCallback onActions;
+  final VoidCallback? onHistory;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -1200,6 +1213,12 @@ class _MobileHeader extends StatelessWidget {
           onPressed: onActions,
           icon: const Icon(LucideIcons.shieldCheck),
         ),
+        if (onHistory != null)
+          IconButton(
+            tooltip: '历史对话',
+            onPressed: onHistory,
+            icon: const Icon(LucideIcons.panelLeftOpen),
+          ),
         IconButton(
           tooltip: '设置',
           onPressed: onProfile,
@@ -1211,10 +1230,15 @@ class _MobileHeader extends StatelessWidget {
 }
 
 class _MobileConversationHeader extends StatelessWidget {
-  const _MobileConversationHeader({required this.title, required this.onBack});
+  const _MobileConversationHeader({
+    required this.title,
+    required this.onBack,
+    required this.onHistory,
+  });
 
   final String title;
   final VoidCallback onBack;
+  final VoidCallback onHistory;
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -1238,14 +1262,9 @@ class _MobileConversationHeader extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: '搜索对话',
-            onPressed: () {},
-            icon: const Icon(LucideIcons.search, size: 21),
-          ),
-          IconButton(
-            tooltip: '更多',
-            onPressed: () {},
-            icon: const Icon(LucideIcons.ellipsis, size: 21),
+            tooltip: '历史对话',
+            onPressed: onHistory,
+            icon: const Icon(LucideIcons.panelLeftOpen, size: 21),
           ),
         ],
       ),

@@ -13,6 +13,7 @@ import '../models/task_mode.dart';
 import '../models/models.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import '../utils/paste_attachment.dart';
 import 'esa_markdown.dart';
 import 'latex_formula_picker.dart';
 
@@ -28,6 +29,7 @@ class Composer extends StatefulWidget {
     this.onRemoveAttachment,
     this.onSendWithAttachment,
     this.onOpenCodeEditor,
+    this.onCodeBlockChanged,
   });
 
   final bool busy;
@@ -54,6 +56,8 @@ class Composer extends StatefulWidget {
   onSendWithAttachment;
   final void Function(String blockId, String code, String language)?
   onOpenCodeEditor;
+  final void Function(String blockId, String code, String language)?
+  onCodeBlockChanged;
 
   @override
   State<Composer> createState() => ComposerState();
@@ -66,9 +70,34 @@ class ComposerState extends State<Composer> {
   String? _attachmentConversationId;
   bool _uploadingAttachment = false;
   bool _markdownMode = false;
+  AttachmentPasteListener? _pasteListener;
 
   List<_ComposerCodeBlock> get _codeBlocks =>
       _parseComposerCodeBlocks(_controller.text);
+
+  void _handleTextChanged(String value) {
+    setState(() {});
+    final callback = widget.onCodeBlockChanged;
+    if (callback == null) return;
+    final blocks = _parseComposerCodeBlocks(value);
+    for (var index = 0; index < blocks.length; index++) {
+      final block = blocks[index];
+      callback(
+        'composer:$index',
+        value.substring(block.contentStart, block.contentEnd).trimRight(),
+        block.language,
+      );
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _pasteListener = listenForPastedAttachment(
+      focusNode: _focus,
+      onAttachment: _uploadPastedAttachment,
+    );
+  }
 
   void replaceCodeBlock(String blockId, String code, {String? language}) {
     final index = int.tryParse(blockId.split(':').last);
@@ -93,6 +122,7 @@ class ComposerState extends State<Composer> {
 
   @override
   void dispose() {
+    _pasteListener?.dispose();
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -229,7 +259,7 @@ class ComposerState extends State<Composer> {
                           focusNode: _focus,
                           minLines: narrow ? 1 : 2,
                           maxLines: 6,
-                          onChanged: (_) => setState(() {}),
+                          onChanged: _handleTextChanged,
                           style: inputStyle,
                           textAlignVertical: TextAlignVertical.top,
                           cursorWidth: 2,
@@ -423,18 +453,47 @@ class ComposerState extends State<Composer> {
       );
       final file = result?.files.singleOrNull;
       if (file == null || !mounted) return;
-      if (file.size > 200 * 1024 * 1024) {
+      final stream = file.readStream ?? file.xFile.openRead();
+      await _uploadAttachment(file.name, stream, file.size);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('附件解析失败：$error')));
+    }
+  }
+
+  Future<void> _uploadPastedAttachment(PastedAttachment file) =>
+      _uploadAttachment(
+        file.filename,
+        Stream<List<int>>.value(file.bytes),
+        file.bytes.length,
+      );
+
+  Future<void> _uploadAttachment(
+    String filename,
+    Stream<List<int>> stream,
+    int length,
+  ) async {
+    if (widget.onUploadAttachment == null ||
+        _uploadingAttachment ||
+        widget.busy) {
+      return;
+    }
+    if (length > 200 * 1024 * 1024) {
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('文件不能超过 200 MB')));
-        return;
       }
-      setState(() => _uploadingAttachment = true);
-      final stream = file.readStream ?? file.xFile.openRead();
+      return;
+    }
+    setState(() => _uploadingAttachment = true);
+    try {
       final attachment = await widget.onUploadAttachment!(
-        file.name,
+        filename,
         stream,
-        file.size,
+        length,
       );
       if (!mounted) return;
       setState(() {
@@ -583,16 +642,19 @@ class _ComposerCodeBlock {
   const _ComposerCodeBlock({
     required this.contentStart,
     required this.contentEnd,
+    required this.language,
   });
 
   final int contentStart;
   final int contentEnd;
+  final String language;
 }
 
 List<_ComposerCodeBlock> _parseComposerCodeBlocks(String source) {
   final blocks = <_ComposerCodeBlock>[];
   final lines = RegExp(r'.*(?:\n|$)').allMatches(source).toList();
   String? marker;
+  var language = 'plaintext';
   var contentStart = 0;
   for (final match in lines) {
     final raw = match.group(0) ?? '';
@@ -603,6 +665,8 @@ List<_ComposerCodeBlock> _parseComposerCodeBlocks(String source) {
       final opening = RegExp(r'^(`{3,}|~{3,})').firstMatch(trimmed);
       if (opening == null) continue;
       marker = opening.group(1)!;
+      final info = trimmed.substring(opening.end).trim();
+      language = info.isEmpty ? 'plaintext' : info.split(RegExp(r'\s+')).first;
       contentStart = match.end;
       continue;
     }
@@ -611,9 +675,14 @@ List<_ComposerCodeBlock> _parseComposerCodeBlocks(String source) {
     );
     if (!closing.hasMatch(trimmed)) continue;
     blocks.add(
-      _ComposerCodeBlock(contentStart: contentStart, contentEnd: match.start),
+      _ComposerCodeBlock(
+        contentStart: contentStart,
+        contentEnd: match.start,
+        language: language,
+      ),
     );
     marker = null;
+    language = 'plaintext';
   }
   return blocks;
 }

@@ -266,4 +266,24 @@ void main() {
     );
     expect(find.text('教学'), findsNothing);
   });
+
+  testWidgets('student mobile assistant can open the history drawer', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final state = createState();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('历史对话'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('搜索历史对话'), findsOneWidget);
+    expect(find.text('开启新对话'), findsOneWidget);
+  });
 }

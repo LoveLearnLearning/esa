@@ -128,5 +128,14 @@ void main() {
     expect(find.text('Papers'), findsOneWidget);
     expect(find.text('Data'), findsOneWidget);
     expect(find.text('讲解一道题'), findsNothing);
+
+    expect(
+      find.byKey(const ValueKey('open-research-project-chat')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('open-research-project-chat')));
+    await tester.pumpAndSettle();
+    expect(state.activeId, 'research-chat');
+    expect(find.byKey(const ValueKey('composer-input')), findsOneWidget);
   });
 }

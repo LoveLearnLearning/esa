@@ -204,4 +204,38 @@ void main() {
     );
     expect(field.controller!.text, '说明\n```python\nvalue = 2\n```');
   });
+
+  testWidgets('composer input changes are reported to the open code editor', (
+    tester,
+  ) async {
+    String? blockId;
+    String? code;
+    String? language;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(
+          body: Composer(
+            busy: false,
+            onSend: (_, _) {},
+            onCodeBlockChanged: (id, value, syntax) {
+              blockId = id;
+              code = value;
+              language = syntax;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('composer-input')),
+      '说明\n```python\nanswer = 42\n```',
+    );
+    await tester.pump();
+
+    expect(blockId, 'composer:0');
+    expect(code, 'answer = 42');
+    expect(language, 'python');
+  });
 }

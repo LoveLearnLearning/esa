@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../api/api_client.dart';
 import '../models/models.dart';
 import '../models/task_mode.dart';
 import '../state/app_state.dart';
@@ -14,6 +15,7 @@ import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 import '../widgets/assistant_message.dart';
 import '../widgets/agent_action_sheet.dart';
+import '../widgets/attachment_preview/attachment_preview.dart';
 import '../widgets/composer.dart';
 import '../widgets/code_editor/code_editor_pane.dart';
 import '../widgets/history_drawer.dart';
@@ -22,24 +24,61 @@ import '../widgets/memory_sheet.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/tool_call_card.dart';
 
+enum _CodeSource { composer, user, assistant }
+
 class _CodeSession {
   const _CodeSession({
     required this.id,
     required this.value,
     required this.originalValue,
     required this.language,
+    required this.source,
   });
 
   final String id;
   final String value;
   final String originalValue;
   final String language;
+  final _CodeSource source;
 
-  _CodeSession copyWith({String? value, String? language}) => _CodeSession(
+  _CodeSession copyWith({
+    String? value,
+    String? language,
+    _CodeSource? source,
+  }) => _CodeSession(
     id: id,
     value: value ?? this.value,
     originalValue: originalValue,
     language: language ?? this.language,
+    source: source ?? this.source,
+  );
+}
+
+class _AttachmentSession {
+  const _AttachmentSession({
+    required this.conversationId,
+    required this.attachment,
+    this.content,
+    this.error,
+    this.loading = false,
+  });
+
+  final String conversationId;
+  final DocumentAttachment attachment;
+  final AttachmentContent? content;
+  final String? error;
+  final bool loading;
+
+  _AttachmentSession copyWith({
+    AttachmentContent? content,
+    String? error,
+    bool? loading,
+  }) => _AttachmentSession(
+    conversationId: conversationId,
+    attachment: attachment,
+    content: content ?? this.content,
+    error: error,
+    loading: loading ?? this.loading,
   );
 }
 
@@ -76,6 +115,8 @@ class _ChatPageState extends State<ChatPage> {
   WorkspaceType? _lastWorkspace;
   TaskMode? _taskMode;
   _CodeSession? _codeSession;
+  _AttachmentSession? _attachmentSession;
+  int _attachmentLoadRequest = 0;
   double _editorWidth = 0.46;
 
   @override
@@ -167,24 +208,91 @@ class _ChatPageState extends State<ChatPage> {
     });
   }
 
-  void _openCodeEditor(String blockId, String code, String language) {
+  void _openCodeEditor(
+    String blockId,
+    String code,
+    String language, {
+    required _CodeSource source,
+  }) {
     final normalizedCode = code.trimRight();
     final normalizedLanguage = normalizeCodeLanguage(language);
     final existing = _codeDrafts[blockId];
     _setStatePreservingChatScroll(() {
+      _attachmentSession = null;
       _codeSession = existing != null && existing.value == normalizedCode
-          ? existing
+          ? existing.copyWith(source: source, language: normalizedLanguage)
           : _CodeSession(
               id: blockId,
               value: normalizedCode,
               originalValue: normalizedCode,
               language: normalizedLanguage,
+              source: source,
             );
     }, pauseFollowing: true);
   }
 
   void _closeCodeEditor() =>
       _setStatePreservingChatScroll(() => _codeSession = null);
+
+  void _openAttachment(DocumentAttachment attachment) {
+    final conversationId = AppScope.of(context).activeId;
+    if (conversationId == null) return;
+    _loadAttachment(conversationId, attachment);
+  }
+
+  Future<void> _loadAttachment(
+    String conversationId,
+    DocumentAttachment attachment,
+  ) async {
+    final request = ++_attachmentLoadRequest;
+    _setStatePreservingChatScroll(() {
+      _codeSession = null;
+      _attachmentSession = _AttachmentSession(
+        conversationId: conversationId,
+        attachment: attachment,
+        loading: true,
+      );
+    }, pauseFollowing: true);
+    try {
+      final content = await AppScope.of(
+        context,
+      ).api.fetchConversationAttachment(conversationId, attachment);
+      if (!mounted || request != _attachmentLoadRequest) return;
+      setState(() {
+        _attachmentSession = _attachmentSession?.copyWith(
+          content: content,
+          loading: false,
+        );
+      });
+    } on ApiException catch (error) {
+      if (!mounted || request != _attachmentLoadRequest) return;
+      setState(() {
+        _attachmentSession = _attachmentSession?.copyWith(
+          error: error.detail,
+          loading: false,
+        );
+      });
+    } catch (_) {
+      if (!mounted || request != _attachmentLoadRequest) return;
+      setState(() {
+        _attachmentSession = _attachmentSession?.copyWith(
+          error: '附件预览加载失败，请检查网络后重试。',
+          loading: false,
+        );
+      });
+    }
+  }
+
+  void _closeAttachment() {
+    _attachmentLoadRequest++;
+    _setStatePreservingChatScroll(() => _attachmentSession = null);
+  }
+
+  void _retryAttachment() {
+    final session = _attachmentSession;
+    if (session == null) return;
+    _loadAttachment(session.conversationId, session.attachment);
+  }
 
   void _updateCodeSession(_CodeSession session) {
     _codeDrafts[session.id] = session;
@@ -199,6 +307,41 @@ class _ChatPageState extends State<ChatPage> {
       _codeSession = session;
       _codeDraftVersion++;
     });
+  }
+
+  void _syncComposerCodeBlock(String blockId, String code, String language) {
+    final session = _codeSession;
+    if (session == null ||
+        session.source != _CodeSource.composer ||
+        session.id != blockId) {
+      return;
+    }
+    final next = session.copyWith(
+      value: code.trimRight(),
+      language: normalizeCodeLanguage(language),
+    );
+    if (next.value == session.value && next.language == session.language) {
+      return;
+    }
+    _codeDrafts[blockId] = next;
+    setState(() {
+      _codeSession = next;
+      _codeDraftVersion++;
+    });
+  }
+
+  void _sendEditedAgentCode(AppState app) {
+    final session = _codeSession;
+    if (session == null ||
+        session.source != _CodeSource.assistant ||
+        session.value == session.originalValue) {
+      return;
+    }
+    final language = normalizeCodeLanguage(session.language);
+    final message = '```$language\n${session.value.trimRight()}\n```';
+    setState(() => _codeSession = null);
+    _resumeFollowing();
+    app.send(message, markdown: true, displayText: message);
   }
 
   void _clearComposerCodeDrafts() {
@@ -270,11 +413,14 @@ class _ChatPageState extends State<ChatPage> {
       _lastWorkspace = app.activeWorkspace;
       _taskMode = null;
       _codeSession = null;
+      _attachmentSession = null;
     }
     if (_lastActiveId != app.activeId) {
       _lastActiveId = app.activeId;
       _userScrollInProgress = false;
       _codeSession = null;
+      _attachmentSession = null;
+      _attachmentLoadRequest++;
       _setFollowOutput(true);
     }
     _scrollToBottom();
@@ -306,7 +452,13 @@ class _ChatPageState extends State<ChatPage> {
       conversationId: app.activeId,
       taskMode: _taskMode,
       onClearTaskMode: () => setState(() => _taskMode = null),
-      onOpenCodeEditor: _openCodeEditor,
+      onOpenCodeEditor: (blockId, code, language) => _openCodeEditor(
+        blockId,
+        code,
+        language,
+        source: _CodeSource.composer,
+      ),
+      onCodeBlockChanged: _syncComposerCodeBlock,
       onUploadAttachment: (filename, stream, length) =>
           app.uploadConversationAttachment(
             filename: filename,
@@ -329,8 +481,9 @@ class _ChatPageState extends State<ChatPage> {
         app.send(
           _taskMode?.buildPrompt(text) ?? text,
           markdown: markdown,
-          displayText: '$text\n\n📎 ${attachment.filename}',
+          displayText: text,
           attachmentIds: [attachment.id],
+          attachments: [attachment],
         );
       },
     );
@@ -355,26 +508,45 @@ class _ChatPageState extends State<ChatPage> {
             )
           : _messageList(context, app),
     );
-    final editorCompact = pageWidth < 900;
-    final pageBody = _codeSession == null
+    final panelCompact = pageWidth < 900;
+    final hasPanel = _codeSession != null || _attachmentSession != null;
+    Widget panel({required bool compact}) {
+      final code = _codeSession;
+      if (code != null) {
+        return CodeEditorPane(
+          value: code.value,
+          originalValue: code.originalValue,
+          language: code.language,
+          indentSize: app.codeEditorIndentSize,
+          editorTheme: app.codeEditorTheme,
+          compact: compact,
+          onChanged: (value) =>
+              _updateCodeSession((_codeSession ?? code).copyWith(value: value)),
+          onLanguageChanged: (language) => _updateCodeSession(
+            (_codeSession ?? code).copyWith(language: language),
+          ),
+          onSendToAgent: code.source == _CodeSource.assistant
+              ? () => _sendEditedAgentCode(app)
+              : null,
+          onClose: _closeCodeEditor,
+        );
+      }
+      final attachment = _attachmentSession!;
+      return AttachmentPreviewPane(
+        attachment: attachment.attachment,
+        content: attachment.content,
+        loading: attachment.loading,
+        error: attachment.error,
+        compact: compact,
+        onClose: _closeAttachment,
+        onRetry: _retryAttachment,
+      );
+    }
+
+    final pageBody = !hasPanel
         ? Expanded(child: messageArea)
-        : editorCompact
-        ? Expanded(
-            child: CodeEditorPane(
-              value: _codeSession!.value,
-              originalValue: _codeSession!.originalValue,
-              language: _codeSession!.language,
-              indentSize: app.codeEditorIndentSize,
-              editorTheme: app.codeEditorTheme,
-              compact: true,
-              onChanged: (value) =>
-                  _updateCodeSession(_codeSession!.copyWith(value: value)),
-              onLanguageChanged: (language) => _updateCodeSession(
-                _codeSession!.copyWith(language: language),
-              ),
-              onClose: _closeCodeEditor,
-            ),
-          )
+        : panelCompact
+        ? Expanded(child: panel(compact: true))
         : Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -417,23 +589,7 @@ class _ChatPageState extends State<ChatPage> {
                         ),
                       ),
                     ),
-                    SizedBox(
-                      width: editorWidth,
-                      child: CodeEditorPane(
-                        value: _codeSession!.value,
-                        originalValue: _codeSession!.originalValue,
-                        language: _codeSession!.language,
-                        indentSize: app.codeEditorIndentSize,
-                        editorTheme: app.codeEditorTheme,
-                        onChanged: (value) => _updateCodeSession(
-                          _codeSession!.copyWith(value: value),
-                        ),
-                        onLanguageChanged: (language) => _updateCodeSession(
-                          _codeSession!.copyWith(language: language),
-                        ),
-                        onClose: _closeCodeEditor,
-                      ),
-                    ),
+                    SizedBox(width: editorWidth, child: panel(compact: false)),
                   ],
                 );
               },
@@ -459,14 +615,15 @@ class _ChatPageState extends State<ChatPage> {
           ),
         if (embeddedHeader)
           _EmbeddedChatHeader(
-            title: widget.embeddedTitle ?? app.activeConversation?.title ?? '新对话',
+            title:
+                widget.embeddedTitle ?? app.activeConversation?.title ?? '新对话',
             bindingLabel: bindingLabel,
             onMemory: () => showMemorySheet(context),
             onActions: () => showAgentActionSheet(context),
             onBack: widget.onExitEmbedded,
           ),
         pageBody,
-        if (_codeSession == null && !mobileLanding) composer,
+        if (!hasPanel && !mobileLanding) composer,
       ],
     );
 
@@ -517,16 +674,26 @@ class _ChatPageState extends State<ChatPage> {
                   markdown: m.markdown,
                   codeBlockPrefix: m.id,
                   codeOverrideFor: (blockId) => _codeDrafts[blockId]?.value,
-                  onOpenCodeEditorWithId: _openCodeEditor,
+                  onOpenCodeEditorWithId: (blockId, code, language) =>
+                      _openCodeEditor(
+                        blockId,
+                        code,
+                        language,
+                        source: _CodeSource.user,
+                      ),
                   codeOverrideVersion: _codeDraftVersion,
+                  attachments: m.attachments,
+                  onOpenAttachment: _openAttachment,
+                  onEdit: (text) async {
+                    _resumeFollowing();
+                    await app.reviseUserMessage(m, text);
+                  },
                   onCodeChangedWithId: (blockId, code, language) {
                     final existing = _codeDrafts[blockId];
                     if (existing == null) return;
                     _updateCodeSession(
-                      _CodeSession(
-                        id: blockId,
+                      existing.copyWith(
                         value: code,
-                        originalValue: existing.originalValue,
                         language: normalizeCodeLanguage(language),
                       ),
                     );
@@ -550,19 +717,27 @@ class _ChatPageState extends State<ChatPage> {
                     _resumeFollowing();
                     app.regenerate(m.id);
                   },
-                  onOpenCodeEditor: (code, language) =>
-                      _openCodeEditor('${m.id}:0', code, language),
+                  onOpenCodeEditor: (code, language) => _openCodeEditor(
+                    '${m.id}:0',
+                    code,
+                    language,
+                    source: _CodeSource.assistant,
+                  ),
                   codeOverrideFor: (blockId) => _codeDrafts[blockId]?.value,
-                  onOpenCodeEditorWithId: _openCodeEditor,
+                  onOpenCodeEditorWithId: (blockId, code, language) =>
+                      _openCodeEditor(
+                        blockId,
+                        code,
+                        language,
+                        source: _CodeSource.assistant,
+                      ),
                   codeOverrideVersion: _codeDraftVersion,
                   onCodeChangedWithId: (blockId, code, language) {
                     final existing = _codeDrafts[blockId];
                     if (existing == null) return;
                     _updateCodeSession(
-                      _CodeSession(
-                        id: blockId,
+                      existing.copyWith(
                         value: code,
-                        originalValue: existing.originalValue,
                         language: normalizeCodeLanguage(language),
                       ),
                     );

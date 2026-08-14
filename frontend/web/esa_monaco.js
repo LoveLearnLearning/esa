@@ -201,14 +201,14 @@
 
   function documentSymbols(monaco, model, position) {
     const source = model.getValue();
+    const currentWord = model.getWordUntilPosition(position).word;
     const symbols = new Map();
     const kinds = monaco.languages.CompletionItemKind;
     const add = (label, kind, detail) => {
       if (!label || !/^[A-Za-z_$][\w$]*$/.test(label) || keywords.has(label)) {
         return;
       }
-      const key = `${kind}:${label}`;
-      if (!symbols.has(key)) symbols.set(key, { label, kind, detail });
+      if (!symbols.has(label)) symbols.set(label, { label, kind, detail });
     };
     const addParameters = (raw) => {
       for (const entry of raw.split(',')) {
@@ -273,6 +273,14 @@
         const alias = value.match(/\bas\s+([A-Za-z_$][\w$]*)$/)?.[1];
         add(alias || value.match(/[A-Za-z_$][\w$]*/)?.[0], kinds.Module, '导入符号');
       }
+    });
+
+    // Monaco only ships semantic language services for a few web languages.
+    // Keep local-name completion useful for every supported language by also
+    // indexing identifiers that already occur in the current code block.
+    scan(/[A-Za-z_$][\w$]*/g, (match) => {
+      if (match[0] === currentWord) return;
+      add(match[0], kinds.Variable, '当前文件中的标识符');
     });
 
     const range = completionRange(model, position);
@@ -345,6 +353,7 @@
 
     for (const language of supportedLanguages) {
       monaco.languages.registerCompletionItemProvider(language, {
+        triggerCharacters: ['.', '_', '$'],
         provideCompletionItems(model, position) {
           return { suggestions: documentSymbols(monaco, model, position) };
         },
@@ -409,6 +418,7 @@
           mouseWheelZoom: true,
           padding: { top: 12, bottom: 12 },
           quickSuggestions: { other: true, comments: false, strings: true },
+          quickSuggestionsDelay: 40,
           inlineSuggest: { enabled: true },
           parameterHints: { enabled: true, cycle: true },
           scrollBeyondLastLine: false,
@@ -514,7 +524,11 @@
             event.stopPropagation();
           }
         };
-        const focusEditor = () => editor.focus();
+        const focusEditor = () => {
+          host.focus({ preventScroll: true });
+          queueMicrotask(() => editor.focus());
+          requestAnimationFrame(() => editor.focus());
+        };
         host.addEventListener('keydown', bubbleSpace);
         host.addEventListener('pointerdown', focusEditor, true);
         const recalibrate = () => {
@@ -536,6 +550,7 @@
           dark,
           editorTheme,
           applying: false,
+          suggestFrame: 0,
           applyIndent,
           disposeMeasurements() {
             host.removeEventListener('keydown', bubbleSpace);
@@ -546,8 +561,21 @@
             window.removeEventListener('resize', fontListener);
           },
         };
-        record.subscription = model.onDidChangeContent(() => {
-          if (!record.applying) onChanged(model.getValue());
+        record.subscription = model.onDidChangeContent((event) => {
+          if (record.applying) return;
+          onChanged(model.getValue());
+        });
+        record.typeSubscription = editor.onDidType((text) => {
+          if (/[A-Za-z0-9_$]$/.test(text)) {
+            cancelAnimationFrame(record.suggestFrame);
+            record.suggestFrame = requestAnimationFrame(() => {
+              // Flutter can briefly move DOM focus while rebuilding the pane
+              // after onChanged. This event only fires for real editor input,
+              // so restoring focus here is safe and keeps suggestions visible.
+              editor.focus();
+              editor.getAction('editor.action.triggerSuggest')?.run();
+            });
+          }
         });
         editors.set(id, record);
         requestAnimationFrame(() => {
@@ -570,6 +598,17 @@
     record.applying = true;
     record.model.setValue(value);
     record.applying = false;
+  }
+
+  function focus(id) {
+    const record = editors.get(id);
+    if (!record) {
+      document.getElementById(id)?.focus({ preventScroll: true });
+      return;
+    }
+    record.host.focus({ preventScroll: true });
+    queueMicrotask(() => record.editor.focus());
+    requestAnimationFrame(() => record.editor.focus());
   }
 
   function setLanguage(id, language) {
@@ -603,7 +642,9 @@
     const record = editors.get(id);
     if (!record) return;
     record.disposeMeasurements();
+    cancelAnimationFrame(record.suggestFrame);
     record.subscription.dispose();
+    record.typeSubscription.dispose();
     record.editor.dispose();
     record.model.dispose();
     editors.delete(id);
@@ -611,6 +652,7 @@
 
   window.esaMonaco = {
     create,
+    focus,
     setValue,
     setLanguage,
     setTheme,

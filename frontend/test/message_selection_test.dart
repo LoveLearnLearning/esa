@@ -238,6 +238,53 @@ final answer = 42;
     expect(find.byTooltip('已复制'), findsOneWidget);
   });
 
+  testWidgets('user attachment opens its preview callback', (tester) async {
+    const attachment = DocumentAttachment(
+      id: 'attachment-1',
+      filename: '研究笔记.pdf',
+      mode: 'pending',
+      tokenCount: 0,
+      elementCount: 0,
+      pageCount: 4,
+      validationStatus: 'ready',
+      qualityIssueCount: 0,
+      mediaType: 'application/pdf',
+      sizeBytes: 1024,
+    );
+    DocumentAttachment? opened;
+    await tester.pumpWidget(
+      app(
+        UserBubble(
+          text: '请阅读这个文件',
+          attachments: const [attachment],
+          onOpenAttachment: (value) => opened = value,
+        ),
+      ),
+    );
+
+    expect(find.text('研究笔记.pdf'), findsOneWidget);
+    await tester.tap(find.text('研究笔记.pdf'));
+    await tester.pump();
+
+    expect(opened, same(attachment));
+  });
+
+  testWidgets('user message can be edited and resent', (tester) async {
+    String? edited;
+    await tester.pumpWidget(
+      app(UserBubble(text: '旧问题', onEdit: (value) async => edited = value)),
+    );
+
+    await tester.tap(find.byTooltip('编辑消息'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), '修改后的问题');
+    await tester.tap(find.text('重新发送'));
+    await tester.pump();
+
+    expect(edited, '修改后的问题');
+    expect(find.byType(TextField), findsNothing);
+  });
+
   testWidgets('Ctrl+C copies the selected part of a user message', (
     tester,
   ) async {

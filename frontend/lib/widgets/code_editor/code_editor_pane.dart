@@ -77,6 +77,7 @@ class CodeEditorPane extends StatefulWidget {
     required this.onChanged,
     required this.onLanguageChanged,
     required this.onClose,
+    this.onSendToAgent,
     this.compact = false,
     this.indentSize = 2,
     this.editorTheme = 'vs-dark',
@@ -88,6 +89,7 @@ class CodeEditorPane extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final ValueChanged<String> onLanguageChanged;
   final VoidCallback onClose;
+  final VoidCallback? onSendToAgent;
   final bool compact;
   final int indentSize;
   final String editorTheme;
@@ -152,6 +154,22 @@ class _CodeEditorPaneState extends State<CodeEditorPane> {
                     style: TextStyle(fontSize: 11, color: context.n.n600),
                   ),
                 const SizedBox(width: 4),
+                if (widget.onSendToAgent != null)
+                  Tooltip(
+                    message: modified ? '将修改后的代码发送给 Agent' : '修改代码后可发送给 Agent',
+                    child: IconButton(
+                      onPressed: modified ? widget.onSendToAgent : null,
+                      style: IconButton.styleFrom(
+                        backgroundColor: modified
+                            ? EsaColors.accent
+                            : context.n.n200,
+                        foregroundColor: modified
+                            ? EsaColors.onAccent
+                            : context.n.n600,
+                      ),
+                      icon: const Icon(LucideIcons.send, size: 16),
+                    ),
+                  ),
                 _action(
                   context,
                   _copied ? LucideIcons.check : LucideIcons.copy,
