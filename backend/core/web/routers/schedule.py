@@ -16,7 +16,6 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field, model_validator
 
-from backend.agent.tools.mastery_tools import kg_store
 from backend.core.services.schedule_import_service import (
     extract_schedule_document,
     extract_schedule_document_via_docir,
@@ -98,7 +97,7 @@ def _user(request: Request, session: SessionPrincipal) -> UserRecord:
 
 def _sync_learning_course(request: Request, user_id: str, name: str) -> None:
     store: UserCourseStore = request.app.state.user_course_store
-    canonical = kg_store.resolve_course_name(name)
+    canonical = request.app.state.knowledge_graph_store.resolve_course_name(name)
     store.upsert(
         user_id=user_id,
         name=name,

@@ -134,6 +134,86 @@ void main() {
     expect(conversation.groupId, 'group-1');
   });
 
+  test('ChatConversation parses research and classroom resource bindings', () {
+    final research = ChatConversation.fromJson({
+      'conversation_id': 'research-chat',
+      'workspace_type': 'research',
+      'research_project_id': 'project-1',
+    });
+    final teaching = ChatConversation.fromJson({
+      'conversation_id': 'teaching-chat',
+      'workspace_type': 'teaching',
+      'classroom_binding': {
+        'class_id': 'class-1',
+        'class_name': 'Algorithms',
+        'assignment_id': 'assignment-1',
+        'assignment_title': 'Binary search',
+      },
+    });
+
+    expect(research.workspaceType, WorkspaceType.research);
+    expect(research.researchProjectId, 'project-1');
+    expect(teaching.workspaceType, WorkspaceType.teaching);
+    expect(teaching.classId, 'class-1');
+    expect(teaching.className, 'Algorithms');
+    expect(teaching.assignmentId, 'assignment-1');
+    expect(teaching.assignmentTitle, 'Binary search');
+  });
+
+  test('CoreMemory V2 models preserve workspace scope and candidates', () {
+    final memory = CoreMemoryItem.fromJson({
+      'memory_id': 'memory-1',
+      'memory_key': 'writing_style',
+      'content': 'Use concise summaries',
+      'category': 'preference',
+      'scope_type': 'workspace',
+      'workspace_type': 'research',
+      'status': 'suppressed',
+      'revision': 3,
+    });
+    final candidate = MemoryCandidateItem.fromJson({
+      'candidate_id': 'candidate-1',
+      'memory_key': 'writing_style',
+      'proposed_content': 'Use evidence-first summaries',
+      'category': 'preference',
+      'scope_type': 'workspace',
+      'workspace_type': 'research',
+    });
+
+    expect(memory.id, 'memory-1');
+    expect(memory.scopeType, 'workspace');
+    expect(memory.workspaceType, 'research');
+    expect(memory.status, 'suppressed');
+    expect(memory.revision, 3);
+    expect(candidate.id, 'candidate-1');
+    expect(candidate.workspaceType, 'research');
+  });
+
+  test('Project Profile and Agent Action parse approval contracts', () {
+    final profile = ResearchProjectProfile.fromJson({
+      'agent_instructions': 'Cite primary sources.',
+      'revision': 4,
+    });
+    final action = AgentActionItem.fromJson({
+      'action_id': 'action-1',
+      'action_type': 'start_frontier_tracking',
+      'status': 'pending',
+      'workspace_type': 'research',
+      'arguments': {'query': 'agent memory'},
+      'resource_snapshot': {'project_id': 'project-1'},
+      'created_at': '2026-08-14T00:00:00Z',
+      'expires_at': '2026-08-14T00:30:00Z',
+    });
+
+    expect(profile.instructions, 'Cite primary sources.');
+    expect(profile.revision, 4);
+    expect(action.id, 'action-1');
+    expect(action.status, 'pending');
+    expect(action.arguments['query'], 'agent memory');
+    expect(action.resourceSnapshot['project_id'], 'project-1');
+    expect(action.expiresAt, isNotNull);
+  });
+
   test(
     'teaching models parse backend identifiers and nested workflow data',
     () {

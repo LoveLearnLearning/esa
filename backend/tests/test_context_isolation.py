@@ -5,14 +5,12 @@
 - RC#3: ChatStore 原子化"读历史+追加消息" 消除读-写竞态
 - RC#4: 会话记忆模式接线 (normal/no_write/isolated) 写入工具按模式拒绝
 """
-import contextvars
+import pytest
 
-from backend.agent.tools.memory_tools import (
-    memory_write_allowed,
-    save_core_memory,
-    set_current_conversation_mode,
-    set_current_user,
-)
+from backend.agent.memories.core_memory_models import MemoryPolicyDenied
+from backend.agent.memories.core_memory_policy import CoreMemoryPolicy
+from backend.agent.tools.context import AgentRuntimeDependencies, ToolExecutionContext
+from backend.core.router.models import ResourceScope, WorkspaceRoute
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
@@ -81,34 +79,26 @@ def test_get_model_history_and_append_raises_for_missing_conversation(tmp_path):
     assert chat_store.get_model_messages("no-such-conversation") == []
 
 
-def _run_with_mode(mode: str, fn):
-    """在独立 ContextVar 上下文中运行 fn 避免污染其他测试。"""
-    return contextvars.copy_context().run(
-        lambda: (
-            set_current_user("tester"),
-            set_current_conversation_mode(mode),
-            fn(),
-        )[2]
+def _memory_context(mode: str) -> ToolExecutionContext:
+    scope = ResourceScope(metadata={"conversation_id": "c1"})
+    route = WorkspaceRoute(
+        workspace_type="learning", agent_profile_id="learning.v1",
+        skill_scopes=frozenset({"common", "learning"}),
+        tool_scopes=frozenset({"common", "learning"}), prompt_key="learning.v1",
+        profile_policy="learning.profile.v1", memory_policy_id="learning.memory.v1",
+        resource_scope=scope, action_policy="learning.actions.v1",
+    )
+    return ToolExecutionContext(
+        user_id="u1", conversation_id="c1", workspace_route=route,
+        authorized_resources=scope, conversation_mode=mode,
+        runtime_dependencies=AgentRuntimeDependencies(username="tester"),
+        request_id="r1",
     )
 
 
-def test_memory_write_allowed_defaults_to_normal():
-    """RC#4: 未显式设置时默认 normal 模式允许写入。"""
-    assert memory_write_allowed() is True
-
-
-def test_memory_write_allowed_blocks_no_write_and_isolated():
-    """RC#4: no_write / isolated 会话禁止写入长期记忆。"""
-    assert _run_with_mode("no_write", lambda: memory_write_allowed()) is False
-    assert _run_with_mode("isolated", lambda: memory_write_allowed()) is False
-    assert _run_with_mode("normal", lambda: memory_write_allowed()) is True
-
-
-def test_save_core_memory_refuses_in_no_write_mode():
-    """RC#4: no_write 会话中 save_core_memory 拒绝落库 返回 reason。"""
-    result = _run_with_mode(
-        "no_write",
-        lambda: save_core_memory("key", "content", "general"),
-    )
-    assert result["saved"] is False
-    assert "禁止写入记忆" in result["reason"]
+def test_memory_write_policy_allows_only_normal_mode():
+    policy = CoreMemoryPolicy()
+    policy.ensure_write(_memory_context("normal"))
+    for mode in ("no_write", "isolated"):
+        with pytest.raises(MemoryPolicyDenied):
+            policy.ensure_write(_memory_context(mode))

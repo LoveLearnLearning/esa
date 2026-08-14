@@ -35,12 +35,14 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
   final _groupColumn = TextEditingController();
   final _metricColumn = TextEditingController();
   final _textColumn = TextEditingController();
+  final _profileInstructions = TextEditingController();
   List<FrontierTrackingJob> _frontierJobs = const [];
   List<ResearchDocument> _documents = const [];
   List<ResearchDataset> _datasets = const [];
   ResearchDocument? _selectedDocument;
   ResearchDataset? _selectedDataset;
   ResearchAnalysisJob? _analysisJob;
+  ResearchProjectProfile? _projectProfile;
   String _writingOperation = 'outline';
   String _analysisType = 'descriptive';
   bool _loading = true;
@@ -63,6 +65,7 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
     _groupColumn.dispose();
     _metricColumn.dispose();
     _textColumn.dispose();
+    _profileInstructions.dispose();
     super.dispose();
   }
 
@@ -72,12 +75,15 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
         _api.listFrontierJobs(widget.project.id),
         _api.listResearchDocuments(widget.project.id),
         _api.listResearchDatasets(widget.project.id),
+        _api.getResearchProjectProfile(widget.project.id),
       ]);
       if (!mounted) return;
       setState(() {
         _frontierJobs = values[0] as List<FrontierTrackingJob>;
         _documents = values[1] as List<ResearchDocument>;
         _datasets = values[2] as List<ResearchDataset>;
+        _projectProfile = values[3] as ResearchProjectProfile;
+        _profileInstructions.text = _projectProfile!.instructions;
         _selectedDocument = _documents.firstOrNull;
         _selectedDataset = _datasets.firstOrNull;
         _loading = false;
@@ -309,6 +315,30 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
     widget.onOpenChat();
   }
 
+  Future<void> _saveProjectProfile() async {
+    final current = _projectProfile;
+    if (current == null || _submitting) return;
+    setState(() => _submitting = true);
+    try {
+      final saved = await _api.saveResearchProjectProfile(
+        widget.project.id,
+        instructions: _profileInstructions.text.trim(),
+        expectedRevision: current.revision,
+      );
+      if (!mounted) return;
+      setState(() {
+        _projectProfile = saved;
+        _submitting = false;
+        _error = null;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('项目画像已保存')));
+    } on ApiException catch (error) {
+      _showError(error.statusCode == 409 ? '项目画像已被更新，请刷新后重试。' : error.detail);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final content = DefaultTabController(
@@ -509,17 +539,51 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
   Widget _experimentsTab() =>
       const Center(child: _EmptyState(text: '实验记录将在这里关联数据、方法与评价结果。'));
 
-  Widget _settingsTab() => Center(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 520),
-      child: _ResearchPanel(
-        icon: LucideIcons.settings,
-        title: '项目设置',
-        child: Text(
-          '项目状态：${widget.project.status}\n项目名称：${widget.project.name}',
+  Widget _settingsTab() => ListView(
+    padding: const EdgeInsets.all(24),
+    children: [
+      Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: _ResearchPanel(
+            icon: LucideIcons.settings,
+            title: '项目设置',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('项目状态：${widget.project.status}'),
+                Text('项目名称：${widget.project.name}'),
+                const SizedBox(height: 20),
+                Text('项目画像', style: context.texts.titleMedium),
+                const SizedBox(height: 8),
+                TextField(
+                  key: const ValueKey('research-project-profile'),
+                  controller: _profileInstructions,
+                  minLines: 5,
+                  maxLines: 10,
+                  maxLength: 12000,
+                  decoration: const InputDecoration(
+                    labelText: '研究背景、术语、方法约束与写作偏好',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    key: const ValueKey('save-research-project-profile'),
+                    onPressed: _submitting || _projectProfile == null
+                        ? null
+                        : _saveProjectProfile,
+                    icon: const Icon(LucideIcons.save, size: 17),
+                    label: const Text('保存项目画像'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-    ),
+    ],
   );
 
   Widget _frontierTab() => ListView(

@@ -1,5 +1,5 @@
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
-from backend.agent.tools.mastery_tools import EsaMasteryStore
+from backend.agent.tools.learning.mastery import EsaMasteryStore
 
 
 def test_target_itself_is_not_returned_as_weak_prerequisite(tmp_path):

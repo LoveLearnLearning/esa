@@ -13,6 +13,7 @@ import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 import '../widgets/assistant_message.dart';
+import '../widgets/agent_action_sheet.dart';
 import '../widgets/composer.dart';
 import '../widgets/history_drawer.dart';
 import '../widgets/learning_dashboard.dart';
@@ -170,6 +171,21 @@ class _ChatPageState extends State<ChatPage> {
 
     final embeddedHeader =
         widget.embedded && app.messages.isNotEmpty && !narrow;
+    final conversation = app.activeConversation;
+    final bindingLabel = switch (conversation?.workspaceType) {
+      WorkspaceType.research =>
+        app.researchProjects
+            .where((item) => item.id == conversation?.researchProjectId)
+            .map((item) => '项目 · ${item.name}')
+            .firstOrNull,
+      WorkspaceType.teaching =>
+        conversation?.assignmentTitle != null
+            ? '课堂 · ${conversation?.className ?? conversation?.classId} / ${conversation?.assignmentTitle}'
+            : conversation?.classId != null
+            ? '课堂 · ${conversation?.className ?? conversation?.classId}'
+            : null,
+      _ => null,
+    };
     final composer = Composer(
       busy: app.busy,
       conversationId: app.activeId,
@@ -215,10 +231,17 @@ class _ChatPageState extends State<ChatPage> {
                 : null,
             onMemory: app.activeWorkspace == WorkspaceType.learning
                 ? () => showMemorySheet(context)
-                : null,
+                : () => showMemorySheet(context),
+            onActions: () => showAgentActionSheet(context),
+            bindingLabel: bindingLabel,
           ),
         if (embeddedHeader)
-          _EmbeddedChatHeader(title: app.activeConversation?.title ?? '新对话'),
+          _EmbeddedChatHeader(
+            title: app.activeConversation?.title ?? '新对话',
+            bindingLabel: bindingLabel,
+            onMemory: () => showMemorySheet(context),
+            onActions: () => showAgentActionSheet(context),
+          ),
         Expanded(
           // Touching the message area dismisses the software keyboard.
           child: Listener(
@@ -323,8 +346,16 @@ class _ChatPageState extends State<ChatPage> {
 }
 
 class _EmbeddedChatHeader extends StatelessWidget {
-  const _EmbeddedChatHeader({required this.title});
+  const _EmbeddedChatHeader({
+    required this.title,
+    required this.onMemory,
+    required this.onActions,
+    this.bindingLabel,
+  });
   final String title;
+  final String? bindingLabel;
+  final VoidCallback onMemory;
+  final VoidCallback onActions;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -336,14 +367,38 @@ class _EmbeddedChatHeader extends StatelessWidget {
     child: Row(
       children: [
         Expanded(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: context.texts.titleMedium?.copyWith(fontSize: 16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.texts.titleMedium?.copyWith(fontSize: 16),
+              ),
+              if (bindingLabel != null)
+                Text(
+                  bindingLabel!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.texts.labelSmall?.copyWith(
+                    color: context.n.n600,
+                  ),
+                ),
+            ],
           ),
         ),
-        Icon(LucideIcons.panelRightOpen, size: 18, color: context.n.n600),
+        IconButton(
+          tooltip: '长期记忆',
+          onPressed: onMemory,
+          icon: const Icon(LucideIcons.brain, size: 18),
+        ),
+        IconButton(
+          tooltip: '待确认动作',
+          onPressed: onActions,
+          icon: const Icon(LucideIcons.shieldCheck, size: 18),
+        ),
       ],
     ),
   );
@@ -358,6 +413,8 @@ class _TopBar extends StatelessWidget {
     required this.workspace,
     required this.onLearning,
     required this.onMemory,
+    required this.onActions,
+    this.bindingLabel,
   });
 
   final bool narrow;
@@ -367,6 +424,8 @@ class _TopBar extends StatelessWidget {
   final WorkspaceType workspace;
   final VoidCallback? onLearning;
   final VoidCallback? onMemory;
+  final VoidCallback onActions;
+  final String? bindingLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -397,11 +456,12 @@ class _TopBar extends StatelessWidget {
                   style: context.texts.titleMedium,
                 ),
                 Text(
-                  'ESA · ${workspace == WorkspaceType.learning
-                      ? 'STUDY'
-                      : workspace == WorkspaceType.teaching
-                      ? 'TEACHING'
-                      : 'RESEARCH'} AGENT',
+                  bindingLabel ??
+                      'ESA · ${workspace == WorkspaceType.learning
+                          ? 'STUDY'
+                          : workspace == WorkspaceType.teaching
+                          ? 'TEACHING'
+                          : 'RESEARCH'} AGENT',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -418,6 +478,8 @@ class _TopBar extends StatelessWidget {
           ],
           if (onMemory != null)
             _OutlineIconButton(icon: LucideIcons.brain, onTap: onMemory!),
+          const SizedBox(width: 8),
+          _OutlineIconButton(icon: LucideIcons.shieldCheck, onTap: onActions),
         ],
       ),
     );

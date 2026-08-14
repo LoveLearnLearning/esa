@@ -1,4 +1,4 @@
-from backend.agent.tools import learning_tools, mastery_tools, memory_tools  # noqa: F401
+from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.skills import (
     build_autoload_skills_context,
     load_skill,
@@ -9,6 +9,7 @@ from backend.agent.tools.tools import tr
 
 
 def test_skill_contracts_match_registered_tools():
+    register_builtin_tools()
     refresh_skill_cache()
     errors = validate_skill_contracts(set(tr.registered_tools))
     assert errors == []

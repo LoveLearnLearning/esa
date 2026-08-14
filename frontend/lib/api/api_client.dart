@@ -571,7 +571,7 @@ class ApiClient {
 
   Future<List<CoreMemoryItem>> listCoreMemories() async {
     final r = await http.get(
-      _uri('/me/memories'),
+      _uri('/me/core-memories'),
       headers: _headers(auth: true),
     );
     if (r.statusCode != 200) _fail(r);
@@ -585,14 +585,18 @@ class ApiClient {
     required String key,
     required String content,
     required String category,
+    String scopeType = 'global',
+    WorkspaceType? workspaceType,
   }) async {
-    final r = await http.put(
-      _uri('/me/memories'),
+    final r = await http.post(
+      _uri('/me/core-memories'),
       headers: _headers(auth: true),
       body: jsonEncode({
         'memory_key': key,
         'content': content,
         'category': category,
+        'scope_type': scopeType,
+        'workspace_type': ?workspaceType?.wireName,
       }),
     );
     if (r.statusCode != 201) _fail(r);
@@ -604,6 +608,80 @@ class ApiClient {
       headers: _headers(auth: true),
     );
     if (r.statusCode != 204) _fail(r);
+  }
+
+  Future<void> forgetCoreMemory(String memoryId) async {
+    final r = await http.delete(
+      _uri('/me/core-memories/${Uri.encodeComponent(memoryId)}'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204) _fail(r);
+  }
+
+  Future<CoreMemoryItem> setCoreMemorySuppressed(
+    String memoryId, {
+    required bool suppressed,
+  }) async {
+    final action = suppressed ? 'suppress' : 'restore';
+    final r = await http.post(
+      _uri('/me/core-memories/${Uri.encodeComponent(memoryId)}/$action'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return CoreMemoryItem.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<List<Map<String, dynamic>>> listCoreMemoryVersions(
+    String memoryId,
+  ) async {
+    final r = await http.get(
+      _uri('/me/core-memories/${Uri.encodeComponent(memoryId)}/versions'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return (_decode(r) as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Future<List<MemoryCandidateItem>> listMemoryCandidates() async {
+    final r = await http.get(
+      _uri('/me/memory-candidates'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return (_decode(r) as List)
+        .whereType<Map>()
+        .map(
+          (item) =>
+              MemoryCandidateItem.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+  }
+
+  Future<void> decideMemoryCandidate(
+    String candidateId, {
+    required bool accept,
+    String? content,
+    String? category,
+    String? scopeType,
+    WorkspaceType? workspaceType,
+  }) async {
+    final action = accept ? 'accept' : 'reject';
+    final r = await http.post(
+      _uri('/me/memory-candidates/${Uri.encodeComponent(candidateId)}/$action'),
+      headers: _headers(auth: true),
+      body: accept
+          ? jsonEncode({
+              'content': ?content,
+              'category': ?category,
+              'scope_type': ?scopeType,
+              'workspace_type': ?workspaceType?.wireName,
+            })
+          : null,
+    );
+    if (accept ? r.statusCode != 200 : r.statusCode != 204) _fail(r);
   }
 
   // ---------- 对话分组 ----------
@@ -795,6 +873,8 @@ class ApiClient {
   Future<ChatConversation> createWorkspaceConversation(
     WorkspaceType workspace, {
     String? researchProjectId,
+    String? classId,
+    String? assignmentId,
     String? groupId,
   }) async {
     if (workspace == WorkspaceType.learning && researchProjectId == null) {
@@ -804,12 +884,20 @@ class ApiClient {
       return _offlineNewConversation(
         workspaceType: workspace,
         researchProjectId: researchProjectId,
+        classId: classId,
+        assignmentId: assignmentId,
         groupId: groupId,
       );
     }
     final body = <String, String>{'workspace_type': workspace.wireName};
     if (researchProjectId case final projectId?) {
       body['research_project_id'] = projectId;
+    }
+    if (classId case final selectedClassId?) {
+      body['class_id'] = selectedClassId;
+    }
+    if (assignmentId case final selectedAssignmentId?) {
+      body['assignment_id'] = selectedAssignmentId;
     }
     if (groupId case final selectedGroupId?) {
       body['group_id'] = selectedGroupId;
@@ -857,6 +945,61 @@ class ApiClient {
     );
     if (response.statusCode != 201) _fail(response);
     return ResearchProject.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
+  Future<ResearchProjectProfile> getResearchProjectProfile(
+    String projectId,
+  ) async {
+    final r = await http.get(
+      _uri('/research/projects/${Uri.encodeComponent(projectId)}/profile'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ResearchProjectProfile.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<ResearchProjectProfile> saveResearchProjectProfile(
+    String projectId, {
+    required String instructions,
+    required int expectedRevision,
+  }) async {
+    final r = await http.put(
+      _uri('/research/projects/${Uri.encodeComponent(projectId)}/profile'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'agent_instructions': instructions,
+        'expected_revision': expectedRevision,
+      }),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return ResearchProjectProfile.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<List<AgentActionItem>> listAgentActions({String? status}) async {
+    final query = status == null
+        ? ''
+        : '?status=${Uri.encodeQueryComponent(status)}';
+    final response = await http.get(
+      _uri('/me/agent-actions$query'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .map((item) => AgentActionItem.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<AgentActionItem> decideAgentAction(
+    String actionId, {
+    required bool approve,
+  }) async {
+    final decision = approve ? 'approve' : 'reject';
+    final response = await http.post(
+      _uri('/me/agent-actions/${Uri.encodeComponent(actionId)}/$decision'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return AgentActionItem.fromJson(_decode(response) as Map<String, dynamic>);
   }
 
   Future<void> archiveResearchProject(String id) async {
@@ -1582,6 +1725,8 @@ class ApiClient {
   ChatConversation _offlineNewConversation({
     WorkspaceType workspaceType = WorkspaceType.learning,
     String? researchProjectId,
+    String? classId,
+    String? assignmentId,
     String? groupId,
   }) {
     final c = ChatConversation(
@@ -1590,6 +1735,8 @@ class ApiClient {
       updatedAt: DateTime.now(),
       workspaceType: workspaceType,
       researchProjectId: researchProjectId,
+      classId: classId,
+      assignmentId: assignmentId,
       groupId: groupId,
     );
     _offConvs.insert(0, c);

@@ -88,7 +88,7 @@
     "type": "function",
     "function": {
       "name": "save_core_memory",
-      "description": "保存用户长期稳定的信息，例如偏好、学习目标、项目或约束。只有用户明确要求记住或信息确实长期稳定时调用。不要保存密码、API Key、访问令牌或其他认证秘密。短小的 preference/profile 记忆可能被安全投影为结构化画像；项目详情和一般记忆仍只按需检索。",
+      "description": "应用户本轮明确提出的记住、保存或长期保留请求，保存一条正式核心记忆。不得仅因信息看似稳定就调用；从对话中推断出的稳定信息必须使用 propose_core_memory，等待用户确认。不要保存密码、API Key、访问令牌或其他认证秘密。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -112,6 +112,61 @@
             ],
             "description": "记忆分类",
             "default": "general"
+          },
+          "scope_type": {
+            "type": "string",
+            "enum": [
+              "global",
+              "workspace"
+            ],
+            "description": "global=跨 Workspace 可见；workspace=仅当前 Workspace 可见。默认 global",
+            "default": "global"
+          }
+        },
+        "required": [
+          "memory_key",
+          "content"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "propose_core_memory",
+      "description": "把对话中推断出的长期稳定信息提交为待用户确认的记忆候选，不会直接写入正式核心记忆。仅在信息可能对未来任务有持续价值时调用；不得提交秘密、短期状态或未经依据的猜测。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "memory_key": {
+            "type": "string",
+            "description": "稳定、可复用的记忆键，例如 preferred_code_language"
+          },
+          "content": {
+            "type": "string",
+            "description": "建议用户确认的长期记忆内容"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "profile",
+              "preference",
+              "learning",
+              "project",
+              "constraint",
+              "general"
+            ],
+            "description": "记忆分类",
+            "default": "general"
+          },
+          "scope_type": {
+            "type": "string",
+            "enum": [
+              "global",
+              "workspace"
+            ],
+            "description": "global=跨 Workspace 可见；workspace=仅当前 Workspace 可见。默认 global",
+            "default": "global"
           }
         },
         "required": [
@@ -170,13 +225,13 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "memory_key": {
+          "memory_id": {
             "type": "string",
-            "description": "需要删除的记忆名称"
+            "description": "由 search_core_memories 或 get_core_memories 返回的记忆 ID"
           }
         },
         "required": [
-          "memory_key"
+          "memory_id"
         ]
       }
     }

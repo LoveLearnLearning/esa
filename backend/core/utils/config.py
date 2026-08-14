@@ -211,6 +211,16 @@ ENABLE_LEGACY_API_ROUTES: bool = _bool_from_env(
     True,
 )
 
+# Workspace runtime rollout. Authorization is always computed by Core Router;
+# these switches only select the execution adapter during a staged deployment.
+WORKSPACE_ROUTER_SHADOW_ENABLED: bool = _bool_from_env("ESA_WORKSPACE_ROUTER_SHADOW_ENABLED", True)
+WORKSPACE_RUNTIME_ENABLED: bool = _bool_from_env("ESA_WORKSPACE_RUNTIME_ENABLED", True)
+WORKSPACE_RUNTIME_LEARNING_ENABLED: bool = _bool_from_env("ESA_WORKSPACE_RUNTIME_LEARNING_ENABLED", True)
+WORKSPACE_RUNTIME_TEACHING_ENABLED: bool = _bool_from_env("ESA_WORKSPACE_RUNTIME_TEACHING_ENABLED", True)
+WORKSPACE_RUNTIME_RESEARCH_ENABLED: bool = _bool_from_env("ESA_WORKSPACE_RUNTIME_RESEARCH_ENABLED", True)
+CORE_MEMORY_V2_ENABLED: bool = _bool_from_env("ESA_CORE_MEMORY_V2_ENABLED", True)
+RESEARCH_WORKFLOW_TOOLS_ENABLED: bool = _bool_from_env("ESA_RESEARCH_WORKFLOW_TOOLS_ENABLED", True)
+
 # User uploads are persisted before any model or DocIR work begins. The public
 # proxy limit must be at least this large.
 USER_ATTACHMENT_ROOT: Path = _path_from_env(

@@ -9,12 +9,15 @@ import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 import '../widgets/profile_sheet.dart';
+import '../widgets/memory_sheet.dart';
+import '../widgets/agent_action_sheet.dart';
 import 'chat_page.dart';
 import 'knowledge_map_page.dart';
 import 'research_project_page.dart';
 import 'research_workspace_page.dart';
 import 'schedule_page.dart';
 import 'student_assignments_page.dart';
+import 'teaching_workspace_page.dart';
 
 enum StudentSection { assistant, assignments, schedule, knowledge, research }
 
@@ -38,6 +41,8 @@ class _HomeShellState extends State<HomeShell> {
     final app = AppScope.of(context);
     final target = section == StudentSection.research
         ? WorkspaceType.research
+        : section == StudentSection.assignments && app.accountRole == 'teacher'
+        ? WorkspaceType.teaching
         : WorkspaceType.learning;
     if (app.activeWorkspace != target) await app.switchWorkspace(target);
     if (!mounted) return;
@@ -46,9 +51,14 @@ class _HomeShellState extends State<HomeShell> {
 
   Widget _page() => switch (_section) {
     StudentSection.assistant => const ChatPage(embedded: true),
-    StudentSection.assignments => StudentAssignmentsPage(
-      onOpenChat: () => unawaited(_select(StudentSection.assistant)),
-    ),
+    StudentSection.assignments =>
+      AppScope.of(context).accountRole == 'teacher'
+          ? TeachingWorkspacePage(
+              onOpenChat: () => unawaited(_select(StudentSection.assistant)),
+            )
+          : StudentAssignmentsPage(
+              onOpenChat: () => unawaited(_select(StudentSection.assistant)),
+            ),
     StudentSection.schedule => const SchedulePage(),
     StudentSection.knowledge => KnowledgeMapPage(
       embedded: true,
@@ -116,6 +126,8 @@ class _HomeShellState extends State<HomeShell> {
                         unawaited(_select(section));
                       },
                       onProfile: () => showProfileSheet(context),
+                      onMemory: () => showMemorySheet(context),
+                      onActions: () => showAgentActionSheet(context),
                     ),
                     if (showSidebar) ...[
                       const SizedBox(width: 8),
@@ -192,6 +204,8 @@ class _HomeShellState extends State<HomeShell> {
                 section: _section,
                 onSelect: (section) => unawaited(_select(section)),
                 onProfile: () => showProfileSheet(context),
+                onMemory: () => showMemorySheet(context),
+                onActions: () => showAgentActionSheet(context),
               ),
             if (!_inResearch)
               _MobileLearningTabs(
@@ -235,11 +249,15 @@ class _GlobalRail extends StatelessWidget {
     required this.section,
     required this.onSelect,
     required this.onProfile,
+    required this.onMemory,
+    required this.onActions,
   });
 
   final StudentSection section;
   final ValueChanged<StudentSection> onSelect;
   final VoidCallback onProfile;
+  final VoidCallback onMemory;
+  final VoidCallback onActions;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -273,6 +291,18 @@ class _GlobalRail extends StatelessWidget {
           onTap: () => onSelect(StudentSection.research),
         ),
         const Spacer(),
+        _RailButton(
+          icon: LucideIcons.brain,
+          tooltip: '长期记忆',
+          active: false,
+          onTap: onMemory,
+        ),
+        _RailButton(
+          icon: LucideIcons.shieldCheck,
+          tooltip: '待确认动作',
+          active: false,
+          onTap: onActions,
+        ),
         _RailButton(
           icon: LucideIcons.settings,
           tooltip: '设置',
@@ -407,7 +437,7 @@ class _WorkspaceSidebar extends StatelessWidget {
             ),
             _SideEntry(
               icon: LucideIcons.clipboardCheck,
-              label: '作业',
+              label: app.accountRole == 'teacher' ? '教学工作台' : '作业',
               selected: section == StudentSection.assignments,
               onTap: () => onSelect(StudentSection.assignments),
             ),
@@ -1064,10 +1094,14 @@ class _MobileHeader extends StatelessWidget {
     required this.section,
     required this.onSelect,
     required this.onProfile,
+    required this.onMemory,
+    required this.onActions,
   });
   final StudentSection section;
   final ValueChanged<StudentSection> onSelect;
   final VoidCallback onProfile;
+  final VoidCallback onMemory;
+  final VoidCallback onActions;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -1086,9 +1120,14 @@ class _MobileHeader extends StatelessWidget {
           }, style: context.texts.headlineSmall),
         ),
         IconButton(
-          tooltip: '通知',
-          onPressed: () {},
-          icon: const Icon(LucideIcons.bell),
+          tooltip: '长期记忆',
+          onPressed: onMemory,
+          icon: const Icon(LucideIcons.brain),
+        ),
+        IconButton(
+          tooltip: '待确认动作',
+          onPressed: onActions,
+          icon: const Icon(LucideIcons.shieldCheck),
         ),
         IconButton(
           tooltip: '设置',

@@ -38,6 +38,17 @@ class _KnowledgeMapService:
         return {"items": [], "course": course}
 
 
+class _KnowledgeGraph:
+    def resolve_course_name(self, name):
+        return name
+
+    def list_courses(self):
+        return ["数据结构", "高等数学"]
+
+    def list_course_aliases(self):
+        return []
+
+
 class _UserCourseStore:
     def __init__(self):
         self.items = [
@@ -78,11 +89,8 @@ def _app(monkeypatch):
     app = FastAPI()
     app.state.user_store = _UserStore()
     app.state.user_course_store = _UserCourseStore()
-    monkeypatch.setattr(
-        learning,
-        "knowledge_map_service",
-        _KnowledgeMapService(),
-    )
+    app.state.knowledge_graph_store = _KnowledgeGraph()
+    app.state.knowledge_map_service = _KnowledgeMapService()
     app.include_router(learning.router)
     app.dependency_overrides[get_current_session] = lambda: SessionPrincipal(
         session_id="session", user_id="user"
@@ -121,8 +129,8 @@ def test_unknown_course_and_point_return_404(monkeypatch):
 
 def test_user_courses_can_be_added_and_removed(monkeypatch):
     app = _app(monkeypatch)
-    monkeypatch.setattr(learning.kg_store, "resolve_course_name", lambda name: name)
-    monkeypatch.setattr(learning.kg_store, "list_courses", lambda: ["数据结构", "高等数学"])
+    monkeypatch.setattr(app.state.knowledge_graph_store, "resolve_course_name", lambda name: name)
+    monkeypatch.setattr(app.state.knowledge_graph_store, "list_courses", lambda: ["数据结构", "高等数学"])
     client = TestClient(app)
 
     catalog = client.get("/me/learning/course-catalog")
@@ -141,7 +149,7 @@ def test_user_courses_can_be_added_and_removed(monkeypatch):
 
 def test_timetable_course_without_kg_is_kept_as_unsupported(monkeypatch):
     app = _app(monkeypatch)
-    monkeypatch.setattr(learning.kg_store, "resolve_course_name", lambda _name: None)
+    monkeypatch.setattr(app.state.knowledge_graph_store, "resolve_course_name", lambda _name: None)
     client = TestClient(app)
 
     response = client.post(
@@ -169,7 +177,7 @@ def test_unsupported_course_can_be_bound_to_canonical_course(monkeypatch):
         }
     )
     monkeypatch.setattr(
-        learning.kg_store,
+        app.state.knowledge_graph_store,
         "resolve_course_name",
         lambda _name: "数字逻辑与数字电路",
     )

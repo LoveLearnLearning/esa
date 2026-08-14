@@ -2,51 +2,15 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from contextvars import ContextVar
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Iterator
+from typing import Any, Mapping
 
-from backend.agent.mm import MultimodalSessionService
 from backend.agent.rag.retrieval.contracts import SearchResponse
+from backend.agent.tools.context import ToolExecutionContext
 from backend.agent.tools.tools import tr
 from backend.core.log.logger import get_pipeline_logger, pipeline_log_context
-from backend.core.services.user_attachment_service import UserAttachmentStore
 
 
 logger = get_pipeline_logger("MM", __name__)
-
-
-@dataclass(frozen=True, slots=True)
-class AttachmentToolContext:
-    user_id: str
-    conversation_id: str
-    allowed_attachment_ids: frozenset[str]
-    store: UserAttachmentStore
-    mm_sessions: MultimodalSessionService
-
-
-_current_context: ContextVar[AttachmentToolContext | None] = ContextVar(
-    "esa_attachment_tool_context",
-    default=None,
-)
-
-
-@contextmanager
-def attachment_tool_context(context: AttachmentToolContext) -> Iterator[None]:
-    token = _current_context.set(context)
-    try:
-        yield
-    finally:
-        _current_context.reset(token)
-
-
-def _context() -> AttachmentToolContext:
-    context = _current_context.get()
-    if context is None:
-        raise RuntimeError("附件工具缺少当前请求上下文")
-    return context
 
 
 def _render_retrieval(response: SearchResponse) -> str:
@@ -65,16 +29,21 @@ def _render_retrieval(response: SearchResponse) -> str:
 
 
 async def _parse_attachment(
+    context: ToolExecutionContext,
     attachment_id: str,
     query: str,
     *,
     allowed_suffixes: frozenset[str],
     kind: str,
 ) -> dict[str, object]:
-    context = _context()
-    if attachment_id not in context.allowed_attachment_ids:
+    allowed = context.authorized_resources.attachment_ids
+    if attachment_id not in allowed:
         raise ValueError("附件未在当前消息中授权")
-    item = context.store.get(
+    store = context.runtime_dependencies.attachment_store
+    sessions = context.runtime_dependencies.multimodal_sessions
+    if store is None or sessions is None:
+        raise RuntimeError("附件工具依赖未配置")
+    item = store.get(
         user_id=context.user_id,
         conversation_id=context.conversation_id,
         attachment_id=attachment_id,
@@ -96,7 +65,7 @@ async def _parse_attachment(
             item.filename,
             item.size_bytes,
         )
-        prepared = await context.mm_sessions.prepare_attachment(
+        prepared = await sessions.prepare_attachment(
             context.conversation_id,
             attachment_id,
             item.source_path,
@@ -148,9 +117,9 @@ def _schema(name: str, description: str) -> dict:
     }
 
 
-@tr.register(_schema("parse_pdf_attachment", "按需解析当前消息授权的 PDF 附件"))
-async def parse_pdf_attachment(attachment_id: str, query: str) -> dict[str, object]:
+async def parse_pdf_attachment(context: ToolExecutionContext, attachment_id: str, query: str) -> dict[str, object]:
     return await _parse_attachment(
+        context,
         attachment_id,
         query,
         allowed_suffixes=frozenset({".pdf"}),
@@ -158,9 +127,9 @@ async def parse_pdf_attachment(attachment_id: str, query: str) -> dict[str, obje
     )
 
 
-@tr.register(_schema("parse_word_attachment", "按需解析当前消息授权的 Word 附件"))
-async def parse_word_attachment(attachment_id: str, query: str) -> dict[str, object]:
+async def parse_word_attachment(context: ToolExecutionContext, attachment_id: str, query: str) -> dict[str, object]:
     return await _parse_attachment(
+        context,
         attachment_id,
         query,
         allowed_suffixes=frozenset({".docx"}),
@@ -168,12 +137,13 @@ async def parse_word_attachment(attachment_id: str, query: str) -> dict[str, obj
     )
 
 
-@tr.register(_schema("parse_presentation_attachment", "按需解析当前消息授权的 PPT 附件"))
 async def parse_presentation_attachment(
+    context: ToolExecutionContext,
     attachment_id: str,
     query: str,
 ) -> dict[str, object]:
     return await _parse_attachment(
+        context,
         attachment_id,
         query,
         allowed_suffixes=frozenset({".pptx"}),
@@ -181,12 +151,13 @@ async def parse_presentation_attachment(
     )
 
 
-@tr.register(_schema("parse_spreadsheet_attachment", "按需解析当前消息授权的 Excel 附件"))
 async def parse_spreadsheet_attachment(
+    context: ToolExecutionContext,
     attachment_id: str,
     query: str,
 ) -> dict[str, object]:
     return await _parse_attachment(
+        context,
         attachment_id,
         query,
         allowed_suffixes=frozenset({".xlsx"}),
@@ -194,9 +165,9 @@ async def parse_spreadsheet_attachment(
     )
 
 
-@tr.register(_schema("parse_image_attachment", "按需解析当前消息授权的图片附件"))
-async def parse_image_attachment(attachment_id: str, query: str) -> dict[str, object]:
+async def parse_image_attachment(context: ToolExecutionContext, attachment_id: str, query: str) -> dict[str, object]:
     return await _parse_attachment(
+        context,
         attachment_id,
         query,
         allowed_suffixes=frozenset(
@@ -204,3 +175,40 @@ async def parse_image_attachment(attachment_id: str, query: str) -> dict[str, ob
         ),
         kind="image",
     )
+
+
+async def execute_attachment_tool(
+    context: ToolExecutionContext, name: str, arguments: Mapping[str, Any]
+) -> dict[str, object]:
+    handlers = {
+        "parse_pdf_attachment": parse_pdf_attachment,
+        "parse_word_attachment": parse_word_attachment,
+        "parse_presentation_attachment": parse_presentation_attachment,
+        "parse_spreadsheet_attachment": parse_spreadsheet_attachment,
+        "parse_image_attachment": parse_image_attachment,
+    }
+    handler = handlers.get(name)
+    if handler is None:
+        raise KeyError(name)
+    return await handler(
+        context,
+        str(arguments.get("attachment_id", "")),
+        str(arguments.get("query", "")),
+    )
+
+
+ATTACHMENT_TOOL_SCHEMAS = (
+    _schema("parse_pdf_attachment", "读取当前消息已授权的 PDF 附件"),
+    _schema("parse_word_attachment", "读取当前消息已授权的 Word 附件"),
+    _schema("parse_presentation_attachment", "读取当前消息已授权的演示文稿附件"),
+    _schema("parse_spreadsheet_attachment", "读取当前消息已授权的电子表格附件"),
+    _schema("parse_image_attachment", "读取当前消息已授权的图片附件"),
+)
+
+
+def register_attachment_schemas() -> None:
+    for schema in ATTACHMENT_TOOL_SCHEMAS:
+        def unavailable(**_arguments):
+            raise RuntimeError("attachment tool requires BoundToolExecutor")
+
+        tr.register(schema)(unavailable)

@@ -831,6 +831,32 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> openTeachingContext(
+    TeachingClass classroom, {
+    TeachingAssignment? assignment,
+  }) async {
+    if (activeWorkspace != WorkspaceType.teaching) {
+      await switchWorkspace(WorkspaceType.teaching);
+    }
+    final existing = conversations.where(
+      (item) =>
+          item.classId == classroom.id && item.assignmentId == assignment?.id,
+    );
+    if (existing.isNotEmpty) {
+      await setActive(existing.first.id);
+      return;
+    }
+    final conversation = await api.createWorkspaceConversation(
+      WorkspaceType.teaching,
+      classId: classroom.id,
+      assignmentId: assignment?.id,
+    );
+    conversations.insert(0, conversation);
+    _messages[conversation.id] = [];
+    activeId = conversation.id;
+    notifyListeners();
+  }
+
   Future<void> setActive(String id) async {
     activeId = id;
     notifyListeners();

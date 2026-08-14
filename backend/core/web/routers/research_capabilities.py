@@ -8,7 +8,6 @@ from backend.core.services.research_data_service import (
     MAX_DATASET_BYTES,
     ResearchDataService,
 )
-from backend.core.services.research_writing_service import ResearchWritingService
 from backend.core.stores.research_data_store import ResearchDataStore
 from backend.core.stores.research_project_store import ResearchProjectStore
 from backend.core.stores.research_writing_store import ResearchWritingStore
@@ -21,9 +20,25 @@ from backend.core.web.schemas import (
     ResearchWritingJobCreateRequest,
 )
 from backend.core.workspaces import WorkspaceAccessPolicy
+from backend.core.workflows.research import ResearchWorkflowFacade
 
 router = APIRouter(prefix="/research", tags=["research"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
+
+
+def _workflow_facade(request: Request) -> ResearchWorkflowFacade:
+    facade = getattr(request.app.state, "research_workflow_facade", None)
+    if facade is not None:
+        return facade
+    return ResearchWorkflowFacade(
+        project_store=request.app.state.research_project_store,
+        frontier_store=getattr(request.app.state, "frontier_tracking_store", None),
+        frontier_service=getattr(request.app.state, "frontier_tracking_service", None),
+        writing_store=request.app.state.research_writing_store,
+        writing_service=request.app.state.research_writing_service,
+        data_store=request.app.state.research_data_store,
+        data_service=request.app.state.research_data_service,
+    )
 
 
 def _require_project(request: Request, user_id: str, project_id: str) -> dict:
@@ -111,17 +126,14 @@ def create_writing_job(
     if document is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "科研文档不存在")
     _require_project(request, session.user_id, document["project_id"])
-    job = store.create_job(
+    run = _workflow_facade(request).start_research_writing(
         document_id=document_id,
-        project_id=document["project_id"],
         user_id=session.user_id,
         operation=body.operation,
         instruction=body.instruction,
         source_text=body.source_text,
     )
-    service: ResearchWritingService = request.app.state.research_writing_service
-    service.submit(job["job_id"])
-    return job
+    return run.payload
 
 
 @router.get("/writing-jobs/{job_id}")
@@ -212,16 +224,13 @@ def create_analysis_job(
     if dataset is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "科研数据集不存在")
     _require_project(request, session.user_id, dataset["project_id"])
-    job = store.create_job(
+    run = _workflow_facade(request).start_dataset_analysis(
         dataset_id=dataset_id,
-        project_id=dataset["project_id"],
         user_id=session.user_id,
         analysis_type=body.analysis_type,
         parameters=body.parameters,
     )
-    service: ResearchDataService = request.app.state.research_data_service
-    service.submit(job["job_id"])
-    return job
+    return run.payload
 
 
 @router.get("/analysis-jobs/{job_id}")

@@ -1,6 +1,6 @@
 # ESA CoreMemory 设计文档
 
-> 状态：架构设计稿
+> 状态：已确认架构共识
 >
 > 日期：2026-08-14
 >
@@ -169,9 +169,11 @@ core_memories
 ├── category           TEXT NOT NULL
 ├── source_type        TEXT NOT NULL       # explicit / confirmed
 ├── status             TEXT NOT NULL       # active / suppressed
+├── revision           INTEGER NOT NULL
 ├── created_at         TEXT NOT NULL
 ├── updated_at         TEXT NOT NULL
 ├── last_confirmed_at  TEXT NULL
+├── review_after       TEXT NULL
 └── expires_at         TEXT NULL
 ```
 
@@ -211,18 +213,25 @@ Agent 推断出长期信息
 core_memory_candidates
 ├── candidate_id
 ├── user_id
-├── proposed_scope
+├── operation                  # create / update / replace
+├── target_memory_id           # create 时为空
+├── expected_revision          # 更新时用于乐观并发检查
+├── proposed_scope_type
 ├── proposed_workspace_type
 ├── proposed_key
 ├── proposed_content
+├── proposed_category
 ├── source_conversation_id
 ├── status             # pending / accepted / rejected / expired
+├── resulting_memory_id
 ├── created_at
 ├── decided_at
 └── expires_at
 ```
 
-候选表是否在第一期实现仍需根据产品交互确认；但“模型推断不得静默写入有效记忆”是固定约束。
+候选记忆使用独立表，不与 `agent_action_requests` 共表；二者只复用统一的前端待确认交互协议。Memory Candidate 表达的是长期信息是否准确、是否值得保存，以及接受前是否需要编辑；Agent Action 表达的是一次高影响操作是否获准执行，生命周期并不相同。
+
+候选记忆默认 30 天过期。拒绝后可以短期保留不含正文的规范化内容指纹，避免模型重复提出同一候选。
 
 ## 9. 写入流程
 
@@ -268,16 +277,50 @@ username
 → 幂等成功，必要时刷新确认时间
 
 内容兼容
-→ 合并或由用户确认更新
+→ 创建 update Candidate，由用户确认是否更新
 
 内容冲突
-→ 保留旧值，创建待确认更新
+→ 保留旧值，创建 replace Candidate
 
 用户明确要求替换
 → 更新当前有效值，并保留审计记录
 ```
 
-具体的相似度与冲突算法属于后续实现选择，不能改变上述用户控制原则。
+`memory_key` 是服务端管理的语义定位键。Tool 可以提交建议键，但 Service 必须执行规范化和冲突检查；正式更新优先使用 `memory_id`。
+
+确认更新 Candidate 时必须满足 `current_revision = expected_revision`。如果确认期间目标记忆已发生变化，Candidate 不得直接覆盖新值，必须重新进入冲突检查。
+
+第一版使用确定性规则与轻量文本归一化识别相同或明显冲突的内容，不允许模型自动合并或裁决。无法可靠判断时进入 Candidate。
+
+### 9.4 有效期、复核、抑制与遗忘
+
+四种语义必须分开：
+
+```text
+expires_at
+    到期后明确失效，不再参与检索
+
+review_after
+    到期后需要重新确认；在确认前降低检索优先级，但不自动删除
+
+suppressed
+    暂停参与检索，可由用户恢复
+
+forget
+    不可恢复地删除正文、版本正文、候选正文、画像投影和检索索引
+```
+
+稳定偏好和背景默认不设 `expires_at`。带明确截止时间的信息才设置 `expires_at`；可能随时间变化的信息优先设置 `review_after`。用户关闭记忆功能只改变读写策略，不批量删除数据。
+
+遗忘后只保留防止缓存或异步任务复活旧数据所需的最小墓碑：
+
+```text
+core_memory_tombstones
+├── memory_id
+├── user_id
+├── deleted_at
+└── final_revision
+```
 
 ## 10. 读取流程
 
@@ -306,6 +349,28 @@ Agent 判断当前任务需要长期信息
 
 `get_all_memories` 只用于用户明确要求查看或管理系统记住了什么，不作为普通任务的默认读取方式。
 
+第一版采用确定性词法检索，不引入向量库或模型重排：
+
+```text
+身份与 Scope 过滤
+→ status / expires_at 过滤
+→ memory_key 精确匹配
+→ 短语与正文匹配
+→ category 匹配
+→ 更新时间仅作为同分项
+→ 去重并执行 token 截断
+```
+
+默认预算：
+
+```text
+limit = 5
+总预算 = 600 tokens
+单条正文上限 = 160 tokens
+```
+
+同一个 `memory_key` 在 global 和当前 Workspace 同时存在时，Workspace 记录覆盖 global 记录。用户查看全部记忆走管理 API 分页，不进入 Agent Prompt。后续只有在真实数据证明词法召回不足后，才在 `CoreMemoryRetrieval` 内升级为词法与向量的混合检索；Tool 与 Service 契约保持不变。
+
 ## 11. 会话模式与权限
 
 现有会话模式继续参与权限计算：
@@ -331,7 +396,24 @@ isolated
 ∩ 当前身份与资源授权
 ```
 
-三个 Workspace 具体开放哪些 Memory Tool，应由后续 Workspace Memory Policy 决定。本文不提前固定 Learning、Teaching、Research 的读写差异。
+三个 Workspace 共享同一套 common Memory Tools，不复制实现。三者均可搜索自己的 global 与当前 Workspace 记忆，并可在用户明确要求时保存、修改或遗忘自己的记忆；均禁止模型推断后直接写入、访问其他 Workspace 专属记忆或保存业务状态。
+
+Workspace 差异体现在内容策略：
+
+```text
+learning
+    学习偏好、长期学习目标、解释方式偏好
+
+teaching
+    教师本人的教学表达偏好、备课习惯和反馈风格
+    禁止保存学生个人情况和班级业务数据
+
+research
+    用户本人的研究方法偏好、写作偏好和通用研究习惯
+    项目规则和项目指令进入 Research Project Profile
+```
+
+`saved_memory_enabled=false` 时禁止 CoreMemory 读写；`auto_extract_enabled=false` 时禁止创建模型推断 Candidate，但不影响用户明确保存。
 
 ## 12. Tool 契约
 
@@ -367,9 +449,10 @@ backend/agent/memories/
 └── profile_projection.py
 
 backend/core/stores/
-└── core_memory_store.py
+├── core_memory_store.py
+└── core_memory migrations
 
-backend/agent/tools/common/ 或 Workspace 专属目录
+backend/agent/tools/common/
 └── memory_tools.py
 ```
 
@@ -463,10 +546,12 @@ CoreMemory 不应为了提高 Prompt 缓存命中率而全量常驻 Prompt。
 推荐：
 
 1. 检索结果设置小型、短 TTL 的查询缓存。
-2. 缓存键至少包含 `user_id + visible_scopes + normalized_query + memory_revision`。
+2. 缓存键包含 `user_id + workspace_type + visible_scopes + normalized_query + category + limit + memory_revision + retrieval_version`。
 3. 任意记忆创建、更新、遗忘或过期时推进 `memory_revision`，自然失效旧缓存。
 4. Profile 投影按 `profile_version` 独立缓存。
 5. 检索结果放在 Prompt 的动态上下文区域，不破坏 Workspace 稳定前缀。
+
+查询缓存默认采用约 60 秒的短 TTL。权限过滤必须发生在缓存查找之前，Scope 也是缓存键的一部分。
 
 禁止只用 `user_id + query` 作为缓存键，否则 Workspace Scope 变化时可能发生越权复用。
 
@@ -506,6 +591,27 @@ Tool 延迟 P50/P95
 
 日志不得记录完整敏感记忆正文。生产日志优先记录 `memory_id`、Scope、事件类型和内容摘要哈希。
 
+版本历史与审计事件分离。版本历史用于用户查看和恢复，允许保存历史正文；审计事件用于安全追踪，不保存记忆正文。
+
+```text
+core_memory_versions
+├── version_id
+├── memory_id
+├── revision
+├── content
+├── category
+├── scope_type
+├── workspace_type
+├── change_type          # create / update / replace / restore
+├── changed_via          # user_api / agent_tool / candidate / migration
+├── source_candidate_id
+└── created_at
+```
+
+每次创建、更新或替换都在同一数据库事务中写入版本、更新当前记录并推进 `memory_revision`。恢复历史版本时不回退 revision 编号，而是把历史内容复制为新的 revision。普通 Agent Tool 无权读取版本历史；历史只通过用户管理 API 查看与恢复。
+
+审计事件只保留 `event_id`、`memory_id`、`user_id`、事件类型、Scope、revision、不可逆内容哈希、请求关联 ID 和时间。用户执行遗忘时，必须删除当前及所有历史正文，审计中只留下最小元数据和哈希。
+
 ## 18. 测试契约
 
 ### 18.1 Store 测试
@@ -514,7 +620,9 @@ Tool 延迟 P50/P95
 - 不同用户之间严格隔离；
 - global 与 workspace 约束正确；
 - suppressed 和 expired 记录不会进入普通检索；
-- 并发更新不产生重复有效记录。
+- 并发更新不产生重复有效记录；
+- 版本快照、当前记录与 `memory_revision` 在同一事务中成功或失败；
+- 遗忘后当前正文、历史正文、候选正文和索引均不可恢复，只剩最小墓碑。
 
 ### 18.2 Policy 测试
 
@@ -531,6 +639,8 @@ Tool 延迟 P50/P95
 - 推断信息只能形成候选；
 - 重复写入幂等；
 - 冲突内容进入确认流程；
+- 过期 `expected_revision` 不能覆盖较新的记忆；
+- 接受、拒绝和过期 Candidate 的状态转换正确；
 - 删除记忆同步清理其独占画像投影；
 - Profile 投影失败不回滚主记忆。
 
@@ -541,6 +651,15 @@ Tool 延迟 P50/P95
 - Tool 返回内容被视为不可信事实；
 - 不同 Workspace 不会读取彼此的 Workspace 记忆；
 - Skill 不能扩大 Memory Tool 权限。
+
+### 18.5 API 兼容测试
+
+- 旧 GET 只返回 global 记忆并保持原有字段；
+- 旧 PUT 和 DELETE 只影响 global Scope；
+- 正式 API 使用 `memory_id` 且更新要求 `expected_revision`；
+- revision 冲突返回 `409` 和当前 revision；
+- Candidate 接受时可受控修改内容、分类和 Scope；
+- 旧 Flutter Memory Sheet 在迁移期行为不变。
 
 ## 19. 现有实现差距
 
@@ -564,28 +683,67 @@ Tool 延迟 P50/P95
 
 ## 20. 迁移建议
 
-### 阶段一：建立新契约
+### 20.1 HTTP API 兼容原则
+
+当前 Flutter 使用以下接口：
+
+```text
+GET    /me/memories
+PUT    /me/memories
+DELETE /me/memories/{memory_key}
+```
+
+这些接口保留一个迁移周期，并作为 global CoreMemory 的兼容层：旧 PUT 明确写入 global；旧 GET 只返回 global 并保持 `memory_key/content/category` 字段；旧 DELETE 只删除 global 下对应 key。兼容 Router 必须调用新的 CoreMemoryService，不再直接访问旧 CoreMemory 对象。
+
+正式管理 API 使用 `memory_id`：
+
+```text
+GET    /me/core-memories
+POST   /me/core-memories
+PATCH  /me/core-memories/{memory_id}
+DELETE /me/core-memories/{memory_id}
+
+POST   /me/core-memories/{memory_id}/suppress
+POST   /me/core-memories/{memory_id}/restore
+
+GET    /me/core-memories/{memory_id}/versions
+POST   /me/core-memories/{memory_id}/versions/{revision}/restore
+
+GET    /me/memory-candidates
+POST   /me/memory-candidates/{candidate_id}/accept
+POST   /me/memory-candidates/{candidate_id}/reject
+```
+
+接受 Candidate 时允许用户修订建议内容、分类和 Scope。更新与版本恢复必须携带 `expected_revision`；版本冲突返回 HTTP `409` 和当前 revision。
+
+现有 `GET/PATCH /me/memory-settings` 保留，并增量支持 `saved_memory_enabled` 和 `auto_extract_enabled`。旧 API 只有在 Flutter 完全切换到 `memory_id` 且调用量归零后才可废弃。
+
+前端分两步迁移：先保持学习空间现有 Memory Sheet 可用；再增加三个 Workspace 共用的记忆管理入口，按 global 与当前 Workspace 分组，支持 Candidate 确认、抑制、历史与彻底遗忘。
+
+### 20.2 实施阶段
+
+#### 阶段一：建立新契约
 
 - 定义 CoreMemory 模型、Scope 和 Policy；
 - 将现有行为包进 Legacy Adapter；
 - Tool Runtime 统一注入身份和会话上下文；
 - 停止新增基于 `user_name` 的调用。
 
-### 阶段二：新增目标存储
+#### 阶段二：新增目标存储
 
 - 按现有 Store 规范增加新表和迁移；
 - 新增 `CoreMemoryStore`；
 - 建立从旧记录到 `global` Scope 的迁移工具；
 - 迁移前保留备份和数量校验。
 
-### 阶段三：切换读写
+#### 阶段三：切换读写
 
 - 新写入进入新模型；
 - 读取采用新 Scope Policy；
 - 旧数据只读兼容或完成一次性迁移；
 - Profile Projection 改用 `user_id` 和 `memory_id`。
 
-### 阶段四：候选与治理
+#### 阶段四：候选与治理
 
 - 增加候选确认；
 - 增加冲突、过期和审计；
@@ -605,18 +763,34 @@ Tool 延迟 P50/P95
 7. 长期身份使用 `user_id`，不使用用户名作为所有权主键。
 8. Tool 权限由服务端 WorkspaceRoute 和运行时策略决定。
 9. 底层 Store 通过应用级依赖注入，Tool import 不创建数据库对象。
+10. 三个 Workspace 共用 common Memory Tools，由 Workspace Memory Policy 控制可见 Scope 和允许内容。
+11. Candidate 使用独立表，但复用统一的前端待确认交互协议。
+12. 更新采用 revision 与乐观并发；模型不得自动合并或覆盖冲突内容。
+13. 过期、待复核、抑制和遗忘是四种不同语义；遗忘不可恢复。
+14. 第一版采用确定性词法检索，默认返回 5 条、总计不超过 600 tokens。
+15. 版本历史保存可恢复正文，审计事件不保存正文；普通 Agent 无权读取历史。
+16. 旧 `/me/memories` 作为 global 兼容层保留，正式 API 使用 `memory_id`。
 
-## 22. 后续仍需确认
+## 22. 被否决或暂缓的方案
 
-以下内容不在本文中静默定案：
+| 方案 | 结论与原因 |
+|---|---|
+| 每个 Workspace 复制一套 Memory Tools | 否决；实现重复且权限差异应由 Policy 表达。 |
+| Candidate 与 `agent_action_requests` 共表 | 否决；长期事实确认与高影响动作审批的状态语义不同。 |
+| 模型自动写入推断记忆 | 否决；违反用户确认和可控原则。 |
+| 模型自动合并冲突内容 | 否决；可能改变用户原意。 |
+| 第一版使用向量库或模型重排 | 暂缓；当前记忆量小，先用可解释、可测试的词法检索收集真实数据。 |
+| 全量记忆常驻 Prompt | 否决；增加 token 成本、降低缓存稳定性并扩大隐私暴露。 |
+| 只做软删除 | 否决；用户明确遗忘要求正文不可恢复。 |
+| 立即替换旧 `/me/memories` | 否决；会破坏现有 Flutter 客户端。 |
 
-1. 三个 Workspace 各自开放哪些 Memory Tool；
-2. Candidate 是单独建表还是采用通用 Agent Action 确认协议；
-3. 冲突检测采用规则、语义模型还是混合策略；
-4. `expires_at` 由用户、类别策略还是系统建议产生；
-5. 删除采用硬删除、软删除还是可恢复抑制；
-6. 检索第一版是否只做关键词，何时引入向量或混合检索；
-7. 是否需要 CoreMemory 版本历史表；
-8. 用户管理界面的具体交互和 API 兼容策略。
+## 23. 后续独立事项
 
-这些选择应在实现前逐项确认，但不能违反本文的定义、作用域、权威数据源和用户控制边界。
+以下事项不阻塞 CoreMemory 目标架构，但需要在对应实施阶段独立确认：
+
+1. `memory_key` 的正式命名与规范化词表；
+2. 各 category 的默认 `review_after` 建议策略；
+3. 敏感信息检测规则和误报处理；
+4. 前端记忆管理页面的具体交互稿；
+5. 词法检索升级到混合检索的量化门槛；
+6. 旧 API 的实际调用量观测与最终废弃版本。

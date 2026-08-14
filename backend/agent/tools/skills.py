@@ -63,7 +63,9 @@ def _parse_skill(path: Path) -> SkillDefinition:
     try:
         meta = yaml.safe_load(frontmatter) or {}
     except yaml.YAMLError as exc:
-        raise SkillValidationError(f"{path.name} frontmatter YAML 解析失败: {exc}") from exc
+        raise SkillValidationError(
+            f"{path.name} frontmatter YAML 解析失败: {exc}"
+        ) from exc
 
     if not isinstance(meta, dict):
         raise SkillValidationError(f"{path.name} frontmatter 必须是 YAML object")
@@ -118,11 +120,7 @@ def _parse_skill(path: Path) -> SkillDefinition:
 
 def list_skills() -> list[Path]:
     """列举 skills 目录中的实际 Skill 文件。"""
-    return sorted(
-        path
-        for path in SKILLS_DIR.glob("*.md")
-        if path.name != "SKILLS.md"
-    )
+    return sorted(path for path in SKILLS_DIR.rglob("*.md") if path.name != "SKILLS.md")
 
 
 @lru_cache(maxsize=1)
@@ -169,9 +167,7 @@ def validate_skill_contracts(
 
     available_skills = set(names)
     available_tools = (
-        set(tr.registered_tools)
-        if tool_names is None
-        else set(tool_names)
+        set(tr.registered_tools) if tool_names is None else set(tool_names)
     )
 
     for skill in definitions:
@@ -219,8 +215,7 @@ def build_skills_context(*, categories: set[str] | None = None) -> str:
         return "暂无可用 skill"
 
     return "\n".join(
-        f"- {skill.name} [{skill.category}] {skill.description}"
-        for skill in skills
+        f"- {skill.name} [{skill.category}] {skill.description}" for skill in skills
     )
 
 
@@ -230,19 +225,12 @@ def build_autoload_skills_context() -> str:
 
     autoload 应只用于短、全局稳定的策略；普通教学流程仍按需 load_skill。
     """
-    skills = [
-        skill
-        for skill in _validated_definitions()
-        if skill.autoload
-    ]
+    skills = [skill for skill in _validated_definitions() if skill.autoload]
     if not skills:
         return ""
 
     skills.sort(key=lambda skill: (-skill.priority, skill.name))
-    return "\n\n".join(
-        f"## {skill.name}\n{skill.body}"
-        for skill in skills
-    )
+    return "\n\n".join(f"## {skill.name}\n{skill.body}" for skill in skills)
 
 
 def load_skill(name: str) -> str:
@@ -252,26 +240,3 @@ def load_skill(name: str) -> str:
         if skill.name == normalized:
             return skill.body
     return f"{normalized} skill not found!"
-
-
-@tr.register(
-    {
-        "type": "function",
-        "function": {
-            "name": "load_skill",
-            "description": "加载某个 Skill 的详细操作说明；只有任务匹配时才调用",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Skill 名称",
-                    },
-                },
-                "required": ["name"],
-            },
-        },
-    }
-)
-def load_skill_tool(name: str) -> str:
-    return load_skill(name)

@@ -64,6 +64,9 @@ class MemorySettings:
     """记忆与画像开关设置，实际持久化在 memory_settings 表。"""
 
     user_id: str
+    saved_memory_enabled: bool = True
+    chat_history_enabled: bool = True
+    auto_extract_enabled: bool = False
     learning_profile_enabled: bool = True
     inferred_profile_enabled: bool = True
     default_conversation_mode: str = "normal"
@@ -109,10 +112,9 @@ class PromptContext:
     conversation_summary: str = ""
     conversation_mode: str = "normal"
     attachment_context: str = ""
-    attachment_tool_context: object | None = None
     workspace_type: str = "learning"
 
-    # 由 Agent._prepare_run 内部生成，不属于用户可写偏好。
+    # 兼容 prompt builder 使用；生产 Agent 主链由 Workspace Runtime 生成。
     pedagogy_context: str = ""
     autoload_skills_context: str = ""
 

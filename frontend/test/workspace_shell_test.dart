@@ -58,6 +58,8 @@ class _WorkspaceApi extends ApiClient {
     WorkspaceType workspace, {
     String? researchProjectId,
     String? groupId,
+    String? classId,
+    String? assignmentId,
   }) async => ChatConversation(
     id: 'research-chat',
     title: '新对话',
@@ -65,6 +67,8 @@ class _WorkspaceApi extends ApiClient {
     workspaceType: workspace,
     researchProjectId: researchProjectId,
     groupId: groupId,
+    classId: classId,
+    assignmentId: assignmentId,
   );
 }
 
