@@ -68,6 +68,7 @@ CREATE TABLE {table} (
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     name TEXT,
+    attachments_json TEXT NOT NULL DEFAULT '[]',
     is_visible INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     FOREIGN KEY(conversation_id)
@@ -126,6 +127,17 @@ def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
         str(row["name"])
         for row in connection.execute(f'PRAGMA table_info("{table}")').fetchall()
     }
+
+
+def _migrate_message_attachments(connection: sqlite3.Connection) -> None:
+    """Persist attachment metadata without failing on already-upgraded stores."""
+    if not _table_exists(connection, "messages"):
+        return
+    if "attachments_json" not in _columns(connection, "messages"):
+        connection.execute(
+            "ALTER TABLE messages ADD COLUMN attachments_json "
+            "TEXT NOT NULL DEFAULT '[]'"
+        )
 
 
 def _execute_script_atomically(
@@ -1254,6 +1266,11 @@ MIGRATIONS: list[MigrationDef] = [
         11,
         "create_workspace_runtime_domains",
         _migrate_workspace_runtime_domains,
+    ),
+    (
+        12,
+        "persist_message_attachments",
+        _migrate_message_attachments,
     ),
 ]
 

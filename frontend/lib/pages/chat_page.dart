@@ -15,17 +15,46 @@ import '../theme/esa_theme.dart';
 import '../widgets/assistant_message.dart';
 import '../widgets/agent_action_sheet.dart';
 import '../widgets/composer.dart';
+import '../widgets/code_editor/code_editor_pane.dart';
 import '../widgets/history_drawer.dart';
 import '../widgets/learning_dashboard.dart';
 import '../widgets/memory_sheet.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/tool_call_card.dart';
 
+class _CodeSession {
+  const _CodeSession({
+    required this.id,
+    required this.value,
+    required this.originalValue,
+    required this.language,
+  });
+
+  final String id;
+  final String value;
+  final String originalValue;
+  final String language;
+
+  _CodeSession copyWith({String? value, String? language}) => _CodeSession(
+    id: id,
+    value: value ?? this.value,
+    originalValue: originalValue,
+    language: language ?? this.language,
+  );
+}
+
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key, this.embedded = false});
+  const ChatPage({
+    super.key,
+    this.embedded = false,
+    this.embeddedTitle,
+    this.onExitEmbedded,
+  });
 
   /// The home shell owns global navigation and page chrome in embedded mode.
   final bool embedded;
+  final String? embeddedTitle;
+  final VoidCallback? onExitEmbedded;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -35,13 +64,19 @@ class _ChatPageState extends State<ChatPage> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _scrollController = ScrollController();
   final _streamRenderingPaused = ValueNotifier(false);
+  final _composerKey = GlobalKey<ComposerState>();
+  final _codeDrafts = <String, _CodeSession>{};
+  int _codeDraftVersion = 0;
   bool _followOutput = true;
   bool _userScrollInProgress = false;
   bool _messagePointerDown = false;
   int _bottomScrollRequest = 0;
+  int _scrollRestoreRequest = 0;
   String? _lastActiveId;
   WorkspaceType? _lastWorkspace;
   TaskMode? _taskMode;
+  _CodeSession? _codeSession;
+  double _editorWidth = 0.46;
 
   @override
   void dispose() {
@@ -99,6 +134,81 @@ class _ChatPageState extends State<ChatPage> {
   void _pauseFollowing() {
     _setFollowOutput(false);
     _bottomScrollRequest++;
+  }
+
+  void _setStatePreservingChatScroll(
+    VoidCallback mutation, {
+    bool pauseFollowing = false,
+  }) {
+    final offset = _scrollController.hasClients
+        ? _scrollController.position.pixels
+        : null;
+    if (pauseFollowing) _pauseFollowing();
+    final request = ++_scrollRestoreRequest;
+    setState(mutation);
+    if (offset != null) _scheduleScrollRestore(request, offset, 0);
+  }
+
+  void _scheduleScrollRestore(int request, double offset, int pass) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || request != _scrollRestoreRequest) return;
+      if (_scrollController.hasClients) {
+        final position = _scrollController.position;
+        final target = offset.clamp(
+          position.minScrollExtent,
+          position.maxScrollExtent,
+        );
+        if ((position.pixels - target).abs() > .5) position.jumpTo(target);
+      }
+      if (pass < 4) {
+        WidgetsBinding.instance.scheduleFrame();
+        _scheduleScrollRestore(request, offset, pass + 1);
+      }
+    });
+  }
+
+  void _openCodeEditor(String blockId, String code, String language) {
+    final normalizedCode = code.trimRight();
+    final normalizedLanguage = normalizeCodeLanguage(language);
+    final existing = _codeDrafts[blockId];
+    _setStatePreservingChatScroll(() {
+      _codeSession = existing != null && existing.value == normalizedCode
+          ? existing
+          : _CodeSession(
+              id: blockId,
+              value: normalizedCode,
+              originalValue: normalizedCode,
+              language: normalizedLanguage,
+            );
+    }, pauseFollowing: true);
+  }
+
+  void _closeCodeEditor() =>
+      _setStatePreservingChatScroll(() => _codeSession = null);
+
+  void _updateCodeSession(_CodeSession session) {
+    _codeDrafts[session.id] = session;
+    if (session.id.startsWith('composer:')) {
+      _composerKey.currentState?.replaceCodeBlock(
+        session.id,
+        session.value,
+        language: session.language,
+      );
+    }
+    setState(() {
+      _codeSession = session;
+      _codeDraftVersion++;
+    });
+  }
+
+  void _clearComposerCodeDrafts() {
+    setState(() {
+      _codeDrafts.removeWhere((id, _) => id.startsWith('composer:'));
+      if (_codeSession?.id.startsWith('composer:') ?? false) {
+        _codeSession = null;
+      }
+      _codeDraftVersion++;
+    });
   }
 
   void _handleMessagePointerDown(PointerDownEvent event) {
@@ -159,10 +269,12 @@ class _ChatPageState extends State<ChatPage> {
     if (_lastWorkspace != app.activeWorkspace) {
       _lastWorkspace = app.activeWorkspace;
       _taskMode = null;
+      _codeSession = null;
     }
     if (_lastActiveId != app.activeId) {
       _lastActiveId = app.activeId;
       _userScrollInProgress = false;
+      _codeSession = null;
       _setFollowOutput(true);
     }
     _scrollToBottom();
@@ -170,7 +282,9 @@ class _ChatPageState extends State<ChatPage> {
     final narrow = pageWidth < (widget.embedded ? 1040 : 600);
 
     final embeddedHeader =
-        widget.embedded && app.messages.isNotEmpty && !narrow;
+        widget.embedded &&
+        (app.messages.isNotEmpty || widget.onExitEmbedded != null) &&
+        !narrow;
     final conversation = app.activeConversation;
     final bindingLabel = switch (conversation?.workspaceType) {
       WorkspaceType.research =>
@@ -187,10 +301,12 @@ class _ChatPageState extends State<ChatPage> {
       _ => null,
     };
     final composer = Composer(
+      key: _composerKey,
       busy: app.busy,
       conversationId: app.activeId,
       taskMode: _taskMode,
       onClearTaskMode: () => setState(() => _taskMode = null),
+      onOpenCodeEditor: _openCodeEditor,
       onUploadAttachment: (filename, stream, length) =>
           app.uploadConversationAttachment(
             filename: filename,
@@ -200,6 +316,7 @@ class _ChatPageState extends State<ChatPage> {
       onRemoveAttachment: app.removeConversationAttachment,
       onSend: (text, markdown) {
         _resumeFollowing();
+        _clearComposerCodeDrafts();
         app.send(
           _taskMode?.buildPrompt(text) ?? text,
           markdown: markdown,
@@ -208,6 +325,7 @@ class _ChatPageState extends State<ChatPage> {
       },
       onSendWithAttachment: (text, markdown, attachment) {
         _resumeFollowing();
+        _clearComposerCodeDrafts();
         app.send(
           _taskMode?.buildPrompt(text) ?? text,
           markdown: markdown,
@@ -217,6 +335,110 @@ class _ChatPageState extends State<ChatPage> {
       },
     );
     final mobileLanding = narrow && app.messages.isEmpty;
+    final messageArea = Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        if (event.kind == PointerDeviceKind.touch ||
+            event.kind == PointerDeviceKind.stylus) {
+          FocusManager.instance.primaryFocus?.unfocus();
+        }
+      },
+      child: app.loadingMessages && app.messages.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : app.messages.isEmpty
+          ? _EmptyState(
+              name: app.username,
+              workspace: app.activeWorkspace,
+              selected: _taskMode,
+              onPick: (mode) => setState(() => _taskMode = mode),
+              mobileComposer: mobileLanding ? composer : null,
+            )
+          : _messageList(context, app),
+    );
+    final editorCompact = pageWidth < 900;
+    final pageBody = _codeSession == null
+        ? Expanded(child: messageArea)
+        : editorCompact
+        ? Expanded(
+            child: CodeEditorPane(
+              value: _codeSession!.value,
+              originalValue: _codeSession!.originalValue,
+              language: _codeSession!.language,
+              indentSize: app.codeEditorIndentSize,
+              editorTheme: app.codeEditorTheme,
+              compact: true,
+              onChanged: (value) =>
+                  _updateCodeSession(_codeSession!.copyWith(value: value)),
+              onLanguageChanged: (language) => _updateCodeSession(
+                _codeSession!.copyWith(language: language),
+              ),
+              onClose: _closeCodeEditor,
+            ),
+          )
+        : Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final maxEditor = constraints.maxWidth * .68;
+                final minEditor = 360.0;
+                final editorWidth = (constraints.maxWidth * _editorWidth).clamp(
+                  minEditor,
+                  maxEditor,
+                );
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Expanded(child: messageArea),
+                          if (!mobileLanding) composer,
+                        ],
+                      ),
+                    ),
+                    MouseRegion(
+                      cursor: SystemMouseCursors.resizeColumn,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onHorizontalDragUpdate: (details) {
+                          final next =
+                              (editorWidth - details.delta.dx) /
+                              constraints.maxWidth;
+                          _setStatePreservingChatScroll(
+                            () => _editorWidth = next.clamp(.32, .68),
+                          );
+                        },
+                        child: SizedBox(
+                          width: 9,
+                          child: Center(
+                            child: Container(
+                              width: 1,
+                              color: context.n.divider,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: editorWidth,
+                      child: CodeEditorPane(
+                        value: _codeSession!.value,
+                        originalValue: _codeSession!.originalValue,
+                        language: _codeSession!.language,
+                        indentSize: app.codeEditorIndentSize,
+                        editorTheme: app.codeEditorTheme,
+                        onChanged: (value) => _updateCodeSession(
+                          _codeSession!.copyWith(value: value),
+                        ),
+                        onLanguageChanged: (language) => _updateCodeSession(
+                          _codeSession!.copyWith(language: language),
+                        ),
+                        onClose: _closeCodeEditor,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          );
     final content = Column(
       children: [
         if (!widget.embedded)
@@ -237,35 +459,14 @@ class _ChatPageState extends State<ChatPage> {
           ),
         if (embeddedHeader)
           _EmbeddedChatHeader(
-            title: app.activeConversation?.title ?? '新对话',
+            title: widget.embeddedTitle ?? app.activeConversation?.title ?? '新对话',
             bindingLabel: bindingLabel,
             onMemory: () => showMemorySheet(context),
             onActions: () => showAgentActionSheet(context),
+            onBack: widget.onExitEmbedded,
           ),
-        Expanded(
-          // Touching the message area dismisses the software keyboard.
-          child: Listener(
-            behavior: HitTestBehavior.translucent,
-            onPointerDown: (event) {
-              if (event.kind == PointerDeviceKind.touch ||
-                  event.kind == PointerDeviceKind.stylus) {
-                FocusManager.instance.primaryFocus?.unfocus();
-              }
-            },
-            child: app.loadingMessages && app.messages.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : app.messages.isEmpty
-                ? _EmptyState(
-                    name: app.username,
-                    workspace: app.activeWorkspace,
-                    selected: _taskMode,
-                    onPick: (mode) => setState(() => _taskMode = mode),
-                    mobileComposer: mobileLanding ? composer : null,
-                  )
-                : _messageList(context, app),
-          ),
-        ),
-        if (!mobileLanding) composer,
+        pageBody,
+        if (_codeSession == null && !mobileLanding) composer,
       ],
     );
 
@@ -311,7 +512,26 @@ class _ChatPageState extends State<ChatPage> {
             final Widget child;
             switch (m.role) {
               case MessageRole.user:
-                child = UserBubble(text: m.text, markdown: m.markdown);
+                child = UserBubble(
+                  text: m.text,
+                  markdown: m.markdown,
+                  codeBlockPrefix: m.id,
+                  codeOverrideFor: (blockId) => _codeDrafts[blockId]?.value,
+                  onOpenCodeEditorWithId: _openCodeEditor,
+                  codeOverrideVersion: _codeDraftVersion,
+                  onCodeChangedWithId: (blockId, code, language) {
+                    final existing = _codeDrafts[blockId];
+                    if (existing == null) return;
+                    _updateCodeSession(
+                      _CodeSession(
+                        id: blockId,
+                        value: code,
+                        originalValue: existing.originalValue,
+                        language: normalizeCodeLanguage(language),
+                      ),
+                    );
+                  },
+                );
               case MessageRole.tool:
                 child = Align(
                   alignment: Alignment.centerLeft,
@@ -329,6 +549,23 @@ class _ChatPageState extends State<ChatPage> {
                   onRegenerate: () {
                     _resumeFollowing();
                     app.regenerate(m.id);
+                  },
+                  onOpenCodeEditor: (code, language) =>
+                      _openCodeEditor('${m.id}:0', code, language),
+                  codeOverrideFor: (blockId) => _codeDrafts[blockId]?.value,
+                  onOpenCodeEditorWithId: _openCodeEditor,
+                  codeOverrideVersion: _codeDraftVersion,
+                  onCodeChangedWithId: (blockId, code, language) {
+                    final existing = _codeDrafts[blockId];
+                    if (existing == null) return;
+                    _updateCodeSession(
+                      _CodeSession(
+                        id: blockId,
+                        value: code,
+                        originalValue: existing.originalValue,
+                        language: normalizeCodeLanguage(language),
+                      ),
+                    );
                   },
                 );
             }
@@ -351,11 +588,13 @@ class _EmbeddedChatHeader extends StatelessWidget {
     required this.onMemory,
     required this.onActions,
     this.bindingLabel,
+    this.onBack,
   });
   final String title;
   final String? bindingLabel;
   final VoidCallback onMemory;
   final VoidCallback onActions;
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -366,6 +605,12 @@ class _EmbeddedChatHeader extends StatelessWidget {
     ),
     child: Row(
       children: [
+        if (onBack != null)
+          IconButton(
+            tooltip: '返回项目',
+            onPressed: onBack,
+            icon: const Icon(LucideIcons.arrowLeft, size: 18),
+          ),
         Expanded(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,

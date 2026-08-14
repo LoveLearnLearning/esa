@@ -14,6 +14,7 @@ import '../models/models.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 import 'esa_markdown.dart';
+import 'latex_formula_picker.dart';
 
 class Composer extends StatefulWidget {
   const Composer({
@@ -26,6 +27,7 @@ class Composer extends StatefulWidget {
     this.onUploadAttachment,
     this.onRemoveAttachment,
     this.onSendWithAttachment,
+    this.onOpenCodeEditor,
   });
 
   final bool busy;
@@ -50,18 +52,44 @@ class Composer extends StatefulWidget {
     DocumentAttachment attachment,
   )?
   onSendWithAttachment;
+  final void Function(String blockId, String code, String language)?
+  onOpenCodeEditor;
 
   @override
-  State<Composer> createState() => _ComposerState();
+  State<Composer> createState() => ComposerState();
 }
 
-class _ComposerState extends State<Composer> {
+class ComposerState extends State<Composer> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
   DocumentAttachment? _attachment;
   String? _attachmentConversationId;
   bool _uploadingAttachment = false;
   bool _markdownMode = false;
+
+  List<_ComposerCodeBlock> get _codeBlocks =>
+      _parseComposerCodeBlocks(_controller.text);
+
+  void replaceCodeBlock(String blockId, String code, {String? language}) {
+    final index = int.tryParse(blockId.split(':').last);
+    final blocks = _codeBlocks;
+    if (index == null || index < 0 || index >= blocks.length) return;
+    final block = blocks[index];
+    final normalized = code.trimRight();
+    final replacement = normalized.isEmpty ? '' : '$normalized\n';
+    final nextText = _controller.text.replaceRange(
+      block.contentStart,
+      block.contentEnd,
+      replacement,
+    );
+    _controller.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(
+        offset: block.contentStart + replacement.length,
+      ),
+    );
+    setState(() => _markdownMode = true);
+  }
 
   @override
   void dispose() {
@@ -145,6 +173,9 @@ class _ComposerState extends State<Composer> {
       height: 1.45,
     );
 
+    final codeBlocks = _codeBlocks;
+    final showMarkdownPreview =
+        _controller.text.isNotEmpty && (_markdownMode || codeBlocks.isNotEmpty);
     return Container(
       padding: EdgeInsets.fromLTRB(narrow ? 0 : 18, 12, narrow ? 0 : 18, 14),
       child: Center(
@@ -172,11 +203,15 @@ class _ComposerState extends State<Composer> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (_markdownMode && _controller.text.isNotEmpty) ...[
+                    if (showMarkdownPreview) ...[
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxHeight: 180),
                         child: SingleChildScrollView(
-                          child: EsaMarkdown(data: _controller.text),
+                          child: EsaMarkdown(
+                            data: _controller.text,
+                            codeBlockPrefix: 'composer',
+                            onOpenCodeEditorWithId: widget.onOpenCodeEditor,
+                          ),
                         ),
                       ),
                       Padding(
@@ -189,6 +224,7 @@ class _ComposerState extends State<Composer> {
                       child: ListenableBuilder(
                         listenable: _focus,
                         builder: (context, _) => TextField(
+                          key: const ValueKey('composer-input'),
                           controller: _controller,
                           focusNode: _focus,
                           minLines: narrow ? 1 : 2,
@@ -493,17 +529,45 @@ class _ComposerState extends State<Composer> {
 
   Widget _formulaButton(BuildContext context) => Tooltip(
     message: '插入公式',
-    child: SizedBox(
-      width: 32,
-      height: 32,
-      child: Center(
-        child: Text(
-          'ƒ₍ₓ₎',
-          style: TextStyle(fontSize: 17, color: context.n.n600),
+    child: InkWell(
+      onTap: widget.busy ? null : _openFormulaPicker,
+      customBorder: const CircleBorder(),
+      child: SizedBox(
+        width: 32,
+        height: 32,
+        child: Center(
+          child: Text(
+            'ƒ₍ₓ₎',
+            style: TextStyle(fontSize: 17, color: context.n.n600),
+          ),
         ),
       ),
     ),
   );
+
+  Future<void> _openFormulaPicker() async {
+    final beforeSelection = _controller.selection;
+    final result = await showLatexFormulaPicker(context);
+    if (result == null || !mounted) return;
+
+    final text = _controller.text;
+    final selection = beforeSelection.isValid
+        ? beforeSelection
+        : TextSelection.collapsed(offset: text.length);
+    final start = selection.start.clamp(0, text.length);
+    final end = selection.end.clamp(start, text.length);
+    final prefix = result.display ? '\n\$\$\n' : '\$';
+    final suffix = result.display ? '\n\$\$\n' : '\$';
+    final insertion = '$prefix${result.latex}$suffix';
+    final nextText = text.replaceRange(start, end, insertion);
+    final cursor = start + prefix.length + result.cursorOffset;
+    _controller.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: cursor),
+    );
+    setState(() => _markdownMode = true);
+    _focus.requestFocus();
+  }
 
   Widget _imageButton(BuildContext context) => Tooltip(
     message: '添加图片',
@@ -513,4 +577,43 @@ class _ComposerState extends State<Composer> {
       child: Icon(LucideIcons.imagePlus, size: 18, color: context.n.n600),
     ),
   );
+}
+
+class _ComposerCodeBlock {
+  const _ComposerCodeBlock({
+    required this.contentStart,
+    required this.contentEnd,
+  });
+
+  final int contentStart;
+  final int contentEnd;
+}
+
+List<_ComposerCodeBlock> _parseComposerCodeBlocks(String source) {
+  final blocks = <_ComposerCodeBlock>[];
+  final lines = RegExp(r'.*(?:\n|$)').allMatches(source).toList();
+  String? marker;
+  var contentStart = 0;
+  for (final match in lines) {
+    final raw = match.group(0) ?? '';
+    if (raw.isEmpty) continue;
+    final line = raw.endsWith('\n') ? raw.substring(0, raw.length - 1) : raw;
+    final trimmed = line.trimLeft();
+    if (marker == null) {
+      final opening = RegExp(r'^(`{3,}|~{3,})').firstMatch(trimmed);
+      if (opening == null) continue;
+      marker = opening.group(1)!;
+      contentStart = match.end;
+      continue;
+    }
+    final closing = RegExp(
+      '^${RegExp.escape(marker[0])}{${marker.length},}\\s*\$',
+    );
+    if (!closing.hasMatch(trimmed)) continue;
+    blocks.add(
+      _ComposerCodeBlock(contentStart: contentStart, contentEnd: match.start),
+    );
+    marker = null;
+  }
+  return blocks;
 }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from contextlib import closing
 from datetime import datetime, timezone
@@ -65,6 +66,7 @@ class ChatStore(BaseSQLiteStore):
                     role TEXT NOT NULL,
                     content TEXT NOT NULL,
                     name TEXT,
+                    attachments_json TEXT NOT NULL DEFAULT '[]',
                     is_visible INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(conversation_id)
@@ -114,6 +116,11 @@ class ChatStore(BaseSQLiteStore):
                     ALTER TABLE messages
                     ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1
                     """
+                )
+            if "attachments_json" not in message_columns:
+                connection.execute(
+                    "ALTER TABLE messages ADD COLUMN attachments_json "
+                    "TEXT NOT NULL DEFAULT '[]'"
                 )
 
             connection.execute(
@@ -426,10 +433,11 @@ class ChatStore(BaseSQLiteStore):
                     role,
                     content,
                     name,
+                    attachments_json,
                     is_visible,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -437,6 +445,7 @@ class ChatStore(BaseSQLiteStore):
                         message["role"],
                         message["content"],
                         message.get("name"),
+                        json.dumps(message.get("attachments", []), ensure_ascii=False),
                         1 if message.get("is_visible", True) else 0,
                         current_time,
                     )
@@ -455,7 +464,7 @@ class ChatStore(BaseSQLiteStore):
     def get_history(self, conversation_id: str) -> list[dict]:
         rows = self.query_all(
             """
-            SELECT id, role, content, name, created_at
+            SELECT id, role, content, name, attachments_json, created_at
             FROM messages
             WHERE conversation_id = ?
               AND is_visible = 1
@@ -463,7 +472,92 @@ class ChatStore(BaseSQLiteStore):
             """,
             (conversation_id,),
         )
-        return [dict(row) for row in rows]
+        history = []
+        for row in rows:
+            message = dict(row)
+            try:
+                message["attachments"] = json.loads(
+                    message.pop("attachments_json") or "[]"
+                )
+            except (TypeError, json.JSONDecodeError):
+                message["attachments"] = []
+            history.append(message)
+        return history
+
+    def latest_message_id(self, conversation_id: str) -> int | None:
+        row = self.query_one(
+            "SELECT MAX(id) AS id FROM messages WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        return int(row["id"]) if row is not None and row["id"] is not None else None
+
+    def revise_user_message(
+        self,
+        conversation_id: str,
+        message_id: int,
+        content: str,
+        attachments: list[dict],
+    ) -> tuple[str | None, list[dict]]:
+        """Replace one user turn and remove every later turn atomically."""
+        current_time = self._now()
+        with closing(self._connect()) as connection:
+            connection.isolation_level = None
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                target = connection.execute(
+                    """
+                    SELECT id, role FROM messages
+                    WHERE conversation_id = ? AND id = ?
+                    """,
+                    (conversation_id, message_id),
+                ).fetchone()
+                if target is None or target["role"] != "user":
+                    raise ValueError("只能修改当前对话中的用户消息")
+                rows = connection.execute(
+                    """
+                    SELECT role, content, name FROM messages
+                    WHERE conversation_id = ? AND id < ?
+                    ORDER BY id ASC
+                    """,
+                    (conversation_id, message_id),
+                ).fetchall()
+                history = []
+                for row in rows:
+                    message = {"role": row["role"], "content": row["content"]}
+                    if row["name"] is not None:
+                        message["name"] = row["name"]
+                    history.append(message)
+                connection.execute(
+                    "DELETE FROM messages WHERE conversation_id = ? AND id > ?",
+                    (conversation_id, message_id),
+                )
+                connection.execute(
+                    """
+                    UPDATE messages
+                    SET content = ?, attachments_json = ?, created_at = ?
+                    WHERE conversation_id = ? AND id = ?
+                    """,
+                    (
+                        content,
+                        json.dumps(attachments, ensure_ascii=False),
+                        current_time,
+                        conversation_id,
+                        message_id,
+                    ),
+                )
+                connection.execute(
+                    "DELETE FROM conversation_summaries WHERE conversation_id = ?",
+                    (conversation_id,),
+                )
+                connection.execute(
+                    "UPDATE conversations SET updated_at = ? WHERE conversation_id = ?",
+                    (current_time, conversation_id),
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        return None, history
 
     def get_model_messages(self, conversation_id: str) -> list[dict]:
         rows = self.query_all(
@@ -590,10 +684,11 @@ class ChatStore(BaseSQLiteStore):
                     role,
                     content,
                     name,
+                    attachments_json,
                     is_visible,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -601,6 +696,7 @@ class ChatStore(BaseSQLiteStore):
                         message["role"],
                         message["content"],
                         message.get("name"),
+                        json.dumps(message.get("attachments", []), ensure_ascii=False),
                         1 if message.get("is_visible", True) else 0,
                         current_time,
                     )

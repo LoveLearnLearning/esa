@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../state/app_state.dart';
+import '../models/code_editor_settings.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 import 'esa_segmented.dart';
@@ -343,6 +344,54 @@ class _ProfileSheetState extends State<_ProfileSheet> {
                 EsaSegment(ThemeMode.light, '浅色'),
                 EsaSegment(ThemeMode.dark, '深色'),
               ],
+            ),
+          ),
+        ),
+        _divider(context),
+        _settingRow(
+          context,
+          title: '代码缩进',
+          sub: 'Tab 和自动缩进使用的空格数',
+          control: SizedBox(
+            width: 180,
+            child: EsaSegmented<int>(
+              key: const ValueKey('code-editor-indent-setting'),
+              value: app.codeEditorIndentSize,
+              height: 36,
+              onChanged: app.setCodeEditorIndentSize,
+              segments: const [
+                EsaSegment(2, '2'),
+                EsaSegment(4, '4'),
+                EsaSegment(8, '8'),
+              ],
+            ),
+          ),
+        ),
+        _divider(context),
+        _settingRow(
+          context,
+          title: '代码主题',
+          sub: '独立设置代码编辑区域配色',
+          control: SizedBox(
+            width: 180,
+            child: DropdownButtonFormField<String>(
+              key: const ValueKey('code-editor-theme-setting'),
+              initialValue: app.codeEditorTheme,
+              isExpanded: true,
+              isDense: true,
+              decoration: const InputDecoration(
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              items: [
+                for (final entry in codeEditorThemeLabels.entries)
+                  DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+              ],
+              onChanged: (value) {
+                if (value != null) app.setCodeEditorTheme(value);
+              },
             ),
           ),
         ),

@@ -49,6 +49,45 @@ class KnowledgeMapService:
             levels.setdefault(node_id, fallback)
         return levels
 
+    @staticmethod
+    def _course_node_id(course: str) -> str:
+        return f"__course__:{course}"
+
+    @staticmethod
+    def _component_roots(node_ids: set[str], edges: list[dict]) -> list[str]:
+        """Return every DAG root, plus one representative for cyclic components."""
+        incoming = {node_id: 0 for node_id in node_ids}
+        adjacency: dict[str, set[str]] = {
+            node_id: set() for node_id in node_ids
+        }
+        for edge in edges:
+            source, target = edge["from"], edge["to"]
+            if source not in node_ids or target not in node_ids:
+                continue
+            incoming[target] += 1
+            adjacency[source].add(target)
+            adjacency[target].add(source)
+
+        roots: list[str] = []
+        remaining = set(node_ids)
+        while remaining:
+            start = min(remaining)
+            component = {start}
+            queue = deque([start])
+            while queue:
+                current = queue.popleft()
+                for neighbor in adjacency[current]:
+                    if neighbor in component:
+                        continue
+                    component.add(neighbor)
+                    queue.append(neighbor)
+            remaining.difference_update(component)
+            component_roots = sorted(
+                node_id for node_id in component if incoming[node_id] == 0
+            )
+            roots.extend(component_roots or [min(component)])
+        return roots
+
     def get_courses(
         self, *, user_name: str, course_names: list[str] | None = None
     ) -> dict:
@@ -114,7 +153,17 @@ class KnowledgeMapService:
             for edge in edges
             if edge["from"] in node_ids and edge["to"] in node_ids
         ]
-        levels = self._levels(node_ids, edges)
+        course_node_id = self._course_node_id(course)
+        course_edges = [
+            {
+                "from": course_node_id,
+                "to": root_id,
+                "type": "course_root",
+            }
+            for root_id in self._component_roots(node_ids, edges)
+        ]
+        edges = [*course_edges, *edges]
+        levels = self._levels({*node_ids, course_node_id}, edges)
         nodes = []
         for node_id in node_ids:
             point = all_points[node_id]
@@ -128,6 +177,7 @@ class KnowledgeMapService:
             nodes.append(
                 {
                     "id": node_id,
+                    "node_type": "knowledge_point",
                     "name": point["name"],
                     "course": point["course"],
                     "category": point["category"],
@@ -145,7 +195,34 @@ class KnowledgeMapService:
                     "level": levels[node_id],
                 }
             )
-        nodes.sort(key=lambda item: (item["level"], item["name"]))
+        nodes.append(
+            {
+                "id": course_node_id,
+                "node_type": "course",
+                "name": course,
+                "course": course,
+                "category": "course",
+                "weight": 0.0,
+                "external": False,
+                "has_record": False,
+                "mastery_level": None,
+                "status": "course",
+                "retention": None,
+                "evidence_confidence": None,
+                "needs_review": False,
+                "practice_count": 0,
+                "evidence_count": 0,
+                "weak_prerequisite_count": 0,
+                "level": levels[course_node_id],
+            }
+        )
+        nodes.sort(
+            key=lambda item: (
+                item["level"],
+                item["node_type"] != "course",
+                item["name"],
+            )
+        )
         return {"course": course, "nodes": nodes, "edges": edges}
 
     def get_point_detail(self, *, user_name: str, kp_id: str) -> dict | None:

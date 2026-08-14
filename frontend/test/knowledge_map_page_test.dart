@@ -52,6 +52,22 @@ class _KnowledgeApi extends ApiClient {
         course: '数据结构',
         nodes: [
           KnowledgeMapNode(
+            id: 'course-data-structures',
+            name: '数据结构',
+            course: '数据结构',
+            category: 'course',
+            weight: 0,
+            external: false,
+            hasRecord: false,
+            status: 'course',
+            needsReview: false,
+            practiceCount: 0,
+            evidenceCount: 0,
+            weakPrerequisiteCount: 0,
+            level: 0,
+            nodeType: 'course',
+          ),
+          KnowledgeMapNode(
             id: 'recursion',
             name: '递归',
             course: '数据结构',
@@ -64,7 +80,7 @@ class _KnowledgeApi extends ApiClient {
             practiceCount: 0,
             evidenceCount: 0,
             weakPrerequisiteCount: 0,
-            level: 0,
+            level: 1,
           ),
           KnowledgeMapNode(
             id: 'tree',
@@ -82,10 +98,15 @@ class _KnowledgeApi extends ApiClient {
             practiceCount: 3,
             evidenceCount: 3,
             weakPrerequisiteCount: 1,
-            level: 1,
+            level: 2,
           ),
         ],
         edges: [
+          KnowledgeMapEdge(
+            from: 'course-data-structures',
+            to: 'recursion',
+            type: 'course_root',
+          ),
           KnowledgeMapEdge(from: 'recursion', to: 'tree', type: 'prerequisite'),
         ],
       );
@@ -230,12 +251,44 @@ Future<void> _pumpPage(WidgetTester tester, ApiClient api) async {
   await tester.pumpAndSettle();
 }
 
+void _useDesktopViewport(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1440, 900);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('old knowledge-map payloads gain a connected course node', () {
+    final data = KnowledgeMapData.fromJson({
+      'course': '数据结构',
+      'nodes': [
+        {'id': 'linear', 'name': '线性表', 'level': 0},
+        {'id': 'tree', 'name': '树', 'level': 0},
+        {'id': 'binary-tree', 'name': '二叉树', 'level': 1},
+      ],
+      'edges': [
+        {'from': 'tree', 'to': 'binary-tree', 'type': 'prerequisite'},
+      ],
+    });
+
+    final courseNode = data.nodes.singleWhere((node) => node.isCourse);
+    expect(courseNode.name, '数据结构');
+    expect(
+      data.edges
+          .where((edge) => edge.type == 'course_root')
+          .map((edge) => edge.to)
+          .toSet(),
+      {'linear', 'tree'},
+    );
+  });
 
   testWidgets('loads graph, filters problems, and opens point detail', (
     tester,
   ) async {
+    _useDesktopViewport(tester);
     final api = _KnowledgeApi()
       ..sessionId = 'session'
       ..userId = 'user'
@@ -253,7 +306,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('数据结构'), findsOneWidget);
+    expect(find.text('数据结构'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey('knowledge-graph-node-course-data-structures')),
+      findsOneWidget,
+    );
     expect(find.text('递归'), findsOneWidget);
     expect(find.text('二叉树遍历'), findsOneWidget);
 
@@ -269,7 +326,23 @@ void main() {
     expect(find.text('让 ESA 讲解'), findsOneWidget);
   });
 
+  testWidgets('course node opens a course overview instead of point details', (
+    tester,
+  ) async {
+    await _pumpPage(tester, _KnowledgeApi());
+
+    await tester.tap(
+      find.byKey(const ValueKey('knowledge-graph-node-course-data-structures')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('课程概览'), findsOneWidget);
+    expect(find.text('2'), findsWidgets);
+    expect(find.text('知识子树'), findsOneWidget);
+  });
+
   testWidgets('从知识点开始学习会建立独立新对话', (tester) async {
+    _useDesktopViewport(tester);
     final api = _KnowledgeApi()
       ..sessionId = 'session'
       ..userId = 'user'

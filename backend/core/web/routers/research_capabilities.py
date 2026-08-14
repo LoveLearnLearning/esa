@@ -17,6 +17,7 @@ from backend.core.web.deps import get_current_session
 from backend.core.web.schemas import (
     ResearchAnalysisJobCreateRequest,
     ResearchDocumentCreateRequest,
+    ResearchDocumentUpdateRequest,
     ResearchWritingJobCreateRequest,
 )
 from backend.core.workspaces import WorkspaceAccessPolicy
@@ -94,6 +95,25 @@ def get_document(
 ) -> dict:
     store: ResearchWritingStore = request.app.state.research_writing_store
     document = store.get_document(document_id, session.user_id)
+    if document is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "科研文档不存在")
+    return document
+
+
+@router.patch("/documents/{document_id}")
+def update_document(
+    document_id: str,
+    body: ResearchDocumentUpdateRequest,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    store: ResearchWritingStore = request.app.state.research_writing_store
+    document = store.update_document(
+        document_id,
+        session.user_id,
+        title=body.title.strip() if body.title is not None else None,
+        content=body.content,
+    )
     if document is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "科研文档不存在")
     return document

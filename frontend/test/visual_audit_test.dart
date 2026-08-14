@@ -102,6 +102,22 @@ class _VisualApi extends ApiClient {
       'learning',
     ];
     final nodes = [
+      KnowledgeMapNode(
+        id: 'course-calculus',
+        name: course,
+        course: course,
+        category: 'course',
+        weight: 0,
+        external: false,
+        hasRecord: false,
+        status: 'course',
+        needsReview: false,
+        practiceCount: 0,
+        evidenceCount: 0,
+        weakPrerequisiteCount: 0,
+        level: 0,
+        nodeType: 'course',
+      ),
       for (var index = 0; index < names.length; index++)
         KnowledgeMapNode(
           id: 'node-$index',
@@ -117,16 +133,21 @@ class _VisualApi extends ApiClient {
           practiceCount: 8,
           evidenceCount: 6,
           weakPrerequisiteCount: 0,
-          level: index == 0 ? 0 : 1,
+          level: index == 0 ? 1 : 2,
         ),
     ];
     return KnowledgeMapData(
       course: course,
       nodes: nodes,
       edges: [
-        for (var index = 1; index < nodes.length; index++)
+        const KnowledgeMapEdge(
+          from: 'course-calculus',
+          to: 'node-0',
+          type: 'course_root',
+        ),
+        for (var index = 2; index < nodes.length; index++)
           KnowledgeMapEdge(
-            from: nodes.first.id,
+            from: 'node-0',
             to: nodes[index].id,
             type: 'related',
           ),

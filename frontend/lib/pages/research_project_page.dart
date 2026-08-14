@@ -9,6 +9,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import '../widgets/esa_markdown.dart';
 
 class ResearchProjectPage extends StatefulWidget {
   const ResearchProjectPage({
@@ -17,12 +18,14 @@ class ResearchProjectPage extends StatefulWidget {
     required this.onOpenChat,
     this.embedded = false,
     this.onBack,
+    this.onProjectUpdated,
   });
 
   final ResearchProject project;
   final VoidCallback onOpenChat;
   final bool embedded;
   final VoidCallback? onBack;
+  final ValueChanged<ResearchProject>? onProjectUpdated;
 
   @override
   State<ResearchProjectPage> createState() => _ResearchProjectPageState();
@@ -31,7 +34,9 @@ class ResearchProjectPage extends StatefulWidget {
 class _ResearchProjectPageState extends State<ResearchProjectPage> {
   final _frontierQuery = TextEditingController();
   final _writingInstruction = TextEditingController();
-  final _writingSource = TextEditingController();
+  final _documentContent = TextEditingController();
+  final _projectName = TextEditingController();
+  final _projectDescription = TextEditingController();
   final _groupColumn = TextEditingController();
   final _metricColumn = TextEditingController();
   final _textColumn = TextEditingController();
@@ -43,10 +48,14 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
   ResearchDataset? _selectedDataset;
   ResearchAnalysisJob? _analysisJob;
   ResearchProjectProfile? _projectProfile;
+  late ResearchProject _project;
   String _writingOperation = 'outline';
   String _analysisType = 'descriptive';
   bool _loading = true;
   bool _submitting = false;
+  bool _documentSaving = false;
+  bool _documentDirty = false;
+  bool _projectSaving = false;
   String? _error;
 
   ApiClient get _api => AppScope.of(context).api;
@@ -54,14 +63,30 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
   @override
   void initState() {
     super.initState();
+    _project = widget.project;
+    _projectName.text = _project.name;
+    _projectDescription.text = _project.description;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void didUpdateWidget(covariant ResearchProjectPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.project.id != widget.project.id ||
+        oldWidget.project.updatedAt != widget.project.updatedAt) {
+      _project = widget.project;
+      _projectName.text = _project.name;
+      _projectDescription.text = _project.description;
+    }
   }
 
   @override
   void dispose() {
     _frontierQuery.dispose();
     _writingInstruction.dispose();
-    _writingSource.dispose();
+    _documentContent.dispose();
+    _projectName.dispose();
+    _projectDescription.dispose();
     _groupColumn.dispose();
     _metricColumn.dispose();
     _textColumn.dispose();
@@ -72,10 +97,10 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
   Future<void> _load() async {
     try {
       final values = await Future.wait([
-        _api.listFrontierJobs(widget.project.id),
-        _api.listResearchDocuments(widget.project.id),
-        _api.listResearchDatasets(widget.project.id),
-        _api.getResearchProjectProfile(widget.project.id),
+        _api.listFrontierJobs(_project.id),
+        _api.listResearchDocuments(_project.id),
+        _api.listResearchDatasets(_project.id),
+        _api.getResearchProjectProfile(_project.id),
       ]);
       if (!mounted) return;
       setState(() {
@@ -85,6 +110,8 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
         _projectProfile = values[3] as ResearchProjectProfile;
         _profileInstructions.text = _projectProfile!.instructions;
         _selectedDocument = _documents.firstOrNull;
+        _documentContent.text = _selectedDocument?.content ?? '';
+        _documentDirty = false;
         _selectedDataset = _datasets.firstOrNull;
         _loading = false;
         _error = null;
@@ -110,7 +137,7 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
     if (query.length < 2 || _submitting) return;
     setState(() => _submitting = true);
     try {
-      final job = await _api.createFrontierJob(widget.project.id, query);
+      final job = await _api.createFrontierJob(_project.id, query);
       if (!mounted) return;
       setState(() {
         _frontierJobs = [job, ..._frontierJobs];
@@ -191,7 +218,7 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
     if (accepted == true && mounted) {
       try {
         final document = await _api.createResearchDocument(
-          projectId: widget.project.id,
+          projectId: _project.id,
           title: title.text.trim(),
           type: type,
         );
@@ -199,6 +226,8 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
           setState(() {
             _documents = [document, ..._documents];
             _selectedDocument = document;
+            _documentContent.text = document.content;
+            _documentDirty = false;
           });
         }
       } on ApiException catch (error) {
@@ -217,7 +246,7 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
         documentId: document.id,
         operation: _writingOperation,
         instruction: _writingInstruction.text.trim(),
-        sourceText: _writingSource.text.trim(),
+        sourceText: _documentContent.text.trim(),
       );
       for (var attempt = 0; attempt < 90 && mounted; attempt++) {
         await Future<void>.delayed(const Duration(seconds: 2));
@@ -230,7 +259,8 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
         if (!mounted) return;
         setState(() {
           _selectedDocument = refreshed;
-          _writingSource.text = refreshed.content;
+          _documentContent.text = refreshed.content;
+          _documentDirty = false;
           _documents = [
             refreshed,
             ..._documents.where((item) => item.id != refreshed.id),
@@ -256,7 +286,7 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
     setState(() => _submitting = true);
     try {
       final dataset = await _api.uploadResearchDataset(
-        projectId: widget.project.id,
+        projectId: _project.id,
         name: file.name,
         filename: file.name,
         bytes: file.bytes!,
@@ -309,7 +339,7 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
   }
 
   Future<void> _openChat() async {
-    await AppScope.of(context).openResearchProject(widget.project);
+    await AppScope.of(context).openResearchProject(_project);
     if (!mounted) return;
     if (!widget.embedded) Navigator.pop(context);
     widget.onOpenChat();
@@ -321,7 +351,7 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
     setState(() => _submitting = true);
     try {
       final saved = await _api.saveResearchProjectProfile(
-        widget.project.id,
+        _project.id,
         instructions: _profileInstructions.text.trim(),
         expectedRevision: current.revision,
       );
@@ -336,6 +366,100 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
       ).showSnackBar(const SnackBar(content: Text('项目画像已保存')));
     } on ApiException catch (error) {
       _showError(error.statusCode == 409 ? '项目画像已被更新，请刷新后重试。' : error.detail);
+    }
+  }
+
+  Future<void> _saveDocument() async {
+    final document = _selectedDocument;
+    if (document == null || _documentSaving || !_documentDirty) return;
+    setState(() => _documentSaving = true);
+    try {
+      final saved = await _api.updateResearchDocument(
+        documentId: document.id,
+        content: _documentContent.text,
+      );
+      if (!mounted) return;
+      setState(() {
+        _selectedDocument = saved;
+        _documents = [
+          saved,
+          ..._documents.where((item) => item.id != saved.id),
+        ];
+        _documentDirty = false;
+        _documentSaving = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('文档已保存')));
+    } on ApiException catch (error) {
+      _showError(error.detail);
+    } finally {
+      if (mounted && _documentSaving) {
+        setState(() => _documentSaving = false);
+      }
+    }
+  }
+
+  Future<void> _saveProjectSettings() async {
+    final name = _projectName.text.trim();
+    if (name.isEmpty || _projectSaving) return;
+    setState(() => _projectSaving = true);
+    try {
+      final saved = await AppScope.of(context).updateResearchProject(
+        _project.id,
+        name: name,
+        description: _projectDescription.text,
+      );
+      if (!mounted) return;
+      setState(() {
+        _project = saved;
+        _projectSaving = false;
+      });
+      widget.onProjectUpdated?.call(saved);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('项目设置已保存')));
+    } on ApiException catch (error) {
+      _showError(error.detail);
+    } finally {
+      if (mounted && _projectSaving) {
+        setState(() => _projectSaving = false);
+      }
+    }
+  }
+
+  Future<void> _archiveProject() async {
+    if (_projectSaving) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('归档科研项目'),
+        content: Text('归档后“${_project.name}”将不能再创建项目对话或任务。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(LucideIcons.archive, size: 16),
+            label: const Text('归档项目'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _projectSaving = true);
+    try {
+      await AppScope.of(context).archiveResearchProject(_project.id);
+      if (!mounted) return;
+      widget.onBack?.call();
+    } on ApiException catch (error) {
+      _showError(error.detail);
+    } finally {
+      if (mounted && _projectSaving) {
+        setState(() => _projectSaving = false);
+      }
     }
   }
 
@@ -409,11 +533,11 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.project.name, style: context.texts.headlineSmall),
+                  Text(_project.name, style: context.texts.headlineSmall),
                   Text(
-                    widget.project.description.isEmpty
+                    _project.description.isEmpty
                         ? '独立科研项目工作空间'
-                        : widget.project.description,
+                        : _project.description,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: context.texts.bodySmall,
@@ -460,11 +584,11 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
         _ResearchPanel(
           icon: LucideIcons.target,
           title: '项目目标',
-          trailing: _ProjectProgress(project: widget.project),
+          trailing: _ProjectProgress(project: _project),
           child: Text(
-            widget.project.description.isEmpty
+            _project.description.isEmpty
                 ? '暂无项目描述'
-                : widget.project.description,
+                : _project.description,
             style: context.texts.bodyMedium?.copyWith(color: context.n.n600),
           ),
         ),
@@ -488,12 +612,12 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _Tag(text: '研究主题  ${widget.project.name}'),
+              _Tag(text: '研究主题  ${_project.name}'),
               _Tag(
-                text: '项目状态  ${_researchStatusLabel(widget.project.status)}',
+                text: '项目状态  ${_researchStatusLabel(_project.status)}',
               ),
               _Tag(
-                text: '最近更新  ${_researchDateLabel(widget.project.updatedAt)}',
+                text: '最近更新  ${_researchDateLabel(_project.updatedAt)}',
               ),
             ],
           ),
@@ -544,42 +668,131 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
     children: [
       Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 680),
-          child: _ResearchPanel(
-            icon: LucideIcons.settings,
-            title: '项目设置',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('项目状态：${widget.project.status}'),
-                Text('项目名称：${widget.project.name}'),
-                const SizedBox(height: 20),
-                Text('项目画像', style: context.texts.titleMedium),
-                const SizedBox(height: 8),
-                TextField(
-                  key: const ValueKey('research-project-profile'),
-                  controller: _profileInstructions,
-                  minLines: 5,
-                  maxLines: 10,
-                  maxLength: 12000,
-                  decoration: const InputDecoration(
-                    labelText: '研究背景、术语、方法约束与写作偏好',
-                    alignLabelWithHint: true,
-                  ),
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _ResearchPanel(
+                icon: LucideIcons.settings2,
+                title: '项目资料',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Text('当前状态', style: context.texts.bodySmall),
+                        const SizedBox(width: 10),
+                        _Tag(text: _researchStatusLabel(_project.status)),
+                        const Spacer(),
+                        Text(
+                          '更新于 ${_researchDateLabel(_project.updatedAt)}',
+                          style: context.texts.bodySmall,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    TextField(
+                      key: const ValueKey('research-project-settings-name'),
+                      controller: _projectName,
+                      maxLength: 80,
+                      decoration: const InputDecoration(labelText: '项目名称'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      key: const ValueKey('research-project-settings-description'),
+                      controller: _projectDescription,
+                      minLines: 3,
+                      maxLines: 6,
+                      maxLength: 1000,
+                      decoration: const InputDecoration(
+                        labelText: '研究目标与项目说明',
+                        alignLabelWithHint: true,
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton.icon(
+                        key: const ValueKey('save-research-project-settings'),
+                        onPressed: _projectSaving ? null : _saveProjectSettings,
+                        icon: const Icon(LucideIcons.save, size: 17),
+                        label: Text(_projectSaving ? '保存中…' : '保存项目资料'),
+                      ),
+                    ),
+                  ],
                 ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    key: const ValueKey('save-research-project-profile'),
-                    onPressed: _submitting || _projectProfile == null
-                        ? null
-                        : _saveProjectProfile,
-                    icon: const Icon(LucideIcons.save, size: 17),
-                    label: const Text('保存项目画像'),
-                  ),
+              ),
+              const SizedBox(height: 16),
+              _ResearchPanel(
+                icon: LucideIcons.brainCircuit,
+                title: '项目画像',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '这些约束只用于当前项目的研究对话与写作任务。',
+                      style: context.texts.bodySmall?.copyWith(
+                        color: context.n.n600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      key: const ValueKey('research-project-profile'),
+                      controller: _profileInstructions,
+                      minLines: 6,
+                      maxLines: 12,
+                      maxLength: 12000,
+                      decoration: const InputDecoration(
+                        labelText: '研究背景、术语、方法约束与写作偏好',
+                        alignLabelWithHint: true,
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton.icon(
+                        key: const ValueKey('save-research-project-profile'),
+                        onPressed: _submitting || _projectProfile == null
+                            ? null
+                            : _saveProjectProfile,
+                        icon: const Icon(LucideIcons.save, size: 17),
+                        label: const Text('保存项目画像'),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFFE45858)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.archive, color: Color(0xFFE45858)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('归档项目', style: context.texts.titleMedium),
+                          const SizedBox(height: 3),
+                          Text(
+                            '项目资料会保留，但不能继续创建对话或任务。',
+                            style: context.texts.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _projectSaving ? null : _archiveProject,
+                      icon: const Icon(LucideIcons.archive, size: 16),
+                      label: const Text('归档'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -650,12 +863,12 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
               .toList(),
           onChanged: (id) => setState(() {
             _selectedDocument = _documents.firstWhere((item) => item.id == id);
-            _writingSource.text = _selectedDocument!.content;
+            _documentContent.text = _selectedDocument!.content;
           }),
         ),
         const SizedBox(height: 12),
         TextField(
-          controller: _writingSource,
+          controller: _documentContent,
           minLines: 5,
           maxLines: 12,
           decoration: const InputDecoration(

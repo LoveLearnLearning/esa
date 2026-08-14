@@ -41,11 +41,32 @@ String normalizeMarkdownLatex(String source) {
   return output.join('\n').replaceAll(RegExp(r'\n{3,}'), '\n\n');
 }
 
+bool containsFencedCode(String source) =>
+    RegExp(r'^\s*(?:```|~~~)', multiLine: true).hasMatch(source);
+
 class EsaMarkdown extends StatelessWidget {
-  const EsaMarkdown({super.key, required this.data, this.selectable = false});
+  const EsaMarkdown({
+    super.key,
+    required this.data,
+    this.selectable = false,
+    this.onEditCode,
+    this.codeBlockPrefix,
+    this.codeOverrideFor,
+    this.onOpenCodeEditorWithId,
+    this.onCodeChangedWithId,
+    this.codeOverrideVersion = 0,
+  });
 
   final String data;
   final bool selectable;
+  final void Function(String code, String language)? onEditCode;
+  final String? codeBlockPrefix;
+  final String? Function(String blockId)? codeOverrideFor;
+  final void Function(String blockId, String code, String language)?
+  onOpenCodeEditorWithId;
+  final void Function(String blockId, String code, String language)?
+  onCodeChangedWithId;
+  final int codeOverrideVersion;
 
   @override
   Widget build(BuildContext context) {
@@ -58,13 +79,22 @@ class EsaMarkdown extends StatelessWidget {
     );
 
     final markdown = MarkdownBody(
+      key: ValueKey(
+        '${data.hashCode}:${codeBlockPrefix ?? ''}:$codeOverrideVersion',
+      ),
       data: normalizeMarkdownLatex(data),
       // 单个 SelectableText 无法跨 Markdown 段落选择。外层统一交给
       // SelectionArea，段落内部保持普通 Text/RichText。
       selectable: false,
       builders: {
         'latex': LatexElementBuilder(textStyle: bodyStyle),
-        'pre': _CodeBlockBuilder(),
+        'pre': _CodeBlockBuilder(
+          onEditCode: onEditCode,
+          codeBlockPrefix: codeBlockPrefix,
+          codeOverrideFor: codeOverrideFor,
+          onOpenCodeEditorWithId: onOpenCodeEditorWithId,
+          onCodeChangedWithId: onCodeChangedWithId,
+        ),
       },
       extensionSet: md.ExtensionSet(
         [LatexBlockSyntax(), ...md.ExtensionSet.gitHubFlavored.blockSyntaxes],
@@ -112,6 +142,23 @@ class EsaMarkdown extends StatelessWidget {
 }
 
 class _CodeBlockBuilder extends MarkdownElementBuilder {
+  _CodeBlockBuilder({
+    this.onEditCode,
+    this.codeBlockPrefix,
+    this.codeOverrideFor,
+    this.onOpenCodeEditorWithId,
+    this.onCodeChangedWithId,
+  });
+
+  final void Function(String code, String language)? onEditCode;
+  final String? codeBlockPrefix;
+  final String? Function(String blockId)? codeOverrideFor;
+  final void Function(String blockId, String code, String language)?
+  onOpenCodeEditorWithId;
+  final void Function(String blockId, String code, String language)?
+  onCodeChangedWithId;
+  var _blockIndex = 0;
+
   @override
   bool isBlockElement() => true;
 
@@ -127,15 +174,41 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
     final language = className.startsWith('language-')
         ? className.substring('language-'.length)
         : 'plaintext';
-    return _EditableCodeBlock(code: element.textContent, language: language);
+    final sourceCode = element.textContent.trimRight();
+    final blockId = '${codeBlockPrefix ?? 'markdown'}:${_blockIndex++}';
+    final displayCode = codeOverrideFor?.call(blockId) ?? sourceCode;
+    return _EditableCodeBlock(
+      code: sourceCode,
+      displayCode: displayCode,
+      language: language,
+      onOpenEditor: onEditCode,
+      blockId: blockId,
+      onOpenEditorWithId: onOpenCodeEditorWithId,
+      onCodeChangedWithId: onCodeChangedWithId,
+    );
   }
 }
 
 class _EditableCodeBlock extends StatefulWidget {
-  const _EditableCodeBlock({required this.code, required this.language});
+  const _EditableCodeBlock({
+    required this.code,
+    required this.displayCode,
+    required this.language,
+    required this.blockId,
+    this.onOpenEditor,
+    this.onOpenEditorWithId,
+    this.onCodeChangedWithId,
+  });
 
   final String code;
+  final String displayCode;
   final String language;
+  final String blockId;
+  final void Function(String code, String language)? onOpenEditor;
+  final void Function(String blockId, String code, String language)?
+  onOpenEditorWithId;
+  final void Function(String blockId, String code, String language)?
+  onCodeChangedWithId;
 
   @override
   State<_EditableCodeBlock> createState() => _EditableCodeBlockState();
@@ -154,7 +227,7 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
     super.initState();
     _originalCode = widget.code.trimRight();
     _controller = _HighlightEditingController(
-      text: _originalCode,
+      text: widget.displayCode.trimRight(),
       language: widget.language,
     );
   }
@@ -163,13 +236,15 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
   void didUpdateWidget(covariant _EditableCodeBlock oldWidget) {
     super.didUpdateWidget(oldWidget);
     _controller.language = widget.language;
-    if (widget.code != oldWidget.code) {
-      final hadLocalChanges = _modified;
-      _originalCode = widget.code.trimRight();
-      if (hadLocalChanges) return;
+    final sourceChanged = widget.code != oldWidget.code;
+    final displayChanged = widget.displayCode != oldWidget.displayCode;
+    if (sourceChanged) _originalCode = widget.code.trimRight();
+    if (sourceChanged || displayChanged) {
       _controller.value = TextEditingValue(
-        text: _originalCode,
-        selection: TextSelection.collapsed(offset: _originalCode.length),
+        text: widget.displayCode.trimRight(),
+        selection: TextSelection.collapsed(
+          offset: widget.displayCode.trimRight().length,
+        ),
       );
     }
   }
@@ -178,6 +253,11 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
     _controller.value = TextEditingValue(
       text: _originalCode,
       selection: TextSelection.collapsed(offset: _originalCode.length),
+    );
+    widget.onCodeChangedWithId?.call(
+      widget.blockId,
+      _originalCode,
+      widget.language,
     );
     setState(() {});
   }
@@ -193,12 +273,17 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
     final dark = Theme.of(context).brightness == Brightness.dark;
     _controller.dark = dark;
     final frameColor = dark ? const Color(0xFF171717) : const Color(0xFFF3F3F1);
-    final headerColor = dark ? const Color(0xFF222222) : const Color(0xFFE9E9E6);
+    final headerColor = dark
+        ? const Color(0xFF222222)
+        : const Color(0xFFE9E9E6);
     final labelColor = dark ? const Color(0xFFAAAAAA) : const Color(0xFF75756D);
     final codeBg = dark ? const Color(0xFF282C34) : const Color(0xFFFAFAFA);
-    final baseCodeColor =
-        dark ? const Color(0xFFABB2BF) : const Color(0xFF383A42);
+    final baseCodeColor = dark
+        ? const Color(0xFFABB2BF)
+        : const Color(0xFF383A42);
     final iconColor = dark ? const Color(0xFFCCCCCC) : const Color(0xFF55554F);
+    final hasExternalEditor =
+        widget.onOpenEditor != null || widget.onOpenEditorWithId != null;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -226,10 +311,29 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                   ),
                 ),
                 _action(
-                  _editing ? Icons.visibility_outlined : Icons.edit_outlined,
-                  _editing ? '预览' : '编辑',
+                  !hasExternalEditor
+                      ? (_editing
+                            ? Icons.visibility_outlined
+                            : Icons.edit_outlined)
+                      : Icons.open_in_new_rounded,
+                  !hasExternalEditor ? (_editing ? '预览' : '编辑') : '在编辑器中打开',
                   iconColor,
-                  () => setState(() => _editing = !_editing),
+                  !hasExternalEditor
+                      ? () => setState(() => _editing = !_editing)
+                      : () {
+                          if (widget.onOpenEditorWithId != null) {
+                            widget.onOpenEditorWithId!(
+                              widget.blockId,
+                              _controller.text,
+                              widget.language,
+                            );
+                          } else {
+                            widget.onOpenEditor?.call(
+                              _controller.text,
+                              widget.language,
+                            );
+                          }
+                        },
                 ),
                 if (_modified)
                   _action(

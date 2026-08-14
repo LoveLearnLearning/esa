@@ -164,6 +164,42 @@ class ResearchWritingStore(BaseSQLiteStore):
             )
         ]
 
+    def update_document(
+        self,
+        document_id: str,
+        user_id: str,
+        *,
+        title: str | None = None,
+        content: str | None = None,
+    ) -> dict | None:
+        current = self.get_document(document_id, user_id)
+        if current is None:
+            return None
+        next_title = current["title"] if title is None else title
+        next_content = current["content"] if content is None else content
+        changed_content = next_content != current["content"]
+        version = int(current["version"]) + (1 if changed_content else 0)
+        now = self._now()
+        with closing(self._connect()) as connection, connection:
+            connection.execute(
+                """
+                UPDATE research_documents
+                SET title = ?, content = ?, version = ?, updated_at = ?
+                WHERE document_id = ? AND user_id = ?
+                """,
+                (next_title, next_content, version, now, document_id, user_id),
+            )
+            if changed_content:
+                connection.execute(
+                    """
+                    INSERT INTO research_document_versions (
+                        document_id, version, content, operation, created_at
+                    ) VALUES (?, ?, ?, 'manual_edit', ?)
+                    """,
+                    (document_id, version, next_content, now),
+                )
+        return self.get_document(document_id, user_id)
+
     def create_job(
         self,
         *,

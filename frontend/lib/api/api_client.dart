@@ -35,6 +35,18 @@ class ChatStreamEvent {
   final Map<String, dynamic> data;
 }
 
+class AttachmentContent {
+  const AttachmentContent({
+    required this.bytes,
+    required this.mediaType,
+    required this.filename,
+  });
+
+  final Uint8List bytes;
+  final String mediaType;
+  final String filename;
+}
+
 class ApiClient {
   ApiClient({String? baseUrl})
     : baseUrl = _normalizeBaseUrl(baseUrl ?? _defaultBaseUrl);
@@ -1015,6 +1027,31 @@ class ApiClient {
     if (response.statusCode != 200) _fail(response);
   }
 
+  Future<ResearchProject> updateResearchProject(
+    String id, {
+    required String name,
+    required String description,
+  }) async {
+    if (kOfflineMode) {
+      final index = _offResearchProjects.indexWhere((item) => item.id == id);
+      if (index < 0) throw ApiException(404, '科研项目不存在');
+      final updated = _offResearchProjects[index].copyWith(
+        name: name,
+        description: description,
+        updatedAt: DateTime.now(),
+      );
+      _offResearchProjects[index] = updated;
+      return updated;
+    }
+    final response = await http.patch(
+      _uri('/research/projects/$id'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'name': name, 'description': description}),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return ResearchProject.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
   Future<List<FrontierTrackingJob>> listFrontierJobs(String projectId) async {
     final response = await http.get(
       _uri('/research/projects/$projectId/frontier-jobs'),
@@ -1102,6 +1139,38 @@ class ApiClient {
     );
     if (response.statusCode != 200) _fail(response);
     return ResearchDocument.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
+  Future<ResearchDocument> updateResearchDocument({
+    required String documentId,
+    required String content,
+  }) async {
+    final response = await http.patch(
+      _uri('/research/documents/$documentId'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'content': content}),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return ResearchDocument.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
+  Future<AttachmentContent> fetchConversationAttachment(
+    String conversationId,
+    DocumentAttachment attachment,
+  ) async {
+    final response = await http.get(
+      _uri('/conversations/$conversationId/attachments/${attachment.id}'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return AttachmentContent(
+      bytes: response.bodyBytes,
+      mediaType:
+          response.headers['content-type'] ?? attachment.mediaType,
+      filename: attachment.filename,
+    );
   }
 
   Future<ResearchWritingJob> createWritingJob({
@@ -1387,6 +1456,28 @@ class ApiClient {
             'attachment_ids': attachmentIds,
           });
 
+    final response = await request.send();
+    if (response.statusCode != 200) {
+      final bytes = await response.stream.toBytes();
+      _fail(http.Response.bytes(bytes, response.statusCode));
+    }
+    yield* _decodeSse(response.stream);
+  }
+
+  Stream<ChatStreamEvent> streamRevisedMessage(
+    String id,
+    String content,
+    int messageId,
+    List<String> attachmentIds,
+  ) async* {
+    final request =
+        http.Request('POST', _uri('/conversations/$id/messages/stream'))
+          ..headers.addAll(_headers(auth: true))
+          ..body = jsonEncode({
+            'content': content,
+            'attachment_ids': attachmentIds,
+            'replace_message_id': messageId,
+          });
     final response = await request.send();
     if (response.statusCode != 200) {
       final bytes = await response.stream.toBytes();

@@ -58,6 +58,68 @@ final answer = 42;
     expect(find.text('final answer = 42;', findRichText: true), findsOneWidget);
   });
 
+  testWidgets('code block can open the page-level editor', (tester) async {
+    final message = ChatMessage(
+      id: 'assistant-code-editor',
+      role: MessageRole.assistant,
+      text: '''```python
+print("hello")
+```''',
+    );
+    String? code;
+    String? language;
+
+    await tester.pumpWidget(
+      app(
+        AssistantMessage(
+          message: message,
+          onRegenerate: () {},
+          onOpenCodeEditor: (value, syntax) {
+            code = value.trim();
+            language = syntax;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('在编辑器中打开'));
+    await tester.pump();
+
+    expect(code, 'print("hello")');
+    expect(language, 'python');
+  });
+
+  testWidgets('user code block opens the page-level editor with its block id', (
+    tester,
+  ) async {
+    String? blockId;
+    String? code;
+    String? language;
+    await tester.pumpWidget(
+      app(
+        UserBubble(
+          text: '''用户代码：
+```dart
+final answer = 42;
+```''',
+          codeBlockPrefix: 'user-message',
+          onOpenCodeEditorWithId: (id, value, syntax) {
+            blockId = id;
+            code = value;
+            language = syntax;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('在编辑器中打开'));
+    await tester.pump();
+
+    expect(blockId, 'user-message:0');
+    expect(code, 'final answer = 42;');
+    expect(language, 'dart');
+  });
+
   testWidgets('assistant copy action writes the complete response', (
     tester,
   ) async {

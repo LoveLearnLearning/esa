@@ -161,15 +161,21 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
   List<KnowledgeMapNode> _visibleNodes() {
     final data = _map;
     if (data == null) return const [];
-    var nodes = data.nodes;
+    var nodes = data.nodes.where((node) => !node.isCourse).toList();
     if (_statusFilter != 'all') {
       nodes = nodes.where((node) => node.status == _statusFilter).toList();
     }
-    if (!_weakOnly) return nodes;
+    if (!_weakOnly && _statusFilter == 'all') {
+      return data.nodes;
+    }
+    if (!_weakOnly) {
+      return _withCoursePaths(nodes.map((node) => node.id).toSet());
+    }
     final targets = nodes
         .where((node) => node.status == 'weak' || node.needsReview)
         .map((node) => node.id)
         .toSet();
+    if (targets.isEmpty) return const [];
     final visible = {...targets};
     for (final edge in data.edges) {
       if (targets.contains(edge.from) || targets.contains(edge.to)) {
@@ -177,10 +183,31 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
         visible.add(edge.to);
       }
     }
-    return data.nodes.where((node) => visible.contains(node.id)).toList();
+    return _withCoursePaths(visible);
+  }
+
+  List<KnowledgeMapNode> _withCoursePaths(Set<String> visible) {
+    final data = _map;
+    if (data == null || visible.isEmpty) return const [];
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final edge in data.edges) {
+        if (visible.contains(edge.to) && visible.add(edge.from)) {
+          changed = true;
+        }
+      }
+    }
+    return data.nodes
+        .where((node) => node.isCourse || visible.contains(node.id))
+        .toList();
   }
 
   Future<void> _openNode(KnowledgeMapNode node) async {
+    if (node.isCourse) {
+      await _showCourseOverview(node);
+      return;
+    }
     try {
       final app = AppScope.of(context);
       final detail = await _api.getKnowledgePointDetail(node.id);
@@ -206,6 +233,64 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
       ).showSnackBar(SnackBar(content: Text(error.detail)));
     }
   }
+
+  Future<void> _showCourseOverview(KnowledgeMapNode node) {
+    final data = _map;
+    final points = data?.nodes.where((item) => !item.isCourse).toList() ?? [];
+    final roots = data?.edges
+        .where((edge) => edge.from == node.id && edge.type == 'course_root')
+        .length;
+    final evaluated = points.where((item) => item.hasRecord).length;
+    final weak = points
+        .where((item) => item.status == 'weak' || item.needsReview)
+        .length;
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                node.name,
+                style: context.texts.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text('课程概览', style: TextStyle(color: context.n.n500)),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  _courseMetric('${points.length}', '知识点'),
+                  _courseMetric('${roots ?? 0}', '知识子树'),
+                  _courseMetric('$evaluated', '已评估'),
+                  _courseMetric('$weak', '需关注'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _courseMetric(String value, String label) => Expanded(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 3),
+        Text(label, style: TextStyle(fontSize: 12, color: context.n.n500)),
+      ],
+    ),
+  );
 
   Future<void> _startLearningPoint(AppState app, KnowledgeMapNode node) async {
     final createConversation = app.newConversation();
@@ -592,7 +677,11 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
                   children: [
                     SizedBox(
                       width: 220,
-                      child: _ChapterOutline(nodes: _map?.nodes ?? const []),
+                      child: _ChapterOutline(
+                        nodes: _map?.nodes ?? const [],
+                        edges: _map?.edges ?? const [],
+                        onNodeTap: _openNode,
+                      ),
                     ),
                     VerticalDivider(width: 1, color: context.n.divider),
                     Expanded(child: _content()),
@@ -899,20 +988,107 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
 }
 
 class _ChapterOutline extends StatelessWidget {
-  const _ChapterOutline({required this.nodes});
+  const _ChapterOutline({
+    required this.nodes,
+    required this.edges,
+    required this.onNodeTap,
+  });
 
   final List<KnowledgeMapNode> nodes;
+  final List<KnowledgeMapEdge> edges;
+  final ValueChanged<KnowledgeMapNode> onNodeTap;
 
-  @override
-  Widget build(BuildContext context) {
-    final ordered = [...nodes]
-      ..sort((a, b) {
+  List<_OutlineEntry> _buildTree() {
+    if (nodes.isEmpty) return const [];
+    final byId = {for (final node in nodes) node.id: node};
+    final candidates = <String, List<KnowledgeMapNode>>{};
+    for (final edge in edges) {
+      final parent = byId[edge.from];
+      final child = byId[edge.to];
+      if (parent == null || child == null || parent.id == child.id) continue;
+      candidates.putIfAbsent(child.id, () => []).add(parent);
+    }
+
+    final parentByChild = <String, String>{};
+    for (final entry in candidates.entries) {
+      final child = byId[entry.key]!;
+      final parents = entry.value
+        ..sort((a, b) {
+          final aBeforeChild = a.level < child.level ? 0 : 1;
+          final bBeforeChild = b.level < child.level ? 0 : 1;
+          final direction = aBeforeChild.compareTo(bBeforeChild);
+          if (direction != 0) return direction;
+          final distance = (child.level - a.level).abs().compareTo(
+            (child.level - b.level).abs(),
+          );
+          return distance != 0 ? distance : a.name.compareTo(b.name);
+        });
+      parentByChild[child.id] = parents.first.id;
+    }
+
+    final children = <String, List<KnowledgeMapNode>>{
+      for (final node in nodes) node.id: [],
+    };
+    for (final entry in parentByChild.entries) {
+      children[entry.value]?.add(byId[entry.key]!);
+    }
+    for (final values in children.values) {
+      values.sort((a, b) {
         final level = a.level.compareTo(b.level);
         return level != 0 ? level : a.name.compareTo(b.name);
       });
+    }
+
+    final roots =
+        nodes.where((node) => !parentByChild.containsKey(node.id)).toList()
+          ..sort((a, b) {
+            final level = a.level.compareTo(b.level);
+            return level != 0 ? level : a.name.compareTo(b.name);
+          });
+    final result = <_OutlineEntry>[];
+    final visited = <String>{};
+
+    void visit(
+      KnowledgeMapNode node,
+      int depth,
+      bool isLast,
+      List<bool> ancestorHasNext,
+    ) {
+      if (!visited.add(node.id)) return;
+      result.add(
+        _OutlineEntry(
+          node: node,
+          depth: depth,
+          isLast: isLast,
+          ancestorHasNext: ancestorHasNext,
+        ),
+      );
+      final descendants = children[node.id]!;
+      for (var index = 0; index < descendants.length; index++) {
+        visit(descendants[index], depth + 1, index == descendants.length - 1, [
+          ...ancestorHasNext,
+          !isLast,
+        ]);
+      }
+    }
+
+    for (var index = 0; index < roots.length; index++) {
+      visit(roots[index], 0, index == roots.length - 1, const []);
+    }
+    final remaining = nodes.where((node) => !visited.contains(node.id)).toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    for (var index = 0; index < remaining.length; index++) {
+      visit(remaining[index], 0, index == remaining.length - 1, const []);
+    }
+    return result;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tree = _buildTree();
     return Container(
       color: const Color(0xFF08131F),
-      padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+      padding: const EdgeInsets.fromLTRB(12, 14, 8, 12),
       child: ListView(
         children: [
           const Text(
@@ -920,51 +1096,158 @@ class _ChapterOutline extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: Color(0xFFAAB5C7)),
           ),
           const SizedBox(height: 12),
-          if (ordered.isEmpty)
+          if (tree.isEmpty)
             Text('暂无知识点', style: context.texts.bodySmall)
           else
-            for (final node in ordered) _OutlineRow(node: node),
+            for (final entry in tree)
+              _OutlineRow(entry: entry, onTap: onNodeTap),
         ],
       ),
     );
   }
 }
 
-class _OutlineRow extends StatelessWidget {
-  const _OutlineRow({required this.node});
+class _OutlineEntry {
+  const _OutlineEntry({
+    required this.node,
+    required this.depth,
+    required this.isLast,
+    required this.ancestorHasNext,
+  });
 
   final KnowledgeMapNode node;
+  final int depth;
+  final bool isLast;
+  final List<bool> ancestorHasNext;
+}
+
+class _OutlineRow extends StatelessWidget {
+  const _OutlineRow({required this.entry, required this.onTap});
+
+  final _OutlineEntry entry;
+  final ValueChanged<KnowledgeMapNode> onTap;
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: EdgeInsets.only(
-      left: (node.level.clamp(0, 3) * 8).toDouble(),
-      bottom: 3,
-    ),
-    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
-    decoration: BoxDecoration(
-      color: node.needsReview
-          ? EsaColors.accent.withValues(alpha: .10)
-          : Colors.transparent,
-      borderRadius: BorderRadius.circular(7),
-    ),
-    child: Row(
-      children: [
-        Container(
-          width: 7,
-          height: 7,
+  Widget build(BuildContext context) {
+    final node = entry.node;
+    final branchWidth = 18.0 + entry.depth * 16.0;
+    final color = node.isCourse
+        ? const Color(0xFFF1C75B)
+        : node.hasRecord
+        ? const Color(0xFF5795FF)
+        : context.n.n500;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => onTap(node),
+        borderRadius: BorderRadius.circular(8),
+        hoverColor: const Color(0xFF17304F).withValues(alpha: .55),
+        child: Container(
+          height: 36,
           decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: node.hasRecord ? const Color(0xFF5795FF) : context.n.n500,
+            color: node.needsReview
+                ? EsaColors.accent.withValues(alpha: .10)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: branchWidth,
+                height: 36,
+                child: CustomPaint(
+                  painter: _GitBranchPainter(
+                    depth: entry.depth,
+                    isLast: entry.isLast,
+                    ancestorHasNext: entry.ancestorHasNext,
+                    nodeColor: color,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  node.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: node.isCourse ? 12.5 : 11.5,
+                    fontWeight: node.isCourse
+                        ? FontWeight.w700
+                        : FontWeight.normal,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
           ),
         ),
-        const SizedBox(width: 7),
-        Expanded(
-          child: Text(node.name, style: const TextStyle(fontSize: 11.5)),
-        ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
+}
+
+class _GitBranchPainter extends CustomPainter {
+  const _GitBranchPainter({
+    required this.depth,
+    required this.isLast,
+    required this.ancestorHasNext,
+    required this.nodeColor,
+  });
+
+  final int depth;
+  final bool isLast;
+  final List<bool> ancestorHasNext;
+  final Color nodeColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const step = 16.0;
+    const origin = 9.0;
+    final centerY = size.height / 2;
+    final line = Paint()
+      ..color = const Color(0xFF43536A)
+      ..strokeWidth = 1.15
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    for (var index = 0; index < ancestorHasNext.length; index++) {
+      if (!ancestorHasNext[index]) continue;
+      final x = origin + index * step;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), line);
+    }
+
+    final x = origin + depth * step;
+    if (depth == 0) {
+      if (!isLast) {
+        canvas.drawLine(Offset(x, centerY), Offset(x, size.height), line);
+      }
+    } else {
+      final parentX = x - step;
+      canvas.drawLine(Offset(parentX, 0), Offset(parentX, centerY), line);
+      canvas.drawLine(Offset(parentX, centerY), Offset(x, centerY), line);
+      if (!isLast) {
+        canvas.drawLine(
+          Offset(parentX, centerY),
+          Offset(parentX, size.height),
+          line,
+        );
+      }
+    }
+    canvas.drawCircle(
+      Offset(x, centerY),
+      4.1,
+      Paint()..color = const Color(0xFF08131F),
+    );
+    canvas.drawCircle(Offset(x, centerY), 3.0, Paint()..color = nodeColor);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GitBranchPainter oldDelegate) =>
+      oldDelegate.depth != depth ||
+      oldDelegate.isLast != isLast ||
+      oldDelegate.ancestorHasNext != ancestorHasNext ||
+      oldDelegate.nodeColor != nodeColor;
 }
 
 class _EmptyGraphPainter extends CustomPainter {

@@ -12,6 +12,8 @@ import 'package:frontend/api/api_client.dart';
 import 'package:frontend/main.dart';
 import 'package:frontend/models/models.dart';
 import 'package:frontend/state/app_state.dart';
+import 'package:frontend/theme/esa_theme.dart';
+import 'package:frontend/widgets/profile_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _GuestTestApi extends ApiClient {
@@ -54,6 +56,74 @@ void main() {
     await tester.pump();
 
     expect(find.text('邮箱或用户名'), findsOneWidget);
+  });
+
+  testWidgets('restores local code editor settings', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'esa.editor.indent_size': 4,
+      'esa.editor.theme': 'hc-black',
+    });
+    final state = AppState(restoringSession: true);
+    addTearDown(state.dispose);
+
+    await state.restoreSession();
+
+    expect(state.codeEditorIndentSize, 4);
+    expect(state.codeEditorTheme, 'hc-black');
+  });
+
+  testWidgets('code editor settings persist locally', (tester) async {
+    final state = AppState();
+    addTearDown(state.dispose);
+
+    state.setCodeEditorIndentSize(8);
+    state.setCodeEditorTheme('vs');
+    await tester.pump();
+    final preferences = await SharedPreferences.getInstance();
+
+    expect(preferences.getInt('esa.editor.indent_size'), 8);
+    expect(preferences.getString('esa.editor.theme'), 'vs');
+  });
+
+  testWidgets('settings expose code indentation and editor theme', (
+    tester,
+  ) async {
+    final state = AppState()..enterAsGuest();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(
+      AppScope(
+        state: state,
+        child: MaterialApp(
+          theme: esaTheme(brightness: Brightness.dark),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => showProfileSheet(context),
+                child: const Text('打开设置'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开设置'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('代码缩进'));
+    await tester.pumpAndSettle();
+    expect(find.text('代码缩进'), findsOneWidget);
+    expect(find.text('代码主题'), findsOneWidget);
+    expect(find.text('VS Code 深色'), findsOneWidget);
+    await tester.tap(find.text('4'));
+    await tester.pump();
+    expect(state.codeEditorIndentSize, 4);
+
+    await tester.tap(find.byKey(const ValueKey('code-editor-theme-setting')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('VS Code 浅色').last);
+    await tester.pumpAndSettle();
+    expect(state.codeEditorTheme, 'vs');
   });
 
   testWidgets('guest login enters the main shell without a backend session', (
@@ -131,7 +201,7 @@ void main() {
     await tester.pumpWidget(const EsaApp());
     await tester.pump();
 
-    expect(find.text('Your knowledge\nis a network.'), findsOneWidget);
+    expect(find.text('ESA-星知智链'), findsOneWidget);
     expect(find.text('欢迎回来'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -165,7 +235,7 @@ void main() {
     await tester.pumpWidget(const EsaApp());
     await tester.pump();
 
-    expect(find.text('Your knowledge is a network.'), findsOneWidget);
+    expect(find.text('ESA-星知智链'), findsOneWidget);
     expect(find.text('进入 ESA'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

@@ -302,6 +302,8 @@ class DocumentAttachment {
     required this.pageCount,
     required this.validationStatus,
     required this.qualityIssueCount,
+    this.mediaType = 'application/octet-stream',
+    this.sizeBytes = 0,
   });
 
   final String id;
@@ -312,6 +314,13 @@ class DocumentAttachment {
   final int pageCount;
   final String validationStatus;
   final int qualityIssueCount;
+  final String mediaType;
+  final int sizeBytes;
+
+  String get extension {
+    final index = filename.lastIndexOf('.');
+    return index < 0 ? '' : filename.substring(index + 1).toLowerCase();
+  }
 
   String get modeLabel => switch (mode) {
     'pending' => '已保存 · 发送后按需解析',
@@ -329,6 +338,9 @@ class DocumentAttachment {
         pageCount: (json['page_count'] as num?)?.toInt() ?? 0,
         validationStatus: json['validation_status']?.toString() ?? '',
         qualityIssueCount: (json['quality_issue_count'] as num?)?.toInt() ?? 0,
+        mediaType:
+            json['media_type']?.toString() ?? 'application/octet-stream',
+        sizeBytes: (json['size_bytes'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -447,12 +459,14 @@ class KnowledgeMapNode {
     required this.evidenceCount,
     required this.weakPrerequisiteCount,
     required this.level,
+    this.nodeType = 'knowledge_point',
     this.masteryLevel,
     this.retention,
     this.evidenceConfidence,
   });
 
   final String id;
+  final String nodeType;
   final String name;
   final String course;
   final String category;
@@ -469,9 +483,12 @@ class KnowledgeMapNode {
   final int weakPrerequisiteCount;
   final int level;
 
+  bool get isCourse => nodeType == 'course';
+
   factory KnowledgeMapNode.fromJson(Map<String, dynamic> json) =>
       KnowledgeMapNode(
         id: json['id']?.toString() ?? '',
+        nodeType: json['node_type']?.toString() ?? 'knowledge_point',
         name: json['name']?.toString() ?? '',
         course: json['course']?.toString() ?? '',
         category: json['category']?.toString() ?? 'general',
@@ -521,24 +538,84 @@ class KnowledgeMapData {
   final List<KnowledgeMapNode> nodes;
   final List<KnowledgeMapEdge> edges;
 
-  factory KnowledgeMapData.fromJson(Map<String, dynamic> json) =>
-      KnowledgeMapData(
-        course: json['course']?.toString() ?? '',
-        nodes: (json['nodes'] as List? ?? const [])
-            .whereType<Map>()
-            .map(
-              (item) =>
-                  KnowledgeMapNode.fromJson(Map<String, dynamic>.from(item)),
-            )
-            .toList(),
-        edges: (json['edges'] as List? ?? const [])
-            .whereType<Map>()
-            .map(
-              (item) =>
-                  KnowledgeMapEdge.fromJson(Map<String, dynamic>.from(item)),
-            )
-            .toList(),
+  factory KnowledgeMapData.fromJson(Map<String, dynamic> json) {
+    final course = json['course']?.toString() ?? '';
+    final nodes = (json['nodes'] as List? ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => KnowledgeMapNode.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+    final edges = (json['edges'] as List? ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => KnowledgeMapEdge.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+    if (course.isEmpty || nodes.isEmpty || nodes.any((node) => node.isCourse)) {
+      return KnowledgeMapData(course: course, nodes: nodes, edges: edges);
+    }
+
+    final nodeIds = nodes.map((node) => node.id).toSet();
+    final incoming = {for (final id in nodeIds) id: 0};
+    final adjacency = {for (final id in nodeIds) id: <String>{}};
+    for (final edge in edges) {
+      if (!nodeIds.contains(edge.from) || !nodeIds.contains(edge.to)) continue;
+      incoming[edge.to] = incoming[edge.to]! + 1;
+      adjacency[edge.from]!.add(edge.to);
+      adjacency[edge.to]!.add(edge.from);
+    }
+    final roots = <String>[];
+    final remaining = {...nodeIds};
+    while (remaining.isNotEmpty) {
+      final start = remaining.reduce((a, b) => a.compareTo(b) <= 0 ? a : b);
+      final component = <String>{start};
+      final queue = <String>[start];
+      for (var index = 0; index < queue.length; index++) {
+        for (final neighbor in adjacency[queue[index]]!) {
+          if (component.add(neighbor)) queue.add(neighbor);
+        }
+      }
+      remaining.removeAll(component);
+      final componentRoots = component.where((id) => incoming[id] == 0).toList()
+        ..sort();
+      roots.add(
+        componentRoots.isEmpty
+            ? component.reduce((a, b) => a.compareTo(b) <= 0 ? a : b)
+            : componentRoots.first,
       );
+      if (componentRoots.length > 1) roots.addAll(componentRoots.skip(1));
+    }
+
+    final courseNodeId = '__course__:$course';
+    return KnowledgeMapData(
+      course: course,
+      nodes: [
+        KnowledgeMapNode(
+          id: courseNodeId,
+          nodeType: 'course',
+          name: course,
+          course: course,
+          category: 'course',
+          weight: 0,
+          external: false,
+          hasRecord: false,
+          status: 'course',
+          needsReview: false,
+          practiceCount: 0,
+          evidenceCount: 0,
+          weakPrerequisiteCount: 0,
+          level: -1,
+        ),
+        ...nodes,
+      ],
+      edges: [
+        for (final root in roots)
+          KnowledgeMapEdge(from: courseNodeId, to: root, type: 'course_root'),
+        ...edges,
+      ],
+    );
+  }
 }
 
 class KnowledgePointDetail {
@@ -698,9 +775,10 @@ class ChatMessage extends ChangeNotifier {
     this.markdown = false,
     this.reasoning = '',
     this.toolRunning = false,
+    this.attachments = const [],
   });
 
-  final String id;
+  String id;
   final MessageRole role;
   String text;
   final String? name; // 仅 tool 消息有 工具名
@@ -709,6 +787,7 @@ class ChatMessage extends ChangeNotifier {
   final bool markdown; // 仅前端使用：用户是否通过 Markdown 模式发送
   String reasoning; // 后端可选返回：模型思考内容
   bool toolRunning; // 工具已开始调用但结果尚未返回
+  final List<DocumentAttachment> attachments;
 
   bool get isUser => role == MessageRole.user;
   bool get isTool => role == MessageRole.tool;
@@ -722,14 +801,27 @@ class ChatMessage extends ChangeNotifier {
       createdAt: j['created_at'] as String?,
       reasoning: (j['reasoning'] ?? j['thinking']) as String? ?? '',
       toolRunning: false,
+      attachments: (j['attachments'] as List? ?? const [])
+          .whereType<Map>()
+          .map(
+            (item) => DocumentAttachment.fromJson(
+              Map<String, dynamic>.from(item),
+            ),
+          )
+          .toList(),
     );
   }
 
-  static ChatMessage user(String text, {bool markdown = false}) => ChatMessage(
+  static ChatMessage user(
+    String text, {
+    bool markdown = false,
+    List<DocumentAttachment> attachments = const [],
+  }) => ChatMessage(
     id: _nextId(),
     role: MessageRole.user,
     text: text,
     markdown: markdown,
+    attachments: attachments,
   );
 
   static ChatMessage typingPlaceholder() =>
@@ -829,6 +921,19 @@ class ResearchProject {
             DateTime.tryParse(json['updated_at'] as String? ?? '')?.toLocal() ??
             DateTime.now(),
       );
+
+  ResearchProject copyWith({
+    String? name,
+    String? description,
+    String? status,
+    DateTime? updatedAt,
+  }) => ResearchProject(
+    id: id,
+    name: name ?? this.name,
+    description: description ?? this.description,
+    status: status ?? this.status,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }
 
 class FrontierTrackingJob {
