@@ -594,23 +594,42 @@ class _WorkspaceSidebar extends StatelessWidget {
         child: Text('暂无对话分组', style: context.texts.bodySmall),
       )
     else
-      for (final group in app.groups)
-        _ExpandableSidebarRow(
-          icon: LucideIcons.folder,
-          label: group.name,
-          children: app
-              .conversationsInGroup(group.id)
-              .map(
-                (conversation) => _ConversationEntry(
-                  conversation: conversation,
-                  onTap: () {
-                    unawaited(app.setActive(conversation.id));
-                    onSelect(StudentSection.assistant);
-                  },
-                ),
-              )
-              .toList(),
-        ),
+      ReorderableListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        buildDefaultDragHandles: false,
+        itemCount: app.groups.length,
+        onReorder: (oldIndex, newIndex) =>
+            app.reorderGroups(oldIndex, newIndex),
+        itemBuilder: (context, index) {
+          final group = app.groups[index];
+          return Padding(
+            key: ValueKey(group.id),
+            padding: const EdgeInsets.only(bottom: 4),
+            child: ReorderableDelayedDragStartListener(
+              index: index,
+              child: _ExpandableSidebarRow(
+                icon: LucideIcons.folder,
+                label: group.name,
+                onRename: () => _renameGroup(context, app, group),
+                onDelete: () => _deleteGroup(context, app, group),
+                children: app
+                    .conversationsInGroup(group.id)
+                    .map(
+                      (conversation) => _ConversationEntry(
+                        conversation: conversation,
+                        onTap: () {
+                          unawaited(app.setActive(conversation.id));
+                          onSelect(StudentSection.assistant);
+                        },
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          );
+        },
+      ),
     const SizedBox(height: 12),
     Text('最近对话', style: context.texts.labelSmall),
     const SizedBox(height: 6),
@@ -623,6 +642,70 @@ class _WorkspaceSidebar extends StatelessWidget {
         },
       ),
   ];
+
+  Future<void> _renameGroup(
+    BuildContext context,
+    AppState app,
+    ChatGroup group,
+  ) async {
+    final controller = TextEditingController(text: group.name);
+    final accepted = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('重命名分组'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: '分组名称'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    final name = accepted?.trim();
+    if (name != null && name.isNotEmpty) {
+      await app.updateGroup(group.id, name: name);
+    }
+    controller.dispose();
+  }
+
+  Future<void> _deleteGroup(
+    BuildContext context,
+    AppState app,
+    ChatGroup group,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除分组'),
+        content: const Text('删除后，组内对话会移回未分组，此操作无法撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFE5484D),
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await app.deleteGroup(group.id);
+    }
+  }
 
   Future<void> _showCreateGroup(BuildContext context, AppState app) async {
     final controller = TextEditingController();
@@ -726,10 +809,14 @@ class _ExpandableSidebarRow extends StatefulWidget {
     required this.icon,
     required this.label,
     required this.children,
+    this.onRename,
+    this.onDelete,
   });
   final IconData icon;
   final String label;
   final List<Widget> children;
+  final VoidCallback? onRename;
+  final VoidCallback? onDelete;
 
   @override
   State<_ExpandableSidebarRow> createState() => _ExpandableSidebarRowState();
@@ -745,7 +832,7 @@ class _ExpandableSidebarRowState extends State<_ExpandableSidebarRow> {
         borderRadius: BorderRadius.circular(7),
         onTap: () => setState(() => expanded = !expanded),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
           child: Row(
             children: [
               Icon(widget.icon, size: 17, color: context.n.n600),
@@ -757,6 +844,30 @@ class _ExpandableSidebarRowState extends State<_ExpandableSidebarRow> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (widget.onRename != null)
+                IconButton(
+                  tooltip: '重命名分组',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 26,
+                    minHeight: 26,
+                  ),
+                  iconSize: 14,
+                  icon: const Icon(LucideIcons.pencil),
+                  onPressed: widget.onRename,
+                ),
+              if (widget.onDelete != null)
+                IconButton(
+                  tooltip: '删除分组',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 26,
+                    minHeight: 26,
+                  ),
+                  iconSize: 14,
+                  icon: const Icon(LucideIcons.trash2),
+                  onPressed: widget.onDelete,
+                ),
               Icon(
                 expanded ? LucideIcons.chevronDown : LucideIcons.chevronRight,
                 size: 14,

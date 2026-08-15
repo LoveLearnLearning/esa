@@ -704,6 +704,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void reorderGroups(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= groups.length) return;
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (newIndex < 0) newIndex = 0;
+    if (newIndex > groups.length) newIndex = groups.length;
+    final group = groups.removeAt(oldIndex);
+    groups.insert(newIndex, group);
+    notifyListeners();
+  }
+
   Future<ChatGroup> updateGroup(
     String groupId, {
     String? name,
