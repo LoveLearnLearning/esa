@@ -17,6 +17,7 @@ bitsandbytes
 sympy
 httpx
 requests
+mcp==1.29.0
 
 # RAG
 sentence-transformers

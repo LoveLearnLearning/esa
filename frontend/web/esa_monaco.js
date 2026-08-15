@@ -53,16 +53,63 @@
     'hc-light': '#ffffff',
   };
 
+  const arrowKeys = new Map([
+    ['ArrowLeft', 'cursorLeft'],
+    ['ArrowRight', 'cursorRight'],
+    ['ArrowUp', 'cursorUp'],
+    ['ArrowDown', 'cursorDown'],
+  ]);
+
+  function arrowKeyName(event) {
+    if (arrowKeys.has(event.key)) return event.key;
+    return ({
+      37: 'ArrowLeft',
+      38: 'ArrowUp',
+      39: 'ArrowRight',
+      40: 'ArrowDown',
+    })[event.keyCode];
+  }
+
   // This script loads before Flutter, so this capture listener wins over
-  // Flutter's global focus-traversal shortcut when Tab is pressed in Monaco.
+  // Flutter's global keyboard shortcuts when a key is pressed in Monaco.
   window.addEventListener(
     'keydown',
     (event) => {
-      if (event.key !== 'Tab' && event.keyCode !== 9) return;
+      const key = event.key === 'Tab' || event.keyCode === 9
+        ? 'Tab'
+        : arrowKeyName(event);
+      if (!key) return;
       for (const record of editors.values()) {
         if (!record.host.contains(event.target)) continue;
         event.preventDefault();
         event.stopImmediatePropagation();
+        if (key !== 'Tab') {
+          const suggestWidget = record.host.querySelector?.(
+            '.suggest-widget.visible:not(.message)',
+          );
+          // Let the completion list keep its normal up/down navigation.
+          if (
+            !event.shiftKey &&
+            suggestWidget &&
+            (key === 'ArrowUp' || key === 'ArrowDown')
+          ) {
+            record.editor.trigger(
+              'keyboard',
+              key === 'ArrowUp' ? 'selectPrevSuggestion' : 'selectNextSuggestion',
+              {},
+            );
+            return;
+          }
+          const command = arrowKeys.get(key);
+          if (!command) return;
+          record.editor.focus();
+          record.editor.trigger(
+            'keyboard',
+            event.shiftKey ? `${command}Select` : command,
+            {},
+          );
+          return;
+        }
         const suggestWidget = record.host.querySelector?.(
           '.suggest-widget.visible:not(.message)',
         );
@@ -545,9 +592,11 @@
           }
         };
         const focusEditor = () => {
-          host.focus({ preventScroll: true });
+          editor.focus();
           queueMicrotask(() => editor.focus());
-          requestAnimationFrame(() => editor.focus());
+          requestAnimationFrame(() => {
+            if (!editor.hasTextFocus()) editor.focus();
+          });
         };
         host.addEventListener('keydown', bubbleSpace);
         host.addEventListener('pointerdown', focusEditor, true);
@@ -636,13 +685,12 @@
 
   function focus(id) {
     const record = editors.get(id);
-    if (!record) {
-      document.getElementById(id)?.focus({ preventScroll: true });
-      return;
-    }
-    record.host.focus({ preventScroll: true });
+    if (!record) return;
+    record.editor.focus();
     queueMicrotask(() => record.editor.focus());
-    requestAnimationFrame(() => record.editor.focus());
+    requestAnimationFrame(() => {
+      if (!record.editor.hasTextFocus()) record.editor.focus();
+    });
   }
 
   function setLanguage(id, language) {

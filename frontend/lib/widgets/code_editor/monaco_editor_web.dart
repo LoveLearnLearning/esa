@@ -26,9 +26,6 @@ external void _createEditor(
 @JS('esaMonaco.setValue')
 external void _setEditorValue(String id, String value);
 
-@JS('esaMonaco.focus')
-external void _focusEditor(String id);
-
 @JS('esaMonaco.setLanguage')
 external void _setEditorLanguage(String id, String language);
 
@@ -89,7 +86,6 @@ class _MonacoEditorState extends State<MonacoEditor> {
       final element = web.HTMLDivElement()
         ..id = _editorId
         ..className = 'esa-monaco-host'
-        ..tabIndex = 0
         ..style.width = '100%'
         ..style.height = '100%'
         ..style.pointerEvents = 'auto'
@@ -137,9 +133,5 @@ class _MonacoEditorState extends State<MonacoEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => Listener(
-    behavior: HitTestBehavior.opaque,
-    onPointerDown: (_) => _focusEditor(_editorId),
-    child: HtmlElementView(viewType: _viewType),
-  );
+  Widget build(BuildContext context) => HtmlElementView(viewType: _viewType);
 }

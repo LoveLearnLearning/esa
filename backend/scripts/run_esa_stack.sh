@@ -57,7 +57,8 @@ read -r \
     auxiliary_model auxiliary_name auxiliary_port auxiliary_dtype \
     auxiliary_gpu_memory auxiliary_max_length auxiliary_max_num_seqs \
     auxiliary_max_images rag_enabled rag_embedding_backend \
-    rag_embedding_device rag_qdrant_url rag_qdrant_collection < <(
+    rag_embedding_device rag_qdrant_url rag_qdrant_collection \
+    mcp_enabled < <(
     python - <<'PY'
 from backend.core.utils.config import (
     AUXILIARY_MODEL_DTYPE,
@@ -70,6 +71,7 @@ from backend.core.utils.config import (
     AUXILIARY_MODEL_PORT,
     MODEL_PATH,
     MODEL_TENSOR_PARALLEL_SIZE,
+    MCP_ENABLED,
     RAG_EMBEDDING_BACKEND,
     RAG_EMBEDDING_DEVICE,
     RAG_ENABLED,
@@ -93,9 +95,30 @@ print(
     RAG_EMBEDDING_DEVICE,
     RAG_QDRANT_BASE_URL,
     RAG_QDRANT_COLLECTION,
+    "1" if MCP_ENABLED else "0",
 )
 PY
 )
+
+if [[ "$mcp_enabled" == "1" ]]; then
+    if [[ -z "${YDC_API_KEY:-}" ]]; then
+        echo "ERROR: MCP 已启用，但超算环境中没有 YDC_API_KEY。" >&2
+        exit 1
+    fi
+    if ! command -v node >/dev/null 2>&1 || ! command -v npx >/dev/null 2>&1; then
+        echo "ERROR: You.com MCP 需要 Node.js >= 18 和 npx。" >&2
+        exit 1
+    fi
+    node_major="$(node -p 'Number(process.versions.node.split(".")[0])')"
+    if (( node_major < 18 )); then
+        echo "ERROR: You.com MCP 需要 Node.js >= 18，当前为 $(node --version)。" >&2
+        exit 1
+    fi
+    if ! python -c 'import mcp' >/dev/null 2>&1; then
+        echo "ERROR: Python MCP SDK 未安装，请先执行 python -m pip install -r requirements.txt。" >&2
+        exit 1
+    fi
+fi
 
 if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
     IFS=',' read -r -a allocated_gpus <<< "$CUDA_VISIBLE_DEVICES"

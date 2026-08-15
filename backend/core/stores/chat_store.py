@@ -350,6 +350,32 @@ class ChatStore(BaseSQLiteStore):
             params += (user_id,)
         return self.execute(sql, params) > 0
 
+    def rename_conversation_if_title(
+        self,
+        conversation_id: str,
+        *,
+        expected_title: str,
+        title: str,
+        user_id: str | None = None,
+    ) -> bool:
+        """Rename only if nobody changed the current title in the meantime."""
+
+        sql = """
+            UPDATE conversations
+            SET title = ?, updated_at = ?
+            WHERE conversation_id = ? AND title = ?
+        """
+        params: tuple = (
+            title,
+            self._now(),
+            conversation_id,
+            expected_title,
+        )
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params += (user_id,)
+        return self.execute(sql, params) > 0
+
     def set_conversation_group(
         self,
         conversation_id: str,

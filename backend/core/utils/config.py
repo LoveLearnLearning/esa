@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar, cast
 
@@ -24,8 +25,6 @@ DEBUG_MODE: bool = os.environ.get("ESA_DEBUG", "false").strip().lower() in {
 }
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
-
-SEARXNG_BASE_URL = os.environ.get("SEARXNG_BASE_URL", "http://127.0.0.1:8888")
 
 # model
 MODEL_PATH: str = os.environ.get("ESA_MODEL_PATH", "Qwen/Qwen3.5-122B-A10B")
@@ -68,6 +67,14 @@ CONVERSATION_COMPRESSION_MIN_NEW_MESSAGES: int = 6
 CONVERSATION_COMPRESSION_KEEP_RECENT_MESSAGES: int = 8
 CONVERSATION_COMPRESSION_MAX_INPUT_CHARS: int = 60000
 CONVERSATION_COMPRESSION_MAX_OUTPUT_TOKENS: int = 2048
+
+# Generate one concise history title from the first user question. This shares
+# the local auxiliary model sidecar and never delays the start of the main run.
+CONVERSATION_TITLE_ENABLED: bool = True
+CONVERSATION_TITLE_MAX_INPUT_CHARS: int = 4000
+CONVERSATION_TITLE_MAX_OUTPUT_TOKENS: int = 48
+CONVERSATION_TITLE_REQUEST_TIMEOUT: float = 15.0
+CONVERSATION_TITLE_MAX_CHARS: int = 24
 
 # ------------- rag ---------------
 
@@ -185,6 +192,22 @@ def _csv_from_env(name: str, default: str) -> tuple[str, ...]:
     if not values:
         raise ValueError(f"{name} must contain at least one value")
     return values
+
+
+# MCP child processes. The ESA backend is the MCP client and owns the complete
+# subprocess lifetime. Only the audited You.com search tool is exposed.
+MCP_ENABLED: bool = True
+MCP_YOU_SERVER_NAME: str = "you"
+MCP_YOU_COMMAND: str = "npx"
+MCP_YOU_ARGS: tuple[str, ...] = (
+    "--yes",
+    "@youdotcom-oss/mcp@3.5.0",
+)
+MCP_YOU_ALLOWED_TOOLS: frozenset[str] = frozenset({"you-search"})
+MCP_YOU_API_KEY: str | None = _optional_str_from_env("YDC_API_KEY")
+MCP_STARTUP_TIMEOUT_SECONDS: float = 45.0
+MCP_CALL_TIMEOUT_SECONDS: float = 20.0
+MCP_MAX_RESULT_CHARS: int = 120_000
 
 
 # HTTP deployment.  The public browser-facing URL is supplied by Nginx; the
@@ -418,6 +441,16 @@ def validate_startup_config() -> None:
         candidate = Path(value).expanduser()
         if candidate.is_absolute() and not candidate.exists():
             raise RuntimeError(f"{name} points to a missing local path: {candidate}")
+    if MCP_ENABLED:
+        if not MCP_YOU_API_KEY:
+            raise RuntimeError(
+                "YDC_API_KEY must be set in the supercomputer environment"
+            )
+        if shutil.which(MCP_YOU_COMMAND) is None:
+            raise RuntimeError(
+                f"MCP command {MCP_YOU_COMMAND!r} was not found on PATH; "
+                "install Node.js 18 or newer"
+            )
     if EMAIL_PROVIDER == "service":
         if not EMAIL_SERVICE_URL or not EMAIL_SERVICE_URL.startswith("https://"):
             raise RuntimeError("EMAIL_SERVICE_URL must be an https URL")

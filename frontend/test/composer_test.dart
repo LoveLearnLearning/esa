@@ -238,4 +238,75 @@ void main() {
     expect(code, 'answer = 42');
     expect(language, 'python');
   });
+
+  testWidgets('keeps a separate text draft for each conversation', (
+    tester,
+  ) async {
+    String? conversationId = 'conversation-a';
+    late void Function(String? value) switchConversation;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            switchConversation = (value) {
+              setState(() => conversationId = value);
+            };
+            return Scaffold(
+              body: Composer(
+                busy: false,
+                conversationId: conversationId,
+                onSend: (_, _) {},
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    final input = find.byKey(const ValueKey('composer-input'));
+    await tester.enterText(input, '对话 A 的草稿');
+    switchConversation('conversation-b');
+    await tester.pump();
+    expect(tester.widget<TextField>(input).controller!.text, isEmpty);
+
+    await tester.enterText(input, '对话 B 的草稿');
+    switchConversation('conversation-a');
+    await tester.pump();
+    expect(tester.widget<TextField>(input).controller!.text, '对话 A 的草稿');
+
+    switchConversation('conversation-b');
+    await tester.pump();
+    expect(tester.widget<TextField>(input).controller!.text, '对话 B 的草稿');
+  });
+
+  testWidgets('new conversation composer starts empty', (tester) async {
+    String? conversationId = 'conversation-a';
+    late void Function(String? value) switchConversation;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            switchConversation = (value) {
+              setState(() => conversationId = value);
+            };
+            return Scaffold(
+              body: Composer(
+                busy: false,
+                conversationId: conversationId,
+                onSend: (_, _) {},
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    final input = find.byKey(const ValueKey('composer-input'));
+    await tester.enterText(input, '已有对话草稿');
+    switchConversation(null);
+    await tester.pump();
+    expect(tester.widget<TextField>(input).controller!.text, isEmpty);
+  });
 }

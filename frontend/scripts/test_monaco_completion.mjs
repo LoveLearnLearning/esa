@@ -5,7 +5,9 @@ import vm from 'node:vm';
 const providers = new Map();
 let didType;
 let keydownListener;
+let pointerdownListener;
 let suggestionFocused = false;
+let editorFocusCount = 0;
 const editorTriggers = [];
 const executedEdits = [];
 let editorOptions;
@@ -35,7 +37,9 @@ const model = {
 
 const editor = {
   executeEdits: (_source, edits) => executedEdits.push(...edits),
-  focus() {},
+  focus() {
+    editorFocusCount += 1;
+  },
   getSelection: () => ({
     startLineNumber: 3,
     startColumn: 9,
@@ -112,7 +116,9 @@ const host = {
   isConnected: true,
   clientWidth: 800,
   style: {},
-  addEventListener() {},
+  addEventListener(type, listener) {
+    if (type === 'pointerdown') pointerdownListener = listener;
+  },
   contains: (target) => target === eventTarget,
   querySelector(selector) {
     if (selector === '.suggest-widget.visible:not(.message)' && suggestionFocused) {
@@ -140,6 +146,14 @@ window.esaMonaco.create(
 );
 
 await new Promise((resolve) => setImmediate(resolve));
+
+const focusCountBeforePointer = editorFocusCount;
+pointerdownListener();
+await new Promise((resolve) => setImmediate(resolve));
+assert(
+  editorFocusCount > focusCountBeforePointer,
+  'pointer interaction must focus Monaco text input directly',
+);
 
 const position = { lineNumber: 3, column: 9 };
 const suggestions = (providers.get('cpp') ?? []).flatMap((provider) =>
@@ -173,6 +187,20 @@ const tabEvent = () => ({
   stopImmediatePropagation() {},
 });
 
+const arrowEvent = (key, { shiftKey = false } = {}) => ({
+  key,
+  keyCode: {
+    ArrowLeft: 37,
+    ArrowUp: 38,
+    ArrowRight: 39,
+    ArrowDown: 40,
+  }[key],
+  target: eventTarget,
+  shiftKey,
+  preventDefault() {},
+  stopImmediatePropagation() {},
+});
+
 suggestionFocused = true;
 keydownListener(tabEvent());
 assert.deepEqual(editorTriggers.at(-1), {
@@ -187,4 +215,46 @@ keydownListener(tabEvent());
 assert.equal(executedEdits.length, 1, 'Tab without a completion must indent');
 assert.equal(executedEdits[0].text, '  ');
 
-console.log('Monaco completion and Tab behavior smoke test passed.');
+const arrowCommands = {
+  ArrowLeft: 'cursorLeft',
+  ArrowRight: 'cursorRight',
+  ArrowUp: 'cursorUp',
+  ArrowDown: 'cursorDown',
+};
+for (const [key, command] of Object.entries(arrowCommands)) {
+  const focusCountBeforeArrow = editorFocusCount;
+  keydownListener(arrowEvent(key));
+  assert.deepEqual(editorTriggers.at(-1), {
+    sourceName: 'keyboard',
+    command,
+    payload: {},
+  });
+  assert.equal(
+    editorFocusCount,
+    focusCountBeforeArrow + 1,
+    `${key} must restore Monaco text focus`,
+  );
+
+  keydownListener(arrowEvent(key, { shiftKey: true }));
+  assert.deepEqual(editorTriggers.at(-1), {
+    sourceName: 'keyboard',
+    command: `${command}Select`,
+    payload: {},
+  });
+}
+
+suggestionFocused = true;
+keydownListener(arrowEvent('ArrowDown'));
+assert.deepEqual(editorTriggers.at(-1), {
+  sourceName: 'keyboard',
+  command: 'selectNextSuggestion',
+  payload: {},
+});
+keydownListener(arrowEvent('ArrowUp'));
+assert.deepEqual(editorTriggers.at(-1), {
+  sourceName: 'keyboard',
+  command: 'selectPrevSuggestion',
+  payload: {},
+});
+
+console.log('Monaco completion, Tab, and arrow-key smoke test passed.');

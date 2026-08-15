@@ -3,6 +3,7 @@
 """提供 `webAPI` 相关功能。"""
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI, Request
@@ -40,6 +41,9 @@ from backend.core.services.auxiliary_llm_service import AuxiliaryLLMClient
 from backend.core.services.conversation_compression_service import (
     ConversationCompressionService,
 )
+from backend.core.services.conversation_title_service import (
+    ConversationTitleService,
+)
 from backend.core.services.email_verification_service import (
     EmailServiceSender,
     EmailVerificationService,
@@ -47,6 +51,7 @@ from backend.core.services.email_verification_service import (
 )
 from backend.core.services.frontier_tracking_service import FrontierTrackingService
 from backend.core.services.lsp_service import LspService
+from backend.core.services.mcp_service import MCPClientManager, MCPServerConfig
 from backend.core.services.research_data_service import ResearchDataService
 from backend.core.services.research_project_profile_service import (
     ResearchProjectProfileService,
@@ -89,6 +94,11 @@ from backend.core.utils.config import (
     CONVERSATION_COMPRESSION_MIN_NEW_MESSAGES,
     CONVERSATION_COMPRESSION_SCAN_INTERVAL,
     CONVERSATION_OFFLINE_AFTER_SECONDS,
+    CONVERSATION_TITLE_ENABLED,
+    CONVERSATION_TITLE_MAX_CHARS,
+    CONVERSATION_TITLE_MAX_INPUT_CHARS,
+    CONVERSATION_TITLE_MAX_OUTPUT_TOKENS,
+    CONVERSATION_TITLE_REQUEST_TIMEOUT,
     CORS_ALLOWED_ORIGINS,
     EMAIL_CODE_COOLDOWN_SECONDS,
     EMAIL_CODE_EMAIL_HOURLY_LIMIT,
@@ -117,6 +127,15 @@ from backend.core.utils.config import (
     MODEL_PATH,
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
+    MCP_CALL_TIMEOUT_SECONDS,
+    MCP_ENABLED,
+    MCP_MAX_RESULT_CHARS,
+    MCP_STARTUP_TIMEOUT_SECONDS,
+    MCP_YOU_ALLOWED_TOOLS,
+    MCP_YOU_API_KEY,
+    MCP_YOU_ARGS,
+    MCP_YOU_COMMAND,
+    MCP_YOU_SERVER_NAME,
     TRUSTED_HOSTS,
     USER_ATTACHMENT_MAX_BYTES,
     USER_ATTACHMENT_ROOT,
@@ -268,7 +287,18 @@ async def lifespan(app: FastAPI):
         timeout=AUXILIARY_MODEL_REQUEST_TIMEOUT,
     )
     if not await app.state.auxiliary_llm_client.is_ready():
-        logger.warning("辅助 Qwen 服务尚未就绪，课表解析与离线上下文压缩将暂时不可用")
+        logger.warning(
+            "辅助 Qwen 服务尚未就绪，标题生成、课表解析与离线上下文压缩将暂时不可用"
+        )
+    app.state.conversation_title_service = ConversationTitleService(
+        llm_client=app.state.auxiliary_llm_client,
+        chat_store=app.state.chat_store,
+        max_input_chars=CONVERSATION_TITLE_MAX_INPUT_CHARS,
+        max_output_tokens=CONVERSATION_TITLE_MAX_OUTPUT_TOKENS,
+        request_timeout=CONVERSATION_TITLE_REQUEST_TIMEOUT,
+        max_title_chars=CONVERSATION_TITLE_MAX_CHARS,
+        enabled=CONVERSATION_TITLE_ENABLED,
+    )
     app.state.research_writing_service = ResearchWritingService(
         app.state.research_writing_store,
         app.state.auxiliary_llm_client,
@@ -337,6 +367,44 @@ async def lifespan(app: FastAPI):
         quantization=MODEL_QUANTIZATION,
         tensor_parallel_size=MODEL_TENSOR_PARALLEL_SIZE,
     )
+    app.state.mcp_client_manager = None
+    if MCP_ENABLED:
+        if not MCP_YOU_API_KEY:
+            # validate_startup_config() reports this before expensive model startup.
+            raise RuntimeError("YDC_API_KEY is required when MCP is enabled")
+        mcp_env = {
+            "YDC_API_KEY": MCP_YOU_API_KEY,
+            "YDC_ALLOWED_TOOLS": ",".join(sorted(MCP_YOU_ALLOWED_TOOLS)),
+        }
+        # Keep proxy and custom CA support explicit; the SDK otherwise inherits
+        # only a minimal safe environment for child processes.
+        for env_name in (
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "no_proxy",
+            "NODE_EXTRA_CA_CERTS",
+            "SSL_CERT_FILE",
+        ):
+            value = os.environ.get(env_name)
+            if value:
+                mcp_env[env_name] = value
+        app.state.mcp_client_manager = MCPClientManager(
+            (
+                MCPServerConfig(
+                    name=MCP_YOU_SERVER_NAME,
+                    command=MCP_YOU_COMMAND,
+                    args=MCP_YOU_ARGS,
+                    env=mcp_env,
+                    allowed_tools=MCP_YOU_ALLOWED_TOOLS,
+                    startup_timeout_seconds=MCP_STARTUP_TIMEOUT_SECONDS,
+                    call_timeout_seconds=MCP_CALL_TIMEOUT_SECONDS,
+                    max_result_chars=MCP_MAX_RESULT_CHARS,
+                ),
+            )
+        )
     app.state.profile_builder = ProfileBuilder(
         user_store=app.state.user_store,
         mastery_store=app.state.mastery_store,
@@ -368,8 +436,12 @@ async def lifespan(app: FastAPI):
     app.state.research_writing_service.start(recover_interrupted=False)
     app.state.research_data_service.start(recover_interrupted=False)
     try:
+        if app.state.mcp_client_manager is not None:
+            await app.state.mcp_client_manager.start()
         yield
     finally:
+        if app.state.mcp_client_manager is not None:
+            await app.state.mcp_client_manager.close()
         await app.state.frontier_tracking_service.stop()
         await app.state.research_writing_service.stop()
         await app.state.research_data_service.stop()

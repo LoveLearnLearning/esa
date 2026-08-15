@@ -114,6 +114,10 @@ class BoundToolExecutor:
                     class_id=self.context.authorized_resources.class_id,
                     assignment_id=self.context.authorized_resources.assignment_id,
                 )
+            if name == "web_search":
+                from backend.agent.tools.web_search import execute_web_search
+
+                return await execute_web_search(self.context, **normalized)
             if name in {
                 "start_frontier_tracking", "start_research_writing", "start_dataset_analysis"
             }:
