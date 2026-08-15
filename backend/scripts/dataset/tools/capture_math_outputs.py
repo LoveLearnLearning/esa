@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tools/capture_math_outputs.py
+
 """抓取三个计算器的**线上真实返回值**，落成缓存。
 
 为什么要有这个脚本
@@ -140,6 +142,12 @@ def collect_jobs() -> list[tuple[str, dict]]:
     seen: set[str] = set()
 
     def add(tool: str, args: dict) -> None:
+        """添加 `add` 相关数据。
+
+        Args:
+            tool: str => `tool` 参数。
+            args: dict => `args` 参数。
+        """
         k = cache_key(tool, args)
         if k not in seen:
             seen.add(k)
@@ -175,6 +183,7 @@ def collect_jobs() -> list[tuple[str, dict]]:
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     ap = argparse.ArgumentParser(description="抓取三个计算器的线上真实返回值")
     ap.add_argument("--repo", help="本地后端仓库副本；默认 ~/esa")
     ap.add_argument("--download", action="store_true", help="强制下载快照（抓不到本地改动，慎用）")

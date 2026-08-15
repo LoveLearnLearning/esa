@@ -1,5 +1,7 @@
 # backend/core/web/routers/auth.py
 
+"""提供 `auth` 相关功能。"""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -34,6 +36,7 @@ CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 
 
 def _email_service(request: Request) -> EmailVerificationService:
+    """处理 `_email_service` 相关逻辑。"""
     service = getattr(request.app.state, "email_verification_service", None)
     if not isinstance(service, EmailVerificationService):
         raise HTTPException(
@@ -44,6 +47,7 @@ def _email_service(request: Request) -> EmailVerificationService:
 
 
 def _normalized_email(value: str) -> str:
+    """处理 `_normalized_email` 相关逻辑。"""
     try:
         return normalize_email(value)
     except InvalidEmail as error:
@@ -51,12 +55,14 @@ def _normalized_email(value: str) -> str:
 
 
 def _client_ip(request: Request) -> str:
+    """处理 `_client_ip` 相关逻辑。"""
     return request.client.host if request.client is not None else "unknown"
 
 
 async def _send_code(
     *, request: Request, email: str, purpose: str
 ) -> dict[str, int | str]:
+    """发送 `code` 相关数据。"""
     service = _email_service(request)
     try:
         retry_after = await service.request_code(
@@ -85,6 +91,7 @@ def _require_valid_code(
     purpose: str,
     code: str,
 ) -> None:
+    """处理 `_require_valid_code` 相关逻辑。"""
     result = service.verify(email=email, purpose=purpose, code=code)
     if result == "expired":
         detail = "验证码已过期，请重新获取"
@@ -102,6 +109,15 @@ async def send_registration_code(
     body: EmailCodeRequest,
     request: Request,
 ) -> dict[str, int | str]:
+    """发送 `registration code` 相关数据。
+
+    Args:
+        body: EmailCodeRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+
+    Returns:
+        dict[str, int | str] => 处理结果。
+    """
     email = _normalized_email(body.email)
     user_store: UserStore = request.app.state.user_store
     if user_store.get_by_email(email) is not None:
@@ -111,6 +127,15 @@ async def send_registration_code(
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, request: Request) -> dict[str, str]:
+    """注册 `register` 相关数据。
+
+    Args:
+        body: RegisterRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+
+    Returns:
+        dict[str, str] => 处理结果。
+    """
     auth_service: AuthService = request.app.state.auth
     user_store: UserStore = request.app.state.user_store
     email = _normalized_email(body.email)
@@ -141,6 +166,15 @@ def register(body: RegisterRequest, request: Request) -> dict[str, str]:
 
 @router.post("/login")
 def login(body: LoginRequest, request: Request) -> LoginResponse:
+    """处理 `login` 相关逻辑。
+
+    Args:
+        body: LoginRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+
+    Returns:
+        LoginResponse => 处理结果。
+    """
     auth_service: AuthService = request.app.state.auth
     session: SessionPrincipal | None = auth_service.login(body.username, body.password)
 
@@ -177,6 +211,16 @@ async def send_bind_email_code(
     request: Request,
     session: CurrentSession,
 ) -> dict[str, int | str]:
+    """发送 `bind email code` 相关数据。
+
+    Args:
+        body: EmailCodeRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict[str, int | str] => 处理结果。
+    """
     del session
     email = _normalized_email(body.email)
     user_store: UserStore = request.app.state.user_store
@@ -191,6 +235,16 @@ def bind_email(
     request: Request,
     session: CurrentSession,
 ) -> dict[str, str]:
+    """处理 `bind_email` 相关逻辑。
+
+    Args:
+        body: BindEmailRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict[str, str] => 处理结果。
+    """
     email = _normalized_email(body.email)
     user_store: UserStore = request.app.state.user_store
     existing = user_store.get_by_email(email)
@@ -219,6 +273,12 @@ def bind_email(
     response_model=None,
 )
 async def logout(request: Request, session: CurrentSession) -> None:
+    """处理 `logout` 相关逻辑。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     session_store: SessionStore = request.app.state.session_store
     session_store.revoke(session.session_id)
     presence_store = getattr(request.app.state, "user_presence_store", None)
@@ -244,6 +304,13 @@ def change_password(
     request: Request,
     session: CurrentSession,
 ) -> None:
+    """处理 `change_password` 相关逻辑。
+
+    Args:
+        body: ChangePasswordRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     auth_service: AuthService = request.app.state.auth
 
     try:

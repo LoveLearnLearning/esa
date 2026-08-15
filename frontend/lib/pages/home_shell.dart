@@ -34,10 +34,20 @@ class _HomeShellState extends State<HomeShell> {
   StudentSection _section = StudentSection.assistant;
   bool _sidebarCollapsed = false;
   bool _sidebarRequested = false;
+  bool _scheduleRequested = false;
   ResearchProject? _activeResearchProject;
   bool _researchProjectChatOpen = false;
 
   bool get _inResearch => _section == StudentSection.research;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_scheduleRequested) return;
+    _scheduleRequested = true;
+    final app = AppScope.of(context);
+    if (app.isLoggedIn) unawaited(app.loadSchedule());
+  }
 
   Future<void> _select(StudentSection section) async {
     FocusManager.instance.primaryFocus?.unfocus();
@@ -612,9 +622,13 @@ class _WorkspaceSidebar extends StatelessWidget {
               .toList(),
         ),
     const SizedBox(height: 12),
-    Text('最近对话', style: context.texts.labelSmall),
+    Text(
+      '历史对话',
+      key: const ValueKey('workspace-history-heading'),
+      style: context.texts.labelSmall,
+    ),
     const SizedBox(height: 6),
-    for (final conversation in app.ungroupedConversations.take(6))
+    for (final conversation in app.ungroupedConversations)
       _ConversationEntry(
         conversation: conversation,
         onTap: () {
@@ -622,6 +636,31 @@ class _WorkspaceSidebar extends StatelessWidget {
           onSelect(StudentSection.assistant);
         },
       ),
+    const SizedBox(height: 12),
+    Text(
+      '课程',
+      key: const ValueKey('workspace-courses-heading'),
+      style: context.texts.labelSmall,
+    ),
+    const SizedBox(height: 6),
+    if (!app.scheduleLoaded)
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: LinearProgressIndicator(minHeight: 2),
+      )
+    else if (app.scheduleCourseNames.isEmpty)
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Text('暂无课程', style: context.texts.bodySmall),
+      )
+    else
+      for (final courseName in app.scheduleCourseNames)
+        _SideEntry(
+          icon: LucideIcons.bookOpen,
+          label: courseName,
+          selected: false,
+          onTap: () => onSelect(StudentSection.schedule),
+        ),
   ];
 
   Future<void> _showCreateGroup(BuildContext context, AppState app) async {

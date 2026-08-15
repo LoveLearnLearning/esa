@@ -1,5 +1,7 @@
 # backend/main.py
 
+"""提供 `main` 相关功能。"""
+
 # from pathlib import Path
 
 # from backend.agent.agent import Agent
@@ -76,6 +78,7 @@ def main() -> None:
     #     new_messages = agent.run(user_input, "Fengqwq", history=history)
     #     history += new_messages
 
+    """运行当前模块的命令行入口。"""
     uvicorn.run(
         "backend.core.web.webAPI:app",
         host=SERVER_HOST,

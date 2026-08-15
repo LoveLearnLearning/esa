@@ -1,7 +1,12 @@
+# backend/tests/test_learning_evidence_store.py
+
+"""验证 `learning_evidence_store` 相关行为与回归场景。"""
+
 from backend.agent.learning.evidence_store import LearningEvidenceStore
 
 
 def test_learning_evidence_summary_tracks_process_not_only_correctness(tmp_path):
+    """验证 `learning_evidence_summary_tracks_process_not_only_correctness` 场景。"""
     store = LearningEvidenceStore(tmp_path / "evidence.db")
 
     store.record(
@@ -41,6 +46,7 @@ def test_learning_evidence_summary_tracks_process_not_only_correctness(tmp_path)
 
 
 def test_learning_evidence_rejects_unknown_error_type(tmp_path):
+    """验证 `learning_evidence_rejects_unknown_error_type` 场景。"""
     store = LearningEvidenceStore(tmp_path / "evidence.db")
 
     try:

@@ -1,3 +1,5 @@
+# backend/agent/mm/parser.py
+
 """单文件 MinerU → 自包含 DocIR bundle。"""
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ logger = get_pipeline_logger("DOCIR", __name__)
 
 @dataclass(frozen=True)
 class MinerUDocumentParser:
+    """封装 `MinerUDocumentParser` 的状态与行为。"""
     command: Path
     timeout_seconds: int = 7200
     attempts: int = 2
@@ -39,6 +42,7 @@ class MinerUDocumentParser:
 
     @property
     def configuration_fingerprint(self) -> str:
+        """处理 `configuration_fingerprint` 相关逻辑。"""
         payload = json.dumps(
             {
                 "adapter": "mineru-docir-0.1",
@@ -54,6 +58,15 @@ class MinerUDocumentParser:
         return hashlib.sha256(payload.encode()).hexdigest()
 
     def parse(self, source: Path, document_root: Path) -> ParsedAttachment:
+        """解析 `parse` 相关数据。
+
+        Args:
+            source: Path => `source` 参数。
+            document_root: Path => `document_root` 参数。
+
+        Returns:
+            ParsedAttachment => 处理结果。
+        """
         source = Path(source).resolve(strict=True)
         if self.api_url is None and not self.command.is_file():
             raise FileNotFoundError(f"MinerU command not found: {self.command}")
@@ -145,6 +158,7 @@ class MinerUDocumentParser:
         return ParsedAttachment(document=document, document_root=document_root)
 
     def _cli_command(self, source: Path, raw_root: Path) -> list[str]:
+        """处理 `_cli_command` 相关逻辑。"""
         return [
             str(self.command),
             "-p",
@@ -205,6 +219,7 @@ class MinerUDocumentParser:
 
 
 def _safe_extract_zip(archive: Path, destination: Path) -> None:
+    """处理 `_safe_extract_zip` 相关逻辑。"""
     destination = destination.resolve()
     with zipfile.ZipFile(archive) as bundle:
         for member in bundle.infolist():

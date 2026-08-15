@@ -186,6 +186,7 @@ def _evidence_payload(evidence: Evidence) -> dict[str, Any]:
 
 def _source_label(hit: SearchHit, rank: int) -> str:
 
+    """处理 `_source_label` 相关逻辑。"""
     primary = hit.evidence[0]
     section = " / ".join(primary.section_path) or "未知章节"
     locations = tuple(_locator_label(locator) for locator in primary.locators)

@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/system_prompt.py
+
 """线上 system prompt —— **不复刻，查缓存**。
 
 为什么这个文件不再有一行提示词正文
@@ -84,14 +86,26 @@ class SystemPromptCacheMiss(KeyError):
 
 
 def _is_collect() -> bool:
+    """判断 `collect` 相关数据。"""
     return os.environ.get(MODE_ENV) == COLLECT_MODE
 
 
 def index_key(message: str, style: str, tone: str) -> str:
+    """建立索引 `key` 相关数据。
+
+    Args:
+        message: str => `message` 参数。
+        style: str => `style` 参数。
+        tone: str => `tone` 参数。
+
+    Returns:
+        str => 处理结果。
+    """
     return json.dumps([message, style, tone], ensure_ascii=False, sort_keys=True)
 
 
 def load_cache() -> dict:
+    """加载 `cache` 相关数据。"""
     global _cache
     if _cache is None:
         if not CACHE.exists():

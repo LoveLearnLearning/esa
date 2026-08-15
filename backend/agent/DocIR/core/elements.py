@@ -31,6 +31,7 @@ class ElementProvenance(StrictModel):
 
 
 class ElementBase(StrictModel):
+    """封装 `ElementBase` 的状态与行为。"""
     element_id: str = Field(min_length=1)
     document_order: int = Field(ge=0)
     role: ElementRole = ElementRole.BODY
@@ -49,6 +50,7 @@ class ElementBase(StrictModel):
 
 
 class HeadingElement(ElementBase):
+    """封装 `HeadingElement` 的状态与行为。"""
     kind: Literal["heading"] = "heading"
     # Parser 没有明确给出标题级别时保持 None；DocIR 不根据字号、编号或
     # 相邻标题猜测层级。
@@ -56,39 +58,46 @@ class HeadingElement(ElementBase):
 
 
 class ParagraphElement(ElementBase):
+    """封装 `ParagraphElement` 的状态与行为。"""
     kind: Literal["paragraph"] = "paragraph"
 
 
 class ListElement(ElementBase):
+    """封装 `ListElement` 的状态与行为。"""
     kind: Literal["list"] = "list"
     ordered: bool | None = None
     items: tuple[str, ...] = ()
 
 
 class TableElement(ElementBase):
+    """封装 `TableElement` 的状态与行为。"""
     kind: Literal["table"] = "table"
     html: str | None = None
     asset_id: str | None = None
 
 
 class FormulaElement(ElementBase):
+    """封装 `FormulaElement` 的状态与行为。"""
     kind: Literal["formula"] = "formula"
     latex: str | None = None
     asset_id: str | None = None
 
 
 class FigureElement(ElementBase):
+    """封装 `FigureElement` 的状态与行为。"""
     kind: Literal["figure"] = "figure"
     asset_id: str | None = None
     structured_content: str | None = None
 
 
 class CodeElement(ElementBase):
+    """封装 `CodeElement` 的状态与行为。"""
     kind: Literal["code"] = "code"
     language: str | None = None
 
 
 class UnknownElement(ElementBase):
+    """封装 `UnknownElement` 的状态与行为。"""
     kind: Literal["unknown"] = "unknown"
     raw_type: str
     raw_payload: dict | None = None

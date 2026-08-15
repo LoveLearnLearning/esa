@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/eval.py
+
 """评测器：预测与判分分开。
 
     # 1. 预测（需要一个 OpenAI 兼容端点，vLLM 起服务即可）
@@ -113,6 +115,14 @@ def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
 
 
 def cmd_predict(args) -> int:
+    """处理 `cmd_predict` 相关逻辑。
+
+    Args:
+        args: object => `args` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     recs = [json.loads(line)
             for line in (EVAL_DIR / "eval.jsonl").read_text(encoding="utf-8").splitlines()
             if line.strip()]
@@ -282,6 +292,17 @@ def unsupported_numbers(answer: str, context: str) -> set[str]:
 
 def score(recs: list[dict], preds: dict[str, str], parser_name: str,
           by_name: dict) -> dict:
+    """处理 `score` 相关逻辑。
+
+    Args:
+        recs: list[dict] => `recs` 参数。
+        preds: dict[str, str] => `preds` 参数。
+        parser_name: str => `parser_name` 参数。
+        by_name: dict => `by_name` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     parse = PARSERS[parser_name]
     # 解析器现在要吃 schema —— 后端 2026-08-11 起按声明类型恢复参数类型
     # （parser.py:79-99）。不传 schema 就是在用一个和线上不同的解析器测分，
@@ -403,6 +424,15 @@ def score(recs: list[dict], preds: dict[str, str], parser_name: str,
                 m["ask_hit"] += is_clarification_request(p.content)
 
     def rate(a: str, b: str) -> float:
+        """处理 `rate` 相关逻辑。
+
+        Args:
+            a: str => `a` 参数。
+            b: str => `b` 参数。
+
+        Returns:
+            float => 处理结果。
+        """
         return round(100.0 * m[a] / m[b], 1) if m[b] else 0.0
 
     return {
@@ -450,6 +480,12 @@ TARGETS = {
 
 
 def print_report(name: str, r: dict) -> None:
+    """处理 `print_report` 相关逻辑。
+
+    Args:
+        name: str => `name` 参数。
+        r: dict => `r` 参数。
+    """
     print(f"\n═══ {name}（{r['样本数']} 条）═══")
     for k, (target, direction) in TARGETS.items():
         v = r[k]
@@ -463,12 +499,14 @@ def print_report(name: str, r: dict) -> None:
 
 
 def load_eval() -> list[dict]:
+    """加载 `eval` 相关数据。"""
     return [json.loads(line)
             for line in (EVAL_DIR / "eval.jsonl").read_text(encoding="utf-8").splitlines()
             if line.strip()]
 
 
 def load_preds(tag: str) -> dict[str, str]:
+    """加载 `preds` 相关数据。"""
     p = EVAL_DIR / f"pred_{tag}.jsonl"
     if not p.exists():
         sys.exit(f"找不到 {p}。先跑：python3 -m esa.eval predict --tag {tag} ...")
@@ -496,6 +534,7 @@ def score_by_layer(recs: list[dict], preds: dict[str, str], parser_name: str,
 
 
 def print_layers(layers: dict[str, dict]) -> None:
+    """处理 `print_layers` 相关逻辑。"""
     if not layers:
         return
     print("\n  分层（L1 同分布 / L2 状态外推 / L3 未见工具）：")
@@ -506,6 +545,14 @@ def print_layers(layers: dict[str, dict]) -> None:
 
 
 def cmd_score(args) -> int:
+    """处理 `cmd_score` 相关逻辑。
+
+    Args:
+        args: object => `args` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     schemas, _ = load_schemas(args.schemas)
     by_name = schemas_by_name(schemas)
     recs, preds = load_eval(), load_preds(args.tag)
@@ -541,6 +588,14 @@ def cmd_score(args) -> int:
 
 
 def cmd_compare(args) -> int:
+    """处理 `cmd_compare` 相关逻辑。
+
+    Args:
+        args: object => `args` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     schemas, _ = load_schemas(args.schemas)
     by_name = schemas_by_name(schemas)
     recs = load_eval()
@@ -564,6 +619,14 @@ def cmd_compare(args) -> int:
 
 
 def main(argv=None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: object => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     ap = argparse.ArgumentParser(description="ESA 评测器")
     ap.add_argument("--schemas", default=str(in_dataset("schemas/tool_schemas.json")))
     ap.add_argument("--parser", default="current", choices=list(PARSERS),

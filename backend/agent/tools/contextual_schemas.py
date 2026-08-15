@@ -1,3 +1,5 @@
+# backend/agent/tools/contextual_schemas.py
+
 """Register schemas for tools whose handlers require trusted turn context."""
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ CONTEXTUAL_TOOL_NAMES = frozenset(
 
 
 def register_contextual_schemas() -> None:
+    """注册 `contextual schemas` 相关数据。"""
     schemas = json.loads(
         (Path(__file__).with_name("tool_schemas.json")).read_text(encoding="utf-8")
     )
@@ -32,6 +35,7 @@ def register_contextual_schemas() -> None:
             continue
 
         def unavailable(**_arguments):
+            """处理 `unavailable` 相关逻辑。"""
             raise RuntimeError("contextual tool requires BoundToolExecutor")
 
         tr.register(schema)(unavailable)

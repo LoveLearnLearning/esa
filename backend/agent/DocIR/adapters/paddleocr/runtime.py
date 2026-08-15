@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/paddleocr/runtime.py
+
 """Run PP-StructureV3 locally with a pinned GPU-oriented profile."""
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ SUPPORTED_SUFFIXES = {
 
 
 def _require_gpu(device: str) -> None:
+    """处理 `_require_gpu` 相关逻辑。"""
     import paddle
 
     if not paddle.device.is_compiled_with_cuda():
@@ -38,6 +41,7 @@ def _require_gpu(device: str) -> None:
 
 
 def _source_page_count(source: Path) -> int:
+    """处理 `_source_page_count` 相关逻辑。"""
     if source.suffix.lower() != ".pdf":
         return 1
     import pypdfium2
@@ -50,6 +54,7 @@ def _source_page_count(source: Path) -> int:
 
 
 def _page_png(result: Any) -> bytes:
+    """处理 `_page_png` 相关逻辑。"""
     preprocessed = result["doc_preprocessor_res"]["output_img"]
     image = Image.fromarray(preprocessed[:, :, ::-1])
     stream = BytesIO()
@@ -58,6 +63,7 @@ def _page_png(result: Any) -> bytes:
 
 
 def _plain_json(result: Any) -> dict[str, Any]:
+    """处理 `_plain_json` 相关逻辑。"""
     value = result.json
     if isinstance(value, dict) and isinstance(value.get("res"), dict):
         value = value["res"]
@@ -67,6 +73,7 @@ def _plain_json(result: Any) -> dict[str, Any]:
 
 
 def _configure_model_cache(config: PaddleOCRAdapterConfig) -> None:
+    """处理 `_configure_model_cache` 相关逻辑。"""
     cache = config.model_cache_dir.expanduser().resolve()
     cache.mkdir(parents=True, exist_ok=True)
     os.environ["PADDLE_PDX_CACHE_HOME"] = str(cache)
@@ -77,6 +84,7 @@ def _configure_model_cache(config: PaddleOCRAdapterConfig) -> None:
 
 
 def _pipeline_kwargs(config: PaddleOCRAdapterConfig) -> dict[str, Any]:
+    """处理 `_pipeline_kwargs` 相关逻辑。"""
     return {
         "device": config.device,
         "engine": config.engine,

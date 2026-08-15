@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tests/test_eval_scoring.py
+
 """判分逻辑的自测：用合成预测验证指标算得对，不需要 GPU。
 
 一个算错分的评测器比没有评测器更糟 —— 它会让你以为模型很好。
@@ -41,6 +43,15 @@ def context_numbers(rec: dict) -> list[str]:
 
 
 def fake_model(kind: str, rec: dict) -> str:
+    """处理 `fake_model` 相关逻辑。
+
+    Args:
+        kind: str => `kind` 参数。
+        rec: dict => `rec` 参数。
+
+    Returns:
+        str => 处理结果。
+    """
     g = rec["gold"]
     tools = [t["function"]["name"] for t in json.loads(rec["tools"])]
     if kind in ("perfect", "fabricate") and g["expected_action"] == "RESPOND_TOOL_RESULT":
@@ -77,6 +88,7 @@ def _build_is_stable() -> bool:
     samples = [s for f in iter_ir_files("dataset/data/ir") for s in load_samples(f)]
 
     def fingerprint():
+        """处理 `fingerprint` 相关逻辑。"""
         ev, tr, st = build(samples)
         layer = st.get("layer_by_template", {})
         return ([s.id for s in ev], [s.id for s in tr],
@@ -85,6 +97,7 @@ def _build_is_stable() -> bool:
     return fingerprint() == fingerprint()
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     if not (EVAL_DIR / "eval.jsonl").exists():
         print("先跑 PYTHONPATH=dataset python3 -m esa.evalset 生成评测集")
         return 1
@@ -106,6 +119,7 @@ def main() -> int:
     # 追问命中率的判据单独验一次：ASK_USER 那些题分别喂
     # 「陈述式索要信息」和「什么都不要」，其余题照 perfect 作答。
     def variant(ask_reply: str) -> dict:
+        """处理 `variant` 相关逻辑。"""
         preds = {}
         for r in recs:
             preds[r["gold"]["id"]] = (ask_reply
@@ -118,6 +132,7 @@ def main() -> int:
 
     # 拒绝命中率同理：只查"没调工具"不够，照做的回答也没有工具调用。
     def refuse_variant(reply: str) -> dict:
+        """处理 `refuse_variant` 相关逻辑。"""
         preds = {}
         for r in recs:
             preds[r["gold"]["id"]] = (reply if r["gold"]["expected_action"] == "REFUSE"

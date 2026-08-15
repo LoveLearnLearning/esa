@@ -1,3 +1,5 @@
+# backend/scripts/dataset/generators/gen_negatives.py
+
 """负样本生成器：工具在场但不该调用。
 
 配比是当前最大的短板 —— "不调用"类只占 5.9%，目标 23%。只训正例会让模型学到
@@ -68,6 +70,22 @@ DELETE_ARGS = {
 
 
 def mk(sid, tpl, category, tools, turns, version, rng, all_names, topic=""):
+    """处理 `mk` 相关逻辑。
+
+    Args:
+        sid: object => `sid` 参数。
+        tpl: object => `tpl` 参数。
+        category: object => `category` 参数。
+        tools: object => 可用工具列表。
+        turns: object => `turns` 参数。
+        version: object => `version` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        topic: object => `topic` 参数。
+
+    Returns:
+        object => 处理结果。
+    """
     return Sample(
         id=sid, template_id=tpl, category=category, schema_version=version,
         system=system_for(turns), tool_names=pick_tool_names(tools, all_names, rng),
@@ -136,6 +154,7 @@ def gen_memory_positives(version, rng, all_names, out):
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     rng = random.Random(20260810)
     cfg = yaml.safe_load(SEEDS.read_text(encoding="utf-8"))
     schemas, version = load_schemas(SCHEMAS)

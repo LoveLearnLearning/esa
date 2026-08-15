@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tests/test_esa_tool_format.py
+
 """验证 `tools/llamafactory_esa_tool_format.py` 真的能被后端 parse_output 读懂。
 
     python3 dataset/tests/test_esa_tool_format.py
@@ -44,6 +46,12 @@ failed = 0
 
 
 def check(cond: bool, label: str) -> None:
+    """检查 `check` 相关数据。
+
+    Args:
+        cond: bool => `cond` 参数。
+        label: str => `label` 参数。
+    """
     global passed, failed
     if cond:
         passed += 1
@@ -53,6 +61,7 @@ def check(cond: bool, label: str) -> None:
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     schemas, _ = load_schemas(ROOT / "dataset/schemas/tool_schemas.json")
     by_name = schemas_by_name(schemas)
     samples = [s for p in sorted(IR_DIR.glob("*.jsonl")) for s in load_samples(p)]

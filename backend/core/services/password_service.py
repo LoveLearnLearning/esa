@@ -1,8 +1,12 @@
 # backend/core/services/password_service.py
+
+"""提供领域服务实现。"""
+
 import bcrypt
 
 
 class PasswordService:
+    """提供 `password service` 领域服务。"""
     @staticmethod
     def hash_password(plain_password: str) -> str:
         """将明文密码转变成哈希值

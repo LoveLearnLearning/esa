@@ -1,3 +1,7 @@
+# backend/core/web/concurrency.py
+
+"""提供 `concurrency` 相关功能。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def _is_database_locked(error: sqlite3.OperationalError) -> bool:
+    """判断 `database locked` 相关数据。"""
     return "locked" in str(error).lower()
 
 
@@ -29,18 +34,22 @@ class ConversationTurnTargetMissingError(LookupError):
 
 @dataclass
 class _LockEntry:
+    """封装 `_LockEntry` 的状态与行为。"""
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     references: int = 0
 
 
 class KeyedLockLease:
+    """封装 `KeyedLockLease` 的状态与行为。"""
     def __init__(self, pool: "KeyedAsyncLockPool", key: str, entry: _LockEntry):
+        """初始化 `KeyedLockLease` 实例。"""
         self._pool = pool
         self._key = key
         self._entry = entry
         self._released = False
 
     async def __aenter__(self) -> "KeyedLockLease":
+        """异步进入上下文并返回可用资源。"""
         return self
 
     async def __aexit__(
@@ -49,9 +58,11 @@ class KeyedLockLease:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        """异步退出上下文并释放相关资源。"""
         await self.release()
 
     async def release(self) -> None:
+        """处理 `release` 相关逻辑。"""
         if self._released:
             return
         self._released = True
@@ -62,14 +73,17 @@ class KeyedAsyncLockPool:
     """按业务键串行化当前进程内的协程，并自动回收空闲锁。"""
 
     def __init__(self) -> None:
+        """初始化 `KeyedAsyncLockPool` 实例。"""
         self._entries: dict[str, _LockEntry] = {}
         self._guard = asyncio.Lock()
 
     @property
     def entry_count(self) -> int:
+        """处理 `entry_count` 相关逻辑。"""
         return len(self._entries)
 
     async def acquire(self, key: str) -> KeyedLockLease:
+        """处理 `acquire` 相关逻辑。"""
         async with self._guard:
             entry = self._entries.setdefault(key, _LockEntry())
             entry.references += 1
@@ -83,10 +97,12 @@ class KeyedAsyncLockPool:
         return KeyedLockLease(self, key, entry)
 
     async def _release(self, key: str, entry: _LockEntry) -> None:
+        """处理 `_release` 相关逻辑。"""
         entry.lock.release()
         await self._drop_reference(key, entry)
 
     async def _drop_reference(self, key: str, entry: _LockEntry) -> None:
+        """处理 `_drop_reference` 相关逻辑。"""
         async with self._guard:
             entry.references -= 1
             if entry.references == 0 and self._entries.get(key) is entry:
@@ -103,6 +119,7 @@ class ConversationTurnLease:
         owner_token: str,
         local_lease: KeyedLockLease,
     ) -> None:
+        """初始化 `ConversationTurnLease` 实例。"""
         self._coordinator = coordinator
         self._conversation_id = conversation_id
         self._owner_token = owner_token
@@ -112,6 +129,7 @@ class ConversationTurnLease:
         self._heartbeat_task = asyncio.create_task(self._heartbeat())
 
     async def __aenter__(self) -> "ConversationTurnLease":
+        """异步进入上下文并返回可用资源。"""
         return self
 
     async def __aexit__(
@@ -120,9 +138,11 @@ class ConversationTurnLease:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        """异步退出上下文并释放相关资源。"""
         await self.release()
 
     async def _heartbeat(self) -> None:
+        """处理 `_heartbeat` 相关逻辑。"""
         try:
             while True:
                 await asyncio.sleep(self._coordinator.heartbeat_interval)
@@ -148,6 +168,7 @@ class ConversationTurnLease:
             raise
 
     async def release(self) -> None:
+        """处理 `release` 相关逻辑。"""
         async with self._release_guard:
             if self._released:
                 return
@@ -203,6 +224,7 @@ class ConversationTurnCoordinator:
         wait_timeout: float = 600.0,
         poll_interval: float = 0.05,
     ) -> None:
+        """初始化 `ConversationTurnCoordinator` 实例。"""
         if lease_ttl <= 0:
             raise ValueError("lease_ttl 必须大于 0")
         if not 0 < heartbeat_interval < lease_ttl:
@@ -220,13 +242,16 @@ class ConversationTurnCoordinator:
 
     @property
     def local_entry_count(self) -> int:
+        """处理 `local_entry_count` 相关逻辑。"""
         return self._local_locks.entry_count
 
     @staticmethod
     def _now() -> datetime:
+        """处理 `_now` 相关逻辑。"""
         return datetime.now(timezone.utc)
 
     def _initialize_table(self) -> None:
+        """初始化 `table` 相关数据。"""
         with closing(connect_sqlite(self.database_path)) as connection, connection:
             connection.execute(
                 """
@@ -252,6 +277,7 @@ class ConversationTurnCoordinator:
         conversation_id: str,
         owner_token: str,
     ) -> bool:
+        """处理 `_try_acquire_database_lease` 相关逻辑。"""
         now = self._now()
         expires_at = now + timedelta(seconds=self.lease_ttl)
         with closing(
@@ -300,6 +326,7 @@ class ConversationTurnCoordinator:
         conversation_id: str,
         owner_token: str,
     ) -> bool:
+        """处理 `_renew_database_lease` 相关逻辑。"""
         expires_at = self._now() + timedelta(seconds=self.lease_ttl)
         with closing(
             connect_sqlite(self.database_path, timeout=0.25)
@@ -319,6 +346,7 @@ class ConversationTurnCoordinator:
         conversation_id: str,
         owner_token: str,
     ) -> None:
+        """处理 `_release_database_lease` 相关逻辑。"""
         with closing(
             connect_sqlite(self.database_path, timeout=0.25)
         ) as connection, connection:
@@ -331,6 +359,14 @@ class ConversationTurnCoordinator:
             )
 
     async def acquire(self, conversation_id: str) -> ConversationTurnLease:
+        """处理 `acquire` 相关逻辑。
+
+        Args:
+            conversation_id: str => 对话 ID。
+
+        Returns:
+            ConversationTurnLease => 处理结果。
+        """
         if not conversation_id:
             raise ValueError("conversation_id 不能为空")
 

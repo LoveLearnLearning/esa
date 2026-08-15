@@ -1,3 +1,5 @@
+# backend/agent/workspaces/learning_adapter.py
+
 """Adapter retaining the existing deterministic learning pedagogy router."""
 
 from __future__ import annotations
@@ -9,12 +11,23 @@ from backend.agent.workspaces.models import AgentTurnInput
 
 
 class LearningAdapter:
+    """封装 `LearningAdapter` 的状态与行为。"""
     def augment(
         self,
         turn: AgentTurnInput,
         skills: ScopedSkillView,
         profile_snapshot=None,
     ) -> StrategyAugmentation:
+        """处理 `augment` 相关逻辑。
+
+        Args:
+            turn: AgentTurnInput => `turn` 参数。
+            skills: ScopedSkillView => `skills` 参数。
+            profile_snapshot: object => `profile_snapshot` 参数。
+
+        Returns:
+            StrategyAugmentation => 处理结果。
+        """
         if turn.route.workspace_type != "learning":
             return StrategyAugmentation()
         try:
@@ -31,4 +44,3 @@ class LearningAdapter:
             return StrategyAugmentation(decision.to_prompt_context(body))
         except (KeyError, TypeError, ValueError):
             return StrategyAugmentation()
-

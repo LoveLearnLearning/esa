@@ -1,4 +1,5 @@
 # backend/core/router/basic_router.py
+
 """Fail-closed routing for trusted identity and authorized resources."""
 
 from __future__ import annotations
@@ -11,11 +12,21 @@ from backend.core.router.workspace_registry import resolve_workspace
 
 
 class CoreRouter:
+    """封装 `CoreRouter` 的状态与行为。"""
     def route(
         self,
         identity: TrustedIdentity,
         context: RoutingContext,
     ) -> WorkspaceRoute:
+        """处理 `route` 相关逻辑。
+
+        Args:
+            identity: TrustedIdentity => `identity` 参数。
+            context: RoutingContext => `context` 参数。
+
+        Returns:
+            WorkspaceRoute => 处理结果。
+        """
         conversation = context.conversation
         if conversation.user_id != identity.user_id:
             raise ResourceAccessDenied("conversation does not belong to identity")
@@ -52,4 +63,13 @@ def route_workspace(
     identity: TrustedIdentity,
     context: RoutingContext,
 ) -> WorkspaceRoute:
+    """处理 `route_workspace` 相关逻辑。
+
+    Args:
+        identity: TrustedIdentity => `identity` 参数。
+        context: RoutingContext => `context` 参数。
+
+    Returns:
+        WorkspaceRoute => 处理结果。
+    """
     return CoreRouter().route(identity, context)

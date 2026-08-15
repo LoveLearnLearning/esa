@@ -1,3 +1,5 @@
+# backend/agent/mm/__init__.py
+
 """ESA 多模态附件摄取公共入口。"""
 
 from .config import MMConfig

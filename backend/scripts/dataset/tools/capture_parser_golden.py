@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tools/capture_parser_golden.py
+
 """拿**后端真实 parse_output** 跑一批输入，把结果存成黄金样例。
 
 为什么要有这个脚本
@@ -77,6 +79,7 @@ EDGE_CASES = [
 
 
 def to_jsonable(parsed) -> dict:
+    """转换 `jsonable` 相关数据。"""
     d = asdict(parsed) if is_dataclass(parsed) else dict(parsed)
     return {
         "reasoning": d.get("reasoning"),
@@ -114,6 +117,7 @@ def collect_inputs(by_name: dict) -> list[str]:
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     ap = argparse.ArgumentParser(description="抓取后端 parse_output 的黄金样例")
     ap.add_argument("--repo", help="本地后端仓库副本；默认 ~/esa")
     ap.add_argument("--download", action="store_true")

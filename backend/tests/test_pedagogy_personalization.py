@@ -1,3 +1,7 @@
+# backend/tests/test_pedagogy_personalization.py
+
+"""验证 `pedagogy_personalization` 相关行为与回归场景。"""
+
 from backend.agent.learning.pedagogy_router import PedagogyRouter
 from backend.agent.memories.memory_models import (
     ProfileField,
@@ -14,6 +18,7 @@ def _profile(
     avg_hint_level=None,
     independent_rate=None,
 ):
+    """处理 `_profile` 相关逻辑。"""
     return ProfileSnapshot(
         user_id="u1",
         profile_version=1,
@@ -43,6 +48,7 @@ def _profile(
 
 
 def test_low_mastery_selects_foundation_depth():
+    """验证 `low_mastery_selects_foundation_depth` 场景。"""
     decision = PedagogyRouter.route(
         "什么是二叉树遍历？", profile=_profile(25)
     )
@@ -50,6 +56,7 @@ def test_low_mastery_selects_foundation_depth():
 
 
 def test_mid_mastery_selects_standard_depth():
+    """验证 `mid_mastery_selects_standard_depth` 场景。"""
     decision = PedagogyRouter.route(
         "什么是二叉树遍历？", profile=_profile(60)
     )
@@ -57,6 +64,7 @@ def test_mid_mastery_selects_standard_depth():
 
 
 def test_high_mastery_selects_advanced_depth():
+    """验证 `high_mastery_selects_advanced_depth` 场景。"""
     decision = PedagogyRouter.route(
         "什么是二叉树遍历？", profile=_profile(90)
     )
@@ -64,6 +72,7 @@ def test_high_mastery_selects_advanced_depth():
 
 
 def test_weak_prerequisite_is_routed_before_current_point():
+    """验证 `weak_prerequisite_is_routed_before_current_point` 场景。"""
     decision = PedagogyRouter.route(
         "什么是二叉树遍历？",
         profile=_profile(60, prerequisite_status="weak"),
@@ -72,6 +81,7 @@ def test_weak_prerequisite_is_routed_before_current_point():
 
 
 def test_unknown_mastery_uses_standard_depth_without_claiming_weakness():
+    """验证 `unknown_mastery_uses_standard_depth_without_claiming_weakness` 场景。"""
     decision = PedagogyRouter.route(
         "什么是二叉树遍历？",
         profile=_profile(50, has_record=False, prerequisite_status="unknown"),
@@ -81,6 +91,7 @@ def test_unknown_mastery_uses_standard_depth_without_claiming_weakness():
 
 
 def test_prompt_context_turns_evidence_into_behavioral_guidance():
+    """验证 `prompt_context_turns_evidence_into_behavioral_guidance` 场景。"""
     decision = PedagogyRouter.route(
         "什么是二叉树遍历？",
         profile=_profile(
@@ -100,6 +111,7 @@ def test_prompt_context_turns_evidence_into_behavioral_guidance():
 
 
 def test_resolved_point_makes_plain_teaching_request_a_learning_task():
+    """验证 `resolved_point_makes_plain_teaching_request_a_learning_task` 场景。"""
     decision = PedagogyRouter.route("给我讲讲二叉树", profile=_profile(25))
 
     assert decision.task_type == "learning"
@@ -108,6 +120,7 @@ def test_resolved_point_makes_plain_teaching_request_a_learning_task():
 
 
 def test_resolved_point_keeps_follow_up_explanation_in_learning_mode():
+    """验证 `resolved_point_keeps_follow_up_explanation_in_learning_mode` 场景。"""
     decision = PedagogyRouter.route(
         "二叉树遍历我还是不太懂，你再给我讲一下",
         profile=_profile(60, prerequisite_status="weak"),
@@ -118,6 +131,7 @@ def test_resolved_point_keeps_follow_up_explanation_in_learning_mode():
 
 
 def test_ambiguous_dependency_word_does_not_override_resolved_learning_point():
+    """验证 `ambiguous_dependency_word_does_not_override_resolved_learning_point` 场景。"""
     decision = PedagogyRouter.route(
         "递归是二叉树的前置依赖吗？",
         profile=_profile(60, prerequisite_status="weak"),
@@ -127,6 +141,7 @@ def test_ambiguous_dependency_word_does_not_override_resolved_learning_point():
 
 
 def test_strong_engineering_signal_still_overrides_resolved_point():
+    """验证 `strong_engineering_signal_still_overrides_resolved_point` 场景。"""
     decision = PedagogyRouter.route(
         "二叉树代码在 CUDA 部署时报错",
         profile=_profile(60),

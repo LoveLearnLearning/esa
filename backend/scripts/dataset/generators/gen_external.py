@@ -1,3 +1,5 @@
+# backend/scripts/dataset/generators/gen_external.py
+
 """外部工具生成器：arxiv_search / get_time / get_weather / web_search。
 
 四个工具性质不同，处理方式也不同：
@@ -42,6 +44,23 @@ SYSTEM = (
 
 
 def mk(sid, tpl, category, tools, turns, version, rng, all_names, review=False, ask_for=()):
+    """处理 `mk` 相关逻辑。
+
+    Args:
+        sid: object => `sid` 参数。
+        tpl: object => `tpl` 参数。
+        category: object => `category` 参数。
+        tools: object => 可用工具列表。
+        turns: object => `turns` 参数。
+        version: object => `version` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        review: object => `review` 参数。
+        ask_for: object => `ask_for` 参数。
+
+    Returns:
+        object => 处理结果。
+    """
     return Sample(
         id=sid, template_id=tpl, category=category, schema_version=version,
         system=system_for(turns), tool_names=pick_tool_names(tools, all_names, rng),
@@ -50,6 +69,7 @@ def mk(sid, tpl, category, tools, turns, version, rng, all_names, review=False, 
 
 
 def _arxiv_answer(result: dict) -> str:
+    """处理 `_arxiv_answer` 相关逻辑。"""
     rs = result["results"]
     lines = [f"在 arXiv 上按「{result['query']}」检索到 {result['total_results']} 篇，"
              f"这里挑 {len(rs)} 篇比较相关的：\n"]
@@ -62,6 +82,15 @@ def _arxiv_answer(result: dict) -> str:
 
 
 def gen_arxiv(cfg, version, rng, all_names, out):
+    """处理 `gen_arxiv` 相关逻辑。
+
+    Args:
+        cfg: object => `cfg` 参数。
+        version: object => `version` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        out: object => `out` 参数。
+    """
     for group in ("正例", "按作者"):
         for i, item in enumerate(cfg["arxiv_search"][group]):
             args = {"query": item["query"], "max_results": 3}
@@ -99,6 +128,15 @@ def gen_arxiv(cfg, version, rng, all_names, out):
 
 
 def gen_time(cfg, version, rng, all_names, out):
+    """处理 `gen_time` 相关逻辑。
+
+    Args:
+        cfg: object => `cfg` 参数。
+        version: object => `version` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        out: object => `out` 参数。
+    """
     result = execute("get_time", {})
     for i, q in enumerate(cfg["get_time"]["正例"]):
         out.append(mk(
@@ -124,6 +162,15 @@ def gen_time(cfg, version, rng, all_names, out):
 
 
 def gen_weather(cfg, version, rng, all_names, out):
+    """处理 `gen_weather` 相关逻辑。
+
+    Args:
+        cfg: object => `cfg` 参数。
+        version: object => `version` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        out: object => `out` 参数。
+    """
     w = cfg["get_weather"]
     for i, (city, p) in enumerate((c, p) for p in w["正例"] for c in w["cities"]):
         result = execute("get_weather", {"city": city})
@@ -164,6 +211,7 @@ def gen_web_search_errors(cfg, version, rng, all_names, out):
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     rng = random.Random(20260810)
     cfg = yaml.safe_load(SEEDS.read_text(encoding="utf-8"))
     schemas, version = load_schemas(SCHEMAS)

@@ -1,3 +1,5 @@
+# backend/scripts/dataset/generators/gen_scenarios.py
+
 """从话术种子库生成学情类场景数据。
 
 覆盖设计总表的 S002 / S003 / S004，对应规律 R001 / R002 / R003 / R004 / R005 / R009。
@@ -111,6 +113,7 @@ def quota_sample(candidates, key_fns, target, rng):
 
 
 def _fmt_plan_answer(result: dict, weeks_to_exam: int) -> str:
+    """处理 `_fmt_plan_answer` 相关逻辑。"""
     recs = result["recommendations"][:3]
     lines = [f"根据你在**{result['course']}**的学情，距考试 {weeks_to_exam} 周，建议优先练这几个知识点：\n"]
     for i, r in enumerate(recs, 1):
@@ -126,6 +129,7 @@ def _fmt_plan_answer(result: dict, weeks_to_exam: int) -> str:
 
 
 def _fmt_report_answer(result: dict) -> str:
+    """处理 `_fmt_report_answer` 相关逻辑。"""
     scope = result["course"] or "全部课程"
     weak = result["weak_points"][:3]
     weakest = "、".join(f"{x['name'] if 'name' in x else x['kp_id']}（{x['mastery_level']}）" for x in weak)
@@ -180,6 +184,7 @@ ALIAS = {"weeks_to_exam": "weeks", "city": "city", "course": "course", "memory_k
 
 
 def _fill(text: str, vals: dict, extra: dict | None = None) -> str:
+    """处理 `_fill` 相关逻辑。"""
     kw = {ALIAS[k]: v for k, v in vals.items()}
     kw.update(extra or {})
     return text.format(**kw)
@@ -196,6 +201,7 @@ def _old_value(field: str, current, rng):
 
 
 def _render(cfg, sid, state_key, c, idx, rng, all_names, version):
+    """渲染 `render` 相关数据。"""
     vals, phrasing = c["vals"], c["phrasing"]
     extra = {}
     if state_key == "修改参数":
@@ -213,6 +219,17 @@ def _render(cfg, sid, state_key, c, idx, rng, all_names, version):
     body = cfg[sid]
 
     def mk(turns, tools, category, ask_for=()):
+        """处理 `mk` 相关逻辑。
+
+        Args:
+            turns: object => `turns` 参数。
+            tools: object => 可用工具列表。
+            category: object => `category` 参数。
+            ask_for: object => `ask_for` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         return Sample(
             id=sample_id, template_id=tpl, category=category, schema_version=version,
             system=system_for(turns), tool_names=pick_tool_names(tools, all_names, rng),
@@ -292,6 +309,7 @@ def _render(cfg, sid, state_key, c, idx, rng, all_names, version):
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     rng = random.Random(20260809)
     cfg = yaml.safe_load(SEEDS.read_text(encoding="utf-8"))
     schemas, version = load_schemas(SCHEMAS)

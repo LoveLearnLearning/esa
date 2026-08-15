@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tests/test_fixture_contract.py
+
 """工具返回结构契约测试。
 
 为什么需要这个：结构校验（validate.py）能查 JSON 合不合法、参数合不合 schema，
@@ -64,11 +66,22 @@ CONSTANTS = {
 
 
 def check(name: str, ok: bool, detail: str = "") -> bool:
+    """检查 `check` 相关数据。
+
+    Args:
+        name: str => `name` 参数。
+        ok: bool => `ok` 参数。
+        detail: str => `detail` 参数。
+
+    Returns:
+        bool => 处理结果。
+    """
     print(f"{'✅' if ok else '❌'} {name}" + (f"　{detail}" if detail and not ok else ""))
     return ok
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     results = []
 
     for k, want in CONSTANTS.items():

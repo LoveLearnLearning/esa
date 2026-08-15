@@ -1,3 +1,7 @@
+# backend/tests/test_agent_action_and_core_memory_v2.py
+
+"""验证 `agent_action_and_core_memory_v2` 相关行为与回归场景。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -43,6 +47,7 @@ from backend.core.workflows.research import (
 
 
 def _database(tmp_path):
+    """处理 `_database` 相关逻辑。"""
     database = tmp_path / "runtime.db"
     users = UserStore(database)
     assert users.create(
@@ -56,6 +61,7 @@ def _database(tmp_path):
 
 
 def _request_action(service, conversation_id, key="same-key"):
+    """处理 `_request_action` 相关逻辑。"""
     return service.request(
         user_id="u1",
         conversation_id=conversation_id,
@@ -75,6 +81,7 @@ def _memory_executor(
     workspace_type: str,
     request_id: str,
 ):
+    """处理 `_memory_executor` 相关逻辑。"""
     scope = ResourceScope()
     route = WorkspaceRoute(
         workspace_type=workspace_type,
@@ -105,10 +112,12 @@ def _memory_executor(
 
 
 def test_agent_action_create_is_atomic_and_approval_executes_once(tmp_path):
+    """验证 `agent_action_create_is_atomic_and_approval_executes_once` 场景。"""
     database, conversation_id = _database(tmp_path)
     calls: list[str] = []
 
     def execute(action):
+        """执行 `execute` 相关数据。"""
         calls.append(action["action_id"])
         return {"job_id": "job-1"}
 
@@ -139,6 +148,7 @@ def test_agent_action_create_is_atomic_and_approval_executes_once(tmp_path):
 
 
 def test_agent_action_reject_expire_and_cross_user_guards(tmp_path):
+    """验证 `agent_action_reject_expire_and_cross_user_guards` 场景。"""
     database, conversation_id = _database(tmp_path)
     service = AgentActionService(AgentActionStore(database))
     rejected = _request_action(service, conversation_id, "reject")
@@ -166,6 +176,7 @@ def test_agent_action_reject_expire_and_cross_user_guards(tmp_path):
 
 
 def test_core_memory_create_update_candidate_and_audit_are_transactional(tmp_path):
+    """验证 `core_memory_create_update_candidate_and_audit_are_transactional` 场景。"""
     database, _conversation_id = _database(tmp_path)
     store = CoreMemoryStore(database)
     scope = MemoryScope("global")
@@ -235,6 +246,7 @@ def test_core_memory_create_update_candidate_and_audit_are_transactional(tmp_pat
 
 
 def test_memory_tools_separate_explicit_writes_from_inferred_candidates(tmp_path):
+    """验证 `memory_tools_separate_explicit_writes_from_inferred_candidates` 场景。"""
     database, conversation_id = _database(tmp_path)
     store = CoreMemoryStore(database)
     service = CoreMemoryService(store)
@@ -271,6 +283,7 @@ def test_memory_tools_separate_explicit_writes_from_inferred_candidates(tmp_path
 
 
 def test_delete_memory_tool_uses_memory_id_and_enforces_workspace_scope(tmp_path):
+    """验证 `delete_memory_tool_uses_memory_id_and_enforces_workspace_scope` 场景。"""
     database, conversation_id = _database(tmp_path)
     store = CoreMemoryStore(database)
     service = CoreMemoryService(store)
@@ -318,6 +331,7 @@ def test_delete_memory_tool_uses_memory_id_and_enforces_workspace_scope(tmp_path
 
 
 def test_candidate_accept_failure_rolls_back_memory_and_candidate(tmp_path):
+    """验证 `candidate_accept_failure_rolls_back_memory_and_candidate` 场景。"""
     database, _conversation_id = _database(tmp_path)
     store = CoreMemoryStore(database)
     scope = MemoryScope("global")
@@ -369,10 +383,17 @@ def test_candidate_accept_failure_rolls_back_memory_and_candidate(tmp_path):
 
 
 def test_core_memory_create_rolls_back_when_audit_fails(tmp_path, monkeypatch):
+    """验证 `core_memory_create_rolls_back_when_audit_fails` 场景。"""
     database, _conversation_id = _database(tmp_path)
     store = CoreMemoryStore(database)
 
     def fail_audit(*_args, **_kwargs):
+        """处理 `fail_audit` 相关逻辑。
+
+        Args:
+            _args: object => `_args` 参数。
+            _kwargs: object => `_kwargs` 参数。
+        """
         raise sqlite3.OperationalError("audit unavailable")
 
     monkeypatch.setattr(store, "_audit", fail_audit)
@@ -393,6 +414,7 @@ def test_core_memory_create_rolls_back_when_audit_fails(tmp_path, monkeypatch):
 
 
 def test_research_project_profile_is_user_scoped_and_revisioned(tmp_path):
+    """验证 `research_project_profile_is_user_scoped_and_revisioned` 场景。"""
     database, _conversation_id = _database(tmp_path)
     users = UserStore(database)
     assert users.create(
@@ -414,6 +436,7 @@ def test_research_project_profile_is_user_scoped_and_revisioned(tmp_path):
         service.get(project["project_id"], "u2")
 
     def update(value):
+        """更新 `update` 相关数据。"""
         try:
             return service.upsert(
                 project["project_id"],
@@ -432,6 +455,7 @@ def test_research_project_profile_is_user_scoped_and_revisioned(tmp_path):
 
 
 def test_classroom_binding_cannot_be_rebound_by_another_user(tmp_path):
+    """验证 `classroom_binding_cannot_be_rebound_by_another_user` 场景。"""
     database, conversation_id = _database(tmp_path)
     users = UserStore(database)
     assert users.create(
@@ -456,22 +480,45 @@ def test_classroom_binding_cannot_be_rebound_by_another_user(tmp_path):
 
 
 class _QueueRecorder:
+    """封装 `_QueueRecorder` 的状态与行为。"""
     def __init__(self) -> None:
+        """初始化 `_QueueRecorder` 实例。"""
         self.job_ids: list[str] = []
 
     def submit(self, job_id: str) -> None:
+        """处理 `submit` 相关逻辑。"""
         self.job_ids.append(job_id)
 
 
 class _EmptyResourceStore:
+    """封装 `empty resource store` 数据持久化操作。"""
     def get_document(self, _resource_id, _user_id):
+        """获取 `document` 相关数据。
+
+        Args:
+            _resource_id: object =>  resource ID。
+            _user_id: object =>  user ID。
+
+        Returns:
+            object => 处理结果。
+        """
         return None
 
     def get_dataset(self, _resource_id, _user_id):
+        """获取 `dataset` 相关数据。
+
+        Args:
+            _resource_id: object =>  resource ID。
+            _user_id: object =>  user ID。
+
+        Returns:
+            object => 处理结果。
+        """
         return None
 
 
 def test_workflow_tool_action_facade_chain_is_confirmed_and_idempotent(tmp_path):
+    """验证 `workflow_tool_action_facade_chain_is_confirmed_and_idempotent` 场景。"""
     database, conversation_id = _database(tmp_path)
     projects = ResearchProjectStore(database)
     project = projects.create_project("u1", "Project A")
@@ -490,6 +537,7 @@ def test_workflow_tool_action_facade_chain_is_confirmed_and_idempotent(tmp_path)
     actions = AgentActionStore(database)
 
     def validate(action):
+        """校验 `validate` 相关数据。"""
         validate_research_action(
             action,
             project_store=projects,
@@ -565,12 +613,33 @@ def test_workflow_tool_action_facade_chain_is_confirmed_and_idempotent(tmp_path)
 
 
 def test_research_action_rejects_resource_from_another_bound_project():
+    """验证 `research_action_rejects_resource_from_another_bound_project` 场景。"""
     class _Projects:
+        """封装 `_Projects` 的状态与行为。"""
         def get_project(self, project_id, user_id):
+            """获取 `project` 相关数据。
+
+            Args:
+                project_id: object => 项目 ID。
+                user_id: object => 用户 ID。
+
+            Returns:
+                object => 处理结果。
+            """
             return {"project_id": project_id, "user_id": user_id, "status": "active"}
 
     class _Documents(_EmptyResourceStore):
+        """封装 `_Documents` 的状态与行为。"""
         def get_document(self, _resource_id, user_id):
+            """获取 `document` 相关数据。
+
+            Args:
+                _resource_id: object =>  resource ID。
+                user_id: object => 用户 ID。
+
+            Returns:
+                object => 处理结果。
+            """
             return {"project_id": "project-b", "user_id": user_id}
 
     action = {

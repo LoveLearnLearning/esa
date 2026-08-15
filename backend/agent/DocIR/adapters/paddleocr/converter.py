@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/paddleocr/converter.py
+
 """Convert replayable PP-StructureV3 output into parser-neutral DocIR."""
 
 from __future__ import annotations
@@ -50,6 +52,7 @@ from .bundle import (
 
 
 def file_sha256(path: Path) -> str:
+    """处理 `file_sha256` 相关逻辑。"""
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -58,26 +61,32 @@ def file_sha256(path: Path) -> str:
 
 
 def _bytes_sha256(value: bytes) -> str:
+    """处理 `_bytes_sha256` 相关逻辑。"""
     return hashlib.sha256(value).hexdigest()
 
 
 def _stable(prefix: str, *parts: object) -> str:
+    """处理 `_stable` 相关逻辑。"""
     raw = json.dumps(parts, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return f"{prefix}_{hashlib.sha256(raw.encode()).hexdigest()[:24]}"
 
 
 class _HTMLText(HTMLParser):
+    """封装 `_HTMLText` 的状态与行为。"""
     def __init__(self) -> None:
+        """初始化 `_HTMLText` 实例。"""
         super().__init__()
         self.values: list[str] = []
 
     def handle_data(self, data: str) -> None:
+        """处理 `data` 相关数据。"""
         value = data.strip()
         if value:
             self.values.append(value)
 
 
 def _html_text(value: str) -> str:
+    """处理 `_html_text` 相关逻辑。"""
     parser = _HTMLText()
     parser.feed(value)
     return "\n".join(parser.values)
@@ -88,6 +97,7 @@ def _text_content(
     value: str,
     confidence: float | None,
 ) -> TextContent | None:
+    """处理 `_text_content` 相关逻辑。"""
     if not value.strip():
         return None
     layer_id = f"text_{element_id}"
@@ -106,6 +116,7 @@ def _text_content(
 
 
 def _bbox(value: Any) -> tuple[float, float, float, float] | None:
+    """处理 `_bbox` 相关逻辑。"""
     if not isinstance(value, (list, tuple)) or len(value) != 4:
         return None
     result = tuple(float(item) for item in value)
@@ -120,6 +131,7 @@ def _intersection_over_union(
     left: tuple[float, float, float, float],
     right: tuple[float, float, float, float],
 ) -> float:
+    """处理 `_intersection_over_union` 相关逻辑。"""
     x0, y0 = max(left[0], right[0]), max(left[1], right[1])
     x1, y1 = min(left[2], right[2]), min(left[3], right[3])
     intersection = max(0.0, x1 - x0) * max(0.0, y1 - y0)
@@ -130,11 +142,13 @@ def _intersection_over_union(
 
 
 def _average(values: list[float]) -> float | None:
+    """处理 `_average` 相关逻辑。"""
     finite = [value for value in values if math.isfinite(value) and 0 <= value <= 1]
     return sum(finite) / len(finite) if finite else None
 
 
 def _role(label: str) -> ElementRole:
+    """处理 `_role` 相关逻辑。"""
     return {
         "figure_title": ElementRole.CAPTION,
         "footnote": ElementRole.FOOTNOTE,
@@ -147,12 +161,14 @@ def _role(label: str) -> ElementRole:
 
 @dataclass(frozen=True)
 class ConvertedBundle:
+    """封装 `ConvertedBundle` 的状态与行为。"""
     document: Document
     files: dict[str, bytes]
 
 
 @dataclass
 class _State:
+    """封装 `_State` 的状态与行为。"""
     pages: list[Page] = field(default_factory=list)
     elements: list[ElementBase] = field(default_factory=list)
     assets: list[Asset] = field(default_factory=list)
@@ -169,7 +185,9 @@ class _State:
 
 
 class _Converter:
+    """封装 `_Converter` 的状态与行为。"""
     def __init__(self, bundle: PaddleOCRBundle, source: Path, strict: bool) -> None:
+        """初始化 `_Converter` 实例。"""
         self.bundle = bundle
         self.source = Path(source).resolve()
         if not self.source.is_file():
@@ -184,6 +202,7 @@ class _Converter:
         )
 
     def convert(self) -> ConvertedBundle:
+        """转换 `convert` 相关数据。"""
         self._validate_status()
         self._register_fixed_assets()
         for page_position, (raw_page, image) in enumerate(
@@ -193,6 +212,7 @@ class _Converter:
         return ConvertedBundle(self._build_document(), dict(self.state.files))
 
     def _validate_status(self) -> None:
+        """校验 `status` 相关数据。"""
         if self.bundle.status != "success":
             raise ValueError(
                 f"PaddleOCR conversion status 不可消费: {self.bundle.status}"
@@ -201,6 +221,7 @@ class _Converter:
             raise ValueError("PaddleOCR bundle 没有页面")
 
     def _register_fixed_assets(self) -> None:
+        """注册 `fixed assets` 相关数据。"""
         original_path = f"assets/{self.source.name}"
         self._add_asset(
             Asset(
@@ -232,6 +253,7 @@ class _Converter:
             )
 
     def _add_asset(self, asset: Asset, content: bytes) -> None:
+        """添加 `asset` 相关数据。"""
         self.state.asset_indexes[asset.asset_id] = len(self.state.assets)
         self.state.assets.append(asset)
         self.state.files[asset.path] = content
@@ -242,6 +264,7 @@ class _Converter:
         raw_page: dict[str, Any],
         image_bytes: bytes,
     ) -> None:
+        """转换 `page` 相关数据。"""
         with Image.open(BytesIO(image_bytes)) as loaded:
             image = loaded.convert("RGB")
         width, height = image.size
@@ -324,6 +347,7 @@ class _Converter:
         image: Image.Image,
         table_index: int,
     ) -> None:
+        """转换 `block` 相关数据。"""
         label = str(block.get("block_label") or "unknown")
         element_id = _stable(
             "element",
@@ -476,6 +500,7 @@ class _Converter:
         block_bbox: tuple[float, float, float, float] | None,
         label: str,
     ) -> float | None:
+        """处理 `_layout_score` 相关逻辑。"""
         if block_bbox is None:
             return None
         layout = page.get("layout_det_res")
@@ -503,6 +528,7 @@ class _Converter:
         label: str,
         table_index: int,
     ) -> float | None:
+        """处理 `_ocr_confidence` 相关逻辑。"""
         if label == "table":
             tables = page.get("table_res_list")
             if isinstance(tables, list) and table_index < len(tables):
@@ -533,6 +559,7 @@ class _Converter:
 
     @staticmethod
     def _table_html(page: dict[str, Any], table_index: int) -> str:
+        """处理 `_table_html` 相关逻辑。"""
         tables = page.get("table_res_list")
         if not isinstance(tables, list) or table_index >= len(tables):
             return ""
@@ -548,6 +575,7 @@ class _Converter:
         locator: Locator | None,
         kind: AssetKind,
     ) -> str | None:
+        """处理 `_visual_asset` 相关逻辑。"""
         if bbox is None:
             return None
         crop_box = (
@@ -588,6 +616,7 @@ class _Converter:
         return asset_id
 
     def _issue(self, code: str, message: str, object_id: str | None) -> str:
+        """处理 `_issue` 相关逻辑。"""
         issue = QualityIssue(
             issue_id=_stable("issue", code, object_id, message),
             code=code,
@@ -599,6 +628,7 @@ class _Converter:
         return issue.issue_id
 
     def _start_section(self, title_element_id: str) -> str:
+        """启动 `section` 相关数据。"""
         section_id = _stable("section", title_element_id)
         self.state.sections_meta[section_id] = ("section_root", title_element_id)
         self.state.section_elements[section_id] = []
@@ -606,12 +636,14 @@ class _Converter:
         return section_id
 
     def _register(self, element: ElementBase) -> None:
+        """注册 `register` 相关数据。"""
         self.state.elements.append(element)
         self.state.section_elements.setdefault(
             element.section_id or "section_root", []
         ).append(element.element_id)
 
     def _build_document(self) -> Document:
+        """构建 `document` 相关数据。"""
         config_bytes = json.dumps(
             self.bundle.config, sort_keys=True, separators=(",", ":")
         ).encode()
@@ -700,6 +732,16 @@ def build_converted_bundle(
     *,
     strict: bool = False,
 ) -> ConvertedBundle:
+    """构建 `converted bundle` 相关数据。
+
+    Args:
+        bundle: PaddleOCRBundle => `bundle` 参数。
+        source: Path => `source` 参数。
+        strict: bool => `strict` 参数。
+
+    Returns:
+        ConvertedBundle => 处理结果。
+    """
     return _Converter(bundle, source, strict).convert()
 
 
@@ -709,4 +751,14 @@ def convert_bundle(
     *,
     strict: bool = False,
 ) -> Document:
+    """转换 `bundle` 相关数据。
+
+    Args:
+        bundle: PaddleOCRBundle => `bundle` 参数。
+        source: Path => `source` 参数。
+        strict: bool => `strict` 参数。
+
+    Returns:
+        Document => 处理结果。
+    """
     return build_converted_bundle(bundle, source, strict=strict).document

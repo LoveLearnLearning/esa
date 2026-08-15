@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tests/test_parser_compat.py
+
 """后端 parser 兼容性验证 —— 不需要 GPU、不需要下权重就能跑。
 
     python3 dataset/tests/test_parser_compat.py
@@ -38,6 +40,7 @@ GOLDEN = ROOT / "dataset/data/cache/parser_golden.json"
 
 
 def as_dict(parsed) -> dict:
+    """将当前对象转换为字典。"""
     return {
         "reasoning": parsed.reasoning,
         "content": parsed.content,
@@ -121,6 +124,7 @@ def check_format_incompat(schemas, by_name) -> int:
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     schemas, _ = load_schemas(ROOT / "dataset/schemas/tool_schemas.json")
     by_name = schemas_by_name(schemas)
 

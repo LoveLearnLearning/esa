@@ -1,3 +1,5 @@
+# backend/agent/mm/service.py
+
 """多模态附件从源文件到 direct/RAG handle 的主编排。"""
 
 from __future__ import annotations
@@ -42,15 +44,18 @@ rag_logger = get_pipeline_logger("RAG", __name__)
 
 
 def _canonical_sha256(value: object) -> str:
+    """处理 `_canonical_sha256` 相关逻辑。"""
     raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _atomic_json(path: Path, payload: object) -> None:
+    """处理 `_atomic_json` 相关逻辑。"""
     _atomic_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
 
 def _atomic_text(path: Path, value: str) -> None:
+    """处理 `_atomic_text` 相关逻辑。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
@@ -79,6 +84,7 @@ class MultimodalIngestionService:
         chunk_config: ChunkConfig | None = None,
         retrieval_config: RetrievalConfig | None = None,
     ) -> None:
+        """初始化 `MultimodalIngestionService` 实例。"""
         self.config = config or MMConfig.from_env()
         self.parser = parser or MinerUDocumentParser(
             command=self.config.mineru_command,
@@ -117,6 +123,14 @@ class MultimodalIngestionService:
         return tuple(prepared)
 
     async def prepare_file(self, source: Path) -> PreparedAttachment:
+        """准备 `file` 相关数据。
+
+        Args:
+            source: Path => `source` 参数。
+
+        Returns:
+            PreparedAttachment => 处理结果。
+        """
         started = time.monotonic()
         source = Path(source).resolve(strict=True)
         if not source.is_file():
@@ -256,6 +270,7 @@ class MultimodalIngestionService:
         )
 
     def _pipeline_fingerprint(self) -> str:
+        """处理 `_pipeline_fingerprint` 相关逻辑。"""
         return _canonical_sha256(
             {
                 "schema": "mm-pipeline-0.2",
@@ -273,6 +288,7 @@ class MultimodalIngestionService:
         )
 
     def _route(self, token_count: int) -> AttachmentMode:
+        """处理 `_route` 相关逻辑。"""
         return (
             AttachmentMode.DIRECT
             if token_count <= self.config.direct_context_token_limit
@@ -287,6 +303,7 @@ class MultimodalIngestionService:
         source_sha256: str,
         pipeline_fingerprint: str,
     ) -> tuple[Any, str, int, AttachmentMode] | None:
+        """加载 `cache` 相关数据。"""
         if not all(path.is_file() for path in (manifest_path, document_path, markdown_path)):
             return None
         try:
@@ -313,6 +330,7 @@ class MultimodalIngestionService:
             return None
 
     def _build_retrieval(self, run_root: Path) -> RetrievalService:
+        """构建 `retrieval` 相关数据。"""
         started = time.monotonic()
         rag_logger.info("attachment index build started run_root=%s", run_root)
         collection_root, _manifest, _stats = build_collection(

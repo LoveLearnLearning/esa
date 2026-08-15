@@ -20,6 +20,7 @@ from .geometry import StrictModel
 
 
 class InlineSpan(StrictModel):
+    """封装 `InlineSpan` 的状态与行为。"""
     kind: Literal["text", "inline_formula"]
     start: int = Field(ge=0)
     end: int = Field(gt=0)
@@ -27,12 +28,14 @@ class InlineSpan(StrictModel):
 
     @model_validator(mode="after")
     def offsets(self):
+        """处理 `offsets` 相关逻辑。"""
         if self.end <= self.start:
             raise ValueError("inline span end 必须大于 start")
         return self
 
 
 class TextLayer(StrictModel):
+    """封装 `TextLayer` 的状态与行为。"""
     text_layer_id: str = Field(min_length=1)
     origin: TextOrigin
     text: str
@@ -42,6 +45,7 @@ class TextLayer(StrictModel):
 
     @model_validator(mode="after")
     def quotation_and_spans(self):
+        """处理 `quotation_and_spans` 相关逻辑。"""
         if self.origin in {
             TextOrigin.PARSER_DERIVED,
             TextOrigin.VLM_DERIVED,
@@ -56,11 +60,13 @@ class TextLayer(StrictModel):
 
 
 class TextContent(StrictModel):
+    """封装 `TextContent` 的状态与行为。"""
     primary_layer_id: str
     layers: tuple[TextLayer, ...]
 
     @model_validator(mode="after")
     def layer_refs(self):
+        """处理 `layer_refs` 相关逻辑。"""
         ids = [layer.text_layer_id for layer in self.layers]
         if len(ids) != len(set(ids)):
             raise ValueError("text_layer_id 不能重复")

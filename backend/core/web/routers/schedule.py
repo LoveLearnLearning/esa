@@ -1,3 +1,7 @@
+# backend/core/web/routers/schedule.py
+
+"""提供 `schedule` 相关功能。"""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -44,6 +48,7 @@ COURSE_COLORS = (
 
 
 class ScheduleCoursePayload(BaseModel):
+    """封装 `ScheduleCoursePayload` 的状态与行为。"""
     id: str | None = Field(default=None, max_length=80)
     name: str = Field(min_length=1, max_length=80)
     teacher: str = Field(default="", max_length=80)
@@ -57,6 +62,7 @@ class ScheduleCoursePayload(BaseModel):
 
     @model_validator(mode="after")
     def validate_ranges(self) -> "ScheduleCoursePayload":
+        """校验 `ranges` 相关数据。"""
         if self.end_period < self.start_period:
             raise ValueError("结束节次不能小于开始节次")
         if self.end_week < self.start_week:
@@ -65,6 +71,7 @@ class ScheduleCoursePayload(BaseModel):
 
 
 class ScheduleSettingsPayload(BaseModel):
+    """封装 `ScheduleSettingsPayload` 的状态与行为。"""
     morning_period_count: int = Field(ge=0, le=8)
     afternoon_period_count: int = Field(ge=0, le=8)
     evening_period_count: int = Field(ge=0, le=8)
@@ -77,6 +84,7 @@ class ScheduleSettingsPayload(BaseModel):
 
     @model_validator(mode="after")
     def validate_period_count(self) -> "ScheduleSettingsPayload":
+        """校验 `period count` 相关数据。"""
         if (
             self.morning_period_count
             + self.afternoon_period_count
@@ -88,6 +96,7 @@ class ScheduleSettingsPayload(BaseModel):
 
 
 def _user(request: Request, session: SessionPrincipal) -> UserRecord:
+    """处理 `_user` 相关逻辑。"""
     store: UserStore = request.app.state.user_store
     user = store.get_by_id(session.user_id)
     if user is None:
@@ -96,6 +105,7 @@ def _user(request: Request, session: SessionPrincipal) -> UserRecord:
 
 
 def _sync_learning_course(request: Request, user_id: str, name: str) -> None:
+    """同步 `learning course` 相关数据。"""
     store: UserCourseStore = request.app.state.user_course_store
     canonical = request.app.state.knowledge_graph_store.resolve_course_name(name)
     store.upsert(
@@ -109,6 +119,7 @@ def _sync_learning_course(request: Request, user_id: str, name: str) -> None:
 def _remove_unused_learning_course(
     request: Request, user_id: str, name: str
 ) -> None:
+    """移除 `unused learning course` 相关数据。"""
     schedule_store: ScheduleStore = request.app.state.schedule_store
     if any(course["name"] == name for course in schedule_store.list_courses(user_id)):
         return
@@ -126,12 +137,22 @@ def _remove_unused_learning_course(
 
 
 class ScheduleTablePayload(BaseModel):
+    """封装 `ScheduleTablePayload` 的状态与行为。"""
     name: str = Field(min_length=1, max_length=40)
     activate: bool = True
 
 
 @router.get("")
 def get_schedule(request: Request, session: CurrentSession) -> dict:
+    """获取 `schedule` 相关数据。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _user(request, session)
     store: ScheduleStore = request.app.state.schedule_store
     active_table_id = store.ensure_active_table(user.id)
@@ -147,6 +168,16 @@ def get_schedule(request: Request, session: CurrentSession) -> dict:
 def create_schedule_table(
     payload: ScheduleTablePayload, request: Request, session: CurrentSession
 ) -> dict:
+    """创建 `schedule table` 相关数据。
+
+    Args:
+        payload: ScheduleTablePayload => 请求载荷。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _user(request, session)
     store: ScheduleStore = request.app.state.schedule_store
     store.ensure_active_table(user.id)
@@ -160,6 +191,17 @@ def rename_schedule_table(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """处理 `rename_schedule_table` 相关逻辑。
+
+    Args:
+        table_id: str => table ID。
+        payload: ScheduleTablePayload => 请求载荷。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _user(request, session)
     store: ScheduleStore = request.app.state.schedule_store
     if not store.rename_table(user.id, table_id, payload.name):
@@ -173,6 +215,16 @@ def rename_schedule_table(
 def activate_schedule_table(
     table_id: str, request: Request, session: CurrentSession
 ) -> dict:
+    """处理 `activate_schedule_table` 相关逻辑。
+
+    Args:
+        table_id: str => table ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _user(request, session)
     store: ScheduleStore = request.app.state.schedule_store
     if not store.activate_table(user.id, table_id):
@@ -194,6 +246,13 @@ def activate_schedule_table(
 def delete_schedule_table(
     table_id: str, request: Request, session: CurrentSession
 ) -> None:
+    """删除 `schedule table` 相关数据。
+
+    Args:
+        table_id: str => table ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     user = _user(request, session)
     store: ScheduleStore = request.app.state.schedule_store
     if store.get_table(user.id, table_id) is None:
@@ -212,6 +271,16 @@ def save_schedule_course(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """保存 `schedule course` 相关数据。
+
+    Args:
+        payload: ScheduleCoursePayload => 请求载荷。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _user(request, session)
     store: ScheduleStore = request.app.state.schedule_store
     previous = store.get_course(user.id, payload.id) if payload.id else None
@@ -231,6 +300,13 @@ def save_schedule_course(
 def delete_schedule_course(
     course_id: str, request: Request, session: CurrentSession
 ) -> None:
+    """删除 `schedule course` 相关数据。
+
+    Args:
+        course_id: str => course ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     user = _user(request, session)
     store: ScheduleStore = request.app.state.schedule_store
     course = store.get_course(user.id, course_id)
@@ -246,6 +322,16 @@ def save_schedule_settings(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """保存 `schedule settings` 相关数据。
+
+    Args:
+        payload: ScheduleSettingsPayload => 请求载荷。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _user(request, session)
     store: ScheduleStore = request.app.state.schedule_store
     return store.save_settings(user.id, payload.model_dump())
@@ -259,6 +345,18 @@ async def import_schedule(
     target: Annotated[str, Form()] = "current",
     table_name: Annotated[str | None, Form()] = None,
 ) -> dict:
+    """导入 `schedule` 相关数据。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        file: Annotated[UploadFile, File()] => `file` 参数。
+        target: Annotated[str, Form()] => `target` 参数。
+        table_name: Annotated[str | None, Form()] => `table_name` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     if target not in {"current", "new"}:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "target 必须是 current 或 new"
@@ -331,6 +429,7 @@ async def import_schedule(
 
 
 def _default_table_name(store: ScheduleStore, user_id: str) -> str:
+    """处理 `_default_table_name` 相关逻辑。"""
     existing = {table["name"] for table in store.list_tables(user_id)}
     base = "导入课表"
     if base not in existing:

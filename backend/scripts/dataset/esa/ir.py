@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/ir.py
+
 """ESA 数据集的中间表示（IR）。
 
 所有生成器只产出 IR，绝不直接产出训练用的 ShareGPT jsonl。渲染由 render.py 负责。
@@ -38,12 +40,14 @@ CATEGORIES = {
 
 @dataclass
 class ToolCall:
+    """封装 `ToolCall` 的状态与行为。"""
     name: str
     arguments: dict[str, Any]
 
 
 @dataclass
 class ToolResult:
+    """封装 `ToolResult` 的状态与行为。"""
     name: str
     content: Any
     # 工具是否执行失败。tool_error 类样本用它标记，渲染时不做特殊处理，
@@ -53,6 +57,7 @@ class ToolResult:
 
 @dataclass
 class Turn:
+    """封装 `Turn` 的状态与行为。"""
     role: str
     content: str | None = None
     calls: list[ToolCall] = field(default_factory=list)
@@ -61,6 +66,7 @@ class Turn:
 
 @dataclass
 class Sample:
+    """封装 `Sample` 的状态与行为。"""
     id: str
     template_id: str
     category: str
@@ -83,9 +89,11 @@ class Sample:
     ask_for: list[str] = field(default_factory=list)
 
     def user_queries(self) -> list[str]:
+        """处理 `user_queries` 相关逻辑。"""
         return [t.content or "" for t in self.turns if t.role == ROLE_USER]
 
     def called_tool_names(self) -> list[str]:
+        """处理 `called_tool_names` 相关逻辑。"""
         return [c.name for t in self.turns for c in t.calls]
 
 
@@ -106,10 +114,12 @@ def load_schemas(path: str | Path) -> tuple[list[dict[str, Any]], str]:
 
 
 def schemas_by_name(schemas: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """处理 `schemas_by_name` 相关逻辑。"""
     return {s["function"]["name"]: s for s in schemas}
 
 
 def _turn_from_dict(d: dict[str, Any]) -> Turn:
+    """处理 `_turn_from_dict` 相关逻辑。"""
     return Turn(
         role=d["role"],
         content=d.get("content"),
@@ -119,6 +129,14 @@ def _turn_from_dict(d: dict[str, Any]) -> Turn:
 
 
 def sample_from_dict(d: dict[str, Any]) -> Sample:
+    """处理 `sample_from_dict` 相关逻辑。
+
+    Args:
+        d: dict[str, Any] => `d` 参数。
+
+    Returns:
+        Sample => 处理结果。
+    """
     return Sample(
         id=d["id"],
         template_id=d["template_id"],
@@ -158,6 +176,7 @@ def _turn_dict(t: Turn) -> dict[str, Any]:
 
 
 def _sample_dict(s: Sample) -> dict[str, Any]:
+    """处理 `_sample_dict` 相关逻辑。"""
     d: dict[str, Any] = {
         "id": s.id,
         "template_id": s.template_id,
@@ -196,6 +215,7 @@ def dump_samples(samples: list[Sample], path: str | Path) -> None:
 
 
 def load_samples(path: str | Path) -> list[Sample]:
+    """加载 `samples` 相关数据。"""
     out = []
     with Path(path).open(encoding="utf-8") as fh:
         for line_no, line in enumerate(fh, 1):
@@ -210,4 +230,5 @@ def load_samples(path: str | Path) -> list[Sample]:
 
 
 def iter_ir_files(root: str | Path) -> Iterator[Path]:
+    """处理 `iter_ir_files` 相关逻辑。"""
     yield from sorted(Path(root).glob("*.jsonl"))

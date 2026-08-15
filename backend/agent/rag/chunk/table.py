@@ -21,6 +21,7 @@ class _TableHTMLParser(HTMLParser):
     """只提取表格行、单元格和表头身份。"""
 
     def __init__(self) -> None:
+        """初始化 `_TableHTMLParser` 实例。"""
         super().__init__()
         self.rows: list[tuple[tuple[str, ...], bool]] = []
         self._row: list[str] | None = None
@@ -33,6 +34,12 @@ class _TableHTMLParser(HTMLParser):
         tag: str,
         attrs: list[tuple[str, str | None]],
     ) -> None:
+        """处理 `starttag` 相关数据。
+
+        Args:
+            tag: str => `tag` 参数。
+            attrs: list[tuple[str, str | None]] => `attrs` 参数。
+        """
         del attrs
         tag = tag.lower()
         if tag == "thead":
@@ -47,10 +54,12 @@ class _TableHTMLParser(HTMLParser):
             self._cell.append(" ")
 
     def handle_data(self, data: str) -> None:
+        """处理 `data` 相关数据。"""
         if self._cell is not None:
             self._cell.append(data)
 
     def handle_endtag(self, tag: str) -> None:
+        """处理 `endtag` 相关数据。"""
         tag = tag.lower()
         if tag in {"th", "td"}:
             self._finish_cell()
@@ -60,12 +69,14 @@ class _TableHTMLParser(HTMLParser):
             self._thead_depth -= 1
 
     def _finish_cell(self) -> None:
+        """处理 `_finish_cell` 相关逻辑。"""
         if self._cell is None or self._row is None:
             return
         self._row.append(" ".join("".join(self._cell).split()))
         self._cell = None
 
     def _finish_row(self) -> None:
+        """处理 `_finish_row` 相关逻辑。"""
         if self._row is not None and any(self._row):
             self.rows.append((tuple(self._row), self._header))
         self._row = None

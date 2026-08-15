@@ -1,3 +1,7 @@
+# backend/tests/test_schedule_api.py
+
+"""验证 `schedule_api` 相关行为与回归场景。"""
+
 import io
 
 from fastapi import FastAPI
@@ -15,7 +19,18 @@ from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 
 
 class _LLMClient:
+    """封装 `_LLMClient` 的状态与行为。"""
     async def chat(self, messages, *, max_tokens, temperature):
+        """处理 `chat` 相关逻辑。
+
+        Args:
+            messages: object => 消息列表。
+            max_tokens: object => `max_tokens` 参数。
+            temperature: object => `temperature` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         content = messages[-1]["content"]
         if isinstance(content, list):
             assert any(part.get("type") == "image_url" for part in content)
@@ -38,12 +53,14 @@ class _LLMClient:
 
 
 def _schedule_png() -> bytes:
+    """处理 `_schedule_png` 相关逻辑。"""
     output = io.BytesIO()
     Image.new("RGB", (64, 48), "white").save(output, format="PNG")
     return output.getvalue()
 
 
 def _app(tmp_path, monkeypatch):
+    """处理 `_app` 相关逻辑。"""
     database = tmp_path / "schedule-api.db"
     user_store = UserStore(database)
     user = UserRecord(
@@ -70,6 +87,7 @@ def _app(tmp_path, monkeypatch):
 
 
 def test_schedule_crud_and_html_model_import(tmp_path, monkeypatch):
+    """验证 `schedule_crud_and_html_model_import` 场景。"""
     app = _app(tmp_path, monkeypatch)
     client = TestClient(app)
     initial = client.get("/me/schedule")
@@ -118,6 +136,7 @@ def test_schedule_crud_and_html_model_import(tmp_path, monkeypatch):
 def test_schedule_image_import_uses_multimodal_auxiliary_model(
     tmp_path, monkeypatch
 ):
+    """验证 `schedule_image_import_uses_multimodal_auxiliary_model` 场景。"""
     app = _app(tmp_path, monkeypatch)
     client = TestClient(app)
 
@@ -132,6 +151,7 @@ def test_schedule_image_import_uses_multimodal_auxiliary_model(
 
 
 def test_schedule_table_management_and_import_to_new_table(tmp_path, monkeypatch):
+    """验证 `schedule_table_management_and_import_to_new_table` 场景。"""
     app = _app(tmp_path, monkeypatch)
     client = TestClient(app)
 
@@ -183,10 +203,12 @@ def test_schedule_table_management_and_import_to_new_table(tmp_path, monkeypatch
 
 
 def test_schedule_import_prefers_docir_when_mm_is_enabled(tmp_path, monkeypatch):
+    """验证 `schedule_import_prefers_docir_when_mm_is_enabled` 场景。"""
     app = _app(tmp_path, monkeypatch)
     app.state.mm_sessions = object()
 
     async def _docir(**kwargs):
+        """处理 `_docir` 相关逻辑。"""
         assert kwargs["filename"] == "schedule.xlsx"
         assert kwargs["data"] == b"xlsx"
         return ExtractedScheduleDocument(

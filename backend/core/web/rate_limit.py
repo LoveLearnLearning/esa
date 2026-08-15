@@ -35,6 +35,7 @@ class RateLimiter:
 
     def __init__(self) -> None:
         # key: (user_id, endpoint) -> _Window
+        """初始化 `RateLimiter` 实例。"""
         self._windows: dict[str, _Window] = defaultdict(_Window)
         # 解析 "10/minute" -> (10, 60)
         self._limits: dict[str, tuple[int, int]] = {}
@@ -80,9 +81,26 @@ class RateLimiter:
         使用 functools.wraps 保留原始签名 确保 FastAPI 依赖注入正常工作。
         """
         def decorator(func):
+            """处理 `decorator` 相关逻辑。
+
+            Args:
+                func: object => `func` 参数。
+
+            Returns:
+                object => 处理结果。
+            """
             @functools.wraps(func)
             def wrapper(*args, **kwargs):
                 # 从 kwargs 中找 session
+                """处理 `wrapper` 相关逻辑。
+
+                Args:
+                    args: object => `args` 参数。
+                    kwargs: object => `kwargs` 参数。
+
+                Returns:
+                    object => 处理结果。
+                """
                 session = kwargs.get("session")
                 if session is None:
                     # 从位置参数中找 (依赖注入的 session 通常是位置参数)

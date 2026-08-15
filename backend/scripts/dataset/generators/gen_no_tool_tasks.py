@@ -1,3 +1,5 @@
+# backend/scripts/dataset/generators/gen_no_tool_tasks.py
+
 """「有工具在场，但这件事用不上工具」—— 不调用类样本生成器。
 
 为什么补这一批
@@ -55,6 +57,7 @@ _SUSPICIOUS = ("帮我算", "算一下", "等于多少", "搜一下", "查一下
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     rng = random.Random(20260812)
     cfg = yaml.safe_load(SEEDS.read_text(encoding="utf-8"))
     schemas, version = load_schemas(SCHEMAS)

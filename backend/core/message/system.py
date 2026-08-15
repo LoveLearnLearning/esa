@@ -1,3 +1,5 @@
+# backend/core/message/system.py
+
 """ESA 主 Agent 的唯一系统级基础提示词来源。"""
 
 SYSTEM_PROMPT: str = """

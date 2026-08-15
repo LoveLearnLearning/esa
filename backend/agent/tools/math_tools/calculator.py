@@ -1,3 +1,5 @@
+# backend/agent/tools/math_tools/calculator.py
+
 """安全的数学计算器工具
 
 使用 AST 解析与白名单求值器，不使用 eval()，防止代码注入。
@@ -20,6 +22,7 @@ try:
 except AttributeError:  # pragma: no cover
 
     def _cbrt(x: float) -> float:
+        """处理 `_cbrt` 相关逻辑。"""
         return math.copysign(abs(x) ** (1.0 / 3.0), x)
 
 

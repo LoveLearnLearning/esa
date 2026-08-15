@@ -1,3 +1,5 @@
+# backend/agent/tools/common/memory_tools.py
+
 """CoreMemory V2 tool adapter using only trusted execution context."""
 
 from __future__ import annotations
@@ -8,6 +10,7 @@ from backend.agent.tools.context import ToolExecutionContext
 
 
 def _service(context: ToolExecutionContext):
+    """处理 `_service` 相关逻辑。"""
     service = context.runtime_dependencies.core_memory_service
     if service is None:
         raise RuntimeError("CoreMemory service is not configured")
@@ -19,6 +22,16 @@ def execute_memory_tool(
     name: str,
     arguments: Mapping[str, Any],
 ) -> Any:
+    """执行 `memory tool` 相关数据。
+
+    Args:
+        context: ToolExecutionContext => `context` 参数。
+        name: str => `name` 参数。
+        arguments: Mapping[str, Any] => `arguments` 参数。
+
+    Returns:
+        Any => 处理结果。
+    """
     service = _service(context)
     if name == "search_core_memories":
         return service.search(

@@ -1,3 +1,7 @@
+# backend/core/web/routers/student_teaching.py
+
+"""提供 `student_teaching` 相关功能。"""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -29,6 +33,7 @@ _FINAL_REVIEW_FIELDS = (
 
 
 def _context(request: Request, session: SessionPrincipal) -> tuple[UserRecord, TeachingStore]:
+    """处理 `_context` 相关逻辑。"""
     user_store: UserStore = request.app.state.user_store
     user = user_store.get_by_id(session.user_id)
     if user is None or user.account_role != "student":
@@ -37,6 +42,7 @@ def _context(request: Request, session: SessionPrincipal) -> tuple[UserRecord, T
 
 
 def _student_assignment(item: dict) -> dict:
+    """处理 `_student_assignment` 相关逻辑。"""
     result = {**item, "questions": [dict(question) for question in item["questions"]]}
     for question in result["questions"]:
         question.pop("reference_answer", None)
@@ -45,6 +51,7 @@ def _student_assignment(item: dict) -> dict:
 
 
 def _student_submission(item: dict) -> dict:
+    """处理 `_student_submission` 相关逻辑。"""
     result = {**item, "answers": [dict(answer) for answer in item["answers"]]}
     published = result["feedback_status"] == "published"
     for answer in result["answers"]:
@@ -61,6 +68,7 @@ def _student_submission(item: dict) -> dict:
 
 
 def _student_assignment_summary(item: dict) -> dict:
+    """处理 `_student_assignment_summary` 相关逻辑。"""
     result = dict(item)
     if result.get("feedback_status") != "published":
         result["total_score"] = None
@@ -69,6 +77,15 @@ def _student_assignment_summary(item: dict) -> dict:
 
 @router.get("/classes")
 def classes(request: Request, session: CurrentSession) -> list[dict]:
+    """处理 `classes` 相关逻辑。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     user, store = _context(request, session)
     return store.list_student_classes(user.id)
 
@@ -80,6 +97,17 @@ def respond_invitation(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """处理 `respond_invitation` 相关逻辑。
+
+    Args:
+        membership_id: str => membership ID。
+        body: InvitationResponseRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     result = store.respond_membership(
         membership_id=membership_id, student_id=user.id, accept=body.accept
@@ -91,6 +119,15 @@ def respond_invitation(
 
 @router.get("/assignments")
 def assignments(request: Request, session: CurrentSession) -> list[dict]:
+    """处理 `assignments` 相关逻辑。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     user, store = _context(request, session)
     return [
         _student_assignment_summary(item)
@@ -102,6 +139,16 @@ def assignments(request: Request, session: CurrentSession) -> list[dict]:
 def assignment_detail(
     assignment_id: str, request: Request, session: CurrentSession
 ) -> dict:
+    """处理 `assignment_detail` 相关逻辑。
+
+    Args:
+        assignment_id: str => 作业 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     item = store.get_assignment(assignment_id)
     if item is None or item["status"] not in {"published", "closed", "archived"}:
@@ -128,6 +175,17 @@ def submit(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """处理 `submit` 相关逻辑。
+
+    Args:
+        assignment_id: str => 作业 ID。
+        body: SubmissionCreateRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     assignment = store.get_assignment(assignment_id)
     if assignment is None or assignment["status"] != "published":
@@ -149,6 +207,16 @@ def submit(
 def submission_detail(
     submission_id: str, request: Request, session: CurrentSession
 ) -> dict:
+    """处理 `submission_detail` 相关逻辑。
+
+    Args:
+        submission_id: str => submission ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     item = store.get_submission(submission_id)
     if item is None or item["student_id"] != user.id:

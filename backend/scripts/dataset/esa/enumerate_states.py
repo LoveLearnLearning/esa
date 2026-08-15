@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/enumerate_states.py
+
 """State 枚举：全排列 → 自动剪枝 → 推导 expected_action → 导出给人剪枝。
 
 原来的做法是人去想「还有哪些状态组合」，这在 State 空间是
@@ -36,6 +38,7 @@ GATE_STATES = ["不适用", "已满足", "未满足"]
 
 @dataclass(frozen=True)
 class StateAxes:
+    """封装 `StateAxes` 的状态与行为。"""
     required_param_state: str
     context_state: str
     user_revision_state: str
@@ -133,6 +136,7 @@ RELEVANT_AXES = {
 
 
 def _signature(s: StateAxes, action: str) -> tuple:
+    """处理 `_signature` 相关逻辑。"""
     return (action,) + tuple(getattr(s, ax) for ax in RELEVANT_AXES[action])
 
 
@@ -186,6 +190,14 @@ def enumerate_for_scenario(
 
 
 def verify_against_sheet(dt: DesignTable) -> tuple[int, int, list[str]]:
+    """验证 `against sheet` 相关数据。
+
+    Args:
+        dt: DesignTable => `dt` 参数。
+
+    Returns:
+        tuple[int, int, list[str]] => 处理结果。
+    """
     ok = bad = 0
     msgs = []
     for s in dt.states:
@@ -259,6 +271,14 @@ def export_csv(rows: list[tuple[StateAxes, str]], scenario_id: str, path: Path) 
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     ap = argparse.ArgumentParser(description="State 枚举与决策树验证")
     ap.add_argument("--xlsx", default=str(DEFAULT_XLSX))
     ap.add_argument("--verify-against-sheet", action="store_true")

@@ -1,3 +1,7 @@
+# backend/core/web/routers/lsp.py
+
+"""提供 `lsp` 相关功能。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -22,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _reject(websocket: WebSocket, detail: str, *, code: int = 1008) -> None:
+    """处理 `_reject` 相关逻辑。"""
     with suppress(RuntimeError):
         await websocket.send_json({"type": "esa/lsp-error", "detail": detail})
     with suppress(RuntimeError):
@@ -29,6 +34,7 @@ async def _reject(websocket: WebSocket, detail: str, *, code: int = 1008) -> Non
 
 
 def _authenticate(websocket: WebSocket, token: str):
+    """处理 `_authenticate` 相关逻辑。"""
     session_store: SessionStore = websocket.app.state.session_store
     session = session_store.get(token)
     if session is None or session.expires_at <= datetime.now(timezone.utc):
@@ -38,6 +44,12 @@ def _authenticate(websocket: WebSocket, token: str):
 
 @router.websocket("/{language}")
 async def language_server_socket(websocket: WebSocket, language: str) -> None:
+    """处理 `language_server_socket` 相关逻辑。
+
+    Args:
+        websocket: WebSocket => `websocket` 参数。
+        language: str => `language` 参数。
+    """
     language = language.strip().lower()
     allowed_origins = getattr(websocket.app.state, "lsp_allowed_origins", ())
     origin = websocket.headers.get("origin")
@@ -83,10 +95,12 @@ async def language_server_socket(websocket: WebSocket, language: str) -> None:
             )
 
             async def client_to_server() -> None:
+                """处理 `client_to_server` 相关逻辑。"""
                 while True:
                     await bridge.send(await websocket.receive_text())
 
             async def server_to_client() -> None:
+                """处理 `server_to_client` 相关逻辑。"""
                 while True:
                     await websocket.send_text(await bridge.receive())
 

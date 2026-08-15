@@ -1,3 +1,5 @@
+# backend/core/router/workspace_registry.py
+
 """Static workspace admission registry."""
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from backend.core.router.models import TrustedIdentity, WorkspaceType
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceRegistration:
+    """封装 `WorkspaceRegistration` 的状态与行为。"""
     workspace_type: WorkspaceType
     allowed_roles: frozenset[str]
     profile_id: str
@@ -39,6 +42,15 @@ def resolve_workspace(
     identity: TrustedIdentity,
     workspace_type: str,
 ) -> WorkspaceRegistration:
+    """解析 `workspace` 相关数据。
+
+    Args:
+        identity: TrustedIdentity => `identity` 参数。
+        workspace_type: str => `workspace_type` 参数。
+
+    Returns:
+        WorkspaceRegistration => 处理结果。
+    """
     registration = WORKSPACE_REGISTRY.get(workspace_type)  # type: ignore[arg-type]
     if registration is None:
         raise WorkspaceAccessDenied(f"unsupported workspace: {workspace_type!r}")
@@ -47,4 +59,3 @@ def resolve_workspace(
             f"role {identity.account_role!r} cannot access {workspace_type!r}"
         )
     return registration
-

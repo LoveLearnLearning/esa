@@ -1,5 +1,7 @@
 # backend/agent/agent.py
 
+"""提供 `agent` 相关功能。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -37,6 +39,7 @@ logger = logging.getLogger(__name__)
 def _observed_tools_and_actions(
     messages: list[dict],
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """处理 `_observed_tools_and_actions` 相关逻辑。"""
     tools: set[str] = set()
     actions: set[str] = set()
     for message in messages:
@@ -64,6 +67,7 @@ def _log_run_finished(
     started_at: float,
     messages: list[dict],
 ) -> None:
+    """记录 `run finished` 相关数据。"""
     tool_names, action_ids = _observed_tools_and_actions(messages)
     logger.info(
         "agent run finished request_id=%s conversation_id=%s workspace=%s "
@@ -125,6 +129,7 @@ def sanitize_qwen_history(history: list[dict]) -> list[dict]:
 
 
 class Agent:
+    """封装 `Agent` 的状态与行为。"""
     def __init__(
         self,
         model_path: str | Path,
@@ -137,6 +142,7 @@ class Agent:
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
     ) -> None:
+        """初始化 `Agent` 实例。"""
         register_builtin_tools()
         # 在加载昂贵的 vLLM 模型之前 fail-fast，避免 Skill/Tool 漂移带病启动。
         skill_errors = validate_skill_contracts()
@@ -194,6 +200,7 @@ class Agent:
         new_messages: list[dict],
         run_spec: AgentRunSpec,
     ) -> list[dict]:
+        """执行 `loop` 相关数据。"""
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
         for _ in range(run_spec.loop_policy.max_iterations):
             response = await self.llm_provider.generate(
@@ -275,6 +282,14 @@ class Agent:
         self,
         run_spec: AgentRunSpec,
     ) -> AsyncIterator[AgentStreamEvent]:
+        """执行 `stream` 相关数据。
+
+        Args:
+            run_spec: AgentRunSpec => `run_spec` 参数。
+
+        Returns:
+            AsyncIterator[AgentStreamEvent] => 处理结果。
+        """
         started_at = time.monotonic()
         logger.info(
             "agent stream started request_id=%s conversation_id=%s workspace=%s profile=%s capability=%s",
@@ -310,6 +325,7 @@ class Agent:
         new_messages: list[dict],
         run_spec: AgentRunSpec,
     ) -> AsyncIterator[AgentStreamEvent]:
+        """执行 `stream loop` 相关数据。"""
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
         for _ in range(run_spec.loop_policy.max_iterations):
             stream_parser = self.llm_provider.create_stream_parser()

@@ -1,3 +1,5 @@
+# backend/agent/tools/math_tools/bitwise_calculator.py
+
 """位运算与布尔运算计算器工具
 
 使用 AST 解析与白名单求值器，不使用 eval()，防止代码注入。

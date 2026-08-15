@@ -1,3 +1,5 @@
+# backend/agent/DocIR/tools/inspect_mineru_schema.py
+
 """Inspect raw MinerU bundles without loading Adapter production models.
 
 The census deliberately reads JSON with :mod:`json` instead of calling
@@ -56,6 +58,7 @@ def json_type(value: Any) -> str:
 
 
 def _example(value: Any) -> Any:
+    """处理 `_example` 相关逻辑。"""
     if isinstance(value, str):
         stable = _HEX_64.sub("<sha256>", value).replace("\n", "\\n")
         return stable if len(stable) <= 120 else stable[:117] + "..."
@@ -71,6 +74,7 @@ def _example(value: Any) -> Any:
 
 @dataclass
 class _Observed:
+    """封装 `_Observed` 的状态与行为。"""
     count: int = 0
     types: Counter[str] = field(default_factory=Counter)
     examples: list[Any] = field(default_factory=list)
@@ -80,6 +84,7 @@ class _Observed:
     empty_object_count: int = 0
 
     def add(self, value: Any) -> None:
+        """添加 `add` 相关数据。"""
         self.count += 1
         self.types[json_type(value)] += 1
         self.null_count += int(value is None)
@@ -93,12 +98,14 @@ class _Observed:
 
 @dataclass
 class ScanResult:
+    """封装 `ScanResult` 的状态与行为。"""
     observations: dict[str, _Observed] = field(default_factory=dict)
     object_instances: Counter[str] = field(default_factory=Counter)
     array_instances: Counter[str] = field(default_factory=Counter)
     nonempty_arrays: Counter[str] = field(default_factory=Counter)
 
     def _parent_count(self, path: str) -> tuple[int, int]:
+        """处理 `_parent_count` 相关逻辑。"""
         if path == "$":
             return 1, 1
         if path.endswith("[]"):
@@ -110,6 +117,14 @@ class ScanResult:
         return count, observed.count if observed else 0
 
     def materialize(self, path: str) -> dict[str, Any]:
+        """处理 `materialize` 相关逻辑。
+
+        Args:
+            path: str => 目标路径。
+
+        Returns:
+            dict[str, Any] => 处理结果。
+        """
         observed = self.observations.get(path, _Observed())
         parent_count, present_parent_count = self._parent_count(path)
         return {
@@ -138,6 +153,12 @@ def scan_value(value: Any) -> ScanResult:
     result = ScanResult()
 
     def visit(item: Any, path: str) -> None:
+        """处理 `visit` 相关逻辑。
+
+        Args:
+            item: Any => `item` 参数。
+            path: str => 目标路径。
+        """
         result.observations.setdefault(path, _Observed()).add(item)
         if isinstance(item, dict):
             result.object_instances[path] += 1
@@ -157,6 +178,7 @@ def scan_value(value: Any) -> ScanResult:
 
 @dataclass(frozen=True)
 class Fixture:
+    """封装 `Fixture` 的状态与行为。"""
     format: str
     name: str
     source_filename: str
@@ -164,6 +186,7 @@ class Fixture:
 
 
 def _exactly_one(root: Path, suffix: str) -> Path:
+    """处理 `_exactly_one` 相关逻辑。"""
     matches = sorted(root.rglob(f"*{suffix}"))
     if len(matches) != 1:
         raise ValueError(f"expected one *{suffix} below {root}, got {matches}")
@@ -171,6 +194,7 @@ def _exactly_one(root: Path, suffix: str) -> Path:
 
 
 def default_fixtures(fixture_root: Path) -> tuple[Fixture, ...]:
+    """处理 `default_fixtures` 相关逻辑。"""
     fixtures: list[Fixture] = []
     for format_name, case_name, source_filename in DEFAULT_FIXTURES:
         case_root = fixture_root / case_name
@@ -180,6 +204,7 @@ def default_fixtures(fixture_root: Path) -> tuple[Fixture, ...]:
 
 
 def parse_bundle_arguments(values: list[str]) -> tuple[Fixture, ...]:
+    """解析 `bundle arguments` 相关数据。"""
     fixtures: list[Fixture] = []
     for value in values:
         try:
@@ -194,6 +219,7 @@ def parse_bundle_arguments(values: list[str]) -> tuple[Fixture, ...]:
 
 
 def _artifact_kind(path: Path, fixture_name: str) -> str:
+    """处理 `_artifact_kind` 相关逻辑。"""
     name = path.name
     if name.endswith("_content_list_v2.json"):
         return "content_list_v2.json"
@@ -217,6 +243,7 @@ def _artifact_kind(path: Path, fixture_name: str) -> str:
 
 
 def _inventory(fixtures: tuple[Fixture, ...]) -> dict[str, Any]:
+    """处理 `_inventory` 相关逻辑。"""
     files_by_format: dict[str, list[dict[str, Any]]] = {}
     kinds: dict[str, dict[str, int]] = defaultdict(dict)
     for fixture in fixtures:
@@ -254,6 +281,7 @@ def _inventory(fixtures: tuple[Fixture, ...]) -> dict[str, Any]:
 
 
 def _shape(value: Any, artifact: str) -> dict[str, Any]:
+    """处理 `_shape` 相关逻辑。"""
     shape: dict[str, Any] = {"root_type": json_type(value)}
     if isinstance(value, list):
         shape["root_length"] = len(value)
@@ -303,6 +331,7 @@ def _shape(value: Any, artifact: str) -> dict[str, Any]:
 
 
 def _blocks(value: Any, artifact: str) -> list[dict[str, Any]]:
+    """处理 `_blocks` 相关逻辑。"""
     if artifact == "middle" and isinstance(value, dict):
         return [
             block
@@ -326,12 +355,14 @@ def _blocks(value: Any, artifact: str) -> list[dict[str, Any]]:
 
 
 def _strip_block_path(path: str) -> str:
+    """处理 `_strip_block_path` 相关逻辑。"""
     if path == "[]":
         return "$"
     return path.removeprefix("[].")
 
 
 def _block_profile(blocks: list[dict[str, Any]]) -> dict[str, Any]:
+    """处理 `_block_profile` 相关逻辑。"""
     by_type: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for block in blocks:
         block_type = block.get("type")
@@ -356,6 +387,7 @@ def _block_profile(blocks: list[dict[str, Any]]) -> dict[str, Any]:
 def _aggregate_paths(
     scans: dict[str, ScanResult], formats: list[str]
 ) -> dict[str, Any]:
+    """处理 `_aggregate_paths` 相关逻辑。"""
     all_paths = sorted(
         set().union(*(set(scan.observations) for scan in scans.values()))
     )
@@ -386,6 +418,7 @@ def _aggregate_paths(
 def _aggregate_block_profiles(
     profiles: dict[str, dict[str, Any]], formats: list[str]
 ) -> dict[str, Any]:
+    """处理 `_aggregate_block_profiles` 相关逻辑。"""
     block_types = sorted(set().union(*(set(profile) for profile in profiles.values())))
     output: dict[str, Any] = {}
     for block_type in block_types:
@@ -557,6 +590,7 @@ def markdown_summary(census: dict[str, Any]) -> str:
 
 
 def _parser() -> argparse.ArgumentParser:
+    """处理 `_parser` 相关逻辑。"""
     parser = argparse.ArgumentParser(description="Inspect raw MinerU JSON schemas")
     parser.add_argument(
         "--fixture-root",
@@ -579,6 +613,14 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     arguments = _parser().parse_args(argv)
     fixtures = (
         parse_bundle_arguments(arguments.bundle)

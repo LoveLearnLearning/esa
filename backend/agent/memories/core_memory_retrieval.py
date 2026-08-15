@@ -1,3 +1,5 @@
+# backend/agent/memories/core_memory_retrieval.py
+
 """Deterministic lexical CoreMemory retrieval with bounded output."""
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ _TOKEN_RE = re.compile(r"[\w\u4e00-\u9fff]+", re.UNICODE)
 
 
 def _terms(text: str) -> set[str]:
+    """处理 `_terms` 相关逻辑。"""
     lowered = text.casefold()
     terms = {item for item in _TOKEN_RE.findall(lowered) if len(item) > 1}
     terms.update(
@@ -21,12 +24,14 @@ def _terms(text: str) -> set[str]:
 
 def _clip_tokens(text: str, limit: int) -> tuple[str, int]:
     # A deterministic conservative estimator that works for Chinese and Latin text.
+    """处理 `_clip_tokens` 相关逻辑。"""
     max_chars = limit * 3
     clipped = text if len(text) <= max_chars else text[:max_chars].rstrip() + "..."
     return clipped, max(1, (len(clipped) + 2) // 3)
 
 
 class CoreMemoryRetrieval:
+    """封装 `CoreMemoryRetrieval` 的状态与行为。"""
     version = "lexical.v1"
 
     def rank(
@@ -39,6 +44,19 @@ class CoreMemoryRetrieval:
         total_token_budget: int = 600,
         item_token_budget: int = 160,
     ) -> list[dict[str, object]]:
+        """处理 `rank` 相关逻辑。
+
+        Args:
+            records: list[CoreMemoryRecord] => `records` 参数。
+            query: str => 查询文本。
+            category: str | None => `category` 参数。
+            limit: int => 返回数量上限。
+            total_token_budget: int => `total_token_budget` 参数。
+            item_token_budget: int => `item_token_budget` 参数。
+
+        Returns:
+            list[dict[str, object]] => 处理结果。
+        """
         query = " ".join(query.split()).casefold()
         if not query:
             return []

@@ -1,3 +1,7 @@
+# backend/tests/test_memory_mode_guards.py
+
+"""验证 `memory_mode_guards` 相关行为与回归场景。"""
+
 import pytest
 
 from backend.agent.memories.core_memory_models import MemoryPolicyDenied
@@ -7,6 +11,7 @@ from backend.core.router.models import ResourceScope, WorkspaceRoute
 
 
 def _context(mode: str, user_id: str = "u1") -> ToolExecutionContext:
+    """处理 `_context` 相关逻辑。"""
     scope = ResourceScope(metadata={"conversation_id": "c1"})
     route = WorkspaceRoute(
         workspace_type="learning", agent_profile_id="learning.v1",
@@ -24,6 +29,7 @@ def _context(mode: str, user_id: str = "u1") -> ToolExecutionContext:
 
 
 def test_isolated_mode_blocks_reads_and_writes():
+    """验证 `isolated_mode_blocks_reads_and_writes` 场景。"""
     policy = CoreMemoryPolicy()
     with pytest.raises(MemoryPolicyDenied):
         policy.ensure_read(_context("isolated"))
@@ -32,6 +38,7 @@ def test_isolated_mode_blocks_reads_and_writes():
 
 
 def test_no_write_mode_still_allows_reads():
+    """验证 `no_write_mode_still_allows_reads` 场景。"""
     policy = CoreMemoryPolicy()
     policy.ensure_read(_context("no_write"))
     with pytest.raises(MemoryPolicyDenied):
@@ -39,5 +46,6 @@ def test_no_write_mode_still_allows_reads():
 
 
 def test_context_keeps_trusted_users_isolated():
+    """验证 `context_keeps_trusted_users_isolated` 场景。"""
     assert _context("normal", "alice").user_id == "alice"
     assert _context("normal", "bob").user_id == "bob"

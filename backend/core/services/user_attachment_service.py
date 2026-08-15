@@ -1,3 +1,5 @@
+# backend/core/services/user_attachment_service.py
+
 """Durable, ownership-scoped storage for user chat attachments."""
 
 from __future__ import annotations
@@ -18,11 +20,13 @@ _SAFE_COMPONENT = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
 class AttachmentTooLarge(ValueError):
+    """表示 `AttachmentTooLarge` 异常。"""
     pass
 
 
 @dataclass(frozen=True, slots=True)
 class StoredAttachment:
+    """封装 `StoredAttachment` 的状态与行为。"""
     attachment_id: str
     user_id: str
     conversation_id: str
@@ -36,6 +40,7 @@ class StoredAttachment:
 
     @property
     def source_path(self) -> Path:
+        """处理 `source_path` 相关逻辑。"""
         return Path(self.path)
 
 
@@ -43,6 +48,7 @@ class UserAttachmentStore:
     """Store source files without parsing them during the upload request."""
 
     def __init__(self, root: str | Path, *, max_bytes: int) -> None:
+        """初始化 `UserAttachmentStore` 实例。"""
         self.root = Path(root).expanduser().resolve()
         self.max_bytes = max_bytes
         if max_bytes <= 0:
@@ -51,6 +57,7 @@ class UserAttachmentStore:
 
     @staticmethod
     def _component(value: str, label: str) -> str:
+        """处理 `_component` 相关逻辑。"""
         if not _SAFE_COMPONENT.fullmatch(value):
             raise ValueError(f"invalid {label}")
         return value
@@ -61,6 +68,7 @@ class UserAttachmentStore:
         conversation_id: str,
         attachment_id: str | None = None,
     ) -> Path:
+        """处理 `_directory` 相关逻辑。"""
         parts = [
             self._component(user_id, "user_id"),
             self._component(conversation_id, "conversation_id"),
@@ -80,6 +88,18 @@ class UserAttachmentStore:
         media_type: str,
         read: Callable[[int], Awaitable[bytes]],
     ) -> StoredAttachment:
+        """保存 `save` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            conversation_id: str => 对话 ID。
+            filename: str => 文件名。
+            media_type: str => `media_type` 参数。
+            read: Callable[[int], Awaitable[bytes]] => `read` 参数。
+
+        Returns:
+            StoredAttachment => 处理结果。
+        """
         safe_name = Path(filename.replace("\\", "/")).name or "attachment"
         attachment_id = str(uuid.uuid4())
         directory = self._directory(user_id, conversation_id, attachment_id)
@@ -135,6 +155,16 @@ class UserAttachmentStore:
         conversation_id: str,
         attachment_id: str,
     ) -> StoredAttachment | None:
+        """获取 `get` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            conversation_id: str => 对话 ID。
+            attachment_id: str => 附件 ID。
+
+        Returns:
+            StoredAttachment | None => 处理结果。
+        """
         directory = self._directory(user_id, conversation_id, attachment_id)
         metadata_path = directory / "metadata.json"
         try:
@@ -159,6 +189,16 @@ class UserAttachmentStore:
         conversation_id: str,
         attachment_ids: list[str],
     ) -> tuple[StoredAttachment, ...]:
+        """处理 `require_many` 相关逻辑。
+
+        Args:
+            user_id: str => 用户 ID。
+            conversation_id: str => 对话 ID。
+            attachment_ids: list[str] => `attachment_ids` 参数。
+
+        Returns:
+            tuple[StoredAttachment, ...] => 处理结果。
+        """
         items = []
         for attachment_id in dict.fromkeys(attachment_ids):
             item = self.get(
@@ -178,6 +218,16 @@ class UserAttachmentStore:
         conversation_id: str,
         attachment_id: str,
     ) -> bool:
+        """删除 `delete` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            conversation_id: str => 对话 ID。
+            attachment_id: str => 附件 ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         directory = self._directory(user_id, conversation_id, attachment_id)
         if not directory.is_dir():
             return False
@@ -185,6 +235,12 @@ class UserAttachmentStore:
         return True
 
     def delete_conversation(self, *, user_id: str, conversation_id: str) -> None:
+        """删除 `conversation` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            conversation_id: str => 对话 ID。
+        """
         directory = self._directory(user_id, conversation_id)
         if directory.is_dir():
             shutil.rmtree(directory)

@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/render.py
+
 """IR → 训练数据 / 线上文本 的渲染。
 
 两个出口：

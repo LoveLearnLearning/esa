@@ -56,6 +56,7 @@ class ChunkBuilder:
     """编排章节路径、片段分组和最终 Chunk 物化。"""
 
     def __init__(self, config: ChunkConfig | None = None) -> None:
+        """初始化 `ChunkBuilder` 实例。"""
         self.config = config or ChunkConfig()
 
     def build(self, document: Document, *, docir_sha256: str) -> ChunkDocument:
@@ -126,6 +127,14 @@ class ChunkBuilder:
         cache: dict[str, tuple[str, ...]] = {}
 
         def resolve(section_id: str) -> tuple[str, ...]:
+            """解析 `resolve` 相关数据。
+
+            Args:
+                section_id: str => section ID。
+
+            Returns:
+                tuple[str, ...] => 处理结果。
+            """
             if section_id in cache:
                 return cache[section_id]
             section = sections[section_id]
@@ -349,6 +358,7 @@ class ChunkBuilder:
         )
 
     def _can_merge(self, left: Draft, right: Draft) -> bool:
+        """处理 `_can_merge` 相关逻辑。"""
         if (
             left.section_id != right.section_id
             or left.content_role != right.content_role

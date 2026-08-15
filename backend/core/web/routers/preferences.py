@@ -1,5 +1,7 @@
 # backend/core/web/routers/preferences.py
 
+"""提供 `preferences` 相关功能。"""
+
 import json
 from datetime import datetime
 from typing import Annotated
@@ -44,6 +46,7 @@ def _snapshot_to_view(snap_dict: dict, *, user) -> ProfileViewOut:
     其余 source_memory_ids/last_confirmed_at 等内部字段不输出到视图。
     """
     def to_fields(items: list[dict]) -> list[ProfileFieldOut]:
+        """转换 `fields` 相关数据。"""
         return [
             ProfileFieldOut(
                 field=item["field"],

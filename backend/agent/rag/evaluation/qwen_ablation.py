@@ -1,3 +1,5 @@
+# backend/agent/rag/evaluation/qwen_ablation.py
+
 """Run the full real-Qwen retrieval ablation on the external benchmarks.
 
 This module is intentionally evaluation-only.  It keeps the four principal
@@ -69,16 +71,19 @@ TASK_RERANK_INSTRUCTIONS = {
 
 @dataclass(frozen=True)
 class Ranking:
+    """封装 `Ranking` 的状态与行为。"""
     document_ids: tuple[str, ...]
     chunk_ids: tuple[str, ...]
 
 
 def _revision(model_root: Path) -> str | None:
+    """处理 `_revision` 相关逻辑。"""
     path = model_root / "REVISION"
     return path.read_text(encoding="utf-8").strip() if path.is_file() else None
 
 
 def _load_dataset(name: str, data_root: Path) -> BenchmarkData:
+    """加载 `dataset` 相关数据。"""
     if name == "scifact":
         return load_scifact(data_root / "beir/scifact")
     if name == "xor-tydi":
@@ -90,12 +95,14 @@ def _load_dataset(name: str, data_root: Path) -> BenchmarkData:
 def _selected_cases(
     cases: Sequence[BenchmarkCase], maximum: int
 ) -> tuple[BenchmarkCase, ...]:
+    """处理 `_selected_cases` 相关逻辑。"""
     if maximum <= 0 or maximum >= len(cases):
         return tuple(cases)
     return tuple(cases[:maximum])
 
 
 def _fingerprint(data: BenchmarkData, chunk_ids: Sequence[str]) -> str:
+    """处理 `_fingerprint` 相关逻辑。"""
     digest = hashlib.sha256()
     digest.update(data.name.encode())
     digest.update(json.dumps(data.source, sort_keys=True).encode())
@@ -107,7 +114,9 @@ def _fingerprint(data: BenchmarkData, chunk_ids: Sequence[str]) -> str:
 
 
 class _QwenEmbedder:
+    """封装 `_QwenEmbedder` 的状态与行为。"""
     def __init__(self, model_root: Path, max_length: int) -> None:
+        """初始化 `_QwenEmbedder` 实例。"""
         import torch
         from transformers import AutoModel, AutoTokenizer
 
@@ -131,6 +140,15 @@ class _QwenEmbedder:
     def encode(
         self, texts: Sequence[str], *, query: bool = False
     ) -> np.ndarray:
+        """编码 `encode` 相关数据。
+
+        Args:
+            texts: Sequence[str] => `texts` 参数。
+            query: bool => 查询文本。
+
+        Returns:
+            np.ndarray => 处理结果。
+        """
         values = (
             [f"Instruct: {QUERY_INSTRUCTION}\nQuery: {text}" for text in texts]
             if query
@@ -161,6 +179,7 @@ def _embedding_cache(
     query_batch_size: int,
     max_length: int,
 ) -> tuple[Path, Path, dict[str, Any]]:
+    """处理 `_embedding_cache` 相关逻辑。"""
     cache = output / "cache"
     cache.mkdir(parents=True, exist_ok=True)
     document_path = cache / "document_embeddings.float16.npy"
@@ -242,6 +261,7 @@ def _dense_rankings(
     depth: int,
     batch_size: int,
 ) -> list[Ranking]:
+    """处理 `_dense_rankings` 相关逻辑。"""
     import torch
 
     document_vectors = np.load(document_embeddings, mmap_mode="r")
@@ -304,7 +324,9 @@ def _dense_rankings(
 
 
 class _Bm25:
+    """封装 `_Bm25` 的状态与行为。"""
     def __init__(self, texts: Sequence[str], chunk_document_indexes: np.ndarray) -> None:
+        """初始化 `_Bm25` 实例。"""
         self.chunk_document_indexes = chunk_document_indexes
         self.postings: dict[str, list[tuple[int, int]]] = defaultdict(list)
         self.lengths = np.zeros(len(texts), dtype=np.int32)
@@ -324,6 +346,17 @@ class _Bm25:
         chunk_ids: Sequence[str],
         depth: int,
     ) -> Ranking:
+        """处理 `rank` 相关逻辑。
+
+        Args:
+            query: str => 查询文本。
+            document_ids: Sequence[str] => `document_ids` 参数。
+            chunk_ids: Sequence[str] => `chunk_ids` 参数。
+            depth: int => `depth` 参数。
+
+        Returns:
+            Ranking => 处理结果。
+        """
         query_counts = Counter(reference_tokens(query))
         chunk_scores: dict[int, float] = defaultdict(float)
         chunk_count = len(self.lengths)
@@ -370,6 +403,7 @@ class _Bm25:
 
 
 def _rrf(left: Ranking, right: Ranking, depth: int, k: int) -> Ranking:
+    """处理 `_rrf` 相关逻辑。"""
     scores: dict[str, float] = defaultdict(float)
     representatives: dict[str, tuple[float, str]] = {}
     for ranking in (left, right):
@@ -392,6 +426,7 @@ def _rrf(left: Ranking, right: Ranking, depth: int, k: int) -> Ranking:
 def _metrics(
     cases: Sequence[BenchmarkCase], rankings: Sequence[Sequence[str]]
 ) -> dict[str, float | int]:
+    """处理 `_metrics` 相关逻辑。"""
     if not cases or len(cases) != len(rankings):
         raise ValueError("cases and rankings must be non-empty and aligned")
     hits = Counter()
@@ -431,6 +466,11 @@ def _metrics(
 
 
 def retrieve(arguments: argparse.Namespace) -> None:
+    """检索 `retrieve` 相关数据。
+
+    Args:
+        arguments: argparse.Namespace => `arguments` 参数。
+    """
     data = _load_dataset(arguments.dataset, arguments.data_root)
     cases = _selected_cases(data.cases, arguments.max_queries)
     collection = build_benchmark_collection(data)
@@ -595,7 +635,9 @@ def retrieve(arguments: argparse.Namespace) -> None:
 
 
 class _QwenReranker:
+    """封装 `_QwenReranker` 的状态与行为。"""
     def __init__(self, model_root: Path, max_length: int) -> None:
+        """初始化 `_QwenReranker` 实例。"""
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -631,6 +673,16 @@ class _QwenReranker:
         documents: Sequence[str],
         instruction: str = QUERY_INSTRUCTION,
     ) -> list[float]:
+        """处理 `score` 相关逻辑。
+
+        Args:
+            query: str => 查询文本。
+            documents: Sequence[str] => `documents` 参数。
+            instruction: str => `instruction` 参数。
+
+        Returns:
+            list[float] => 处理结果。
+        """
         texts = [
             f"<Instruct>: {instruction}\n<Query>: {query}\n<Document>: {value}"
             for value in documents
@@ -656,11 +708,17 @@ class _QwenReranker:
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    """读取 `jsonl` 相关数据。"""
     with path.open(encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
 
 
 def rerank(arguments: argparse.Namespace) -> None:
+    """处理 `rerank` 相关逻辑。
+
+    Args:
+        arguments: argparse.Namespace => `arguments` 参数。
+    """
     data = _load_dataset(arguments.dataset, arguments.data_root)
     cases = _selected_cases(data.cases, arguments.max_queries)
     collection = build_benchmark_collection(data)
@@ -743,6 +801,11 @@ def rerank(arguments: argparse.Namespace) -> None:
 
 
 def report(arguments: argparse.Namespace) -> None:
+    """处理 `report` 相关逻辑。
+
+    Args:
+        arguments: argparse.Namespace => `arguments` 参数。
+    """
     summaries = {
         dataset: json.loads(
             (arguments.output_root / dataset / "summary.json").read_text(encoding="utf-8")
@@ -773,6 +836,7 @@ def report(arguments: argparse.Namespace) -> None:
 
 
 def _parser() -> argparse.ArgumentParser:
+    """处理 `_parser` 相关逻辑。"""
     parser = argparse.ArgumentParser(description="Run strict real-Qwen ablations")
     parser.add_argument("phase", choices=("retrieve", "rerank", "report"))
     parser.add_argument("dataset", nargs="?", choices=DATASETS)
@@ -792,6 +856,14 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     arguments = _parser().parse_args(argv)
     if arguments.phase != "report" and arguments.dataset is None:
         raise ValueError("dataset is required for retrieve and rerank")

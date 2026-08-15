@@ -1,3 +1,5 @@
+# backend/agent/rag/lifecycle.py
+
 """Explicit application ownership for the process-wide RAG service."""
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ class RAGApplicationLifecycle:
         enabled: bool | None = None,
         factory: Callable[[], RetrievalService] | None = None,
     ) -> None:
+        """初始化 `RAGApplicationLifecycle` 实例。"""
         from backend.core.utils import config
 
         self.enabled = config.RAG_ENABLED if enabled is None else enabled
@@ -28,6 +31,7 @@ class RAGApplicationLifecycle:
             deployment_manifest = config.RAG_INDEX_DEPLOYMENT_MANIFEST_PATH
 
             def default_factory() -> RetrievalService:
+                """处理 `default_factory` 相关逻辑。"""
                 from .runtime import create_retrieval_service
 
                 return create_retrieval_service(deployment_manifest)
@@ -38,6 +42,7 @@ class RAGApplicationLifecycle:
         self.service: RetrievalService | None = None
 
     def start(self) -> RetrievalService | None:
+        """启动 `start` 相关数据。"""
         if not self.enabled:
             logger.info("application RAG disabled")
             return None
@@ -56,14 +61,17 @@ class RAGApplicationLifecycle:
         return self.service
 
     def close(self) -> None:
+        """释放当前对象持有的资源。"""
         if self.service is not None:
             logger.info("application RAG shutdown")
             reset_retrieval_service()
             self.service = None
 
     def __enter__(self) -> "RAGApplicationLifecycle":
+        """进入上下文并返回可用资源。"""
         self.start()
         return self
 
     def __exit__(self, *_exc: object) -> None:
+        """退出上下文并释放相关资源。"""
         self.close()

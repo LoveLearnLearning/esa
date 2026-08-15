@@ -16,10 +16,12 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, m
 
 
 class StrictModel(BaseModel):
+    """封装 `StrictModel` 的状态与行为。"""
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class NormalizedBox(StrictModel):
+    """封装 `NormalizedBox` 的状态与行为。"""
     x0: float = Field(ge=0, le=1)
     y0: float = Field(ge=0, le=1)
     x1: float = Field(ge=0, le=1)
@@ -27,17 +29,20 @@ class NormalizedBox(StrictModel):
 
     @model_validator(mode="after")
     def check_order(self) -> "NormalizedBox":
+        """检查 `order` 相关数据。"""
         if self.x1 <= self.x0 or self.y1 <= self.y0:
             raise ValueError("normalized bbox 必须满足 x1>x0 且 y1>y0")
         return self
 
 
 class Point(StrictModel):
+    """封装 `Point` 的状态与行为。"""
     x: float = Field(ge=0, le=1)
     y: float = Field(ge=0, le=1)
 
 
 class SourceGeometry(StrictModel):
+    """封装 `SourceGeometry` 的状态与行为。"""
     coordinate_space: str
     bbox: tuple[float, float, float, float]
     page_width: float = Field(gt=0)
@@ -46,6 +51,7 @@ class SourceGeometry(StrictModel):
     @field_validator("bbox")
     @classmethod
     def finite_bbox(cls, value: tuple[float, float, float, float]):
+        """处理 `finite_bbox` 相关逻辑。"""
         if not all(math.isfinite(item) for item in value):
             raise ValueError("source bbox 必须是有限数")
         if value[2] <= value[0] or value[3] <= value[1]:
@@ -54,6 +60,7 @@ class SourceGeometry(StrictModel):
 
 
 class CoordinateTransform(StrictModel):
+    """封装 `CoordinateTransform` 的状态与行为。"""
     from_space: str
     to_space: str
     matrix_3x3: tuple[float, float, float, float, float, float, float, float, float]
@@ -61,6 +68,7 @@ class CoordinateTransform(StrictModel):
     @field_validator("matrix_3x3")
     @classmethod
     def invertible(cls, value):
+        """处理 `invertible` 相关逻辑。"""
         if not all(math.isfinite(item) for item in value):
             raise ValueError("变换矩阵必须是有限数")
         a, b, c, d, e, f, g, h, i = value
@@ -87,6 +95,7 @@ class Locator(StrictModel):
     @field_validator("polygon")
     @classmethod
     def polygon_size(cls, value):
+        """处理 `polygon_size` 相关逻辑。"""
         if value is not None and len(value) < 3:
             raise ValueError("polygon 至少需要三个点")
         return value

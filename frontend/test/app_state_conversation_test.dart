@@ -7,6 +7,7 @@ class _ConversationApi extends ApiClient {
   _ConversationApi() : super(baseUrl: 'http://test.invalid');
 
   int createCalls = 0;
+  final List<String> deleteCalls = [];
 
   @override
   Future<ChatConversation> createConversation({String? groupId}) async {
@@ -21,6 +22,14 @@ class _ConversationApi extends ApiClient {
 
   @override
   Future<void> renameConversation(String id, String title) async {}
+
+  @override
+  Future<void> deleteConversation(String id) async {
+    deleteCalls.add(id);
+  }
+
+  @override
+  Future<List<ChatMessage>> getMessages(String conversationId) async => [];
 
   @override
   Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
@@ -69,7 +78,7 @@ class _LearningOverviewApi extends _ConversationApi {
 }
 
 void main() {
-  test('空白新对话不会被重复创建', () async {
+  test('新对话在首次发送前不会写入后端', () async {
     final api = _ConversationApi()
       ..sessionId = 'session'
       ..userId = 'user'
@@ -85,12 +94,38 @@ void main() {
     expect(state.messages, isNotEmpty);
 
     await state.newConversation();
-    expect(api.createCalls, 2);
+    expect(api.createCalls, 1);
     expect(state.messages, isEmpty);
 
     await state.newConversation();
+    expect(api.createCalls, 1);
+    expect(state.activeId, isNull);
+
+    await state.send('第二个问题');
     expect(api.createCalls, 2);
     expect(state.activeId, 'conversation-2');
+    expect(api.deleteCalls, isEmpty);
+  });
+
+  test('切走服务端已有的空白新对话时会自动删除', () async {
+    final api = _ConversationApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+
+    final empty = await api.createConversation();
+    final existing = await api.createConversation();
+    existing.title = '已有对话';
+    state.conversations.addAll([empty, existing]);
+
+    await state.setActive(empty.id);
+    await state.setActive(existing.id);
+
+    expect(api.deleteCalls, [empty.id]);
+    expect(state.conversations.map((item) => item.id), [existing.id]);
+    expect(state.activeId, existing.id);
   });
 
   test('工具调用期间连接中断会停止进度状态', () async {

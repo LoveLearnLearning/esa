@@ -1,3 +1,7 @@
+# backend/tests/test_attachment_tools.py
+
+"""验证 `attachment_tools` 相关行为与回归场景。"""
+
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,9 +15,11 @@ from backend.core.services.user_attachment_service import UserAttachmentStore
 
 
 def _reader(payload: bytes):
+    """处理 `_reader` 相关逻辑。"""
     sent = False
 
     async def read(_size: int) -> bytes:
+        """读取 `read` 相关数据。"""
         nonlocal sent
         if sent:
             return b""
@@ -24,10 +30,22 @@ def _reader(payload: bytes):
 
 
 class _Sessions:
+    """封装 `_Sessions` 的状态与行为。"""
     def __init__(self) -> None:
+        """初始化 `_Sessions` 实例。"""
         self.calls = 0
 
     async def prepare_attachment(self, session_id, attachment_id, path):
+        """准备 `attachment` 相关数据。
+
+        Args:
+            session_id: object => 会话 ID。
+            attachment_id: object => 附件 ID。
+            path: object => 目标路径。
+
+        Returns:
+            object => 处理结果。
+        """
         self.calls += 1
         assert session_id == "c1"
         assert Path(path).read_bytes() == b"pdf"
@@ -41,6 +59,7 @@ class _Sessions:
 
 
 def _context(store, sessions, attachment_ids=()) -> ToolExecutionContext:
+    """处理 `_context` 相关逻辑。"""
     scope = ResourceScope(
         attachment_ids=tuple(attachment_ids), metadata={"conversation_id": "c1"}
     )
@@ -62,6 +81,7 @@ def _context(store, sessions, attachment_ids=()) -> ToolExecutionContext:
 
 
 def test_attachment_tool_requires_current_message_authorization(tmp_path):
+    """验证 `attachment_tool_requires_current_message_authorization` 场景。"""
     store = UserAttachmentStore(tmp_path / "user", max_bytes=1024)
     item = asyncio.run(store.save(
         user_id="u1", conversation_id="c1", filename="notes.pdf",
@@ -74,6 +94,7 @@ def test_attachment_tool_requires_current_message_authorization(tmp_path):
 
 
 def test_attachment_tool_parses_lazily_after_authorization(tmp_path):
+    """验证 `attachment_tool_parses_lazily_after_authorization` 场景。"""
     store = UserAttachmentStore(tmp_path / "user", max_bytes=1024)
     item = asyncio.run(store.save(
         user_id="u1", conversation_id="c1", filename="notes.pdf",

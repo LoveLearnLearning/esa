@@ -1,3 +1,5 @@
+# backend/agent/mm/cli.py
+
 """mm 独立摄取/查询命令行。"""
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from .service import MultimodalIngestionService
 
 
 async def _run(args: argparse.Namespace) -> int:
+    """执行 `run` 相关数据。"""
     service = MultimodalIngestionService()
     if args.command == "ingest":
         prepared = await service.prepare_files(tuple(args.files))
@@ -42,6 +45,7 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。"""
     parser = argparse.ArgumentParser(description="ESA 多模态附件摄取")
     subparsers = parser.add_subparsers(dest="command", required=True)
     ingest = subparsers.add_parser("ingest")
@@ -54,4 +58,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

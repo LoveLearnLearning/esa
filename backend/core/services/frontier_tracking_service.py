@@ -1,3 +1,7 @@
+# backend/core/services/frontier_tracking_service.py
+
+"""提供领域服务实现。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -32,12 +36,14 @@ class FrontierTrackingService:
         *,
         search: SearchFunction = arxiv_search,
     ) -> None:
+        """初始化 `FrontierTrackingService` 实例。"""
         self.store = store
         self.search = search
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
 
     def start(self, *, recover_interrupted: bool = True) -> None:
+        """启动 `start` 相关数据。"""
         if self._worker is not None and not self._worker.done():
             return
         if recover_interrupted:
@@ -46,6 +52,7 @@ class FrontierTrackingService:
         self._worker = asyncio.create_task(self._run_worker())
 
     async def stop(self) -> None:
+        """停止 `stop` 相关数据。"""
         worker = self._worker
         self._worker = None
         if worker is None:
@@ -57,9 +64,11 @@ class FrontierTrackingService:
             pass
 
     def submit(self, job_id: str) -> None:
+        """处理 `submit` 相关逻辑。"""
         self._queue.put_nowait(job_id)
 
     async def _run_worker(self) -> None:
+        """执行 `worker` 相关数据。"""
         while True:
             job_id = await self._queue.get()
             try:
@@ -68,6 +77,7 @@ class FrontierTrackingService:
                 self._queue.task_done()
 
     def run_job(self, job_id: str) -> dict | None:
+        """执行 `job` 相关数据。"""
         job = self.store.claim_job(job_id)
         if job is None:
             return None
@@ -80,6 +90,7 @@ class FrontierTrackingService:
         return self.store.get_job(job_id)
 
     def _search_and_analyze(self, job: dict) -> dict:
+        """搜索 `and analyze` 相关数据。"""
         requested = int(job["max_results"])
         recent_count = min(20, max(5, math.ceil(requested / 2)))
         relevant_count = min(20, max(5, requested - recent_count))
@@ -122,6 +133,17 @@ class FrontierTrackingService:
         time_window_years: int,
         source_total: int = 0,
     ) -> dict:
+        """处理 `analyze` 相关逻辑。
+
+        Args:
+            query: str => 查询文本。
+            papers: list[dict] => `papers` 参数。
+            time_window_years: int => `time_window_years` 参数。
+            source_total: int => `source_total` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         year_counts: Counter[int] = Counter()
         category_counts: Counter[str] = Counter()
         keyword_counts: Counter[str] = Counter()
@@ -197,6 +219,7 @@ class FrontierTrackingService:
 
     @staticmethod
     def _deduplicate(papers: list[dict], limit: int) -> list[dict]:
+        """处理 `_deduplicate` 相关逻辑。"""
         seen: set[str] = set()
         output = []
         for paper in papers:
@@ -211,6 +234,7 @@ class FrontierTrackingService:
 
     @staticmethod
     def _year(paper: dict) -> int:
+        """处理 `_year` 相关逻辑。"""
         value = str(paper.get("published", ""))
         try:
             return int(value[:4])
@@ -219,6 +243,7 @@ class FrontierTrackingService:
 
     @staticmethod
     def _tokens(text: str) -> list[str]:
+        """处理 `_tokens` 相关逻辑。"""
         return [
             token
             for token in (item.lower() for item in _TOKEN_PATTERN.findall(text))

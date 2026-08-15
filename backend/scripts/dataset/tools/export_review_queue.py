@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tools/export_review_queue.py
+
 """把 `needs_review` 的样本导成一份能让人坐下来审的清单。
 
 为什么需要它
@@ -72,6 +74,7 @@ def fence_for(text: str) -> str:
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     ap = argparse.ArgumentParser(description="导出待人工复核清单")
     ap.add_argument("--ir-dir", default=str(ROOT / "dataset/data/ir"))
     ap.add_argument("--out", default=str(DEFAULT_OUT))

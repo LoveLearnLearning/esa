@@ -26,6 +26,7 @@ T = TypeVar("T", bound=BaseModel)
 
 
 def file_sha256(path: Path) -> str:
+    """处理 `file_sha256` 相关逻辑。"""
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -34,6 +35,7 @@ def file_sha256(path: Path) -> str:
 
 
 def canonical_json(model: BaseModel | dict) -> str:
+    """处理 `canonical_json` 相关逻辑。"""
     data = model.model_dump(mode="json") if isinstance(model, BaseModel) else model
     return json.dumps(data, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
 
@@ -59,6 +61,7 @@ def save_json(model: BaseModel | dict, output_path: Path) -> str:
 
 
 def _load(path: Path, model_type: type[T]) -> T:
+    """加载 `load` 相关数据。"""
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(path)
@@ -70,8 +73,10 @@ def _load(path: Path, model_type: type[T]) -> T:
 
 
 def load_chunk_document(path: Path) -> ChunkDocument:
+    """加载 `chunk document` 相关数据。"""
     return _load(path, ChunkDocument)
 
 
 def load_manifest(path: Path) -> ChunkCollection:
+    """加载 `manifest` 相关数据。"""
     return _load(path, ChunkCollection)

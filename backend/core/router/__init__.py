@@ -1,3 +1,7 @@
+# backend/core/router/__init__.py
+
+"""初始化 `backend.core.router` Python 包。"""
+
 from backend.core.router.basic_router import CoreRouter, route_workspace
 from backend.core.router.context import (
     AttachmentAuthorization,

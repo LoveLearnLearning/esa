@@ -1,3 +1,5 @@
+# backend/agent/tools/bootstrap.py
+
 """Explicit registration of built-in tools at application/Agent startup."""
 
 from __future__ import annotations
@@ -7,6 +9,7 @@ from functools import lru_cache
 
 @lru_cache(maxsize=1)
 def register_builtin_tools() -> None:
+    """注册 `builtin tools` 相关数据。"""
     from backend.agent.tools import (  # noqa: F401
         arxiv_search,
         rag_tool,

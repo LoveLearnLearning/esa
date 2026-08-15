@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/paddleocr/__main__.py
+
 """Command-line entry point for the PaddleOCR Adapter."""
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ from .models import PaddleOCRAdapterConfig
 
 
 def main() -> None:
+    """运行当前模块的命令行入口。"""
     parser = argparse.ArgumentParser(description="Convert a local PDF/image to DocIR")
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)

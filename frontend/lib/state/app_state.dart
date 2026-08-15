@@ -79,6 +79,7 @@ class AppState extends ChangeNotifier {
   bool groupsLoaded = false;
   String? activeId;
   Future<void>? _conversationCreation;
+  String? _draftConversationId;
 
   bool busy = false; // 正在发消息
   bool loadingConversations = false;
@@ -111,6 +112,14 @@ class AppState extends ChangeNotifier {
 
   List<ChatConversation> conversationsInGroup(String groupId) =>
       conversations.where((c) => c.groupId == groupId).toList();
+
+  List<String> get scheduleCourseNames {
+    final seen = <String>{};
+    return scheduleCourses
+        .map((course) => course.name.trim())
+        .where((name) => name.isNotEmpty && seen.add(name))
+        .toList();
+  }
 
   ChatGroup? get activeGroup {
     if (activeGroupId == null) return null;
@@ -206,6 +215,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await _discardDraftConversation();
     await api.logout();
     _clearSession();
   }
@@ -386,6 +396,7 @@ class AppState extends ChangeNotifier {
     scheduleSettings = const ScheduleSettings();
     scheduleLoaded = false;
     activeId = null;
+    _draftConversationId = null;
     busy = false;
     preferences = const UserPreferences();
     userProfile = const UserProfile();
@@ -789,6 +800,7 @@ class AppState extends ChangeNotifier {
         !availableWorkspaces.any((item) => item.type == workspace)) {
       return;
     }
+    await _discardDraftConversation();
     activeWorkspace = workspace;
     activeId = null;
     conversations.clear();
@@ -851,6 +863,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> openResearchProject(ResearchProject project) async {
+    await _discardDraftConversation();
     final existing = conversations.where(
       (item) => item.researchProjectId == project.id,
     );
@@ -872,6 +885,7 @@ class AppState extends ChangeNotifier {
     TeachingClass classroom, {
     TeachingAssignment? assignment,
   }) async {
+    await _discardDraftConversation();
     if (activeWorkspace != WorkspaceType.teaching) {
       await switchWorkspace(WorkspaceType.teaching);
     }
@@ -895,6 +909,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> setActive(String id) async {
+    if (activeId != id) {
+      await _discardDraftConversation(exceptId: id);
+    }
     activeId = id;
     notifyListeners();
     if (!_messages.containsKey(id)) {
@@ -908,6 +925,15 @@ class AppState extends ChangeNotifier {
     try {
       final msgs = await api.getMessages(id);
       _messages[id] = msgs;
+      final conversation = conversations.where((item) => item.id == id);
+      if (activeId == id &&
+          msgs.isEmpty &&
+          conversation.isNotEmpty &&
+          conversation.first.title == '新对话') {
+        _draftConversationId = id;
+      } else if (_draftConversationId == id && msgs.isNotEmpty) {
+        _draftConversationId = null;
+      }
     } catch (e) {
       if (_handled401(e)) return;
       _messages[id] = [];
@@ -917,21 +943,37 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  bool get _activeConversationIsEmpty {
-    final id = activeId;
-    return id == null ||
-        (_messages.containsKey(id) && (_messages[id]?.isEmpty ?? true));
-  }
-
   Future<void> newConversation() async {
-    // Keep the initial blank state empty unless a group selection explicitly
-    // asks for a conversation to be created inside it.
-    if (activeId == null && activeGroupId == null) return;
-    if (activeId != null && _activeConversationIsEmpty) return;
-    // 先立即切换到空白页，避免网络延迟期间还看到旧对话。
+    if (activeId == null) return;
+    await _discardDraftConversation();
+    // 新对话先保持为前端空白页，首次发送或上传附件时再写入后端。
     activeId = null;
     notifyListeners();
-    await _createConversation();
+  }
+
+  Future<void> _discardDraftConversation({String? exceptId}) async {
+    final id = _draftConversationId;
+    if (id == null || id == exceptId) return;
+
+    final index = conversations.indexWhere(
+      (conversation) => conversation.id == id,
+    );
+    final groupId = index < 0 ? null : conversations[index].groupId;
+    _draftConversationId = null;
+    conversations.removeWhere((conversation) => conversation.id == id);
+    _messages.remove(id);
+    _pinned.remove(id);
+    _adjustGroupCounts(groupId, null);
+    if (activeId == id) activeId = null;
+    notifyListeners();
+
+    try {
+      await api.deleteConversation(id);
+    } catch (error) {
+      if (!_handled401(error)) {
+        debugPrint('Failed to discard unsent conversation $id: $error');
+      }
+    }
   }
 
   Future<void> _createConversation() async {
@@ -994,6 +1036,7 @@ class AppState extends ChangeNotifier {
     conversations.removeWhere((c) => c.id == id);
     _messages.remove(id);
     _pinned.remove(id);
+    if (_draftConversationId == id) _draftConversationId = null;
     _adjustGroupCounts(removedGroupId, null);
     if (activeId == id) {
       activeId = conversations.isNotEmpty ? conversations.first.id : null;
@@ -1033,6 +1076,7 @@ class AppState extends ChangeNotifier {
       if (activeId == null) return; // 建失败
     }
     final id = activeId!;
+    if (_draftConversationId == id) _draftConversationId = null;
     final list = _messages.putIfAbsent(id, () => []);
 
     final visibleInput = (displayText ?? input).trim();
@@ -1322,6 +1366,7 @@ class AppState extends ChangeNotifier {
     required Stream<List<int>> stream,
     required int length,
   }) async {
+    final createsDraft = activeId == null;
     if (activeId == null) {
       await _createConversation();
     }
@@ -1329,6 +1374,7 @@ class AppState extends ChangeNotifier {
     if (conversationId == null) {
       throw ApiException(0, '无法创建对话，请稍后重试');
     }
+    if (createsDraft) _draftConversationId = conversationId;
     return api.uploadConversationAttachment(
       conversationId: conversationId,
       filename: filename,

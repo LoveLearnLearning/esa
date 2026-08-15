@@ -71,6 +71,15 @@ class ContextBuilder:
         token_count = 0
 
         def add(owner: str, chunk: Chunk) -> bool:
+            """添加 `add` 相关数据。
+
+            Args:
+                owner: str => `owner` 参数。
+                chunk: Chunk => `chunk` 参数。
+
+            Returns:
+                bool => 处理结果。
+            """
             nonlocal token_count
             if chunk.chunk_id in used:
                 return False

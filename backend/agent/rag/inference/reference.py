@@ -29,16 +29,26 @@ class HashingEmbeddingProvider:
     model_name: str = "reference-hashing-embedding-0.1"
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if self.dimensions <= 0:
             raise ValueError("dimensions must be positive")
 
     @property
     def configuration_fingerprint(self) -> str:
+        """处理 `configuration_fingerprint` 相关逻辑。"""
         return configuration_sha256(
             {"model_name": self.model_name, "dimensions": self.dimensions}
         )
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """处理 `embed` 相关逻辑。
+
+        Args:
+            texts: Sequence[str] => `texts` 参数。
+
+        Returns:
+            list[list[float]] => 处理结果。
+        """
         vectors: list[list[float]] = []
         for text in texts:
             counts = Counter(reference_tokens(text))
@@ -55,9 +65,11 @@ class HashingEmbeddingProvider:
         return vectors
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+        """处理 `embed_documents` 相关逻辑。"""
         return self.embed(texts)
 
     def embed_query(self, query: str) -> list[float]:
+        """处理 `embed_query` 相关逻辑。"""
         return self.embed([query])[0]
 
     def count_tokens(self, text: str) -> int:
@@ -74,11 +86,21 @@ class LexicalOverlapReranker:
 
     @property
     def configuration_fingerprint(self) -> str:
+        """处理 `configuration_fingerprint` 相关逻辑。"""
         return configuration_sha256(
             {"model_name": self.model_name, "score": "weighted-jaccard"}
         )
 
     def score(self, query: str, documents: Sequence[str]) -> list[float]:
+        """处理 `score` 相关逻辑。
+
+        Args:
+            query: str => 查询文本。
+            documents: Sequence[str] => `documents` 参数。
+
+        Returns:
+            list[float] => 处理结果。
+        """
         query_counts = Counter(reference_tokens(query))
         output: list[float] = []
         for document in documents:

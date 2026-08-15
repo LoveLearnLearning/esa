@@ -63,6 +63,20 @@
         if (!record.host.contains(event.target)) continue;
         event.preventDefault();
         event.stopImmediatePropagation();
+        const suggestWidget = record.host.querySelector?.(
+          '.suggest-widget.visible:not(.message)',
+        );
+        const focusedSuggestion = suggestWidget?.querySelector?.(
+          '.monaco-list-row.focused',
+        );
+        if (!event.shiftKey && focusedSuggestion) {
+          record.editor.trigger(
+            'keyboard',
+            'acceptSelectedSuggestion',
+            {},
+          );
+          return;
+        }
         record.applyIndent(event.shiftKey);
         return;
       }
@@ -423,7 +437,7 @@
           minimap: { enabled: host.clientWidth >= 560, scale: 1 },
           mouseWheelZoom: true,
           padding: { top: 12, bottom: 12 },
-          quickSuggestions: { other: true, comments: false, strings: true },
+          quickSuggestions: { other: true, comments: false, strings: false },
           quickSuggestionsDelay: 40,
           inlineSuggest: { enabled: true },
           parameterHints: { enabled: true, cycle: true },
@@ -582,7 +596,11 @@
               // after onChanged. This event only fires for real editor input,
               // so restoring focus here is safe and keeps suggestions visible.
               editor.focus();
-              editor.getAction('editor.action.triggerSuggest')?.run();
+              editor.trigger(
+                'esa.document-symbols',
+                'editor.action.triggerSuggest',
+                { auto: true },
+              );
             });
           }
         });

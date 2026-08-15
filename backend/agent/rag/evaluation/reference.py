@@ -196,6 +196,7 @@ def _validate_document_coverage(
 
 
 def _metrics_dict(metrics: RetrievalMetrics) -> dict[str, int | float]:
+    """处理 `_metrics_dict` 相关逻辑。"""
     return dataclasses.asdict(metrics)
 
 
@@ -203,6 +204,7 @@ def _layer_metrics(
     cases: Sequence[EvaluationCase],
     rankings: Mapping[str, Mapping[str, Sequence[str]]],
 ) -> LayerMetrics:
+    """处理 `_layer_metrics` 相关逻辑。"""
     metrics = evaluate_layers(cases, lambda query: rankings[query])
     return {name: _metrics_dict(value) for name, value in metrics.items()}
 
@@ -211,6 +213,7 @@ def _category_metrics(
     cases: Sequence[EvaluationCase],
     rankings: Mapping[str, Mapping[str, Sequence[str]]],
 ) -> CategoryMetrics:
+    """处理 `_category_metrics` 相关逻辑。"""
     tags = sorted(
         {tag for case in cases if case.answerable for tag in case.category_tags}
     )
@@ -434,6 +437,14 @@ def _write_evaluation_artifacts(
 
 
 def main(argv: Iterable[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: Iterable[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     parser = argparse.ArgumentParser(
         description="执行真实 ChunkCollection 确定性参考评测"
     )

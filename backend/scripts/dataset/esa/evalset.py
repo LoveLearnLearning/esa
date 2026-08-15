@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/evalset.py
+
 """评测集构建：按行为类别显式挑选，不靠随机切分。
 
 为什么不用 split.py 的随机分层：
@@ -228,6 +230,7 @@ def assert_no_train_overlap(records: list[dict], train_set: list[Sample]) -> Non
     模型从这句话本身占不到任何便宜。所以判据加一条：**这句话里得含有 gold 参数的取值**。
     """
     def last_user(convs) -> str | None:
+        """处理 `last_user` 相关逻辑。"""
         us = [c["value"] for c in convs if c["from"] == "human"]
         return us[-1] if us else None
 
@@ -385,6 +388,15 @@ def build(
 
 
 def write(eval_set, train_set, stats, by_name, out_dir: Path) -> None:
+    """写入 `write` 相关数据。
+
+    Args:
+        eval_set: object => `eval_set` 参数。
+        train_set: object => `train_set` 参数。
+        stats: object => `stats` 参数。
+        by_name: object => `by_name` 参数。
+        out_dir: Path => `out_dir` 参数。
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # 评测题：ShareGPT 形式（供渲染 prompt）+ gold（供判分）
@@ -434,6 +446,14 @@ def write(eval_set, train_set, stats, by_name, out_dir: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     ap = argparse.ArgumentParser(description="构建评测集（按行为类别显式挑选）")
     ap.add_argument("--ir-dir", default=str(in_dataset("data/ir")))
     ap.add_argument("--schemas", default=str(in_dataset("schemas/tool_schemas.json")))

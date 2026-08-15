@@ -1,3 +1,7 @@
+# backend/core/stores/research_writing_store.py
+
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
 import uuid
@@ -12,9 +16,11 @@ class ResearchWritingStore(BaseSQLiteStore):
     """Versioned research documents and durable writing jobs."""
 
     def __init__(self, database_path: str | Path = "data/esa.db") -> None:
+        """初始化 `ResearchWritingStore` 实例。"""
         super().__init__(database_path)
 
     def _initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         with closing(self._connect()) as connection, connection:
             connection.executescript(
                 """
@@ -82,6 +88,7 @@ class ResearchWritingStore(BaseSQLiteStore):
 
     @staticmethod
     def _now() -> str:
+        """处理 `_now` 相关逻辑。"""
         return datetime.now(timezone.utc).isoformat()
 
     def create_document(
@@ -93,6 +100,18 @@ class ResearchWritingStore(BaseSQLiteStore):
         document_type: str,
         content: str = "",
     ) -> dict:
+        """创建 `document` 相关数据。
+
+        Args:
+            project_id: str => 项目 ID。
+            user_id: str => 用户 ID。
+            title: str => `title` 参数。
+            document_type: str => `document_type` 参数。
+            content: str => 待处理内容。
+
+        Returns:
+            dict => 处理结果。
+        """
         now = self._now()
         document_id = str(uuid.uuid4())
         with closing(self._connect()) as connection, connection:
@@ -127,6 +146,15 @@ class ResearchWritingStore(BaseSQLiteStore):
         return document
 
     def get_document(self, document_id: str, user_id: str) -> dict | None:
+        """获取 `document` 相关数据。
+
+        Args:
+            document_id: str => document ID。
+            user_id: str => 用户 ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         row = self.query_one(
             """
             SELECT * FROM research_documents
@@ -137,6 +165,15 @@ class ResearchWritingStore(BaseSQLiteStore):
         return dict(row) if row is not None else None
 
     def list_documents(self, project_id: str, user_id: str) -> list[dict]:
+        """列出 `documents` 相关数据。
+
+        Args:
+            project_id: str => 项目 ID。
+            user_id: str => 用户 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         return [
             dict(row)
             for row in self.query_all(
@@ -150,6 +187,15 @@ class ResearchWritingStore(BaseSQLiteStore):
         ]
 
     def list_versions(self, document_id: str, user_id: str) -> list[dict]:
+        """列出 `versions` 相关数据。
+
+        Args:
+            document_id: str => document ID。
+            user_id: str => 用户 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         if self.get_document(document_id, user_id) is None:
             return []
         return [
@@ -172,6 +218,17 @@ class ResearchWritingStore(BaseSQLiteStore):
         title: str | None = None,
         content: str | None = None,
     ) -> dict | None:
+        """更新 `document` 相关数据。
+
+        Args:
+            document_id: str => document ID。
+            user_id: str => 用户 ID。
+            title: str | None => `title` 参数。
+            content: str | None => 待处理内容。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         current = self.get_document(document_id, user_id)
         if current is None:
             return None
@@ -210,6 +267,19 @@ class ResearchWritingStore(BaseSQLiteStore):
         instruction: str,
         source_text: str,
     ) -> dict:
+        """创建 `job` 相关数据。
+
+        Args:
+            document_id: str => document ID。
+            project_id: str => 项目 ID。
+            user_id: str => 用户 ID。
+            operation: str => `operation` 参数。
+            instruction: str => `instruction` 参数。
+            source_text: str => `source_text` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         now = self._now()
         job_id = str(uuid.uuid4())
         self.execute(
@@ -236,6 +306,15 @@ class ResearchWritingStore(BaseSQLiteStore):
         return job
 
     def get_job(self, job_id: str, user_id: str | None = None) -> dict | None:
+        """获取 `job` 相关数据。
+
+        Args:
+            job_id: str => job ID。
+            user_id: str | None => 用户 ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         sql = "SELECT * FROM research_writing_jobs WHERE job_id = ?"
         params: tuple = (job_id,)
         if user_id is not None:
@@ -245,6 +324,14 @@ class ResearchWritingStore(BaseSQLiteStore):
         return dict(row) if row is not None else None
 
     def claim_job(self, job_id: str) -> dict | None:
+        """处理 `claim_job` 相关逻辑。
+
+        Args:
+            job_id: str => job ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         now = self._now()
         with closing(self._connect()) as connection, connection:
             cursor = connection.execute(
@@ -264,6 +351,12 @@ class ResearchWritingStore(BaseSQLiteStore):
         return dict(row) if row is not None else None
 
     def complete_job(self, job_id: str, content: str) -> None:
+        """处理 `complete_job` 相关逻辑。
+
+        Args:
+            job_id: str => job ID。
+            content: str => 待处理内容。
+        """
         now = self._now()
         with closing(self._connect()) as connection, connection:
             job = connection.execute(
@@ -305,6 +398,12 @@ class ResearchWritingStore(BaseSQLiteStore):
             )
 
     def fail_job(self, job_id: str, error: str) -> None:
+        """处理 `fail_job` 相关逻辑。
+
+        Args:
+            job_id: str => job ID。
+            error: str => `error` 参数。
+        """
         now = self._now()
         self.execute(
             """
@@ -316,6 +415,7 @@ class ResearchWritingStore(BaseSQLiteStore):
         )
 
     def requeue_interrupted(self) -> list[str]:
+        """处理 `requeue_interrupted` 相关逻辑。"""
         now = self._now()
         with closing(self._connect()) as connection, connection:
             rows = connection.execute(

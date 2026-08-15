@@ -1,3 +1,7 @@
+# backend/tests/test_profile_projection.py
+
+"""验证 `profile_projection` 相关行为与回归场景。"""
+
 from types import SimpleNamespace
 
 from backend.agent.memories.core_memory_service import CoreMemoryService
@@ -14,18 +18,32 @@ from backend.core.utils.models import UserRecord
 
 
 class StubUserStore:
+    """封装 `stub user store` 数据持久化操作。"""
     def get_by_username(self, username):
+        """获取 `by username` 相关数据。"""
         return (
             SimpleNamespace(id="u1", username=username) if username == "alice" else None
         )
 
 
 class StubProfileStore:
+    """封装 `stub profile store` 数据持久化操作。"""
     def __init__(self):
+        """初始化 `StubProfileStore` 实例。"""
         self.rows = {}
         self.deleted = []
 
     def get_dimension(self, user_id, field_key, *, include_expired=False):
+        """获取 `dimension` 相关数据。
+
+        Args:
+            user_id: object => 用户 ID。
+            field_key: object => `field_key` 参数。
+            include_expired: object => `include_expired` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         return self.rows.get((user_id, field_key))
 
     def upsert_dimension(
@@ -39,6 +57,21 @@ class StubProfileStore:
         status="active",
         expires_at=None,
     ):
+        """处理 `upsert_dimension` 相关逻辑。
+
+        Args:
+            user_id: object => 用户 ID。
+            field_key: object => `field_key` 参数。
+            value: object => 输入值。
+            origin: object => `origin` 参数。
+            confidence: object => `confidence` 参数。
+            source_memory_ids: object => `source_memory_ids` 参数。
+            status: object => `status` 参数。
+            expires_at: object => `expires_at` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         self.rows[(user_id, field_key)] = {
             "user_id": user_id,
             "field_key": field_key,
@@ -51,11 +84,22 @@ class StubProfileStore:
         return True
 
     def delete_dimension(self, user_id, field_key, *, actor="system"):
+        """删除 `dimension` 相关数据。
+
+        Args:
+            user_id: object => 用户 ID。
+            field_key: object => `field_key` 参数。
+            actor: object => `actor` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         self.deleted.append((user_id, field_key, actor))
         return self.rows.pop((user_id, field_key), None) is not None
 
 
 def _memory(**overrides):
+    """处理 `_memory` 相关逻辑。"""
     data = {
         "id": 7,
         "memory_key": "preferred_code_language",
@@ -67,6 +111,7 @@ def _memory(**overrides):
 
 
 def test_short_preference_projects_to_structured_profile():
+    """验证 `short_preference_projects_to_structured_profile` 场景。"""
     store = StubProfileStore()
     projection = ProfileProjection(StubUserStore(), store)
 
@@ -80,6 +125,7 @@ def test_short_preference_projects_to_structured_profile():
 
 
 def test_general_or_project_memory_is_not_auto_injected():
+    """验证 `general_or_project_memory_is_not_auto_injected` 场景。"""
     store = StubProfileStore()
     projection = ProfileProjection(StubUserStore(), store)
 
@@ -95,6 +141,7 @@ def test_general_or_project_memory_is_not_auto_injected():
 
 
 def test_reserved_explicit_setting_is_never_overwritten():
+    """验证 `reserved_explicit_setting_is_never_overwritten` 场景。"""
     store = StubProfileStore()
     projection = ProfileProjection(StubUserStore(), store)
 
@@ -108,6 +155,7 @@ def test_reserved_explicit_setting_is_never_overwritten():
 
 
 def test_profile_category_requires_whitelisted_semantic_key():
+    """验证 `profile_category_requires_whitelisted_semantic_key` 场景。"""
     store = StubProfileStore()
     projection = ProfileProjection(StubUserStore(), store)
 
@@ -127,6 +175,7 @@ def test_profile_category_requires_whitelisted_semantic_key():
 
 
 def test_suppressed_projection_is_not_silently_reactivated():
+    """验证 `suppressed_projection_is_not_silently_reactivated` 场景。"""
     store = StubProfileStore()
     store.rows[("u1", "preferred_code_language")] = {
         "origin": ProfileOrigin.EXPLICIT_MEMORY.value,
@@ -142,6 +191,7 @@ def test_suppressed_projection_is_not_silently_reactivated():
 
 
 def test_delete_only_removes_projection_owned_by_same_memory():
+    """验证 `delete_only_removes_projection_owned_by_same_memory` 场景。"""
     store = StubProfileStore()
     projection = ProfileProjection(StubUserStore(), store)
     projection.project_memory("alice", _memory())
@@ -153,6 +203,7 @@ def test_delete_only_removes_projection_owned_by_same_memory():
 
 
 def test_core_memory_v2_projection_follows_suppress_restore_and_forget(tmp_path):
+    """验证 `core_memory_v2_projection_follows_suppress_restore_and_forget` 场景。"""
     database = tmp_path / "projection.db"
     users = UserStore(database)
     assert users.create(

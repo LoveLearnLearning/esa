@@ -1,3 +1,5 @@
+# backend/core/web/routers/agent_actions.py
+
 """User approval API for high-impact Agent Actions."""
 
 from __future__ import annotations
@@ -28,11 +30,31 @@ def list_actions(
     session: CurrentSession,
     status: AgentActionStatus | None = None,
 ) -> list[dict]:
+    """列出 `actions` 相关数据。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        status: AgentActionStatus | None => `status` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     return request.app.state.agent_action_store.list(session.user_id, status)
 
 
 @router.get("/{action_id}")
 def get_action(action_id: str, request: Request, session: CurrentSession) -> dict:
+    """获取 `action` 相关数据。
+
+    Args:
+        action_id: str => action ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     item = request.app.state.agent_action_store.get(action_id, session.user_id)
     if item is None:
         raise HTTPException(404, "动作请求不存在")
@@ -45,6 +67,7 @@ def _decision(
     action_id: str,
     decision: Literal["approve", "reject"],
 ) -> dict:
+    """处理 `_decision` 相关逻辑。"""
     service = request.app.state.agent_action_service
     try:
         if decision == "approve":
@@ -60,6 +83,16 @@ def _decision(
 def approve_action(
     action_id: str, request: Request, session: CurrentSession
 ) -> dict:
+    """处理 `approve_action` 相关逻辑。
+
+    Args:
+        action_id: str => action ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     return _decision(request, session, action_id, "approve")
 
 
@@ -67,4 +100,14 @@ def approve_action(
 def reject_action(
     action_id: str, request: Request, session: CurrentSession
 ) -> dict:
+    """处理 `reject_action` 相关逻辑。
+
+    Args:
+        action_id: str => action ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     return _decision(request, session, action_id, "reject")

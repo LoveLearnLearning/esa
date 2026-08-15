@@ -1,3 +1,5 @@
+# backend/agent/workspaces/runtime.py
+
 """Workspace runtime pipeline producing the only input consumed by Agent."""
 
 from __future__ import annotations
@@ -12,12 +14,14 @@ from backend.agent.workspaces.run_spec_builder import RunSpecBuilder
 
 
 class WorkspaceRuntime:
+    """封装 `WorkspaceRuntime` 的状态与行为。"""
     def __init__(
         self,
         dependencies: AgentRuntimeDependencies,
         *,
         profiles: WorkspaceProfileRegistry = DEFAULT_PROFILE_REGISTRY,
     ) -> None:
+        """初始化 `WorkspaceRuntime` 实例。"""
         self.dependencies = dependencies
         self.profiles = profiles
         self.capabilities = CapabilityRuntime()
@@ -26,6 +30,14 @@ class WorkspaceRuntime:
         self.builder = RunSpecBuilder()
 
     def prepare(self, turn: AgentTurnInput) -> AgentRunSpec:
+        """准备 `prepare` 相关数据。
+
+        Args:
+            turn: AgentTurnInput => `turn` 参数。
+
+        Returns:
+            AgentRunSpec => 处理结果。
+        """
         route = turn.route
         profile = self.profiles.resolve(route.agent_profile_id, route.workspace_type)
         if not profile.skill_scopes.issuperset(route.skill_scopes):

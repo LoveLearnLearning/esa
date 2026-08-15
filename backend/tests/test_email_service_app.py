@@ -1,3 +1,7 @@
+# backend/tests/test_email_service_app.py
+
+"""验证 `email_service_app` 相关行为与回归场景。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -15,20 +19,25 @@ from email_service.app import (
 
 
 class _Sender:
+    """封装 `_Sender` 的状态与行为。"""
     def __init__(self, *, fail: bool = False) -> None:
+        """初始化 `_Sender` 实例。"""
         self.fail = fail
         self.messages: list[VerificationEmailRequest] = []
 
     async def send(self, message: VerificationEmailRequest) -> None:
+        """发送 `send` 相关数据。"""
         if self.fail:
             raise DeliveryError("failed")
         self.messages.append(message)
 
     async def close(self) -> None:
+        """释放当前对象持有的资源。"""
         return None
 
 
 def test_private_delivery_endpoint_requires_token_and_forwards_message():
+    """验证 `private_delivery_endpoint_requires_token_and_forwards_message` 场景。"""
     sender = _Sender()
     token = "mail-service-token-that-is-at-least-32-characters"
     client = TestClient(create_app(service_token=token, sender=sender))
@@ -51,6 +60,7 @@ def test_private_delivery_endpoint_requires_token_and_forwards_message():
 
 
 def test_delivery_failure_is_reported_without_exposing_upstream_details():
+    """验证 `delivery_failure_is_reported_without_exposing_upstream_details` 场景。"""
     token = "mail-service-token-that-is-at-least-32-characters"
     client = TestClient(create_app(service_token=token, sender=_Sender(fail=True)))
     response = client.post(
@@ -69,9 +79,11 @@ def test_delivery_failure_is_reported_without_exposing_upstream_details():
 
 
 def test_resend_sender_uses_server_side_credentials_and_idempotency_key():
+    """验证 `resend_sender_uses_server_side_credentials_and_idempotency_key` 场景。"""
     captured: dict[str, object] = {}
 
     def handle(request: httpx.Request) -> httpx.Response:
+        """处理 `handle` 相关数据。"""
         captured["authorization"] = request.headers["Authorization"]
         captured["idempotency"] = request.headers["Idempotency-Key"]
         captured["body"] = json.loads(request.content)

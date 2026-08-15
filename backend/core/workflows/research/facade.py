@@ -1,3 +1,5 @@
+# backend/core/workflows/research/facade.py
+
 """Facade that starts and reads authoritative existing research jobs."""
 
 from __future__ import annotations
@@ -6,6 +8,7 @@ from backend.core.workflows.research.models import WorkflowRun
 
 
 class ResearchWorkflowFacade:
+    """封装 `ResearchWorkflowFacade` 的状态与行为。"""
     def __init__(
         self,
         *,
@@ -17,6 +20,7 @@ class ResearchWorkflowFacade:
         data_store,
         data_service,
     ) -> None:
+        """初始化 `ResearchWorkflowFacade` 实例。"""
         self.project_store = project_store
         self.frontier_store = frontier_store
         self.frontier_service = frontier_service
@@ -26,6 +30,7 @@ class ResearchWorkflowFacade:
         self.data_service = data_service
 
     def _project(self, project_id: str, user_id: str) -> dict:
+        """处理 `_project` 相关逻辑。"""
         project = self.project_store.get_project(project_id, user_id)
         if project is None:
             raise KeyError(project_id)
@@ -35,6 +40,7 @@ class ResearchWorkflowFacade:
 
     @staticmethod
     def _view(kind: str, job: dict) -> WorkflowRun:
+        """处理 `_view` 相关逻辑。"""
         return WorkflowRun(
             kind,
             job["job_id"],
@@ -54,6 +60,18 @@ class ResearchWorkflowFacade:
         time_window_years: int = 5,
         max_results: int = 20,
     ) -> WorkflowRun:
+        """启动 `frontier tracking` 相关数据。
+
+        Args:
+            project_id: str => 项目 ID。
+            user_id: str => 用户 ID。
+            query: str => 查询文本。
+            time_window_years: int => `time_window_years` 参数。
+            max_results: int => `max_results` 参数。
+
+        Returns:
+            WorkflowRun => 处理结果。
+        """
         self._project(project_id, user_id)
         job = self.frontier_store.create_job(
             project_id=project_id,
@@ -74,6 +92,18 @@ class ResearchWorkflowFacade:
         instruction: str = "",
         source_text: str = "",
     ) -> WorkflowRun:
+        """启动 `research writing` 相关数据。
+
+        Args:
+            document_id: str => document ID。
+            user_id: str => 用户 ID。
+            operation: str => `operation` 参数。
+            instruction: str => `instruction` 参数。
+            source_text: str => `source_text` 参数。
+
+        Returns:
+            WorkflowRun => 处理结果。
+        """
         document = self.writing_store.get_document(document_id, user_id)
         if document is None:
             raise KeyError(document_id)
@@ -97,6 +127,17 @@ class ResearchWorkflowFacade:
         analysis_type: str,
         parameters: dict,
     ) -> WorkflowRun:
+        """启动 `dataset analysis` 相关数据。
+
+        Args:
+            dataset_id: str => dataset ID。
+            user_id: str => 用户 ID。
+            analysis_type: str => `analysis_type` 参数。
+            parameters: dict => `parameters` 参数。
+
+        Returns:
+            WorkflowRun => 处理结果。
+        """
         dataset = self.data_store.get_dataset(dataset_id, user_id)
         if dataset is None:
             raise KeyError(dataset_id)
@@ -112,6 +153,16 @@ class ResearchWorkflowFacade:
         return self._view("dataset_analysis", job)
 
     def get(self, workflow_type: str, job_id: str, user_id: str) -> WorkflowRun | None:
+        """获取 `get` 相关数据。
+
+        Args:
+            workflow_type: str => `workflow_type` 参数。
+            job_id: str => job ID。
+            user_id: str => 用户 ID。
+
+        Returns:
+            WorkflowRun | None => 处理结果。
+        """
         stores = {
             "frontier_tracking": self.frontier_store,
             "research_writing": self.writing_store,

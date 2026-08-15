@@ -1,3 +1,5 @@
+# backend/core/stores/agent_action_store.py
+
 """Persistent Agent Action state machine; schema is migration-owned."""
 
 from __future__ import annotations
@@ -12,14 +14,18 @@ from backend.core.stores.base_sqlite_store import BaseSQLiteStore
 
 
 class AgentActionStore(BaseSQLiteStore):
+    """封装 `agent action store` 数据持久化操作。"""
     def __init__(self, database_path: str | Path) -> None:
+        """初始化 `AgentActionStore` 实例。"""
         self.database_path = Path(database_path)
 
     def _initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         raise RuntimeError("agent action schema must be installed by migrations")
 
     @staticmethod
     def _out(row: Any) -> dict[str, Any]:
+        """处理 `_out` 相关逻辑。"""
         item = dict(row)
         item["arguments"] = json.loads(item.pop("arguments_json"))
         item["resource_snapshot"] = json.loads(item.pop("resource_snapshot_json"))
@@ -28,6 +34,15 @@ class AgentActionStore(BaseSQLiteStore):
         return item
 
     def get(self, action_id: str, user_id: str) -> dict[str, Any] | None:
+        """获取 `get` 相关数据。
+
+        Args:
+            action_id: str => action ID。
+            user_id: str => 用户 ID。
+
+        Returns:
+            dict[str, Any] | None => 处理结果。
+        """
         row = self.query_one(
             "SELECT * FROM agent_action_requests WHERE action_id=? AND user_id=?",
             (action_id, user_id),
@@ -35,6 +50,15 @@ class AgentActionStore(BaseSQLiteStore):
         return self._out(row) if row is not None else None
 
     def get_by_idempotency(self, user_id: str, key: str) -> dict[str, Any] | None:
+        """获取 `by idempotency` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            key: str => `key` 参数。
+
+        Returns:
+            dict[str, Any] | None => 处理结果。
+        """
         row = self.query_one(
             "SELECT * FROM agent_action_requests WHERE user_id=? AND idempotency_key=?",
             (user_id, key),
@@ -54,6 +78,22 @@ class AgentActionStore(BaseSQLiteStore):
         idempotency_key: str,
         expires_at: str,
     ) -> dict[str, Any]:
+        """创建 `create` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            conversation_id: str => 对话 ID。
+            workspace_type: str => `workspace_type` 参数。
+            action_type: str => `action_type` 参数。
+            arguments: dict[str, Any] => `arguments` 参数。
+            resource_snapshot: dict[str, Any] => `resource_snapshot` 参数。
+            policy_id: str => policy ID。
+            idempotency_key: str => `idempotency_key` 参数。
+            expires_at: str => `expires_at` 参数。
+
+        Returns:
+            dict[str, Any] => 处理结果。
+        """
         action_id, now = uuid4().hex, datetime.now(timezone.utc).isoformat()
         self.execute(
             """INSERT INTO agent_action_requests
@@ -91,6 +131,19 @@ class AgentActionStore(BaseSQLiteStore):
         result: dict[str, Any] | None = None,
         error: str | None = None,
     ) -> dict[str, Any]:
+        """处理 `transition` 相关逻辑。
+
+        Args:
+            action_id: str => action ID。
+            user_id: str => 用户 ID。
+            expected: tuple[str, ...] => `expected` 参数。
+            target: str => `target` 参数。
+            result: dict[str, Any] | None => `result` 参数。
+            error: str | None => `error` 参数。
+
+        Returns:
+            dict[str, Any] => 处理结果。
+        """
         now = datetime.now(timezone.utc).isoformat()
         placeholders = ",".join("?" for _ in expected)
         decided = now if target in {"approved", "rejected", "expired"} else None
@@ -123,6 +176,15 @@ class AgentActionStore(BaseSQLiteStore):
         return item
 
     def list(self, user_id: str, status: str | None = None) -> list[dict[str, Any]]:
+        """列出 `list` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            status: str | None => `status` 参数。
+
+        Returns:
+            list[dict[str, Any]] => 处理结果。
+        """
         sql, params = "SELECT * FROM agent_action_requests WHERE user_id=?", [user_id]
         if status:
             sql += " AND status=?"

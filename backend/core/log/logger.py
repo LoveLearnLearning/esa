@@ -1,3 +1,7 @@
+# backend/core/log/logger.py
+
+"""提供 `logger` 相关功能。"""
+
 import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -13,7 +17,9 @@ _log_context: ContextVar[dict[str, str]] = ContextVar(
 
 
 class _ContextFilter(logging.Filter):
+    """封装 `_ContextFilter` 的状态与行为。"""
     def filter(self, record: logging.LogRecord) -> bool:
+        """筛选 `filter` 相关数据。"""
         context = _log_context.get()
         record.owner = getattr(record, "owner", "APP")
         record.user_id = context.get("user_id", "-")
@@ -44,6 +50,7 @@ def pipeline_log_context(**values: str | None) -> Iterator[None]:
 
 
 def setup_logging() -> None:
+    """处理 `setup_logging` 相关逻辑。"""
     log_dir = Path("logs")
     log_dir.mkdir(parents=True, exist_ok=True)
 

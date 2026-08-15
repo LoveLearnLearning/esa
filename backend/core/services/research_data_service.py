@@ -1,3 +1,7 @@
+# backend/core/services/research_data_service.py
+
+"""提供领域服务实现。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -20,11 +24,13 @@ _TEXT_TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9-]{2,}|[\u4e00-\u9fff]{2,}")
 
 
 class ResearchDataService:
+    """提供 `research data service` 领域服务。"""
     def __init__(
         self,
         store: ResearchDataStore,
         storage_root: str | Path,
     ) -> None:
+        """初始化 `ResearchDataService` 实例。"""
         self.store = store
         self.storage_root = Path(storage_root).resolve()
         self.storage_root.mkdir(parents=True, exist_ok=True)
@@ -32,6 +38,7 @@ class ResearchDataService:
         self._worker: asyncio.Task[None] | None = None
 
     def start(self, *, recover_interrupted: bool = True) -> None:
+        """启动 `start` 相关数据。"""
         if self._worker is not None and not self._worker.done():
             return
         if recover_interrupted:
@@ -40,6 +47,7 @@ class ResearchDataService:
         self._worker = asyncio.create_task(self._run_worker())
 
     async def stop(self) -> None:
+        """停止 `stop` 相关数据。"""
         worker = self._worker
         self._worker = None
         if worker is None:
@@ -51,9 +59,11 @@ class ResearchDataService:
             pass
 
     def submit(self, job_id: str) -> None:
+        """处理 `submit` 相关逻辑。"""
         self._queue.put_nowait(job_id)
 
     async def _run_worker(self) -> None:
+        """执行 `worker` 相关数据。"""
         while True:
             job_id = await self._queue.get()
             try:
@@ -71,6 +81,19 @@ class ResearchDataService:
         media_type: str,
         content: bytes,
     ) -> dict:
+        """处理 `ingest` 相关逻辑。
+
+        Args:
+            project_id: str => 项目 ID。
+            user_id: str => 用户 ID。
+            name: str => `name` 参数。
+            filename: str => 文件名。
+            media_type: str => `media_type` 参数。
+            content: bytes => 待处理内容。
+
+        Returns:
+            dict => 处理结果。
+        """
         if not content:
             raise ValueError("dataset file is empty")
         if len(content) > MAX_DATASET_BYTES:
@@ -104,6 +127,14 @@ class ResearchDataService:
             raise
 
     def run_job(self, job_id: str) -> dict | None:
+        """执行 `job` 相关数据。
+
+        Args:
+            job_id: str => job ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         job = self.store.claim_job(job_id)
         if job is None:
             return None
@@ -123,6 +154,7 @@ class ResearchDataService:
 
     @classmethod
     def _read_rows(cls, path: Path) -> list[dict[str, Any]]:
+        """读取 `rows` 相关数据。"""
         suffix = path.suffix.lower()
         text = path.read_text(encoding="utf-8-sig")
         if suffix == ".csv":
@@ -145,6 +177,14 @@ class ResearchDataService:
 
     @classmethod
     def profile(cls, rows: list[dict[str, Any]]) -> dict:
+        """处理 `profile` 相关逻辑。
+
+        Args:
+            rows: list[dict[str, Any]] => `rows` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         if not rows:
             raise ValueError("dataset contains no records")
         columns = list(dict.fromkeys(key for row in rows for key in row))
@@ -187,6 +227,16 @@ class ResearchDataService:
         rows: list[dict[str, Any]],
         parameters: dict,
     ) -> dict:
+        """处理 `analyze` 相关逻辑。
+
+        Args:
+            analysis_type: str => `analysis_type` 参数。
+            rows: list[dict[str, Any]] => `rows` 参数。
+            parameters: dict => `parameters` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         if analysis_type == "descriptive":
             return {"analysis_type": analysis_type, "profile": cls.profile(rows)}
         if analysis_type == "correlation":
@@ -199,6 +249,7 @@ class ResearchDataService:
 
     @classmethod
     def _correlations(cls, rows: list[dict[str, Any]]) -> dict:
+        """处理 `_correlations` 相关逻辑。"""
         columns = list(dict.fromkeys(key for row in rows for key in row))
         numeric_columns = [
             column
@@ -243,6 +294,7 @@ class ResearchDataService:
 
     @classmethod
     def _group_compare(cls, rows: list[dict[str, Any]], parameters: dict) -> dict:
+        """处理 `_group_compare` 相关逻辑。"""
         group_column = str(parameters.get("group_column", ""))
         metric_column = str(parameters.get("metric_column", ""))
         if not group_column or not metric_column:
@@ -275,6 +327,7 @@ class ResearchDataService:
 
     @classmethod
     def _text_frequency(cls, rows: list[dict[str, Any]], parameters: dict) -> dict:
+        """处理 `_text_frequency` 相关逻辑。"""
         requested = str(parameters.get("text_column", ""))
         columns = [requested] if requested else list(
             dict.fromkeys(key for row in rows for key in row)
@@ -295,6 +348,7 @@ class ResearchDataService:
 
     @staticmethod
     def _number(value: Any) -> float | None:
+        """处理 `_number` 相关逻辑。"""
         if value in (None, "") or isinstance(value, bool):
             return None
         try:

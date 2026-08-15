@@ -1,3 +1,5 @@
+# backend/scripts/dataset/generators/gen_tool_errors.py
+
 """工具失败恢复（tool_error）生成器。
 
 补的是全库最薄的一类：原来只有 8 条（web_search 5 + load_skill 404 3），
@@ -44,6 +46,20 @@ SOURCE = "gen_tool_errors.py"
 
 
 def mk(sid, tpl, tools, turns, version, rng, all_names) -> Sample:
+    """处理 `mk` 相关逻辑。
+
+    Args:
+        sid: object => `sid` 参数。
+        tpl: object => `tpl` 参数。
+        tools: object => 可用工具列表。
+        turns: object => `turns` 参数。
+        version: object => `version` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+
+    Returns:
+        Sample => 处理结果。
+    """
     return Sample(
         id=sid, template_id=tpl, category="tool_error", schema_version=version,
         system=system_for(turns),
@@ -177,6 +193,7 @@ def gen_blocked(cfg, version, rng, all_names, out) -> None:
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     rng = random.Random(20260810)
     cfg = yaml.safe_load(SEEDS.read_text(encoding="utf-8"))
     schemas, version = load_schemas(SCHEMAS)

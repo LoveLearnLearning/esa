@@ -1,3 +1,5 @@
+# backend/agent/workspaces/capability_runtime.py
+
 """Compile and bind the exact capabilities visible during an agent turn."""
 
 from __future__ import annotations
@@ -14,21 +16,33 @@ from backend.agent.workspaces.models import ResolvedCapabilities
 
 
 class BoundToolExecutor:
+    """封装 `BoundToolExecutor` 的状态与行为。"""
     def __init__(
         self,
         view: ScopedToolView,
         skills: ScopedSkillView,
         context: ToolExecutionContext,
     ) -> None:
+        """初始化 `BoundToolExecutor` 实例。"""
         self._view = view
         self._skills = skills
         self.context = context
 
     @property
     def names(self) -> frozenset[str]:
+        """处理 `names` 相关逻辑。"""
         return self._view.names
 
     async def execute(self, name: str, arguments: Mapping[str, Any]) -> Any:
+        """执行 `execute` 相关数据。
+
+        Args:
+            name: str => `name` 参数。
+            arguments: Mapping[str, Any] => `arguments` 参数。
+
+        Returns:
+            Any => 处理结果。
+        """
         if not self._view.contains(name):
             return {
                 "ok": False,
@@ -97,15 +111,18 @@ class BoundToolExecutor:
 
 @dataclass(frozen=True, slots=True)
 class CompiledCapabilityView:
+    """封装 `CompiledCapabilityView` 的状态与行为。"""
     capabilities: ResolvedCapabilities
     skills: ScopedSkillView
     tools: ScopedToolView
 
     def bind(self, context: ToolExecutionContext) -> BoundToolExecutor:
+        """处理 `bind` 相关逻辑。"""
         return BoundToolExecutor(self.tools, self.skills, context)
 
 
 class CapabilityRuntime:
+    """封装 `CapabilityRuntime` 的状态与行为。"""
     def compile(
         self,
         *,
@@ -115,6 +132,18 @@ class CapabilityRuntime:
         policy_versions: tuple[str, ...],
         resource_capabilities: frozenset[str] = frozenset(),
     ) -> CompiledCapabilityView:
+        """编译 `compile` 相关数据。
+
+        Args:
+            skill_scopes: frozenset[str] => `skill_scopes` 参数。
+            tool_scopes: frozenset[str] => `tool_scopes` 参数。
+            profile_fingerprint: str => `profile_fingerprint` 参数。
+            policy_versions: tuple[str, ...] => `policy_versions` 参数。
+            resource_capabilities: frozenset[str] => `resource_capabilities` 参数。
+
+        Returns:
+            CompiledCapabilityView => 处理结果。
+        """
         skills = ScopedSkillView.compile(skill_scopes)
         tools = ScopedToolView.compile(tr, tool_scopes)
         material = "|".join(

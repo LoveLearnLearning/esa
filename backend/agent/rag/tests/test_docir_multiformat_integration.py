@@ -1,3 +1,5 @@
+# backend/agent/rag/tests/test_docir_multiformat_integration.py
+
 """真实 Office fixture 到 DocIR、Chunk、Index 与 Retrieval 的完整回归。"""
 
 from pathlib import Path
@@ -33,6 +35,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _chunk_documents():
+    """处理 `_chunk_documents` 相关逻辑。"""
     output = []
     for name, filename, _marker in OFFICE_CASES.values():
         middle = next((FIXTURE_ROOT / name).rglob("*_middle.json"))
@@ -46,6 +49,7 @@ def _chunk_documents():
 
 
 def _collection(tmp_path: Path) -> LoadedChunkCollection:
+    """处理 `_collection` 相关逻辑。"""
     documents = _chunk_documents()
     config = documents[0].chunk_config
     references = tuple(
@@ -83,6 +87,7 @@ def _collection(tmp_path: Path) -> LoadedChunkCollection:
 
 @pytest.mark.parametrize("format_name", OFFICE_CASES)
 def test_office_chunks_have_non_spatial_evidence(format_name: str) -> None:
+    """验证 `office_chunks_have_non_spatial_evidence` 场景。"""
     name, filename, marker = OFFICE_CASES[format_name]
     middle = next((FIXTURE_ROOT / name).rglob("*_middle.json"))
     document = convert_bundle(load_bundle(middle.parent), SOURCE_ROOT / filename, strict=True)
@@ -110,6 +115,7 @@ def test_office_docir_reaches_index_and_retrieval(
     query: str,
     expected_filename: str,
 ) -> None:
+    """验证 `office_docir_reaches_index_and_retrieval` 场景。"""
     collection = _collection(tmp_path)
     index = ReferenceIndex()
     embedding = HashingEmbeddingProvider()

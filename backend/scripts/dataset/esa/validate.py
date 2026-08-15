@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/validate.py
+
 """数据准入门禁。任何一条数据进训练集之前必须过这里。
 
 设计原则：**失败要吵**。LLaMA-Factory 遇到坏样本只打一行 warning 就静默跳过
@@ -62,19 +64,23 @@ PRIVACY_PATTERNS = [
 
 @dataclass
 class Finding:
+    """封装 `Finding` 的状态与行为。"""
     sample_id: str
     check: str
     detail: str
 
     def __str__(self) -> str:
+        """返回当前对象的可读字符串。"""
         return f"[{self.check}] {self.sample_id}: {self.detail}"
 
 
 def _strip_code_blocks(text: str) -> str:
+    """处理 `_strip_code_blocks` 相关逻辑。"""
     return re.sub(r"```.*?```", "", text, flags=re.DOTALL)
 
 
 def _check_markup(text: str, sid: str, out: list[Finding]) -> None:
+    """检查 `markup` 相关数据。"""
     if text.count("```") % 2 != 0:
         out.append(Finding(sid, "code_block", "代码块未闭合（``` 数量为奇数）"))
     body = _strip_code_blocks(text)
@@ -86,6 +92,7 @@ def _check_markup(text: str, sid: str, out: list[Finding]) -> None:
 
 
 def _check_privacy(text: str, sid: str, out: list[Finding]) -> None:
+    """检查 `privacy` 相关数据。"""
     for pat, label in PRIVACY_PATTERNS:
         m = pat.search(text)
         if m:
@@ -106,6 +113,7 @@ def _phrases(obj: Any, min_len: int = 4) -> set[str]:
     out: set[str] = set()
 
     def walk(o):
+        """处理 `walk` 相关逻辑。"""
         if isinstance(o, str):
             v = o.strip()
             if len(v) >= min_len and not _TIMESTAMP.fullmatch(v):
@@ -141,6 +149,16 @@ def validate_sample(
     by_name: dict[str, dict[str, Any]],
     schema_version: str,
 ) -> list[Finding]:
+    """校验 `sample` 相关数据。
+
+    Args:
+        s: Sample => `s` 参数。
+        by_name: dict[str, dict[str, Any]] => `by_name` 参数。
+        schema_version: str => `schema_version` 参数。
+
+    Returns:
+        list[Finding] => 处理结果。
+    """
     out: list[Finding] = []
 
     if s.category not in CATEGORIES:
@@ -252,6 +270,15 @@ def validate_sample(
 
 
 def simhash(text: str, bits: int = 64) -> int:
+    """处理 `simhash` 相关逻辑。
+
+    Args:
+        text: str => 待处理文本。
+        bits: int => `bits` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     tokens = re.findall(r"[\w一-鿿]+", text.lower())
     grams = [" ".join(tokens[i : i + 2]) for i in range(max(1, len(tokens) - 1))] or tokens
     if not grams:
@@ -820,6 +847,14 @@ def check_lengths(samples, by_name, cutoff_len: int, tokenizer_path: str | None)
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     ap = argparse.ArgumentParser(description="ESA 数据集校验器")
     ap.add_argument("files", nargs="+", help="IR jsonl 文件")
     ap.add_argument("--schemas", default=str(in_dataset("schemas/tool_schemas.json")))

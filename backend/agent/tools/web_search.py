@@ -1,4 +1,6 @@
-# backend/agnet/tools/web_search.py
+# backend/agent/tools/web_search.py
+
+"""提供 `web_search` 相关功能。"""
 
 from __future__ import annotations
 

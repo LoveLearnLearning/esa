@@ -42,6 +42,7 @@ class _FakeService:
     """只提供 Agent 适配层使用的 RetrievalService 表面。"""
 
     def __init__(self, response: SearchResponse) -> None:
+        """初始化 `_FakeService` 实例。"""
         self.response = response
         self.collection = SimpleNamespace(
             manifest=SimpleNamespace(collection_id="collection_test"),
@@ -54,12 +55,14 @@ class _FakeService:
         self.config = RetrievalConfig()
 
     def search(self, query: str) -> SearchResponse:
+        """搜索 `search` 相关数据。"""
         assert query == self.response.query
         return self.response
 
 
 @pytest.fixture(autouse=True)
 def _reset_service() -> Iterator[None]:
+    """处理 `_reset_service` 相关逻辑。"""
     reset_retrieval_service()
     yield
     reset_retrieval_service()
@@ -69,6 +72,7 @@ def _response(
     rerank_score: float | None = 0.875,
     locators: tuple[dict[str, object], ...] | None = None,
 ) -> SearchResponse:
+    """处理 `_response` 相关逻辑。"""
     evidence = Evidence(
         evidence_id="evidence_1",
         chunk_id="chunk_1",
@@ -116,11 +120,13 @@ def _response(
 
 
 def _configure(response: SearchResponse) -> None:
+    """处理 `_configure` 相关逻辑。"""
     service = cast(RetrievalService, _FakeService(response))
     configure_retrieval_service(service)
 
 
 def test_retrieve_knowledge_preserves_old_shape_and_adds_evidence() -> None:
+    """验证 `retrieve_knowledge_preserves_old_shape_and_adds_evidence` 场景。"""
     _configure(_response())
 
     payload = retrieve_knowledge_payload("什么是测试？", top_k=1)
@@ -137,6 +143,7 @@ def test_retrieve_knowledge_preserves_old_shape_and_adds_evidence() -> None:
 
 
 def test_group_locator_and_missing_locator_do_not_assume_page() -> None:
+    """验证 `group_locator_and_missing_locator_do_not_assume_page` 场景。"""
     _configure(
         _response(
             locators=(
@@ -163,6 +170,7 @@ def test_group_locator_and_missing_locator_do_not_assume_page() -> None:
 
 
 def test_similarity_threshold_requires_reranker_probability() -> None:
+    """验证 `similarity_threshold_requires_reranker_probability` 场景。"""
     _configure(_response(rerank_score=None))
 
     with pytest.raises(RuntimeError, match="requires an active reranker"):
@@ -170,11 +178,13 @@ def test_similarity_threshold_requires_reranker_probability() -> None:
 
 
 def test_unconfigured_service_has_clear_error() -> None:
+    """验证 `unconfigured_service_has_clear_error` 场景。"""
     with pytest.raises(RuntimeError, match="not configured"):
         get_retrieval_service()
 
 
 def test_knowledge_base_stats_uses_injected_service() -> None:
+    """验证 `knowledge_base_stats_uses_injected_service` 场景。"""
     _configure(_response())
 
     stats = knowledge_base_stats()

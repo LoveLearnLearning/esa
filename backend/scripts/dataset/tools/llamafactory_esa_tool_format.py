@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tools/llamafactory_esa_tool_format.py
+
 """给 LLaMA-Factory 加一个 `tool_format="esa_xml"`，产出 ESA 后端 `parse_output` 认的 XML。
 
 为什么需要它（P0-1）
@@ -160,6 +162,7 @@ def install() -> None:
 
         @staticmethod
         def tool_formatter(tools: list[dict[str, Any]]) -> str:
+            """处理 `tool_formatter` 相关逻辑。"""
             tool_text = ""
             for tool in tools:
                 wrapped = tool if tool.get("type") == "function" else {"type": "function", "function": tool}
@@ -169,10 +172,12 @@ def install() -> None:
         @staticmethod
         def function_formatter(functions: list[FunctionCall]) -> str:
             # FunctionCall.arguments 是 JSON **字符串**，不是 dict
+            """处理 `function_formatter` 相关逻辑。"""
             return format_tool_calls([(name, json.loads(arguments)) for name, arguments in functions])
 
         @staticmethod
         def tool_extractor(content: str) -> str | list[FunctionCall]:
+            """处理 `tool_extractor` 相关逻辑。"""
             calls = extract_tool_calls(content)
             if calls is None:
                 return content

@@ -1,3 +1,5 @@
+# backend/agent/tools/common/attachment_tools.py
+
 """Ownership-scoped tools for lazily parsing persisted chat attachments."""
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ logger = get_pipeline_logger("MM", __name__)
 
 
 def _render_retrieval(response: SearchResponse) -> str:
+    """渲染 `retrieval` 相关数据。"""
     parts = []
     for index, hit in enumerate(response.hits, start=1):
         evidence = hit.evidence[0] if hit.evidence else None
@@ -36,6 +39,7 @@ async def _parse_attachment(
     allowed_suffixes: frozenset[str],
     kind: str,
 ) -> dict[str, object]:
+    """解析 `attachment` 相关数据。"""
     allowed = context.authorized_resources.attachment_ids
     if attachment_id not in allowed:
         raise ValueError("附件未在当前消息中授权")
@@ -94,6 +98,7 @@ async def _parse_attachment(
 
 
 def _schema(name: str, description: str) -> dict:
+    """处理 `_schema` 相关逻辑。"""
     return {
         "type": "function",
         "function": {
@@ -118,6 +123,16 @@ def _schema(name: str, description: str) -> dict:
 
 
 async def parse_pdf_attachment(context: ToolExecutionContext, attachment_id: str, query: str) -> dict[str, object]:
+    """解析 `pdf attachment` 相关数据。
+
+    Args:
+        context: ToolExecutionContext => `context` 参数。
+        attachment_id: str => 附件 ID。
+        query: str => 查询文本。
+
+    Returns:
+        dict[str, object] => 处理结果。
+    """
     return await _parse_attachment(
         context,
         attachment_id,
@@ -128,6 +143,16 @@ async def parse_pdf_attachment(context: ToolExecutionContext, attachment_id: str
 
 
 async def parse_word_attachment(context: ToolExecutionContext, attachment_id: str, query: str) -> dict[str, object]:
+    """解析 `word attachment` 相关数据。
+
+    Args:
+        context: ToolExecutionContext => `context` 参数。
+        attachment_id: str => 附件 ID。
+        query: str => 查询文本。
+
+    Returns:
+        dict[str, object] => 处理结果。
+    """
     return await _parse_attachment(
         context,
         attachment_id,
@@ -142,6 +167,16 @@ async def parse_presentation_attachment(
     attachment_id: str,
     query: str,
 ) -> dict[str, object]:
+    """解析 `presentation attachment` 相关数据。
+
+    Args:
+        context: ToolExecutionContext => `context` 参数。
+        attachment_id: str => 附件 ID。
+        query: str => 查询文本。
+
+    Returns:
+        dict[str, object] => 处理结果。
+    """
     return await _parse_attachment(
         context,
         attachment_id,
@@ -156,6 +191,16 @@ async def parse_spreadsheet_attachment(
     attachment_id: str,
     query: str,
 ) -> dict[str, object]:
+    """解析 `spreadsheet attachment` 相关数据。
+
+    Args:
+        context: ToolExecutionContext => `context` 参数。
+        attachment_id: str => 附件 ID。
+        query: str => 查询文本。
+
+    Returns:
+        dict[str, object] => 处理结果。
+    """
     return await _parse_attachment(
         context,
         attachment_id,
@@ -166,6 +211,16 @@ async def parse_spreadsheet_attachment(
 
 
 async def parse_image_attachment(context: ToolExecutionContext, attachment_id: str, query: str) -> dict[str, object]:
+    """解析 `image attachment` 相关数据。
+
+    Args:
+        context: ToolExecutionContext => `context` 参数。
+        attachment_id: str => 附件 ID。
+        query: str => 查询文本。
+
+    Returns:
+        dict[str, object] => 处理结果。
+    """
     return await _parse_attachment(
         context,
         attachment_id,
@@ -180,6 +235,16 @@ async def parse_image_attachment(context: ToolExecutionContext, attachment_id: s
 async def execute_attachment_tool(
     context: ToolExecutionContext, name: str, arguments: Mapping[str, Any]
 ) -> dict[str, object]:
+    """执行 `attachment tool` 相关数据。
+
+    Args:
+        context: ToolExecutionContext => `context` 参数。
+        name: str => `name` 参数。
+        arguments: Mapping[str, Any] => `arguments` 参数。
+
+    Returns:
+        dict[str, object] => 处理结果。
+    """
     handlers = {
         "parse_pdf_attachment": parse_pdf_attachment,
         "parse_word_attachment": parse_word_attachment,
@@ -207,8 +272,10 @@ ATTACHMENT_TOOL_SCHEMAS = (
 
 
 def register_attachment_schemas() -> None:
+    """注册 `attachment schemas` 相关数据。"""
     for schema in ATTACHMENT_TOOL_SCHEMAS:
         def unavailable(**_arguments):
+            """处理 `unavailable` 相关逻辑。"""
             raise RuntimeError("attachment tool requires BoundToolExecutor")
 
         tr.register(schema)(unavailable)

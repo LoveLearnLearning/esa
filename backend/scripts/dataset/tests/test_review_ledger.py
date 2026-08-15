@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tests/test_review_ledger.py
+
 """复核台账的负向测试。
 
 `seeds/reviewed.yaml` 决定哪些样本可以进训练集，是一道闸门。闸门的失效方式
@@ -25,6 +27,15 @@ OK = {"id": "s1", "by": "张三", "date": "2026-08-12", "note": "逐步核对了
 
 
 def sample(sid: str, needs_review: bool = True) -> Sample:
+    """处理 `sample` 相关逻辑。
+
+    Args:
+        sid: str => `sid` 参数。
+        needs_review: bool => `needs_review` 参数。
+
+    Returns:
+        Sample => 处理结果。
+    """
     return Sample(
         id=sid, template_id=f"t__{sid}", category="hard_negative", schema_version="x",
         system="s", tool_names=[], needs_review=needs_review,
@@ -33,12 +44,14 @@ def sample(sid: str, needs_review: bool = True) -> Sample:
 
 
 def write(entries) -> Path:
+    """写入 `write` 相关数据。"""
     fd, p = tempfile.mkstemp(suffix=".yaml")
     Path(p).write_text(yaml.safe_dump({"reviewed": entries}, allow_unicode=True), encoding="utf-8")
     return Path(p)
 
 
 def raises(fn) -> bool:
+    """处理 `raises` 相关逻辑。"""
     try:
         fn()
     except ReviewLedgerError:
@@ -47,6 +60,7 @@ def raises(fn) -> bool:
 
 
 def cases() -> list[tuple[str, bool]]:
+    """处理 `cases` 相关逻辑。"""
     out = []
     samples = [sample("s1"), sample("s2"), sample("s3", needs_review=False)]
 
@@ -107,6 +121,7 @@ def cases() -> list[tuple[str, bool]]:
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     passed = failed = 0
     for name, ok in cases():
         print(f"{'✅' if ok else '❌'} {name}")

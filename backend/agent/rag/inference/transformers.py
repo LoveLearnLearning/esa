@@ -41,6 +41,7 @@ class TransformersEmbeddingProvider:
     _torch: Any = field(init=False, default=None, repr=False)
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if self.dimension <= 0:
             raise ValueError("dimension must be positive")
         if self.max_length <= 0:
@@ -162,6 +163,7 @@ class TransformersReranker:
     _suffix_tokens: list[int] = field(init=False, default_factory=list, repr=False)
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if self.max_length <= 0:
             raise ValueError("max_length must be positive")
 

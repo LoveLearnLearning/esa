@@ -4,7 +4,10 @@ import vm from 'node:vm';
 
 const providers = new Map();
 let didType;
-let suggestRuns = 0;
+let keydownListener;
+let suggestionFocused = false;
+const editorTriggers = [];
+const executedEdits = [];
 let editorOptions;
 const source = [
   'ListNode* reverseListRecursive(ListNode* head) {',
@@ -26,17 +29,28 @@ const model = {
     };
   },
   getOptions: () => ({ tabSize: 2 }),
+  getLineContent: (lineNumber) => source.split('\n')[lineNumber - 1] ?? '',
   onDidChangeContent: () => ({ dispose() {} }),
 };
 
 const editor = {
+  executeEdits: (_source, edits) => executedEdits.push(...edits),
   focus() {},
-  getAction: () => ({ run: () => { suggestRuns += 1; } }),
+  getSelection: () => ({
+    startLineNumber: 3,
+    startColumn: 9,
+    endLineNumber: 3,
+    endColumn: 9,
+  }),
   hasTextFocus: () => true,
   layout() {},
   onDidType(listener) {
     didType = listener;
     return { dispose() {} };
+  },
+  pushUndoStop() {},
+  trigger(sourceName, command, payload) {
+    editorTriggers.push({ sourceName, command, payload });
   },
 };
 
@@ -72,7 +86,9 @@ const monaco = {
 
 globalThis.window = {
   monaco,
-  addEventListener() {},
+  addEventListener(type, listener) {
+    if (type === 'keydown') keydownListener = listener;
+  },
   removeEventListener() {},
 };
 globalThis.document = {
@@ -91,14 +107,27 @@ globalThis.cancelAnimationFrame = () => {};
 const script = fs.readFileSync(new URL('../web/esa_monaco.js', import.meta.url), 'utf8');
 vm.runInThisContext(script, { filename: 'esa_monaco.js' });
 
-window.esaMonaco.create(
-  {
-    isConnected: true,
-    clientWidth: 800,
-    style: {},
-    addEventListener() {},
-    removeEventListener() {},
+const eventTarget = {};
+const host = {
+  isConnected: true,
+  clientWidth: 800,
+  style: {},
+  addEventListener() {},
+  contains: (target) => target === eventTarget,
+  querySelector(selector) {
+    if (selector === '.suggest-widget.visible:not(.message)' && suggestionFocused) {
+      return {
+        querySelector: (childSelector) =>
+          childSelector === '.monaco-list-row.focused' ? {} : null,
+      };
+    }
+    return null;
   },
+  removeEventListener() {},
+};
+
+window.esaMonaco.create(
+  host,
   'completion-smoke-test',
   source,
   'cpp',
@@ -129,6 +158,33 @@ assert.equal(
 
 didType('o');
 await new Promise((resolve) => setImmediate(resolve));
-assert.equal(suggestRuns, 1, 'typing an identifier must open suggestions');
+assert.deepEqual(editorTriggers.at(-1), {
+  sourceName: 'esa.document-symbols',
+  command: 'editor.action.triggerSuggest',
+  payload: { auto: true },
+});
 
-console.log('Monaco C++ symbol completion smoke test passed.');
+const tabEvent = () => ({
+  key: 'Tab',
+  keyCode: 9,
+  target: eventTarget,
+  shiftKey: false,
+  preventDefault() {},
+  stopImmediatePropagation() {},
+});
+
+suggestionFocused = true;
+keydownListener(tabEvent());
+assert.deepEqual(editorTriggers.at(-1), {
+  sourceName: 'keyboard',
+  command: 'acceptSelectedSuggestion',
+  payload: {},
+});
+assert.equal(executedEdits.length, 0, 'accepting completion must not indent');
+
+suggestionFocused = false;
+keydownListener(tabEvent());
+assert.equal(executedEdits.length, 1, 'Tab without a completion must indent');
+assert.equal(executedEdits[0].text, '  ');
+
+console.log('Monaco completion and Tab behavior smoke test passed.');

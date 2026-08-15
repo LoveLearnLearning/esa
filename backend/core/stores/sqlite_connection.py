@@ -1,3 +1,7 @@
+# backend/core/stores/sqlite_connection.py
+
+"""提供 `sqlite_connection` 相关功能。"""
+
 from __future__ import annotations
 
 import sqlite3

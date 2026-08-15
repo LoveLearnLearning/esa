@@ -1,3 +1,5 @@
+# backend/agent/learning/knowledge_map_service.py
+
 """Read model for the personal knowledge map UI and APIs."""
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from backend.agent.memories.mastery_store import MasteryStore
 
 
 class KnowledgeMapService:
+    """提供 `knowledge map service` 领域服务。"""
     def __init__(
         self,
         *,
@@ -17,12 +20,14 @@ class KnowledgeMapService:
         mastery_store: MasteryStore,
         evidence_store: LearningEvidenceStore,
     ) -> None:
+        """初始化 `KnowledgeMapService` 实例。"""
         self.kg_store = kg_store
         self.mastery_store = mastery_store
         self.evidence_store = evidence_store
 
     @staticmethod
     def _levels(node_ids: set[str], edges: list[dict]) -> dict[str, int]:
+        """处理 `_levels` 相关逻辑。"""
         incoming = {node_id: 0 for node_id in node_ids}
         children: dict[str, list[str]] = defaultdict(list)
         for edge in edges:
@@ -51,6 +56,7 @@ class KnowledgeMapService:
 
     @staticmethod
     def _course_node_id(course: str) -> str:
+        """处理 `_course_node_id` 相关逻辑。"""
         return f"__course__:{course}"
 
     @staticmethod
@@ -91,6 +97,15 @@ class KnowledgeMapService:
     def get_courses(
         self, *, user_name: str, course_names: list[str] | None = None
     ) -> dict:
+        """获取 `courses` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            course_names: list[str] | None => `course_names` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         states = {
             state["kp_id"]: state
             for state in self.mastery_store.list_for_user(user_name)
@@ -134,6 +149,15 @@ class KnowledgeMapService:
         return {"courses": courses}
 
     def get_course_map(self, *, user_name: str, course: str) -> dict:
+        """获取 `course map` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            course: str => `course` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         points = self.kg_store.get_course_points(course)
         if not points:
             return {"course": course, "nodes": [], "edges": []}
@@ -226,6 +250,15 @@ class KnowledgeMapService:
         return {"course": course, "nodes": nodes, "edges": edges}
 
     def get_point_detail(self, *, user_name: str, kp_id: str) -> dict | None:
+        """获取 `point detail` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str => kp ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         resolved = self.kg_store.resolve_kp_id(kp_id)
         if resolved is None:
             return None
@@ -246,6 +279,15 @@ class KnowledgeMapService:
     def get_review_queue(
         self, *, user_name: str, course: str | None = None
     ) -> dict:
+        """获取 `review queue` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            course: str | None => `course` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         allowed_ids = None
         if course:
             allowed_ids = {

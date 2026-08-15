@@ -1,5 +1,7 @@
 # backend/agent/tools/skills.py
 
+"""提供 `skills` 相关功能。"""
+
 from __future__ import annotations
 
 import re
@@ -38,6 +40,7 @@ class SkillDefinition:
 
 
 def _as_str_tuple(meta: dict[str, Any], key: str) -> tuple[str, ...]:
+    """处理 `_as_str_tuple` 相关逻辑。"""
     value = meta.get(key, [])
     if value is None:
         return ()
@@ -49,6 +52,7 @@ def _as_str_tuple(meta: dict[str, Any], key: str) -> tuple[str, ...]:
 
 
 def _parse_skill(path: Path) -> SkillDefinition:
+    """解析 `skill` 相关数据。"""
     text = path.read_text(encoding="utf-8")
     if not text.startswith("---\n"):
         raise SkillValidationError(
@@ -188,6 +192,7 @@ def validate_skill_contracts(
 
 @lru_cache(maxsize=1)
 def _validated_definitions() -> tuple[SkillDefinition, ...]:
+    """处理 `_validated_definitions` 相关逻辑。"""
     errors = validate_skill_contracts()
     if errors:
         formatted = "\n".join(f"- {error}" for error in errors)

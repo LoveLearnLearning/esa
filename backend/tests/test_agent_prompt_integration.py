@@ -1,3 +1,7 @@
+# backend/tests/test_agent_prompt_integration.py
+
+"""验证 `agent_prompt_integration` 相关行为与回归场景。"""
+
 import json
 import sys
 from importlib import import_module
@@ -25,6 +29,7 @@ def test_agent_module_imports_without_vllm():
 
 
 def test_tool_observation_is_standard_json():
+    """验证 `tool_observation_is_standard_json` 场景。"""
     payload = {"allowed": True, "result": None, "message": "已记录"}
 
     serialized = serialize_tool_result(payload)
@@ -36,6 +41,7 @@ def test_tool_observation_is_standard_json():
 
 
 def test_sanitize_qwen_history_removes_unsupported_tool_protocol_turn():
+    """验证 `sanitize_qwen_history_removes_unsupported_tool_protocol_turn` 场景。"""
     history = [
         {"role": "user", "content": "计算这个积分"},
         {
@@ -55,6 +61,7 @@ def test_sanitize_qwen_history_removes_unsupported_tool_protocol_turn():
 
 
 def test_sanitize_qwen_history_keeps_qwen_tool_protocol_turn():
+    """验证 `sanitize_qwen_history_keeps_qwen_tool_protocol_turn` 场景。"""
     history = [
         {
             "role": "assistant",

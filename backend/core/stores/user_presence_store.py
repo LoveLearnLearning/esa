@@ -1,3 +1,7 @@
+# backend/core/stores/user_presence_store.py
+
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -10,9 +14,11 @@ class UserPresenceStore(BaseSQLiteStore):
     """Persistent activity timestamps used to detect offline users."""
 
     def __init__(self, database_path: str | Path) -> None:
+        """初始化 `UserPresenceStore` 实例。"""
         super().__init__(database_path)
 
     def _initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         self.execute(
             """
             CREATE TABLE IF NOT EXISTS user_presence (
@@ -27,9 +33,15 @@ class UserPresenceStore(BaseSQLiteStore):
 
     @staticmethod
     def _now() -> str:
+        """处理 `_now` 相关逻辑。"""
         return datetime.now(timezone.utc).isoformat()
 
     def mark_online(self, user_id: str) -> None:
+        """处理 `mark_online` 相关逻辑。
+
+        Args:
+            user_id: str => 用户 ID。
+        """
         now = self._now()
         self.execute(
             """
@@ -44,6 +56,11 @@ class UserPresenceStore(BaseSQLiteStore):
         )
 
     def mark_offline(self, user_id: str) -> None:
+        """处理 `mark_offline` 相关逻辑。
+
+        Args:
+            user_id: str => 用户 ID。
+        """
         now = self._now()
         self.execute(
             """

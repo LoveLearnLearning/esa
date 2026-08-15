@@ -1,3 +1,5 @@
+# backend/core/stores/core_memory_store.py
+
 """Transactional persistence for CoreMemory V2; schema is migration-owned."""
 
 from __future__ import annotations
@@ -18,23 +20,29 @@ from backend.core.stores.base_sqlite_store import BaseSQLiteStore
 
 
 def _now() -> str:
+    """处理 `_now` 相关逻辑。"""
     return datetime.now(timezone.utc).isoformat()
 
 
 def _hash(content: str) -> str:
+    """处理 `_hash` 相关逻辑。"""
     normalized = " ".join(content.casefold().split())
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 class CoreMemoryStore(BaseSQLiteStore):
+    """封装 `core memory store` 数据持久化操作。"""
     def __init__(self, database_path: str | Path) -> None:
+        """初始化 `CoreMemoryStore` 实例。"""
         self.database_path = Path(database_path)
 
     def _initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         raise RuntimeError("CoreMemory schema must be installed by migrations")
 
     @staticmethod
     def _record(row) -> CoreMemoryRecord:
+        """处理 `_record` 相关逻辑。"""
         return CoreMemoryRecord(
             memory_id=row["memory_id"],
             user_id=row["user_id"],
@@ -54,6 +62,7 @@ class CoreMemoryStore(BaseSQLiteStore):
 
     @staticmethod
     def _candidate(row) -> MemoryCandidate:
+        """处理 `_candidate` 相关逻辑。"""
         return MemoryCandidate(
             candidate_id=row["candidate_id"],
             user_id=row["user_id"],
@@ -73,11 +82,21 @@ class CoreMemoryStore(BaseSQLiteStore):
 
     @staticmethod
     def _scope_clause(scope: MemoryScope) -> tuple[str, tuple[object, ...]]:
+        """处理 `_scope_clause` 相关逻辑。"""
         if scope.scope_type == "global":
             return "scope_type='global' AND workspace_type IS NULL", ()
         return "scope_type='workspace' AND workspace_type=?", (scope.workspace_type,)
 
     def get(self, memory_id: str, user_id: str) -> CoreMemoryRecord | None:
+        """获取 `get` 相关数据。
+
+        Args:
+            memory_id: str => memory ID。
+            user_id: str => 用户 ID。
+
+        Returns:
+            CoreMemoryRecord | None => 处理结果。
+        """
         row = self.query_one(
             "SELECT * FROM core_memories WHERE memory_id=? AND user_id=?",
             (memory_id, user_id),
@@ -87,6 +106,16 @@ class CoreMemoryStore(BaseSQLiteStore):
     def get_by_key(
         self, user_id: str, memory_key: str, scope: MemoryScope
     ) -> CoreMemoryRecord | None:
+        """获取 `by key` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            memory_key: str => `memory_key` 参数。
+            scope: MemoryScope => `scope` 参数。
+
+        Returns:
+            CoreMemoryRecord | None => 处理结果。
+        """
         clause, params = self._scope_clause(scope)
         row = self.query_one(
             f"SELECT * FROM core_memories WHERE user_id=? AND memory_key=? AND {clause}",
@@ -101,6 +130,16 @@ class CoreMemoryStore(BaseSQLiteStore):
         *,
         include_suppressed: bool = False,
     ) -> list[CoreMemoryRecord]:
+        """列出 `visible` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            scopes: tuple[MemoryScope, ...] => `scopes` 参数。
+            include_suppressed: bool => `include_suppressed` 参数。
+
+        Returns:
+            list[CoreMemoryRecord] => 处理结果。
+        """
         clauses: list[str] = []
         params: list[object] = [user_id]
         for scope in scopes:
@@ -122,6 +161,16 @@ class CoreMemoryStore(BaseSQLiteStore):
     def list_user(
         self, user_id: str, *, limit: int = 100, offset: int = 0
     ) -> list[CoreMemoryRecord]:
+        """列出 `user` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            limit: int => 返回数量上限。
+            offset: int => 分页偏移量。
+
+        Returns:
+            list[CoreMemoryRecord] => 处理结果。
+        """
         return [
             self._record(row)
             for row in self.query_all(
@@ -132,6 +181,7 @@ class CoreMemoryStore(BaseSQLiteStore):
 
     @staticmethod
     def _advance_revision(connection, user_id: str, now: str) -> None:
+        """处理 `_advance_revision` 相关逻辑。"""
         connection.execute(
             """INSERT INTO core_memory_user_revisions(user_id, revision, updated_at)
                VALUES (?, 1, ?)
@@ -143,6 +193,7 @@ class CoreMemoryStore(BaseSQLiteStore):
     def _audit(
         connection, record: CoreMemoryRecord, event: str, request_id: str
     ) -> None:
+        """处理 `_audit` 相关逻辑。"""
         connection.execute(
             """INSERT INTO core_memory_audit_log
                (event_id,memory_id,user_id,event_type,scope_type,workspace_type,
@@ -172,6 +223,7 @@ class CoreMemoryStore(BaseSQLiteStore):
         resulting_memory_id: str | None = None,
         revision: int | None = None,
     ) -> None:
+        """处理 `_audit_candidate` 相关逻辑。"""
         connection.execute(
             """INSERT INTO core_memory_audit_log
                (event_id,memory_id,user_id,event_type,scope_type,workspace_type,
@@ -201,6 +253,16 @@ class CoreMemoryStore(BaseSQLiteStore):
         memory_id: str | None = None,
         revision: int | None = None,
     ) -> None:
+        """处理 `audit_event` 相关逻辑。
+
+        Args:
+            user_id: str => 用户 ID。
+            event: str => `event` 参数。
+            request_id: str => request ID。
+            scope: MemoryScope | None => `scope` 参数。
+            memory_id: str | None => memory ID。
+            revision: int | None => `revision` 参数。
+        """
         self.execute(
             """INSERT INTO core_memory_audit_log
                (event_id,memory_id,user_id,event_type,scope_type,workspace_type,
@@ -235,6 +297,25 @@ class CoreMemoryStore(BaseSQLiteStore):
         changed_via: str = "user_api",
         source_candidate_id: str | None = None,
     ) -> CoreMemoryRecord:
+        """创建 `create` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            memory_key: str => `memory_key` 参数。
+            content: str => 待处理内容。
+            category: str => `category` 参数。
+            scope: MemoryScope => `scope` 参数。
+            source_type: str => `source_type` 参数。
+            source_conversation_id: str | None => source conversation ID。
+            request_id: str => request ID。
+            review_after: str | None => `review_after` 参数。
+            expires_at: str | None => `expires_at` 参数。
+            changed_via: str => `changed_via` 参数。
+            source_candidate_id: str | None => source candidate ID。
+
+        Returns:
+            CoreMemoryRecord => 处理结果。
+        """
         memory_id, now = uuid4().hex, _now()
         with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -305,6 +386,22 @@ class CoreMemoryStore(BaseSQLiteStore):
         changed_via: str = "user_api",
         source_candidate_id: str | None = None,
     ) -> CoreMemoryRecord:
+        """更新 `update` 相关数据。
+
+        Args:
+            memory_id: str => memory ID。
+            user_id: str => 用户 ID。
+            expected_revision: int => `expected_revision` 参数。
+            content: str => 待处理内容。
+            category: str => `category` 参数。
+            request_id: str => request ID。
+            change_type: str => `change_type` 参数。
+            changed_via: str => `changed_via` 参数。
+            source_candidate_id: str | None => source candidate ID。
+
+        Returns:
+            CoreMemoryRecord => 处理结果。
+        """
         now = _now()
         with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -365,6 +462,17 @@ class CoreMemoryStore(BaseSQLiteStore):
     def set_suppressed(
         self, memory_id: str, user_id: str, suppressed: bool, request_id: str
     ) -> CoreMemoryRecord:
+        """设置 `suppressed` 相关数据。
+
+        Args:
+            memory_id: str => memory ID。
+            user_id: str => 用户 ID。
+            suppressed: bool => `suppressed` 参数。
+            request_id: str => request ID。
+
+        Returns:
+            CoreMemoryRecord => 处理结果。
+        """
         now, status = _now(), "suppressed" if suppressed else "active"
         with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -390,6 +498,15 @@ class CoreMemoryStore(BaseSQLiteStore):
         return record
 
     def versions(self, memory_id: str, user_id: str) -> list[dict]:
+        """处理 `versions` 相关逻辑。
+
+        Args:
+            memory_id: str => memory ID。
+            user_id: str => 用户 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         return [
             dict(row)
             for row in self.query_all(
@@ -406,6 +523,18 @@ class CoreMemoryStore(BaseSQLiteStore):
         expected_revision: int,
         request_id: str,
     ) -> CoreMemoryRecord:
+        """处理 `restore_version` 相关逻辑。
+
+        Args:
+            memory_id: str => memory ID。
+            user_id: str => 用户 ID。
+            revision: int => `revision` 参数。
+            expected_revision: int => `expected_revision` 参数。
+            request_id: str => request ID。
+
+        Returns:
+            CoreMemoryRecord => 处理结果。
+        """
         row = self.query_one(
             "SELECT content,category FROM core_memory_versions WHERE memory_id=? AND user_id=? AND revision=?",
             (memory_id, user_id, revision),
@@ -423,6 +552,16 @@ class CoreMemoryStore(BaseSQLiteStore):
         )
 
     def forget(self, memory_id: str, user_id: str, request_id: str) -> bool:
+        """处理 `forget` 相关逻辑。
+
+        Args:
+            memory_id: str => memory ID。
+            user_id: str => 用户 ID。
+            request_id: str => request ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         now = _now()
         with closing(self._connect()) as connection, connection:
             row = connection.execute(
@@ -476,6 +615,24 @@ class CoreMemoryStore(BaseSQLiteStore):
         expires_at: str,
         request_id: str = "",
     ) -> MemoryCandidate:
+        """创建 `candidate` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            memory_id: str | None => memory ID。
+            memory_key: str => `memory_key` 参数。
+            proposed_content: str => `proposed_content` 参数。
+            category: str => `category` 参数。
+            scope: MemoryScope => `scope` 参数。
+            candidate_type: str => `candidate_type` 参数。
+            expected_revision: int | None => `expected_revision` 参数。
+            source_conversation_id: str | None => source conversation ID。
+            expires_at: str => `expires_at` 参数。
+            request_id: str => request ID。
+
+        Returns:
+            MemoryCandidate => 处理结果。
+        """
         candidate_id, now = uuid4().hex, _now()
         with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -517,6 +674,15 @@ class CoreMemoryStore(BaseSQLiteStore):
         return candidate
 
     def get_candidate(self, candidate_id: str, user_id: str) -> MemoryCandidate | None:
+        """获取 `candidate` 相关数据。
+
+        Args:
+            candidate_id: str => candidate ID。
+            user_id: str => 用户 ID。
+
+        Returns:
+            MemoryCandidate | None => 处理结果。
+        """
         row = self.query_one(
             "SELECT * FROM core_memory_candidates WHERE candidate_id=? AND user_id=?",
             (candidate_id, user_id),
@@ -526,6 +692,15 @@ class CoreMemoryStore(BaseSQLiteStore):
     def list_candidates(
         self, user_id: str, status: str = "pending"
     ) -> list[MemoryCandidate]:
+        """列出 `candidates` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            status: str => `status` 参数。
+
+        Returns:
+            list[MemoryCandidate] => 处理结果。
+        """
         return [
             self._candidate(row)
             for row in self.query_all(
@@ -542,6 +717,18 @@ class CoreMemoryStore(BaseSQLiteStore):
         resulting_memory_id: str | None = None,
         request_id: str = "",
     ) -> bool:
+        """处理 `decide_candidate` 相关逻辑。
+
+        Args:
+            candidate_id: str => candidate ID。
+            user_id: str => 用户 ID。
+            status: str => `status` 参数。
+            resulting_memory_id: str | None => resulting memory ID。
+            request_id: str => request ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
@@ -578,6 +765,20 @@ class CoreMemoryStore(BaseSQLiteStore):
         source_conversation_id: str | None,
         request_id: str,
     ) -> CoreMemoryRecord:
+        """处理 `accept_candidate` 相关逻辑。
+
+        Args:
+            candidate_id: str => candidate ID。
+            user_id: str => 用户 ID。
+            content: str => 待处理内容。
+            category: str => `category` 参数。
+            scope: MemoryScope => `scope` 参数。
+            source_conversation_id: str | None => source conversation ID。
+            request_id: str => request ID。
+
+        Returns:
+            CoreMemoryRecord => 处理结果。
+        """
         now = _now()
         with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -694,6 +895,7 @@ class CoreMemoryStore(BaseSQLiteStore):
             return record
 
     def user_revision(self, user_id: str) -> int:
+        """处理 `user_revision` 相关逻辑。"""
         row = self.query_one(
             "SELECT revision FROM core_memory_user_revisions WHERE user_id=?",
             (user_id,),

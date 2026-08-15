@@ -1,3 +1,7 @@
+# backend/tests/test_research_capabilities.py
+
+"""验证 `research_capabilities` 相关行为与回归场景。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -23,15 +27,29 @@ from backend.core.web.webAPI import create_app
 
 
 class _QueueRecorder:
+    """封装 `_QueueRecorder` 的状态与行为。"""
     def __init__(self) -> None:
+        """初始化 `_QueueRecorder` 实例。"""
         self.job_ids: list[str] = []
 
     def submit(self, job_id: str) -> None:
+        """处理 `submit` 相关逻辑。"""
         self.job_ids.append(job_id)
 
 
 class _FakeLLM:
+    """封装 `_FakeLLM` 的状态与行为。"""
     async def chat(self, messages, *, max_tokens, temperature):
+        """处理 `chat` 相关逻辑。
+
+        Args:
+            messages: object => 消息列表。
+            max_tokens: object => `max_tokens` 参数。
+            temperature: object => `temperature` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         assert messages
         assert max_tokens == 3000
         assert temperature == 0.2
@@ -39,6 +57,7 @@ class _FakeLLM:
 
 
 def _app(tmp_path):
+    """处理 `_app` 相关逻辑。"""
     database = tmp_path / "research.db"
     user_store = UserStore(database)
     session_store = SessionStore(database)
@@ -66,6 +85,7 @@ def _app(tmp_path):
 
 
 def _login(client: TestClient, username: str) -> dict[str, str]:
+    """处理 `_login` 相关逻辑。"""
     user = client.app.state.auth.register(
         username,
         "correct-password",
@@ -83,6 +103,7 @@ def _login(client: TestClient, username: str) -> dict[str, str]:
 
 
 def _project(client: TestClient, headers: dict[str, str]) -> dict:
+    """处理 `_project` 相关逻辑。"""
     response = client.post(
         "/api/research/projects",
         headers=headers,
@@ -93,6 +114,7 @@ def _project(client: TestClient, headers: dict[str, str]) -> dict:
 
 
 def test_queue_recovery_stays_read_only_when_no_job_was_interrupted(tmp_path):
+    """验证 `queue_recovery_stays_read_only_when_no_job_was_interrupted` 场景。"""
     database = tmp_path / "research.db"
     store = FrontierTrackingStore(database)
     job_id = "queued-job"
@@ -119,6 +141,7 @@ def test_queue_recovery_stays_read_only_when_no_job_was_interrupted(tmp_path):
 
 
 def test_frontier_job_is_user_scoped_and_uses_real_search_results(tmp_path):
+    """验证 `frontier_job_is_user_scoped_and_uses_real_search_results` 场景。"""
     client = TestClient(_app(tmp_path))
     alice = _login(client, "alice")
     bob = _login(client, "bob")
@@ -137,6 +160,15 @@ def test_frontier_job_is_user_scoped_and_uses_real_search_results(tmp_path):
     year = datetime.now(timezone.utc).year
 
     def fake_search(query, **kwargs):
+        """处理 `fake_search` 相关逻辑。
+
+        Args:
+            query: object => 查询文本。
+            kwargs: object => `kwargs` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         assert query == "agent memory"
         assert kwargs["sort_by"] in {"submitted", "relevance"}
         return {
@@ -173,6 +205,7 @@ def test_frontier_job_is_user_scoped_and_uses_real_search_results(tmp_path):
 
 
 def test_writing_job_versions_document_without_fabricating_sources(tmp_path):
+    """验证 `writing_job_versions_document_without_fabricating_sources` 场景。"""
     client = TestClient(_app(tmp_path))
     headers = _login(client, "writer")
     project = _project(client, headers)
@@ -216,6 +249,7 @@ def test_writing_job_versions_document_without_fabricating_sources(tmp_path):
 
 
 def test_dataset_upload_profile_and_correlation_analysis(tmp_path):
+    """验证 `dataset_upload_profile_and_correlation_analysis` 场景。"""
     client = TestClient(_app(tmp_path))
     headers = _login(client, "analyst")
     project = _project(client, headers)

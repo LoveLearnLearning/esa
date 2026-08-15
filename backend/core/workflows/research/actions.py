@@ -1,3 +1,5 @@
+# backend/core/workflows/research/actions.py
+
 """Agent Action adapters for the existing research workflow facade."""
 
 from __future__ import annotations
@@ -20,6 +22,14 @@ def validate_research_action(
     writing_store: Any,
     data_store: Any,
 ) -> None:
+    """校验 `research action` 相关数据。
+
+    Args:
+        action: dict[str, Any] => `action` 参数。
+        project_store: Any => `project_store` 参数。
+        writing_store: Any => `writing_store` 参数。
+        data_store: Any => `data_store` 参数。
+    """
     arguments = action["arguments"]
     bound_project_id = action["resource_snapshot"].get("project_id")
     if not bound_project_id:
@@ -53,6 +63,15 @@ def validate_research_action(
 def execute_research_action(
     action: dict[str, Any], facade: ResearchWorkflowFacade
 ) -> dict[str, Any]:
+    """执行 `research action` 相关数据。
+
+    Args:
+        action: dict[str, Any] => `action` 参数。
+        facade: ResearchWorkflowFacade => `facade` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     arguments = action["arguments"]
     if action["action_type"] == "start_frontier_tracking":
         run = facade.start_frontier_tracking(

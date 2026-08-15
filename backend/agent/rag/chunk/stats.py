@@ -48,6 +48,7 @@ class CollectionStats(TypedDict):
 
 
 def _percentile(values: list[int], ratio: float) -> int:
+    """处理 `_percentile` 相关逻辑。"""
     if not values:
         return 0
     ordered = sorted(values)
@@ -55,6 +56,14 @@ def _percentile(values: list[int], ratio: float) -> int:
 
 
 def collection_stats(documents: Iterable[ChunkDocument]) -> CollectionStats:
+    """处理 `collection_stats` 相关逻辑。
+
+    Args:
+        documents: Iterable[ChunkDocument] => `documents` 参数。
+
+    Returns:
+        CollectionStats => 处理结果。
+    """
     docs = list(documents)
     lengths = [chunk.body_char_count for document in docs for chunk in document.chunks]
     kinds: Counter[str] = Counter()

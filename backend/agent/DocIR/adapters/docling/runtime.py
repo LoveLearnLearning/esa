@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/docling/runtime.py
+
 """Run Docling locally with the adapter's explicit CUDA profile."""
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ SUPPORTED_FORMATS = (
 
 
 def _require_cuda(device: str) -> None:
+    """处理 `_require_cuda` 相关逻辑。"""
     import torch
 
     if not torch.cuda.is_available():
@@ -41,6 +44,7 @@ def _require_cuda(device: str) -> None:
 
 
 def _pipeline_options(config: DoclingAdapterConfig) -> PdfPipelineOptions:
+    """处理 `_pipeline_options` 相关逻辑。"""
     return PdfPipelineOptions(
         accelerator_options=AcceleratorOptions(
             device=config.device,
@@ -99,4 +103,3 @@ def run_docling(
             for name, timing in result.timings.items()
         },
     )
-

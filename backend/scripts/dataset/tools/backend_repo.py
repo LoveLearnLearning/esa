@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tools/backend_repo.py
+
 """定位后端仓库副本，供各 capture 脚本共用。
 
 为什么单独抽出来
@@ -36,15 +38,18 @@ class BackendRepo:
     """一份后端源码副本。用 `with` 管理，临时下载的副本退出时自动删。"""
 
     def __init__(self, path: Path, kind: str, tmpdir: Path | None = None):
+        """初始化 `BackendRepo` 实例。"""
         self.path = path
         # 来源**类型**（local-clone / tarball:main），不是路径 —— 见 describe()
         self.kind = kind
         self._tmpdir = tmpdir
 
     def __enter__(self) -> "BackendRepo":
+        """进入上下文并返回可用资源。"""
         return self
 
     def __exit__(self, *exc) -> None:
+        """退出上下文并释放相关资源。"""
         if self._tmpdir is not None:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -61,6 +66,7 @@ class BackendRepo:
         return f"{self.kind}@{commit}" if commit else self.kind
 
     def head_commit(self) -> str | None:
+        """处理 `head_commit` 相关逻辑。"""
         try:
             out = subprocess.run(
                 ["git", "-C", str(self.path), "rev-parse", "--short", "HEAD"],
@@ -72,6 +78,7 @@ class BackendRepo:
 
 
 def _extract(dest: Path) -> Path:
+    """提取 `extract` 相关数据。"""
     print(f"本地找不到后端副本，下载快照 → {dest}")
     print("⚠️ 快照抓的是 GitHub 上此刻的 main，抓不到你本地的改动。"
           "建议 clone 到 ~/esa 后用 git pull。")

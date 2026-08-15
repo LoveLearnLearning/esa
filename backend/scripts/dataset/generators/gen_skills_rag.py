@@ -1,3 +1,5 @@
+# backend/scripts/dataset/generators/gen_skills_rag.py
+
 """load_skill 与 RAG 的数据生成器。
 
 load_skill —— 观测值是**调后端真实 load_skill() 抓来的正文**
@@ -61,6 +63,22 @@ def load_bodies() -> tuple[dict[str, str], str]:
 
 
 def mk(sid, tpl, category, tools, turns, version, rng, all_names, review=False):
+    """处理 `mk` 相关逻辑。
+
+    Args:
+        sid: object => `sid` 参数。
+        tpl: object => `tpl` 参数。
+        category: object => `category` 参数。
+        tools: object => 可用工具列表。
+        turns: object => `turns` 参数。
+        version: object => `version` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        review: object => `review` 参数。
+
+    Returns:
+        object => 处理结果。
+    """
     return Sample(
         id=sid, template_id=tpl, category=category, schema_version=version,
         system=system_for(turns),
@@ -94,6 +112,17 @@ FOLLOW_UP = {
 
 
 def gen_load_skill(cfg, bodies, not_found_template, version, rng, all_names, out):
+    """处理 `gen_load_skill` 相关逻辑。
+
+    Args:
+        cfg: object => `cfg` 参数。
+        bodies: object => `bodies` 参数。
+        not_found_template: object => `not_found_template` 参数。
+        version: object => `version` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        out: object => `out` 参数。
+    """
     routed_hits = 0
     for item in cfg["load_skill"]["正例"]:
         skill = item["skill"]
@@ -179,6 +208,15 @@ def gen_wrong_tool(cfg, section, version, rng, all_names, out):
 
 
 def gen_rag(cfg, version, rng, all_names, out):
+    """处理 `gen_rag` 相关逻辑。
+
+    Args:
+        cfg: object => `cfg` 参数。
+        version: object => `version` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        out: object => `out` 参数。
+    """
     for j, item in enumerate(cfg["rag"]["混淆_不该检索"]):
         out.append(mk(
             f"rag_neg_{j:02d}", f"rag__不该检索__{j:02d}", "hard_negative",
@@ -197,6 +235,7 @@ def gen_rag(cfg, version, rng, all_names, out):
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     rng = random.Random(20260810)
     cfg = yaml.safe_load(SEEDS.read_text(encoding="utf-8"))
     bodies, not_found_template = load_bodies()

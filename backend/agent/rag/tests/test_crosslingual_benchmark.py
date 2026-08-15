@@ -1,3 +1,7 @@
+# backend/agent/rag/tests/test_crosslingual_benchmark.py
+
+"""验证 `crosslingual_benchmark` 相关行为与回归场景。"""
+
 from __future__ import annotations
 
 import json
@@ -12,6 +16,7 @@ from backend.agent.rag.evaluation.crosslingual_benchmark import (
 
 
 def test_crosslingual_schema_requires_explicit_gold(tmp_path) -> None:
+    """验证 `crosslingual_schema_requires_explicit_gold` 场景。"""
     path = tmp_path / "cases.jsonl"
     path.write_text('{"case_id":"1","query_zh":"什么是 TCP？"}\n')
     with pytest.raises(ValueError, match="gold_document_ids"):
@@ -19,6 +24,7 @@ def test_crosslingual_schema_requires_explicit_gold(tmp_path) -> None:
 
 
 def test_crosslingual_replay_evaluates_all_required_pipelines(tmp_path) -> None:
+    """验证 `crosslingual_replay_evaluates_all_required_pipelines` 场景。"""
     cases = tmp_path / "cases.jsonl"
     cases.write_text(
         json.dumps(

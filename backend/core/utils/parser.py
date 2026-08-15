@@ -1,4 +1,6 @@
-# backend/core/agent/utils.py
+# backend/core/utils/parser.py
+
+"""提供 `parser` 相关功能。"""
 
 import json
 import re
@@ -35,6 +37,15 @@ def parse_output(
     raw_text: str,
     tool_schemas: list[dict] | tuple[dict, ...] | None = None,
 ) -> ParsedOutput:
+    """解析 `output` 相关数据。
+
+    Args:
+        raw_text: str => `raw_text` 参数。
+        tool_schemas: list[dict] | tuple[dict, ...] | None => `tool_schemas` 参数。
+
+    Returns:
+        ParsedOutput => 处理结果。
+    """
     result = ParsedOutput()
     schema_lookup = schemas_by_name(tool_schemas)
 
@@ -109,6 +120,7 @@ class StreamOutputParser:
     CONTENT_STOP_TOKENS: tuple[str, ...] = (TOOL_OPEN,)
 
     def __init__(self) -> None:
+        """初始化 `StreamOutputParser` 实例。"""
         self.phase = "reasoning"
         self.pending = ""
         self.raw_parts: list[str] = []
@@ -116,6 +128,7 @@ class StreamOutputParser:
 
     @property
     def raw_text(self) -> str:
+        """处理 `raw_text` 相关逻辑。"""
         return "".join(self.raw_parts)
 
     def feed(self, chunk: str) -> list[tuple[str, str]]:
@@ -156,6 +169,7 @@ class StreamOutputParser:
         return events
 
     def _parse_reasoning(self, events: list[tuple[str, str]]) -> None:
+        """解析 `reasoning` 相关数据。"""
         if not self.opening_tag_handled:
             stripped = self.pending.lstrip()
 
@@ -193,6 +207,7 @@ class StreamOutputParser:
             events.append(("reasoning", reasoning))
 
     def _determine_output_type(self, final: bool = False) -> None:
+        """处理 `_determine_output_type` 相关逻辑。"""
         candidate = self.pending.lstrip()
         if not candidate:
             return
@@ -252,6 +267,7 @@ class StreamOutputParser:
 
     @staticmethod
     def _partial_suffix_length(value: str, marker: str) -> int:
+        """处理 `_partial_suffix_length` 相关逻辑。"""
         max_length = min(len(value), len(marker) - 1)
         for length in range(max_length, 0, -1):
             if value.endswith(marker[:length]):
@@ -260,6 +276,7 @@ class StreamOutputParser:
 
 
 def main() -> None:
+    """运行当前模块的命令行入口。"""
     OUTPUT = """
     用户问了两个问题：
     1. 北京天气怎么样 - 我需要使用 get_weather 工具，参数是 city="北京"

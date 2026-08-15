@@ -32,6 +32,7 @@ def canonical_sha256(value: object) -> str:
 
 
 class StrictModel(BaseModel):
+    """封装 `StrictModel` 的状态与行为。"""
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
@@ -60,6 +61,7 @@ DEFAULT_RETRIEVAL_ROLES = frozenset(
 
 
 class ChunkConfig(StrictModel):
+    """保存 `chunk config` 配置。"""
     schema_version: Literal[
         "chunk-config-0.1",
         "chunk-config-0.2",
@@ -83,12 +85,14 @@ class ChunkConfig(StrictModel):
 
     @model_validator(mode="after")
     def ordered_limits(self) -> ChunkConfig:
+        """处理 `ordered_limits` 相关逻辑。"""
         if self.target_chars > self.max_chars:
             raise ValueError("target_chars 不能大于 max_chars")
         return self
 
     @property
     def sha256(self) -> str:
+        """处理 `sha256` 相关逻辑。"""
         payload = self.model_dump(mode="json")
         if self.schema_version == "chunk-config-0.1":
             payload = {
@@ -121,6 +125,7 @@ class ChunkConfig(StrictModel):
 
 
 class ChunkEvidence(StrictModel):
+    """封装 `ChunkEvidence` 的状态与行为。"""
     evidence_id: str = Field(min_length=1)
     element_id: str = Field(min_length=1)
     text_layer_id: str | None = None
@@ -142,6 +147,7 @@ class ChunkEvidence(StrictModel):
 
     @model_validator(mode="after")
     def valid_span(self) -> ChunkEvidence:
+        """处理 `valid_span` 相关逻辑。"""
         if (self.text_start is None) != (self.text_end is None):
             raise ValueError("text_start/text_end 必须同时存在或同时为空")
         if self.text_start is not None and self.text_end is not None:
@@ -156,6 +162,7 @@ class ChunkEvidence(StrictModel):
 
     @model_validator(mode="after")
     def valid_location(self) -> ChunkEvidence:
+        """处理 `valid_location` 相关逻辑。"""
         locator_ids = [locator.locator_id for locator in self.locators]
         if len(locator_ids) != len(set(locator_ids)):
             raise ValueError("evidence locator_id 不能重复")
@@ -163,6 +170,7 @@ class ChunkEvidence(StrictModel):
 
     @model_validator(mode="after")
     def valid_quote_eligibility(self) -> ChunkEvidence:
+        """处理 `valid_quote_eligibility` 相关逻辑。"""
         if (
             self.text_origin
             in {
@@ -178,6 +186,7 @@ class ChunkEvidence(StrictModel):
 
 
 class Chunk(StrictModel):
+    """封装 `Chunk` 的状态与行为。"""
     chunk_id: str = Field(min_length=1)
     chunk_revision_id: str = Field(min_length=1)
     document_order: int = Field(ge=0)
@@ -201,6 +210,7 @@ class Chunk(StrictModel):
 
     @model_validator(mode="after")
     def internal_consistency(self) -> Chunk:
+        """处理 `internal_consistency` 相关逻辑。"""
         if self.body_char_count != len(self.bm25_body):
             raise ValueError("body_char_count 与 bm25_body 长度不一致")
         evidence_elements = tuple(
@@ -214,12 +224,14 @@ class Chunk(StrictModel):
 
 
 class ElementDisposition(StrictModel):
+    """封装 `ElementDisposition` 的状态与行为。"""
     element_id: str = Field(min_length=1)
     action: Literal["chunked", "section_structure", "excluded"]
     reason: str = Field(min_length=1)
 
 
 class ChunkDocument(StrictModel):
+    """封装 `ChunkDocument` 的状态与行为。"""
     schema_name: Literal["chunk_document"] = "chunk_document"
     schema_version: Literal["0.1"] = "0.1"
     document_id: str = Field(min_length=1)
@@ -236,6 +248,7 @@ class ChunkDocument(StrictModel):
     @field_validator("docir_sha256", "chunk_config_sha256")
     @classmethod
     def sha_format(cls, value: str) -> str:
+        """处理 `sha_format` 相关逻辑。"""
         if len(value) != SHA256_LENGTH or any(
             char not in "0123456789abcdef" for char in value
         ):
@@ -244,6 +257,7 @@ class ChunkDocument(StrictModel):
 
     @model_validator(mode="after")
     def valid_config_and_order(self) -> ChunkDocument:
+        """处理 `valid_config_and_order` 相关逻辑。"""
         if self.chunk_config_sha256 != self.chunk_config.sha256:
             raise ValueError("chunk_config_sha256 与配置不一致")
         ids = [chunk.chunk_id for chunk in self.chunks]
@@ -257,6 +271,7 @@ class ChunkDocument(StrictModel):
 
     @model_validator(mode="after")
     def valid_chunk_identity_and_links(self) -> ChunkDocument:
+        """处理 `valid_chunk_identity_and_links` 相关逻辑。"""
         by_id = {chunk.chunk_id: chunk for chunk in self.chunks}
         for chunk in self.chunks:
             if chunk.body_char_count > self.chunk_config.max_chars:
@@ -277,6 +292,7 @@ class ChunkDocument(StrictModel):
 
     @model_validator(mode="after")
     def valid_element_dispositions(self) -> ChunkDocument:
+        """处理 `valid_element_dispositions` 相关逻辑。"""
         dispositions = {item.element_id: item for item in self.element_dispositions}
         if len(dispositions) != len(self.element_dispositions):
             raise ValueError("每个 element 只能有一个处理分类")
@@ -302,6 +318,7 @@ class ChunkDocument(StrictModel):
 
     @model_validator(mode="after")
     def valid_overlap_groups(self) -> ChunkDocument:
+        """处理 `valid_overlap_groups` 相关逻辑。"""
         evidence_locations: dict[str, list[Chunk]] = {}
         evidence_by_layer: dict[
             tuple[str, str | None], list[tuple[ChunkEvidence, Chunk]]
@@ -360,6 +377,7 @@ class ChunkDocument(StrictModel):
 
 
 class ChunkDocumentRef(StrictModel):
+    """封装 `ChunkDocumentRef` 的状态与行为。"""
     document_id: str = Field(min_length=1)
     source_version_id: str = Field(min_length=1)
     parse_revision_id: str = Field(min_length=1)
@@ -371,6 +389,7 @@ class ChunkDocumentRef(StrictModel):
     @field_validator("path")
     @classmethod
     def safe_relative_path(cls, value: str) -> str:
+        """处理 `safe_relative_path` 相关逻辑。"""
         path = PurePosixPath(value)
         if path.is_absolute() or ".." in path.parts:
             raise ValueError("ChunkDocumentRef.path 必须是安全相对路径")
@@ -379,6 +398,7 @@ class ChunkDocumentRef(StrictModel):
     @field_validator("sha256")
     @classmethod
     def sha_format(cls, value: str) -> str:
+        """处理 `sha_format` 相关逻辑。"""
         if len(value) != SHA256_LENGTH or any(
             char not in "0123456789abcdef" for char in value
         ):
@@ -387,6 +407,7 @@ class ChunkDocumentRef(StrictModel):
 
 
 class ChunkCollection(StrictModel):
+    """封装 `ChunkCollection` 的状态与行为。"""
     schema_name: Literal["chunk_collection"] = "chunk_collection"
     schema_version: Literal["0.1"] = "0.1"
     collection_id: str = Field(min_length=1)
@@ -398,6 +419,7 @@ class ChunkCollection(StrictModel):
 
     @model_validator(mode="after")
     def totals_and_config(self) -> ChunkCollection:
+        """处理 `totals_and_config` 相关逻辑。"""
         if self.chunk_config_sha256 != self.chunk_config.sha256:
             raise ValueError("manifest 配置哈希不一致")
         if self.document_count != len(self.documents):

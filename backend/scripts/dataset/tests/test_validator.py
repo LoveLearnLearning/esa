@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tests/test_validator.py
+
 """校验器的负向测试：故意造坏数据，确认每种错误都能被抓到。
 
 一个从不报错的校验器等于没有校验器。每加一条新检查，都要在这里补一条对应的坏样本。
@@ -212,6 +214,18 @@ def corpus_cases() -> list[tuple[str, bool]]:
     #     每条都配"该报的报"和"不该报的不报"两个用例 ——
     #     只写前者会得到一个永远报错的假检查（5.9 就是这么来的）。
     def clarify(ask, ask_for, user="帮我安排一下数据结构的复习", sid="cl1", tools=None):
+        """处理 `clarify` 相关逻辑。
+
+        Args:
+            ask: object => `ask` 参数。
+            ask_for: object => `ask_for` 参数。
+            user: object => `user` 参数。
+            sid: object => `sid` 参数。
+            tools: object => 可用工具列表。
+
+        Returns:
+            object => 处理结果。
+        """
         return Sample(
             id=sid, template_id=f"cl__{sid}", category="clarify", schema_version=VERSION,
             system="你是 ESA。", tool_names=tools or ["recommend_practice"],
@@ -220,6 +234,15 @@ def corpus_cases() -> list[tuple[str, bool]]:
         )
 
     def hits(sample, check_name):
+        """处理 `hits` 相关逻辑。
+
+        Args:
+            sample: object => `sample` 参数。
+            check_name: object => `check_name` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         return any(f.check == check_name
                    for f in check_clarify_contract([sample], BY_NAME))
 
@@ -262,6 +285,15 @@ def corpus_cases() -> list[tuple[str, bool]]:
 
     # 1d) REFUSE 的行为契约（架构 V1 的 Behavior Contract）
     def refusal(ans, sid="rf1"):
+        """处理 `refusal` 相关逻辑。
+
+        Args:
+            ans: object => `ans` 参数。
+            sid: object => `sid` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         return Sample(
             id=sid, template_id=f"rf__{sid}", category="refusal", schema_version=VERSION,
             system="你是 ESA。", tool_names=["arxiv_search"],
@@ -270,6 +302,15 @@ def corpus_cases() -> list[tuple[str, bool]]:
         )
 
     def rf_hits(ans, check_name):
+        """处理 `rf_hits` 相关逻辑。
+
+        Args:
+            ans: object => `ans` 参数。
+            check_name: object => `check_name` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         return any(f.check == check_name for f in check_refusal_contract([refusal(ans)]))
 
     # 该报的报：标成 refusal 却照做了 —— 没有工具调用、结构合法、类别也对，
@@ -335,6 +376,15 @@ def corpus_cases() -> list[tuple[str, bool]]:
     patterns = [re.compile(r"^未找到课程 '.+' 的知识点，请确认课程名$")]
 
     def toolerr(sid: str, content) -> Sample:
+        """处理 `toolerr` 相关逻辑。
+
+        Args:
+            sid: str => `sid` 参数。
+            content: object => 待处理内容。
+
+        Returns:
+            Sample => 处理结果。
+        """
         return make(id=sid, category="tool_error", tool_names=["web_search"], turns=[
             Turn(role="user", content="搜一下最新的大模型进展"),
             Turn(role="tool_call", calls=[ToolCall("web_search", {"query": "大模型 最新进展"})]),
@@ -365,6 +415,16 @@ def corpus_cases() -> list[tuple[str, bool]]:
     # 写死成 True，于是「刚做完哈希表的练习，答错了」的 gold 也是 correct=True。
     # 结构全合法、schema 全通过、grounding 也过 —— 全绿，只有语义是反的。
     def answered(q: str, correct: bool, sid: str) -> Sample:
+        """处理 `answered` 相关逻辑。
+
+        Args:
+            q: str => `q` 参数。
+            correct: bool => `correct` 参数。
+            sid: str => `sid` 参数。
+
+        Returns:
+            Sample => 处理结果。
+        """
         return make(id=sid, tool_names=["record_answer"], turns=[
             Turn(role="user", content=q),
             Turn(role="tool_call", calls=[ToolCall("record_answer", {"kp_id": "哈希表", "correct": correct})]),
@@ -385,6 +445,15 @@ def corpus_cases() -> list[tuple[str, bool]]:
 
     # 6) 「该调 B 却标成不该调 A」
     def neg(answer: str, sid: str) -> Sample:
+        """处理 `neg` 相关逻辑。
+
+        Args:
+            answer: str => `answer` 参数。
+            sid: str => `sid` 参数。
+
+        Returns:
+            Sample => 处理结果。
+        """
         return make(id=sid, category="hard_negative", tool_names=["retrieve_knowledge", "calculator"],
                     turns=[Turn(role="user", content="帮我算 2 的 16 次方"),
                            Turn(role="assistant", content=answer)])
@@ -400,6 +469,7 @@ def corpus_cases() -> list[tuple[str, bool]]:
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     passed = failed = 0
     for name, sample, expect in CASES:
         checks = {f.check for f in validate_sample(sample, BY_NAME, VERSION)}

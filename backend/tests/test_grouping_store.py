@@ -1,3 +1,7 @@
+# backend/tests/test_grouping_store.py
+
+"""验证 `grouping_store` 相关行为与回归场景。"""
+
 import sqlite3
 
 from backend.core.stores.chat_store import ChatStore
@@ -7,6 +11,7 @@ from backend.core.utils.models import UserRecord
 
 
 def _setup_stores(db_path):
+    """处理 `_setup_stores` 相关逻辑。"""
     user_store = UserStore(db_path)
     for user_id in ("u1", "u2"):
         assert user_store.create(
@@ -23,6 +28,7 @@ def _setup_stores(db_path):
 
 
 def test_legacy_database_migrates_and_supports_grouping(tmp_path):
+    """验证 `legacy_database_migrates_and_supports_grouping` 场景。"""
     db_path = tmp_path / "legacy.db"
     connection = sqlite3.connect(db_path)
     connection.execute(
@@ -71,6 +77,7 @@ def test_legacy_database_migrates_and_supports_grouping(tmp_path):
 
 
 def test_move_delete_and_ownership_guards(tmp_path):
+    """验证 `move_delete_and_ownership_guards` 场景。"""
     db_path = tmp_path / "esa.db"
     chat_store, group_store = _setup_stores(db_path)
 
@@ -102,6 +109,7 @@ def test_move_delete_and_ownership_guards(tmp_path):
 
 
 def test_group_limit_is_enforced(tmp_path):
+    """验证 `group_limit_is_enforced` 场景。"""
     db_path = tmp_path / "esa.db"
     _, group_store = _setup_stores(db_path)
 
@@ -111,6 +119,7 @@ def test_group_limit_is_enforced(tmp_path):
 
 
 def test_list_conversations_can_filter_group_and_ungrouped(tmp_path):
+    """验证 `list_conversations_can_filter_group_and_ungrouped` 场景。"""
     db_path = tmp_path / "esa.db"
     chat_store, group_store = _setup_stores(db_path)
     group = group_store.create_group("u1", "系统")
@@ -130,6 +139,7 @@ def test_list_conversations_can_filter_group_and_ungrouped(tmp_path):
 
 
 def test_update_conversation_is_atomic_and_user_scoped(tmp_path):
+    """验证 `update_conversation_is_atomic_and_user_scoped` 场景。"""
     db_path = tmp_path / "esa.db"
     chat_store, group_store = _setup_stores(db_path)
 
@@ -162,6 +172,7 @@ def test_update_conversation_is_atomic_and_user_scoped(tmp_path):
 
 
 def test_update_conversation_can_move_to_ungrouped(tmp_path):
+    """验证 `update_conversation_can_move_to_ungrouped` 场景。"""
     db_path = tmp_path / "esa.db"
     chat_store, group_store = _setup_stores(db_path)
 

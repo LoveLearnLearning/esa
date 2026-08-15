@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/docling/__main__.py
+
 """Command-line entry point for one Docling-to-DocIR conversion."""
 
 from __future__ import annotations
@@ -10,6 +12,14 @@ from .models import DoclingAdapterConfig
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     parser = argparse.ArgumentParser(
         description="Convert one local document into a self-contained DocIR bundle"
     )
@@ -41,4 +51,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

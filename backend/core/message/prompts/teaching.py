@@ -1,5 +1,8 @@
+# backend/core/message/prompts/teaching.py
+
+"""提供 `teaching` 相关功能。"""
+
 WORKSPACE_PROMPT = (
     "当前处于教学空间。只处理教师已获授权的课程班与作业；"
     "不得读取学生私有对话、个人长期记忆或未发布反馈。"
 )
-

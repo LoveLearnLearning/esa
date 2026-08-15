@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/review.py
+
 """人工复核台账的读取与应用。
 
 `needs_review` 由生成器按**组**写死，粒度太粗：审完一条也没法单独放行，

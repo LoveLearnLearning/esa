@@ -1,3 +1,5 @@
+# backend/scripts/cleanup_profile_dimensions.py
+
 """定期清理过期的画像维度记录
 
 作为 cron job 运行:
@@ -32,6 +34,7 @@ def cleanup(retention_days: int, db_path: str | Path) -> int:
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     parser = argparse.ArgumentParser(description="清理过期的画像维度记录")
     parser.add_argument(
         "--retention-days",

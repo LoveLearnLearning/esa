@@ -1,3 +1,5 @@
+# backend/core/utils/tool_arguments.py
+
 """Tool argument normalization shared by protocol parsing and execution."""
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ def declared_schema_type(specification: dict[str, Any]) -> str | None:
 
 
 def _normalize_boolean(key: str, value: Any) -> bool:
+    """规范化 `boolean` 相关数据。"""
     if isinstance(value, bool):
         return value
     if isinstance(value, int) and not isinstance(value, bool) and value in (0, 1):
@@ -38,6 +41,7 @@ def _normalize_boolean(key: str, value: Any) -> bool:
 
 
 def _normalize_integer(key: str, value: Any) -> int:
+    """规范化 `integer` 相关数据。"""
     if isinstance(value, bool):
         raise ValueError(f"参数 {key!r} 必须是整数")
     if isinstance(value, int):
@@ -55,6 +59,7 @@ def _normalize_integer(key: str, value: Any) -> int:
 
 
 def _normalize_number(key: str, value: Any) -> int | float:
+    """规范化 `number` 相关数据。"""
     if isinstance(value, bool):
         raise ValueError(f"参数 {key!r} 必须是数值")
     if isinstance(value, (int, float)):
@@ -77,6 +82,7 @@ def _normalize_container(
     expected_type: type,
     type_name: str,
 ) -> Any:
+    """规范化 `container` 相关数据。"""
     if isinstance(value, expected_type):
         return value
     if isinstance(value, str):
@@ -143,6 +149,7 @@ def normalize_tool_arguments(
 def schemas_by_name(
     schemas: list[dict[str, Any]] | tuple[dict[str, Any], ...] | None,
 ) -> dict[str, dict[str, Any]]:
+    """处理 `schemas_by_name` 相关逻辑。"""
     if not schemas:
         return {}
     result: dict[str, dict[str, Any]] = {}

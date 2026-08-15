@@ -1,3 +1,5 @@
+# backend/agent/memories/core_memory_service.py
+
 """CoreMemory V2 application service and short-lived retrieval cache."""
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ _KEY_RE = re.compile(r"[^a-z0-9_\u4e00-\u9fff]+")
 
 
 def _key(value: str) -> str:
+    """处理 `_key` 相关逻辑。"""
     normalized = _KEY_RE.sub("_", value.strip().casefold()).strip("_")
     if not normalized:
         raise ValueError("memory_key cannot be empty")
@@ -28,10 +31,12 @@ def _key(value: str) -> str:
 
 
 def _same(left: str, right: str) -> bool:
+    """处理 `_same` 相关逻辑。"""
     return " ".join(left.casefold().split()) == " ".join(right.casefold().split())
 
 
 class CoreMemoryService:
+    """提供 `core memory service` 领域服务。"""
     def __init__(
         self,
         store: CoreMemoryStore,
@@ -41,6 +46,7 @@ class CoreMemoryService:
         projection=None,
         cache_ttl_seconds: float = 60.0,
     ) -> None:
+        """初始化 `CoreMemoryService` 实例。"""
         self.store = store
         self.policy = policy or CoreMemoryPolicy()
         self.retrieval = retrieval or CoreMemoryRetrieval()
@@ -53,6 +59,7 @@ class CoreMemoryService:
 
     @staticmethod
     def _source_conversation(context: ToolExecutionContext) -> str | None:
+        """处理 `_source_conversation` 相关逻辑。"""
         return (
             None
             if context.conversation_id == "memory-management"
@@ -67,6 +74,17 @@ class CoreMemoryService:
         category: str | None = None,
         limit: int = 5,
     ) -> list[dict[str, object]]:
+        """搜索 `search` 相关数据。
+
+        Args:
+            context: ToolExecutionContext => `context` 参数。
+            query: str => 查询文本。
+            category: str | None => `category` 参数。
+            limit: int => 返回数量上限。
+
+        Returns:
+            list[dict[str, object]] => 处理结果。
+        """
         scopes = self._visible_scopes(context, "memory.search")
         normalized_query = " ".join(query.casefold().split())
         revision = self.store.user_revision(context.user_id)
@@ -106,6 +124,7 @@ class CoreMemoryService:
         return [dict(item) for item in result]
 
     def list_visible(self, context: ToolExecutionContext) -> list[dict[str, object]]:
+        """列出 `visible` 相关数据。"""
         scopes = self._visible_scopes(context, "memory.read")
         return [
             item.to_dict() for item in self.store.list_visible(context.user_id, scopes)
@@ -116,6 +135,7 @@ class CoreMemoryService:
         context: ToolExecutionContext,
         event: str,
     ) -> tuple[MemoryScope, ...]:
+        """处理 `_visible_scopes` 相关逻辑。"""
         try:
             scopes = self.policy.visible_scopes(context)
         except PermissionError:
@@ -134,6 +154,7 @@ class CoreMemoryService:
         return scopes
 
     def _policy_value(self, context: ToolExecutionContext, operation):
+        """处理 `_policy_value` 相关逻辑。"""
         try:
             return operation()
         except PermissionError:
@@ -150,7 +171,9 @@ class CoreMemoryService:
         scope_type: str,
         content: str,
     ) -> tuple[MemoryScope, str]:
+        """写入 `scope content` 相关数据。"""
         def resolve() -> tuple[MemoryScope, str]:
+            """解析 `resolve` 相关数据。"""
             self.policy.ensure_write(context)
             return (
                 self.policy.resolve_scope(context, scope_type),
@@ -160,6 +183,7 @@ class CoreMemoryService:
         return self._policy_value(context, resolve)
 
     def _ensure_write(self, context: ToolExecutionContext) -> None:
+        """确保 `write` 相关数据。"""
         self._policy_value(context, lambda: self.policy.ensure_write(context))
 
     def _require_visible_record(
@@ -167,6 +191,7 @@ class CoreMemoryService:
         context: ToolExecutionContext,
         memory_id: str,
     ) -> CoreMemoryRecord:
+        """处理 `_require_visible_record` 相关逻辑。"""
         current = self.store.get(memory_id, context.user_id)
         if current is None:
             raise KeyError(memory_id)
@@ -189,6 +214,16 @@ class CoreMemoryService:
     def list_all(
         self, user_id: str, *, limit: int = 100, offset: int = 0
     ) -> list[dict[str, object]]:
+        """列出 `all` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            limit: int => 返回数量上限。
+            offset: int => 分页偏移量。
+
+        Returns:
+            list[dict[str, object]] => 处理结果。
+        """
         return [
             item.to_dict()
             for item in self.store.list_user(user_id, limit=limit, offset=offset)
@@ -203,6 +238,18 @@ class CoreMemoryService:
         category: str = "general",
         scope_type: str = "global",
     ) -> dict[str, object]:
+        """保存 `explicit` 相关数据。
+
+        Args:
+            context: ToolExecutionContext => `context` 参数。
+            memory_key: str => `memory_key` 参数。
+            content: str => 待处理内容。
+            category: str => `category` 参数。
+            scope_type: str => `scope_type` 参数。
+
+        Returns:
+            dict[str, object] => 处理结果。
+        """
         scope, content = self._write_scope_content(context, scope_type, content)
         memory_key = _key(memory_key)
         existing = self.store.get_by_key(context.user_id, memory_key, scope)
@@ -246,6 +293,18 @@ class CoreMemoryService:
         category: str = "general",
         scope_type: str = "global",
     ) -> MemoryCandidate:
+        """处理 `propose_inferred` 相关逻辑。
+
+        Args:
+            context: ToolExecutionContext => `context` 参数。
+            memory_key: str => `memory_key` 参数。
+            content: str => 待处理内容。
+            category: str => `category` 参数。
+            scope_type: str => `scope_type` 参数。
+
+        Returns:
+            MemoryCandidate => 处理结果。
+        """
         scope, content = self._write_scope_content(context, scope_type, content)
         memory_key = _key(memory_key)
         existing = self.store.get_by_key(context.user_id, memory_key, scope)
@@ -266,6 +325,15 @@ class CoreMemoryService:
     def create_for_user(
         self, context: ToolExecutionContext, **values
     ) -> CoreMemoryRecord:
+        """创建 `for user` 相关数据。
+
+        Args:
+            context: ToolExecutionContext => `context` 参数。
+            values: object => `values` 参数。
+
+        Returns:
+            CoreMemoryRecord => 处理结果。
+        """
         result = self.save_explicit(context, **values)
         memory = result.get("memory")
         if not isinstance(memory, dict):
@@ -283,6 +351,18 @@ class CoreMemoryService:
         content: str | None = None,
         category: str | None = None,
     ) -> CoreMemoryRecord:
+        """更新 `update` 相关数据。
+
+        Args:
+            context: ToolExecutionContext => `context` 参数。
+            memory_id: str => memory ID。
+            expected_revision: int => `expected_revision` 参数。
+            content: str | None => 待处理内容。
+            category: str | None => `category` 参数。
+
+        Returns:
+            CoreMemoryRecord => 处理结果。
+        """
         self._ensure_write(context)
         current = self._require_visible_record(context, memory_id)
         next_content = self._policy_value(
@@ -303,6 +383,16 @@ class CoreMemoryService:
     def suppress(
         self, context: ToolExecutionContext, memory_id: str, suppressed: bool
     ) -> CoreMemoryRecord:
+        """处理 `suppress` 相关逻辑。
+
+        Args:
+            context: ToolExecutionContext => `context` 参数。
+            memory_id: str => memory ID。
+            suppressed: bool => `suppressed` 参数。
+
+        Returns:
+            CoreMemoryRecord => 处理结果。
+        """
         self._ensure_write(context)
         self._require_visible_record(context, memory_id)
         record = self.store.set_suppressed(
@@ -328,6 +418,15 @@ class CoreMemoryService:
         return record
 
     def forget(self, context: ToolExecutionContext, memory_id: str) -> bool:
+        """处理 `forget` 相关逻辑。
+
+        Args:
+            context: ToolExecutionContext => `context` 参数。
+            memory_id: str => memory ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         self._ensure_write(context)
         current = self._require_visible_record(context, memory_id)
         forgotten = self.store.forget(memory_id, context.user_id, context.request_id)
@@ -348,6 +447,15 @@ class CoreMemoryService:
         return forgotten
 
     def versions(self, user_id: str, memory_id: str) -> list[dict]:
+        """处理 `versions` 相关逻辑。
+
+        Args:
+            user_id: str => 用户 ID。
+            memory_id: str => memory ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         if self.store.get(memory_id, user_id) is None:
             raise KeyError(memory_id)
         return self.store.versions(memory_id, user_id)
@@ -359,6 +467,17 @@ class CoreMemoryService:
         revision: int,
         expected_revision: int,
     ) -> CoreMemoryRecord:
+        """处理 `restore_version` 相关逻辑。
+
+        Args:
+            context: ToolExecutionContext => `context` 参数。
+            memory_id: str => memory ID。
+            revision: int => `revision` 参数。
+            expected_revision: int => `expected_revision` 参数。
+
+        Returns:
+            CoreMemoryRecord => 处理结果。
+        """
         self._ensure_write(context)
         self._require_visible_record(context, memory_id)
         record = self.store.restore_version(
@@ -368,6 +487,7 @@ class CoreMemoryService:
         return record
 
     def list_candidates(self, user_id: str) -> list[dict[str, object]]:
+        """列出 `candidates` 相关数据。"""
         return [item.to_dict() for item in self.store.list_candidates(user_id)]
 
     def accept_candidate(
@@ -379,6 +499,18 @@ class CoreMemoryService:
         category: str | None = None,
         scope_type: str | None = None,
     ) -> CoreMemoryRecord:
+        """处理 `accept_candidate` 相关逻辑。
+
+        Args:
+            context: ToolExecutionContext => `context` 参数。
+            candidate_id: str => candidate ID。
+            content: str | None => 待处理内容。
+            category: str | None => `category` 参数。
+            scope_type: str | None => `scope_type` 参数。
+
+        Returns:
+            CoreMemoryRecord => 处理结果。
+        """
         self._ensure_write(context)
         candidate = self.store.get_candidate(candidate_id, context.user_id)
         if candidate is None or candidate.status != "pending":
@@ -425,6 +557,16 @@ class CoreMemoryService:
         *,
         request_id: str = "",
     ) -> bool:
+        """处理 `reject_candidate` 相关逻辑。
+
+        Args:
+            user_id: str => 用户 ID。
+            candidate_id: str => candidate ID。
+            request_id: str => request ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         return self.store.decide_candidate(
             candidate_id,
             user_id,
@@ -433,6 +575,7 @@ class CoreMemoryService:
         )
 
     def _project(self, record: CoreMemoryRecord, request_id: str) -> None:
+        """处理 `_project` 相关逻辑。"""
         if self.projection is None:
             return
         try:

@@ -1,5 +1,7 @@
 # backend/core/web/routers/chat.py
 
+"""提供 `chat` 相关功能。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -65,6 +67,7 @@ CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 
 
 def _mm_sessions(request: Request) -> MultimodalSessionService:
+    """处理 `_mm_sessions` 相关逻辑。"""
     service = getattr(request.app.state, "mm_sessions", None)
     if service is None:
         raise HTTPException(
@@ -75,6 +78,7 @@ def _mm_sessions(request: Request) -> MultimodalSessionService:
 
 
 def _attachment_store(request: Request) -> UserAttachmentStore:
+    """处理 `_attachment_store` 相关逻辑。"""
     store = getattr(request.app.state, "user_attachment_store", None)
     if not isinstance(store, UserAttachmentStore):
         raise HTTPException(
@@ -85,6 +89,7 @@ def _attachment_store(request: Request) -> UserAttachmentStore:
 
 
 def _attachment_out(item: StoredAttachment) -> dict:
+    """处理 `_attachment_out` 相关逻辑。"""
     return {
         "id": item.attachment_id,
         "filename": item.filename,
@@ -105,6 +110,7 @@ def _attachment_inventory(
     conversation_id: str,
     attachment_ids: list[str],
 ) -> tuple[tuple[dict, ...], list[dict]]:
+    """处理 `_attachment_inventory` 相关逻辑。"""
     if not attachment_ids:
         return (), []
     store = _attachment_store(request)
@@ -146,6 +152,7 @@ def _attachment_inventory(
 
 
 def _turn_coordinator(request: Request) -> ConversationTurnCoordinator:
+    """处理 `_turn_coordinator` 相关逻辑。"""
     coordinator = getattr(
         request.app.state,
         "conversation_turn_coordinator",
@@ -160,6 +167,7 @@ async def _acquire_turn(
     request: Request,
     conversation_id: str,
 ) -> ConversationTurnLease:
+    """处理 `_acquire_turn` 相关逻辑。"""
     try:
         return await _turn_coordinator(request).acquire(conversation_id)
     except ConversationTurnTargetMissingError as error:
@@ -222,6 +230,7 @@ def _validate_group_owned(
 
 
 def _classroom_binding_out(request: Request, binding: dict | None) -> dict | None:
+    """处理 `_classroom_binding_out` 相关逻辑。"""
     if binding is None:
         return None
     result = dict(binding)
@@ -384,6 +393,7 @@ def _runtime_dependencies(
     request: Request,
     ctx: MessageContext,
 ) -> AgentRuntimeDependencies:
+    """处理 `_runtime_dependencies` 相关逻辑。"""
     state = request.app.state
     return AgentRuntimeDependencies(
         username=ctx.user.username,
@@ -420,6 +430,7 @@ def _build_run_spec(
     ctx: MessageContext,
     authorized_attachments: tuple[dict, ...],
 ):
+    """构建 `run spec` 相关数据。"""
     conversation = _load_owned(request, conversation_id, session)
     identity = resolve_identity(session, ctx.user)
     project_id = conversation.get("research_project_id")
@@ -508,6 +519,16 @@ def list_conversations(
     session: CurrentSession,
     workspace_type: str | None = None,
 ) -> list[dict]:
+    """列出 `conversations` 相关数据。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        workspace_type: str | None => `workspace_type` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     chat_store: ChatStore = request.app.state.chat_store
     if workspace_type is not None:
         user_store: UserStore = request.app.state.user_store
@@ -538,6 +559,16 @@ def create_conversation(
     session: CurrentSession,
     body: ConversationCreateRequest | None = None,
 ) -> dict:
+    """创建 `conversation` 相关数据。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        body: ConversationCreateRequest | None => `body` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     body = body or ConversationCreateRequest()
     _validate_group_owned(request, body.group_id, session)
     user_store: UserStore = request.app.state.user_store
@@ -603,6 +634,14 @@ def update_conversation(
     request: Request,
     session: CurrentSession,
 ) -> None:
+    """更新 `conversation` 相关数据。
+
+    Args:
+        conversation_id: str => 对话 ID。
+        body: ConversationPatchRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     _load_owned(request, conversation_id, session)
     updates = body.model_dump(exclude_unset=True)
 
@@ -663,6 +702,13 @@ async def delete_conversation(
     request: Request,
     session: CurrentSession,
 ) -> None:
+    """删除 `conversation` 相关数据。
+
+    Args:
+        conversation_id: str => 对话 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     _load_owned(request, conversation_id, session)
     chat_store: ChatStore = request.app.state.chat_store
     chat_store.delete_conversation(conversation_id)
@@ -684,6 +730,17 @@ async def upload_attachment(
     session: CurrentSession,
     file: Annotated[UploadFile, File()],
 ) -> dict:
+    """处理 `upload_attachment` 相关逻辑。
+
+    Args:
+        conversation_id: str => 对话 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        file: Annotated[UploadFile, File()] => `file` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     _load_owned(request, conversation_id, session)
     filename = Path((file.filename or "attachment").replace("\\", "/")).name
     suffix = Path(filename).suffix.lower()
@@ -725,6 +782,14 @@ async def delete_attachment(
     request: Request,
     session: CurrentSession,
 ) -> None:
+    """删除 `attachment` 相关数据。
+
+    Args:
+        conversation_id: str => 对话 ID。
+        attachment_id: str => 附件 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     _load_owned(request, conversation_id, session)
     removed = _attachment_store(request).delete(
         user_id=session.user_id,
@@ -746,6 +811,18 @@ def get_attachment(
     session: CurrentSession,
     download: bool = False,
 ) -> FileResponse:
+    """获取 `attachment` 相关数据。
+
+    Args:
+        conversation_id: str => 对话 ID。
+        attachment_id: str => 附件 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        download: bool => `download` 参数。
+
+    Returns:
+        FileResponse => 处理结果。
+    """
     _load_owned(request, conversation_id, session)
     item = _attachment_store(request).get(
         user_id=session.user_id,
@@ -769,6 +846,16 @@ def get_messages(
     request: Request,
     session: CurrentSession,
 ) -> list[dict]:
+    """获取 `messages` 相关数据。
+
+    Args:
+        conversation_id: str => 对话 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     _load_owned(request, conversation_id, session)
     chat_store: ChatStore = request.app.state.chat_store
     return chat_store.get_history(conversation_id)
@@ -782,6 +869,17 @@ async def send_message(
     session: CurrentSession,
 ) -> list[dict]:
     # 在排队前先校验归属，避免无权用户占用其他会话的租约。
+    """发送 `message` 相关数据。
+
+    Args:
+        conversation_id: str => 对话 ID。
+        body: SendMessageRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     _load_owned(request, conversation_id, session)
     lease = await _acquire_turn(request, conversation_id)
     async with lease:
@@ -824,6 +922,17 @@ async def stream_message(
     request: Request,
     session: CurrentSession,
 ) -> StreamingResponse:
+    """流式处理 `message` 相关数据。
+
+    Args:
+        conversation_id: str => 对话 ID。
+        body: SendMessageRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        StreamingResponse => 处理结果。
+    """
     _load_owned(request, conversation_id, session)
     lease = await _acquire_turn(request, conversation_id)
     try:
@@ -854,6 +963,7 @@ async def stream_message(
         raise
 
     async def event_stream() -> AsyncIterator[str]:
+        """处理 `event_stream` 相关逻辑。"""
         yield encode_sse(
             "start",
             {

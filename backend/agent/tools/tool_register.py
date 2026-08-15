@@ -1,4 +1,6 @@
-# backend/core/agent/tools/tool_register.py
+# backend/agent/tools/tool_register.py
+
+"""提供 `tool_register` 相关功能。"""
 
 
 from collections.abc import Callable
@@ -20,7 +22,9 @@ F = TypeVar(
 
 
 class ToolRegistry:
+    """封装 `ToolRegistry` 的状态与行为。"""
     def __init__(self) -> None:
+        """初始化 `ToolRegistry` 实例。"""
         self.registered_tools: dict[str, tuple[dict[str, Any], ToolFn]] = {}
         # 先创建一个存 registered_tools 的字典
 

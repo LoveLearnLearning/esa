@@ -1,3 +1,7 @@
+# backend/core/web/routers/teaching.py
+
+"""提供 `teaching` 相关功能。"""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -22,6 +26,7 @@ CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 
 
 def _context(request: Request, session: SessionPrincipal) -> tuple[UserRecord, TeachingStore]:
+    """处理 `_context` 相关逻辑。"""
     user_store: UserStore = request.app.state.user_store
     user = user_store.get_by_id(session.user_id)
     if user is None or user.account_role != "teacher":
@@ -30,6 +35,7 @@ def _context(request: Request, session: SessionPrincipal) -> tuple[UserRecord, T
 
 
 def _owned_class(store: TeachingStore, class_id: str, teacher_id: str) -> dict:
+    """处理 `_owned_class` 相关逻辑。"""
     item = store.get_class(class_id)
     if item is None or item["owner_teacher_id"] != teacher_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "班级不存在")
@@ -37,6 +43,7 @@ def _owned_class(store: TeachingStore, class_id: str, teacher_id: str) -> dict:
 
 
 def _owned_assignment(store: TeachingStore, assignment_id: str, teacher_id: str) -> dict:
+    """处理 `_owned_assignment` 相关逻辑。"""
     item = store.get_assignment(assignment_id)
     if item is None or item["owner_teacher_id"] != teacher_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "作业不存在")
@@ -44,6 +51,7 @@ def _owned_assignment(store: TeachingStore, assignment_id: str, teacher_id: str)
 
 
 def _owned_submission(store: TeachingStore, submission_id: str, teacher_id: str) -> dict:
+    """处理 `_owned_submission` 相关逻辑。"""
     item = store.get_submission(submission_id)
     if item is None or item["owner_teacher_id"] != teacher_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "提交不存在")
@@ -52,18 +60,46 @@ def _owned_submission(store: TeachingStore, submission_id: str, teacher_id: str)
 
 @router.get("/overview")
 def overview(request: Request, session: CurrentSession) -> dict:
+    """处理 `overview` 相关逻辑。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     return {**store.dashboard(user.id), "classes": store.list_teacher_classes(user.id)}
 
 
 @router.get("/classes")
 def classes(request: Request, session: CurrentSession) -> list[dict]:
+    """处理 `classes` 相关逻辑。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     user, store = _context(request, session)
     return store.list_teacher_classes(user.id)
 
 
 @router.post("/classes", status_code=status.HTTP_201_CREATED)
 def create_class(body: ClassCreateRequest, request: Request, session: CurrentSession) -> dict:
+    """创建 `class` 相关数据。
+
+    Args:
+        body: ClassCreateRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     course = request.app.state.knowledge_graph_store.resolve_course_name(body.canonical_course)
     if course is None:
@@ -84,6 +120,16 @@ def create_class(body: ClassCreateRequest, request: Request, session: CurrentSes
 
 @router.get("/classes/{class_id}")
 def class_detail(class_id: str, request: Request, session: CurrentSession) -> dict:
+    """处理 `class_detail` 相关逻辑。
+
+    Args:
+        class_id: str => 班级 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     item = _owned_class(store, class_id, user.id)
     return {
@@ -97,6 +143,17 @@ def class_detail(class_id: str, request: Request, session: CurrentSession) -> di
 def invite(
     class_id: str, body: InviteStudentRequest, request: Request, session: CurrentSession
 ) -> dict:
+    """处理 `invite` 相关逻辑。
+
+    Args:
+        class_id: str => 班级 ID。
+        body: InviteStudentRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     classroom = _owned_class(store, class_id, user.id)
     if classroom["status"] != "active":
@@ -111,6 +168,14 @@ def invite(
 def remove_member(
     class_id: str, student_id: str, request: Request, session: CurrentSession
 ) -> None:
+    """移除 `member` 相关数据。
+
+    Args:
+        class_id: str => 班级 ID。
+        student_id: str => student ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     user, store = _context(request, session)
     _owned_class(store, class_id, user.id)
     if not store.remove_member(class_id=class_id, student_id=student_id, teacher_id=user.id):
@@ -121,6 +186,17 @@ def remove_member(
 def create_assignment(
     class_id: str, body: AssignmentCreateRequest, request: Request, session: CurrentSession
 ) -> dict:
+    """创建 `assignment` 相关数据。
+
+    Args:
+        class_id: str => 班级 ID。
+        body: AssignmentCreateRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     classroom = _owned_class(store, class_id, user.id)
     if classroom["status"] != "active":
@@ -149,6 +225,16 @@ def create_assignment(
 
 @router.post("/assignments/{assignment_id}/publish")
 def publish_assignment(assignment_id: str, request: Request, session: CurrentSession) -> dict:
+    """处理 `publish_assignment` 相关逻辑。
+
+    Args:
+        assignment_id: str => 作业 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     _owned_assignment(store, assignment_id, user.id)
     if not store.publish_assignment(assignment_id=assignment_id, teacher_id=user.id):
@@ -158,6 +244,16 @@ def publish_assignment(assignment_id: str, request: Request, session: CurrentSes
 
 @router.get("/assignments/{assignment_id}/submissions")
 def submissions(assignment_id: str, request: Request, session: CurrentSession) -> list[dict]:
+    """处理 `submissions` 相关逻辑。
+
+    Args:
+        assignment_id: str => 作业 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     user, store = _context(request, session)
     _owned_assignment(store, assignment_id, user.id)
     return store.list_submissions(assignment_id)
@@ -165,12 +261,32 @@ def submissions(assignment_id: str, request: Request, session: CurrentSession) -
 
 @router.get("/submissions/{submission_id}")
 def submission_detail(submission_id: str, request: Request, session: CurrentSession) -> dict:
+    """处理 `submission_detail` 相关逻辑。
+
+    Args:
+        submission_id: str => submission ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     return _owned_submission(store, submission_id, user.id)
 
 
 @router.post("/submissions/{submission_id}/analyze")
 async def analyze_submission(submission_id: str, request: Request, session: CurrentSession) -> dict:
+    """处理 `analyze_submission` 相关逻辑。
+
+    Args:
+        submission_id: str => submission ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     _owned_submission(store, submission_id, user.id)
     service = getattr(request.app.state, "teaching_analysis_service", None)
@@ -183,6 +299,16 @@ async def analyze_submission(submission_id: str, request: Request, session: Curr
 async def analyze_assignment(
     assignment_id: str, request: Request, session: CurrentSession
 ) -> dict:
+    """处理 `analyze_assignment` 相关逻辑。
+
+    Args:
+        assignment_id: str => 作业 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     _owned_assignment(store, assignment_id, user.id)
     service = getattr(request.app.state, "teaching_analysis_service", None)
@@ -213,6 +339,17 @@ def review_submission(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """处理 `review_submission` 相关逻辑。
+
+    Args:
+        submission_id: str => submission ID。
+        body: SubmissionReviewRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     submission = _owned_submission(store, submission_id, user.id)
     answers = {item["answer_id"]: item for item in submission["answers"]}
@@ -233,6 +370,16 @@ def review_submission(
 
 @router.post("/submissions/{submission_id}/publish-feedback")
 def publish_feedback(submission_id: str, request: Request, session: CurrentSession) -> dict:
+    """处理 `publish_feedback` 相关逻辑。
+
+    Args:
+        submission_id: str => submission ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     submission = _owned_submission(store, submission_id, user.id)
     published = store.mark_feedback_published(submission_id=submission_id, teacher_id=user.id)
@@ -268,6 +415,16 @@ def publish_feedback(submission_id: str, request: Request, session: CurrentSessi
 
 @router.get("/classes/{class_id}/dashboard")
 def class_dashboard(class_id: str, request: Request, session: CurrentSession) -> dict:
+    """处理 `class_dashboard` 相关逻辑。
+
+    Args:
+        class_id: str => 班级 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     classroom = _owned_class(store, class_id, user.id)
     members = [item for item in store.list_members(class_id) if item["status"] == "active"]
@@ -359,6 +516,17 @@ def class_dashboard(class_id: str, request: Request, session: CurrentSession) ->
 def student_detail(
     class_id: str, student_id: str, request: Request, session: CurrentSession
 ) -> dict:
+    """处理 `student_detail` 相关逻辑。
+
+    Args:
+        class_id: str => 班级 ID。
+        student_id: str => student ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user, store = _context(request, session)
     _owned_class(store, class_id, user.id)
     membership = store.get_membership_for_student(class_id=class_id, student_id=student_id)

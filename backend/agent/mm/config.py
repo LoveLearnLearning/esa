@@ -1,3 +1,5 @@
+# backend/agent/mm/config.py
+
 """多模态附件摄取的集中配置。"""
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from backend.core.utils import config as app_config
 
 
 def _positive_int(name: str, default: int) -> int:
+    """处理 `_positive_int` 相关逻辑。"""
     value = int(os.environ.get(name, default))
     if value <= 0:
         raise ValueError(f"{name} must be positive")
@@ -19,6 +22,7 @@ def _positive_int(name: str, default: int) -> int:
 
 
 def _positive_float(name: str, default: float) -> float:
+    """处理 `_positive_float` 相关逻辑。"""
     value = float(os.environ.get(name, default))
     if value <= 0:
         raise ValueError(f"{name} must be positive")
@@ -27,6 +31,7 @@ def _positive_float(name: str, default: float) -> float:
 
 @dataclass(frozen=True)
 class MMConfig:
+    """保存 `m m config` 配置。"""
     artifact_root: Path
     direct_context_token_limit: int
     tokenizer_path: str
@@ -47,6 +52,7 @@ class MMConfig:
 
     @classmethod
     def from_env(cls) -> "MMConfig":
+        """处理 `from_env` 相关逻辑。"""
         root = workspace_root()
         revision = os.environ.get("MM_VLM_MODEL_REVISION")
         enabled = os.environ.get("MM_ENABLED", "false").strip().lower()

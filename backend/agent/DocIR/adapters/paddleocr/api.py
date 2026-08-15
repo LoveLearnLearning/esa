@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/paddleocr/api.py
+
 """High-level, atomic source-to-DocIR API for PaddleOCR."""
 
 from __future__ import annotations

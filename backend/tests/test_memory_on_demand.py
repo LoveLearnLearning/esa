@@ -1,12 +1,18 @@
+# backend/tests/test_memory_on_demand.py
+
+"""验证 `memory_on_demand` 相关行为与回归场景。"""
+
 from backend.agent.memories.core_memory import CoreMemory
 
 
 def test_core_memory_no_longer_owns_prompt_builder(tmp_path):
+    """验证 `core_memory_no_longer_owns_prompt_builder` 场景。"""
     store = CoreMemory(tmp_path / "core.db")
     assert not hasattr(store, "build_context")
 
 
 def test_core_memory_search_returns_only_relevant_limited_items(tmp_path):
+    """验证 `core_memory_search_returns_only_relevant_limited_items` 场景。"""
     store = CoreMemory(tmp_path / "core.db")
     store.set("alice", "python_language", "用户更喜欢 Python 示例", "preference")
     store.set("alice", "current_project", "正在实现 ESA 学习 Agent", "project")
@@ -19,6 +25,7 @@ def test_core_memory_search_returns_only_relevant_limited_items(tmp_path):
 
 
 def test_core_memory_search_does_not_fallback_to_all_memories(tmp_path):
+    """验证 `core_memory_search_does_not_fallback_to_all_memories` 场景。"""
     store = CoreMemory(tmp_path / "core.db")
     store.set("alice", "python_language", "用户更喜欢 Python 示例", "preference")
 

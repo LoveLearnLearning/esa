@@ -1,3 +1,5 @@
+# backend/agent/tools/learning/mastery.py
+
 """Pure learning-domain helpers shared by web and contextual tool adapters."""
 
 from __future__ import annotations
@@ -16,6 +18,18 @@ class EsaMasteryStore(MasteryStore):
         mastery_threshold: float = 50.0,
         max_depth: int = 5,
     ) -> list[dict]:
+        """获取 `weak prerequisites` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str => kp ID。
+            kg_store: object => `kg_store` 参数。
+            mastery_threshold: float => `mastery_threshold` 参数。
+            max_depth: int => `max_depth` 参数。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         items = super().get_weak_prerequisites(
             user_name=user_name,
             kp_id=kp_id,
@@ -36,6 +50,17 @@ def build_recommendation_reasons(
     weeks_to_exam: int,
     total_weeks: int,
 ) -> list[str]:
+    """构建 `recommendation reasons` 相关数据。
+
+    Args:
+        point: dict => `point` 参数。
+        weak_prereqs: list[dict] => `weak_prereqs` 参数。
+        weeks_to_exam: int => `weeks_to_exam` 参数。
+        total_weeks: int => `total_weeks` 参数。
+
+    Returns:
+        list[str] => 处理结果。
+    """
     reasons: list[str] = []
     raw_mastery = point.get("mastery_level")
     mastery = None if raw_mastery is None else float(raw_mastery)

@@ -1,5 +1,7 @@
 # backend/core/services/auth_service.py
 
+"""提供领域服务实现。"""
+
 from __future__ import annotations
 
 import uuid
@@ -26,6 +28,7 @@ class AuthService:
         session_store: SessionStore,
     ) -> None:
 
+        """初始化 `AuthService` 实例。"""
         self.user_store = user_store
         self.session_store = session_store
 

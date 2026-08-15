@@ -1,3 +1,7 @@
+# backend/tests/test_docir_frontend_api.py
+
+"""验证 `docir_frontend_api` 相关行为与回归场景。"""
+
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,16 +23,29 @@ from backend.core.web.schemas import SendMessageRequest
 
 
 class _ProfileBuilder:
+    """封装 `_ProfileBuilder` 的状态与行为。"""
     def build(self, query):
+        """构建 `build` 相关数据。"""
         return None
 
 
 class _MMSessions:
+    """封装 `_MMSessions` 的状态与行为。"""
     def __init__(self, conversation_id):
+        """初始化 `_MMSessions` 实例。"""
         self.conversation_id = conversation_id
         self.prepare_calls = 0
 
     async def prepare(self, session_id, paths):
+        """准备 `prepare` 相关数据。
+
+        Args:
+            session_id: object => 会话 ID。
+            paths: object => `paths` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         self.prepare_calls += 1
         source = Path(paths[0])
         assert source.name == "notes.pdf"
@@ -53,22 +70,45 @@ class _MMSessions:
         )
 
     def context_for(self, session_id, attachment_id, query):
+        """处理 `context_for` 相关逻辑。
+
+        Args:
+            session_id: object => 会话 ID。
+            attachment_id: object => 附件 ID。
+            query: object => 查询文本。
+
+        Returns:
+            object => 处理结果。
+        """
         if session_id != self.conversation_id or attachment_id != "doc-1":
             raise KeyError(attachment_id)
         return self.context
 
     async def remove(self, session_id, attachment_id):
+        """移除 `remove` 相关数据。
+
+        Args:
+            session_id: object => 会话 ID。
+            attachment_id: object => 附件 ID。
+
+        Returns:
+            object => 处理结果。
+        """
         return attachment_id == "doc-1"
 
     async def clear(self, session_id):
+        """清空 `clear` 相关数据。"""
         return None
 
 
 class _Agent:
+    """封装 `_Agent` 的状态与行为。"""
     def __init__(self):
+        """初始化 `_Agent` 实例。"""
         self.run_spec = None
 
     async def run(self, run_spec):
+        """执行 `run` 相关数据。"""
         self.run_spec = run_spec
         content = run_spec.messages[-1]["content"]
         return [
@@ -78,6 +118,7 @@ class _Agent:
 
 
 def _state(tmp_path):
+    """处理 `_state` 相关逻辑。"""
     database = tmp_path / "docir-api.db"
     user_store = UserStore(database)
     assert user_store.create(
@@ -111,6 +152,7 @@ def _state(tmp_path):
 
 
 def test_upload_attachment_returns_docir_frontend_contract(tmp_path):
+    """验证 `upload_attachment_returns_docir_frontend_contract` 场景。"""
     state, _agent, _chat_store, conversation_id = _state(tmp_path)
     app = FastAPI()
     for key, value in state.__dict__.items():
@@ -149,6 +191,7 @@ def test_upload_attachment_returns_docir_frontend_contract(tmp_path):
 
 
 def test_selected_attachment_is_exposed_as_unparsed_tool_context(tmp_path):
+    """验证 `selected_attachment_is_exposed_as_unparsed_tool_context` 场景。"""
     state, agent, chat_store, conversation_id = _state(tmp_path)
     request = SimpleNamespace(app=SimpleNamespace(state=state))
     session = SessionPrincipal(session_id="s1", user_id="u1")
@@ -188,9 +231,11 @@ def test_selected_attachment_is_exposed_as_unparsed_tool_context(tmp_path):
 
 
 def _reader(payload: bytes):
+    """处理 `_reader` 相关逻辑。"""
     sent = False
 
     async def read(_size: int) -> bytes:
+        """读取 `read` 相关数据。"""
         nonlocal sent
         if sent:
             return b""
@@ -201,6 +246,7 @@ def _reader(payload: bytes):
 
 
 def test_missing_attachment_is_rejected_before_user_message_is_persisted(tmp_path):
+    """验证 `missing_attachment_is_rejected_before_user_message_is_persisted` 场景。"""
     state, _agent, chat_store, conversation_id = _state(tmp_path)
     request = SimpleNamespace(app=SimpleNamespace(state=state))
     session = SessionPrincipal(session_id="s1", user_id="u1")

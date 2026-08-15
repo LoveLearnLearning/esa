@@ -1,3 +1,7 @@
+# backend/core/web/routers/learning.py
+
+"""提供 `learning` 相关功能。"""
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -15,19 +19,23 @@ from backend.core.web.deps import get_current_session
 router = APIRouter(prefix="/me/learning", tags=["learning"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 class UserCourseInput(BaseModel):
+    """表示 `user course input` 数据结构。"""
     name: str = Field(min_length=1, max_length=64)
     source: str = Field(default="manual", pattern="^(manual|timetable)$")
 
 
 class AddUserCoursesRequest(BaseModel):
+    """表示 `add user courses request` 数据结构。"""
     courses: list[UserCourseInput] = Field(min_length=1, max_length=100)
 
 
 class BindUserCourseRequest(BaseModel):
+    """表示 `bind user course request` 数据结构。"""
     canonical_course: str = Field(min_length=1, max_length=64)
 
 
 def _prepare_user(request: Request, session: SessionPrincipal) -> UserRecord:
+    """准备 `user` 相关数据。"""
     user_store: UserStore = request.app.state.user_store
     user = user_store.get_by_id(session.user_id)
     if user is None:
@@ -36,14 +44,17 @@ def _prepare_user(request: Request, session: SessionPrincipal) -> UserRecord:
 
 
 def _kg(request: Request):
+    """处理 `_kg` 相关逻辑。"""
     return request.app.state.knowledge_graph_store
 
 
 def _knowledge_map(request: Request) -> KnowledgeMapService:
+    """处理 `_knowledge_map` 相关逻辑。"""
     return request.app.state.knowledge_map_service
 
 
 def _learning_tool_context(request: Request, session: SessionPrincipal) -> ToolExecutionContext:
+    """处理 `_learning_tool_context` 相关逻辑。"""
     user = _prepare_user(request, session)
     scope = ResourceScope(metadata={"conversation_id": "learning-api"})
     route = WorkspaceRoute(
@@ -72,6 +83,16 @@ def mastery_report(
     session: CurrentSession,
     course: str = Query(default="", max_length=64),
 ) -> dict:
+    """处理 `mastery_report` 相关逻辑。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        course: str => `course` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     return execute_learning_tool(
         _learning_tool_context(request, session), "get_mastery_report", {"course": course}
     )
@@ -84,6 +105,17 @@ def practice_recommendations(
     course: str = Query(min_length=1, max_length=64),
     weeks_to_exam: int = Query(default=4, ge=0, le=52),
 ) -> dict:
+    """处理 `practice_recommendations` 相关逻辑。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        course: str => `course` 参数。
+        weeks_to_exam: int => `weeks_to_exam` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     result = execute_learning_tool(
         _learning_tool_context(request, session), "recommend_practice",
         {"course": course, "weeks_to_exam": weeks_to_exam},
@@ -95,6 +127,15 @@ def practice_recommendations(
 
 @router.get("/courses")
 def learning_courses(request: Request, session: CurrentSession) -> dict:
+    """处理 `learning_courses` 相关逻辑。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _prepare_user(request, session)
     store: UserCourseStore = request.app.state.user_course_store
     associations = store.list_for_user(user.id)
@@ -160,6 +201,16 @@ def learning_course_catalog(
     session: CurrentSession,
     query: str = Query(default="", max_length=64),
 ) -> dict:
+    """处理 `learning_course_catalog` 相关逻辑。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        query: str => 查询文本。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _prepare_user(request, session)
     store: UserCourseStore = request.app.state.user_course_store
     added = {
@@ -189,6 +240,16 @@ def add_learning_courses(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """添加 `learning courses` 相关数据。
+
+    Args:
+        payload: AddUserCoursesRequest => 请求载荷。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _prepare_user(request, session)
     store: UserCourseStore = request.app.state.user_course_store
     added = []
@@ -223,6 +284,17 @@ def bind_learning_course(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """处理 `bind_learning_course` 相关逻辑。
+
+    Args:
+        course_name: str => `course_name` 参数。
+        payload: BindUserCourseRequest => 请求载荷。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _prepare_user(request, session)
     store: UserCourseStore = request.app.state.user_course_store
     association = next(
@@ -263,6 +335,13 @@ def bind_learning_course(
 def delete_learning_course(
     course_name: str, request: Request, session: CurrentSession
 ) -> None:
+    """删除 `learning course` 相关数据。
+
+    Args:
+        course_name: str => `course_name` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     user = _prepare_user(request, session)
     store: UserCourseStore = request.app.state.user_course_store
     if not store.delete(user_id=user.id, name=course_name):
@@ -275,6 +354,16 @@ def knowledge_map(
     session: CurrentSession,
     course: str = Query(min_length=1, max_length=64),
 ) -> dict:
+    """处理 `knowledge_map` 相关逻辑。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        course: str => `course` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _prepare_user(request, session)
     result = _knowledge_map(request).get_course_map(
         user_name=user.username,
@@ -291,6 +380,16 @@ def knowledge_point_detail(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """处理 `knowledge_point_detail` 相关逻辑。
+
+    Args:
+        kp_id: str => kp ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _prepare_user(request, session)
     result = _knowledge_map(request).get_point_detail(
         user_name=user.username,
@@ -307,6 +406,16 @@ def review_queue(
     session: CurrentSession,
     course: str = Query(default="", max_length=64),
 ) -> dict:
+    """处理 `review_queue` 相关逻辑。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        course: str => `course` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     user = _prepare_user(request, session)
     return _knowledge_map(request).get_review_queue(
         user_name=user.username,

@@ -1,3 +1,5 @@
+# backend/core/services/teaching_analysis_service.py
+
 """Structured homework analysis with a deterministic offline fallback."""
 
 from __future__ import annotations
@@ -14,16 +16,19 @@ from backend.core.stores.teaching_store import TeachingStore
 
 
 class TeachingAnalysisService:
+    """提供 `teaching analysis service` 领域服务。"""
     def __init__(
         self,
         store: TeachingStore,
         llm_client: AuxiliaryLLMClient | None = None,
     ) -> None:
+        """初始化 `TeachingAnalysisService` 实例。"""
         self.store = store
         self.llm_client = llm_client
 
     @staticmethod
     def _fallback(answer: dict) -> dict[str, Any]:
+        """处理 `_fallback` 相关逻辑。"""
         text = str(answer.get("answer_text") or "").strip()
         reference = str(answer.get("reference_answer") or "").strip()
         rubric = str(answer.get("rubric") or "").strip()
@@ -53,6 +58,7 @@ class TeachingAnalysisService:
         }
 
     async def _analyze_answer(self, answer: dict) -> dict[str, Any]:
+        """处理 `_analyze_answer` 相关逻辑。"""
         if self.llm_client is None:
             return self._fallback(answer)
         prompt = [
@@ -102,6 +108,15 @@ class TeachingAnalysisService:
             return self._fallback(answer)
 
     async def analyze_submission(self, submission_id: str, actor_id: str) -> dict:
+        """处理 `analyze_submission` 相关逻辑。
+
+        Args:
+            submission_id: str => submission ID。
+            actor_id: str => actor ID。
+
+        Returns:
+            dict => 处理结果。
+        """
         submission = self.store.get_submission(submission_id)
         if submission is None:
             raise ValueError("submission_not_found")

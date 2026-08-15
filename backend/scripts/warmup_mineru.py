@@ -1,3 +1,5 @@
+# backend/scripts/warmup_mineru.py
+
 """Warm the resident MinerU pipeline through its HTTP API."""
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ import httpx
 
 
 def _minimal_pdf() -> bytes:
+    """处理 `_minimal_pdf` 相关逻辑。"""
     objects = (
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -42,6 +45,12 @@ def _minimal_pdf() -> bytes:
 
 
 def warmup(api_url: str, timeout_seconds: float) -> None:
+    """预热 `warmup` 相关数据。
+
+    Args:
+        api_url: str => `api_url` 参数。
+        timeout_seconds: float => `timeout_seconds` 参数。
+    """
     form = {
         "lang_list": "ch",
         "backend": "pipeline",
@@ -66,6 +75,7 @@ def warmup(api_url: str, timeout_seconds: float) -> None:
 
 
 def main() -> None:
+    """运行当前模块的命令行入口。"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--api-url", required=True)
     parser.add_argument("--timeout-seconds", type=float, default=7200.0)

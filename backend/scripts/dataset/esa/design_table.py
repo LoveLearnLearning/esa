@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/design_table.py
+
 """读《微调数据集设计总表》，并校验它自身的一致性。
 
 这张表是数据集的唯一事实来源：Tool → Parameter → 能力/规律 → Scenario → State → Variable。
@@ -44,16 +46,19 @@ DICT_HEADER_ROW = 14
 
 @dataclass
 class Issue:
+    """封装 `Issue` 的状态与行为。"""
     level: str  # error | warn
     where: str
     detail: str
 
     def __str__(self) -> str:
+        """返回当前对象的可读字符串。"""
         mark = "❌" if self.level == "error" else "⚠️ "
         return f"{mark} [{self.where}] {self.detail}"
 
 
 def _find_header_row(ws, key: str) -> int:
+    """查找 `header row` 相关数据。"""
     for ri in range(1, min(ws.max_row, 12) + 1):
         for cell in ws[ri]:
             if cell.value is not None and str(cell.value).strip() == key:
@@ -62,6 +67,7 @@ def _find_header_row(ws, key: str) -> int:
 
 
 def _read_sheet(ws, key: str) -> list[dict[str, Any]]:
+    """读取 `sheet` 相关数据。"""
     hr = _find_header_row(ws, key)
     header = [str(c.value).strip() if c.value is not None else "" for c in ws[hr]]
     rows = []
@@ -97,6 +103,7 @@ def _read_dictionary(ws) -> dict[str, list[str]]:
 
 @dataclass
 class DesignTable:
+    """封装 `DesignTable` 的状态与行为。"""
     tools: list[dict] = field(default_factory=list)
     parameters: list[dict] = field(default_factory=list)
     rules: list[dict] = field(default_factory=list)
@@ -108,6 +115,14 @@ class DesignTable:
 
     @classmethod
     def load(cls, path: str | Path = DEFAULT_XLSX) -> DesignTable:
+        """加载 `load` 相关数据。
+
+        Args:
+            path: str | Path => 目标路径。
+
+        Returns:
+            DesignTable => 处理结果。
+        """
         wb = openpyxl.load_workbook(path, data_only=True)
         get = lambda name: _read_sheet(wb[name], SHEET_KEYS[name])  # noqa: E731
         return cls(
@@ -122,6 +137,7 @@ class DesignTable:
         )
 
     def variables_by_state(self) -> dict[str, dict[str, list]]:
+        """处理 `variables_by_state` 相关逻辑。"""
         out: dict[str, dict[str, list]] = {}
         for v in self.variables:
             if str(v.get("enabled", "是")) != "是":
@@ -146,6 +162,15 @@ class DesignTable:
 
 
 def check(dt: DesignTable, schemas_path: str | Path = DEFAULT_SCHEMAS) -> list[Issue]:
+    """检查 `check` 相关数据。
+
+    Args:
+        dt: DesignTable => `dt` 参数。
+        schemas_path: str | Path => `schemas_path` 参数。
+
+    Returns:
+        list[Issue] => 处理结果。
+    """
     out: list[Issue] = []
     actions = set(dt.vocab.get("expected_action", []))
 
@@ -254,6 +279,11 @@ def check(dt: DesignTable, schemas_path: str | Path = DEFAULT_SCHEMAS) -> list[I
 
 
 def summarize(dt: DesignTable) -> None:
+    """处理 `summarize` 相关逻辑。
+
+    Args:
+        dt: DesignTable => `dt` 参数。
+    """
     from collections import Counter
 
     print(f"Tool {len(dt.tools)} | Parameter {len(dt.parameters)} | 规律 {len(dt.rules)} | "
@@ -270,6 +300,14 @@ def summarize(dt: DesignTable) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     ap = argparse.ArgumentParser(description="读取并校验设计总表")
     ap.add_argument("--xlsx", default=str(DEFAULT_XLSX))
     ap.add_argument("--schemas", default=DEFAULT_SCHEMAS)

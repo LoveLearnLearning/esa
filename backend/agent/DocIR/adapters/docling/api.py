@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/docling/api.py
+
 """High-level, atomic source-to-DocIR bundle API."""
 
 from __future__ import annotations

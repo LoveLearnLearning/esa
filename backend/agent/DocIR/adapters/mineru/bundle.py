@@ -27,11 +27,13 @@ class RawV2Group:
 
     @property
     def blocks(self) -> list[Any] | None:
+        """处理 `blocks` 相关逻辑。"""
         return self.payload if isinstance(self.payload, list) else None
 
 
 @dataclass(frozen=True)
 class MinerUBundle:
+    """封装 `MinerUBundle` 的状态与行为。"""
     root: Path
     middle_path: Path
     content_v2_path: Path
@@ -45,14 +47,17 @@ class MinerUBundle:
 
     @property
     def backend(self) -> str | None:
+        """处理 `backend` 相关逻辑。"""
         return self.middle.backend
 
     @property
     def version_name(self) -> str | None:
+        """处理 `version_name` 相关逻辑。"""
         return self.middle.version_name
 
     @property
     def v2_groups(self) -> tuple[RawV2Group, ...]:
+        """处理 `v2_groups` 相关逻辑。"""
         return tuple(
             RawV2Group(group_index=index, payload=payload)
             for index, payload in enumerate(self.content_v2)
@@ -74,6 +79,7 @@ class MinerUBundle:
 
 
 def _exactly_one(root: Path, suffix: str, *, required: bool = True) -> Path | None:
+    """处理 `_exactly_one` 相关逻辑。"""
     matches = sorted(root.glob(f"*{suffix}"))
     if not matches and not required:
         return None

@@ -1,3 +1,5 @@
+# email_service/app.py
+
 """Private HTTPS email-delivery API deployed outside the supercomputer."""
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from pydantic import BaseModel, Field
 
 
 class VerificationEmailRequest(BaseModel):
+    """表示 `verification email request` 数据结构。"""
     email: str = Field(min_length=3, max_length=254)
     code: str = Field(pattern=r"^\d{6}$")
     ttl_minutes: int = Field(ge=1, le=60)
@@ -21,16 +24,23 @@ class VerificationEmailRequest(BaseModel):
 
 
 class DeliveryError(RuntimeError):
+    """表示 `DeliveryError` 异常。"""
     pass
 
 
 class Sender(Protocol):
-    async def send(self, message: VerificationEmailRequest) -> None: ...
+    """定义 `Sender` 组件协议。"""
+    async def send(self, message: VerificationEmailRequest) -> None:
+        """发送 `send` 相关数据。"""
+        ...
 
-    async def close(self) -> None: ...
+    async def close(self) -> None:
+        """释放当前对象持有的资源。"""
+        ...
 
 
 class ResendSender:
+    """封装 `ResendSender` 的状态与行为。"""
     def __init__(
         self,
         *,
@@ -39,6 +49,7 @@ class ResendSender:
         base_url: str = "https://api.resend.com",
         client: httpx.AsyncClient | None = None,
     ) -> None:
+        """初始化 `ResendSender` 实例。"""
         self._api_key = api_key
         self._from_address = from_address
         self._client = client or httpx.AsyncClient(
@@ -47,6 +58,11 @@ class ResendSender:
         self._owns_client = client is None
 
     async def send(self, message: VerificationEmailRequest) -> None:
+        """发送 `send` 相关数据。
+
+        Args:
+            message: VerificationEmailRequest => `message` 参数。
+        """
         safe_code = html.escape(message.code)
         try:
             response = await self._client.post(
@@ -77,16 +93,27 @@ class ResendSender:
             raise DeliveryError("upstream email delivery failed") from error
 
     async def close(self) -> None:
+        """释放当前对象持有的资源。"""
         if self._owns_client:
             await self._client.aclose()
 
 
 def create_app(*, service_token: str, sender: Sender) -> FastAPI:
+    """创建 `app` 相关数据。
+
+    Args:
+        service_token: str => `service_token` 参数。
+        sender: Sender => `sender` 参数。
+
+    Returns:
+        FastAPI => 处理结果。
+    """
     if len(service_token) < 32:
         raise ValueError("MAIL_SERVICE_TOKEN must contain at least 32 characters")
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        """处理 `lifespan` 相关逻辑。"""
         try:
             yield
         finally:
@@ -96,6 +123,7 @@ def create_app(*, service_token: str, sender: Sender) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, str]:
+        """处理 `health` 相关逻辑。"""
         return {"status": "ok"}
 
     @app.post(
@@ -108,6 +136,16 @@ def create_app(*, service_token: str, sender: Sender) -> FastAPI:
         request: Request,
         authorization: str | None = Header(default=None),
     ) -> Response:
+        """发送 `verification email` 相关数据。
+
+        Args:
+            body: VerificationEmailRequest => `body` 参数。
+            request: Request => 当前 HTTP 请求。
+            authorization: str | None => `authorization` 参数。
+
+        Returns:
+            Response => 处理结果。
+        """
         expected = f"Bearer {service_token}"
         if authorization is None or not hmac.compare_digest(authorization, expected):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid service token")

@@ -1,8 +1,13 @@
+# backend/tests/test_pedagogy_prompt.py
+
+"""验证 `pedagogy_prompt` 相关行为与回归场景。"""
+
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.utils.models import PromptContext
 
 
 def test_system_generated_pedagogy_context_is_separate_section():
+    """验证 `system_generated_pedagogy_context_is_separate_section` 场景。"""
     prompt = build_system_prompt(
         user_name="alice",
         prompt_ctx=PromptContext(
@@ -17,6 +22,7 @@ def test_system_generated_pedagogy_context_is_separate_section():
 
 
 def test_style_rendering_does_not_print_python_tuple_repr():
+    """验证 `style_rendering_does_not_print_python_tuple_repr` 场景。"""
     prompt = build_system_prompt(
         user_name="alice",
         prompt_ctx=PromptContext(
@@ -29,6 +35,7 @@ def test_style_rendering_does_not_print_python_tuple_repr():
 
 
 def test_core_memory_is_not_eagerly_injected_into_system_prompt():
+    """验证 `core_memory_is_not_eagerly_injected_into_system_prompt` 场景。"""
     prompt = build_system_prompt(
         user_name="alice",
         skills_context="- retrieve_first [pedagogy] test",
@@ -41,6 +48,7 @@ def test_core_memory_is_not_eagerly_injected_into_system_prompt():
 
 
 def test_build_prompt_has_no_duplicate_prompt_or_style_rule_tables():
+    """验证 `build_prompt_has_no_duplicate_prompt_or_style_rule_tables` 场景。"""
     import backend.core.message.build_prompt as build_prompt_module
 
     assert not hasattr(build_prompt_module, "SYSTEM_PROMPT")
@@ -49,6 +57,7 @@ def test_build_prompt_has_no_duplicate_prompt_or_style_rule_tables():
 
 
 def test_build_prompt_reads_split_prompt_modules_at_runtime(monkeypatch):
+    """验证 `build_prompt_reads_split_prompt_modules_at_runtime` 场景。"""
     import backend.core.message.system as system_message
     import backend.core.message.style_tone as style_tone
 
@@ -65,6 +74,7 @@ def test_build_prompt_reads_split_prompt_modules_at_runtime(monkeypatch):
 
 
 def test_math_workflow_is_not_eagerly_injected():
+    """验证 `math_workflow_is_not_eagerly_injected` 场景。"""
     prompt = build_system_prompt(
         user_name="alice",
         skills_context=(

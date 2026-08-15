@@ -1,3 +1,5 @@
+# backend/scripts/dataset/generators/gen_refusals.py
+
 """REFUSE 类生成器：该拒绝的请求，以及拒绝之后还能做什么。
 
 为什么补这一类
@@ -45,6 +47,7 @@ SOURCE = "gen_refusals.py"
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     rng = random.Random(20260812)
     cfg = yaml.safe_load(SEEDS.read_text(encoding="utf-8"))
     schemas, version = load_schemas(SCHEMAS)

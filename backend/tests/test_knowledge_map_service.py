@@ -1,3 +1,7 @@
+# backend/tests/test_knowledge_map_service.py
+
+"""验证 `knowledge_map_service` 相关行为与回归场景。"""
+
 from backend.agent.learning.evidence_store import LearningEvidenceStore
 from backend.agent.learning.knowledge_map_service import KnowledgeMapService
 from backend.agent.learning.learning_state_service import LearningStateService
@@ -7,6 +11,7 @@ from backend.agent.memories.mastery_store import MasteryStore
 
 
 def _stores(tmp_path):
+    """处理 `_stores` 相关逻辑。"""
     kg = KnowledgeGraphStore(tmp_path / "kg.db")
     kg.add_point("base", "基础", "课程", 0.4)
     kg.add_point("advanced", "进阶", "课程", 0.9)
@@ -27,6 +32,7 @@ def _stores(tmp_path):
 
 
 def test_course_map_has_unseen_semantics_and_forward_edge(tmp_path):
+    """验证 `course_map_has_unseen_semantics_and_forward_edge` 场景。"""
     _, service = _stores(tmp_path)
     result = service.get_course_map(user_name="alice", course="课程")
     nodes = {node["id"]: node for node in result["nodes"]}
@@ -43,6 +49,7 @@ def test_course_map_has_unseen_semantics_and_forward_edge(tmp_path):
 
 
 def test_course_node_connects_multiple_components_and_cycles(tmp_path):
+    """验证 `course_node_connects_multiple_components_and_cycles` 场景。"""
     kg = KnowledgeGraphStore(tmp_path / "kg-components.db")
     kg.add_point("a-root", "A 根", "课程", 0.4)
     kg.add_point("a-child", "A 子", "课程", 0.4)
@@ -78,6 +85,7 @@ def test_course_node_connects_multiple_components_and_cycles(tmp_path):
 
 
 def test_courses_and_point_detail_reflect_learning_event(tmp_path):
+    """验证 `courses_and_point_detail_reflect_learning_event` 场景。"""
     writer, service = _stores(tmp_path)
     writer.record_event(
         user_name="alice",
@@ -93,6 +101,7 @@ def test_courses_and_point_detail_reflect_learning_event(tmp_path):
 
 
 def test_course_alias_resolves_to_canonical_course(tmp_path):
+    """验证 `course_alias_resolves_to_canonical_course` 场景。"""
     store = KnowledgeGraphStore(tmp_path / "kg-with-aliases.db")
     load_into_store(store)
 

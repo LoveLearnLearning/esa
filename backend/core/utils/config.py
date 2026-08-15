@@ -1,5 +1,7 @@
 # backend/core/utils/config.py
 
+"""集中管理运行配置。"""
+
 from __future__ import annotations
 
 import os
@@ -81,6 +83,7 @@ def _path_from_env(name: str, default: Path) -> Path:
 
 
 def _str_from_env(name: str, default: str) -> str:
+    """处理 `_str_from_env` 相关逻辑。"""
     value = os.environ.get(name, default).strip()
     if not value:
         raise ValueError(f"{name} cannot be blank")
@@ -88,6 +91,7 @@ def _str_from_env(name: str, default: str) -> str:
 
 
 def _optional_str_from_env(name: str, default: str | None = None) -> str | None:
+    """处理 `_optional_str_from_env` 相关逻辑。"""
     value = os.environ.get(name)
     if value is None:
         return default
@@ -96,6 +100,7 @@ def _optional_str_from_env(name: str, default: str | None = None) -> str | None:
 
 
 def _bool_from_env(name: str, default: bool) -> bool:
+    """处理 `_bool_from_env` 相关逻辑。"""
     value = os.environ.get(name)
     if value is None:
         return default
@@ -108,6 +113,7 @@ def _bool_from_env(name: str, default: bool) -> bool:
 
 
 def _int_from_env(name: str, default: int, *, minimum: int = 1) -> int:
+    """处理 `_int_from_env` 相关逻辑。"""
     try:
         value = int(os.environ.get(name, default))
     except ValueError as exc:
@@ -124,6 +130,7 @@ def _float_from_env(
     minimum: float | None = None,
     maximum: float | None = None,
 ) -> float:
+    """处理 `_float_from_env` 相关逻辑。"""
     try:
         value = float(os.environ.get(name, default))
     except ValueError as exc:
@@ -142,6 +149,7 @@ def _optional_float_from_env(
     minimum: float | None = None,
     maximum: float | None = None,
 ) -> float | None:
+    """处理 `_optional_float_from_env` 相关逻辑。"""
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
         return default
@@ -158,6 +166,7 @@ def _choice_from_env(
     default: _T,
     choices: tuple[_T, ...],
 ) -> _T:
+    """处理 `_choice_from_env` 相关逻辑。"""
     value = cast(_T, os.environ.get(name, default))
     if value not in choices:
         expected = ", ".join(map(str, choices))

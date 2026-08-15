@@ -1,5 +1,7 @@
 # backend/agent/memories/core_memory.py
 
+"""提供 `core_memory` 相关功能。"""
+
 from __future__ import annotations
 
 import sqlite3
@@ -21,14 +23,17 @@ class CoreMemory:
         self,
         database_path: str | Path = "data/core_memory.db",
     ) -> None:
+        """初始化 `CoreMemory` 实例。"""
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.__initialize()
 
     def __connect(self) -> sqlite3.Connection:
+        """处理 `__connect` 相关逻辑。"""
         return connect_sqlite(self.database_path)
 
     def __initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         with self.__connect() as connection:
             connection.execute(
                 """
@@ -64,6 +69,17 @@ class CoreMemory:
         content: str,
         category: str = "general",
     ) -> bool:
+        """设置 `set` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            memory_key: str => `memory_key` 参数。
+            content: str => 待处理内容。
+            category: str => `category` 参数。
+
+        Returns:
+            bool => 处理结果。
+        """
         user_name = user_name.strip()
         memory_key = memory_key.strip()
         content = content.strip()
@@ -95,6 +111,15 @@ class CoreMemory:
         user_name: str,
         memory_key: str,
     ) -> dict[str, str | int] | None:
+        """获取 `get` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            memory_key: str => `memory_key` 参数。
+
+        Returns:
+            dict[str, str | int] | None => 处理结果。
+        """
         user_name = user_name.strip()
         memory_key = memory_key.strip()
         if not user_name or not memory_key:
@@ -115,6 +140,14 @@ class CoreMemory:
         self,
         user_name: str,
     ) -> list[dict[str, str | int]]:
+        """获取 `all` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+
+        Returns:
+            list[dict[str, str | int]] => 处理结果。
+        """
         user_name = user_name.strip()
         if not user_name:
             return []
@@ -195,6 +228,15 @@ class CoreMemory:
         user_name: str,
         memory_key: str,
     ) -> bool:
+        """删除 `delete` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            memory_key: str => `memory_key` 参数。
+
+        Returns:
+            bool => 处理结果。
+        """
         user_name = user_name.strip()
         memory_key = memory_key.strip()
         if not user_name or not memory_key:
@@ -211,6 +253,7 @@ class CoreMemory:
         return cursor.rowcount > 0
 
     def clear(self, user_name: str) -> int:
+        """清空 `clear` 相关数据。"""
         user_name = user_name.strip()
         if not user_name:
             return 0

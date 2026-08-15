@@ -72,6 +72,13 @@ class _GroupApi extends ApiClient {
 
   @override
   Future<void> renameConversation(String id, String title) async {}
+
+  @override
+  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+    yield const ChatStreamEvent('start', {});
+    yield const ChatStreamEvent('content', {'delta': '收到'});
+    yield const ChatStreamEvent('done', {});
+  }
 }
 
 ChatConversation _conversation(String id, String? groupId) => ChatConversation(
@@ -161,13 +168,16 @@ void main() {
     expect(state.ungroupedConversations, hasLength(2));
   });
 
-  test('new conversations are created inside the active group', () async {
+  test('group conversations are created on first send inside the active group', () async {
     final api = _GroupApi();
     final state = AppState(api: api)
       ..activeGroupId = 'group-1';
     addTearDown(state.dispose);
 
     await state.newConversation();
+    expect(api.lastCreatedConversationGroupId, isNull);
+
+    await state.send('分组中的第一个问题');
 
     expect(api.lastCreatedConversationGroupId, 'group-1');
     expect(state.activeConversation?.groupId, 'group-1');

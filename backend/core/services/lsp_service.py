@@ -1,3 +1,7 @@
+# backend/core/services/lsp_service.py
+
+"""提供领域服务实现。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -14,24 +18,29 @@ logger = logging.getLogger(__name__)
 
 
 class LanguageServerUnavailable(RuntimeError):
+    """表示 `LanguageServerUnavailable` 异常。"""
     pass
 
 
 class LspSessionLimitExceeded(RuntimeError):
+    """表示 `LspSessionLimitExceeded` 异常。"""
     pass
 
 
 class LspProtocolError(RuntimeError):
+    """表示 `LspProtocolError` 异常。"""
     pass
 
 
 @dataclass(frozen=True)
 class LspServerSpec:
+    """封装 `LspServerSpec` 的状态与行为。"""
     command: tuple[str, ...]
     filename: str
 
 
 class LspProcessBridge:
+    """封装 `LspProcessBridge` 的状态与行为。"""
     def __init__(
         self,
         *,
@@ -40,6 +49,7 @@ class LspProcessBridge:
         spec: LspServerSpec,
         max_message_bytes: int,
     ) -> None:
+        """初始化 `LspProcessBridge` 实例。"""
         self.language = language
         self.user_id = user_id
         self.spec = spec
@@ -52,17 +62,20 @@ class LspProcessBridge:
 
     @property
     def root_uri(self) -> str:
+        """处理 `root_uri` 相关逻辑。"""
         if self.root_path is None:
             raise RuntimeError("language server has not started")
         return self.root_path.as_uri()
 
     @property
     def document_uri(self) -> str:
+        """处理 `document_uri` 相关逻辑。"""
         if self.document_path is None:
             raise RuntimeError("language server has not started")
         return self.document_path.as_uri()
 
     async def start(self) -> None:
+        """启动 `start` 相关数据。"""
         executable = shutil.which(self.spec.command[0])
         if executable is None:
             raise LanguageServerUnavailable(
@@ -99,6 +112,11 @@ class LspProcessBridge:
         )
 
     async def send(self, message: str) -> None:
+        """发送 `send` 相关数据。
+
+        Args:
+            message: str => `message` 参数。
+        """
         process = self._require_process()
         if process.stdin is None:
             raise LspProtocolError("language server stdin is unavailable")
@@ -118,6 +136,7 @@ class LspProcessBridge:
         await process.stdin.drain()
 
     async def receive(self) -> str:
+        """处理 `receive` 相关逻辑。"""
         process = self._require_process()
         if process.stdout is None:
             raise LspProtocolError("language server stdout is unavailable")
@@ -155,6 +174,7 @@ class LspProcessBridge:
         return message
 
     async def close(self) -> None:
+        """释放当前对象持有的资源。"""
         process = self._process
         self._process = None
         if process is not None:
@@ -185,11 +205,13 @@ class LspProcessBridge:
         logger.info("LSP[%s] stopped user=%s", self.language, self.user_id)
 
     def _require_process(self) -> asyncio.subprocess.Process:
+        """处理 `_require_process` 相关逻辑。"""
         if self._process is None or self._process.returncode is not None:
             raise LanguageServerUnavailable("language server is not running")
         return self._process
 
     async def _drain_stderr(self) -> None:
+        """处理 `_drain_stderr` 相关逻辑。"""
         process = self._process
         if process is None or process.stderr is None:
             return
@@ -203,6 +225,7 @@ class LspProcessBridge:
 
 
 class LspService:
+    """提供 `lsp service` 领域服务。"""
     def __init__(
         self,
         *,
@@ -213,6 +236,7 @@ class LspService:
         max_sessions_per_user: int = 2,
         max_message_bytes: int = 2 * 1024 * 1024,
     ) -> None:
+        """初始化 `LspService` 实例。"""
         self.enabled = enabled
         self.max_sessions = max_sessions
         self.max_sessions_per_user = max_sessions_per_user
@@ -227,12 +251,22 @@ class LspService:
         self._lock = asyncio.Lock()
 
     def supports(self, language: str) -> bool:
+        """处理 `supports` 相关逻辑。"""
         return self.enabled and language in self._specs
 
     @asynccontextmanager
     async def open(
         self, *, user_id: str, language: str
     ) -> AsyncIterator[LspProcessBridge]:
+        """打开 `open` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            language: str => `language` 参数。
+
+        Returns:
+            AsyncIterator[LspProcessBridge] => 处理结果。
+        """
         if not self.enabled:
             raise LanguageServerUnavailable("LSP is disabled")
         spec = self._specs.get(language)

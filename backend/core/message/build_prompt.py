@@ -1,5 +1,7 @@
 # backend/core/message/build_prompt.py
 
+"""提供 `build_prompt` 相关功能。"""
+
 from __future__ import annotations
 
 import backend.core.message.system as system_message
@@ -9,6 +11,7 @@ from backend.core.workspaces import workspace_prompt
 
 
 def _clean(value: str | None) -> str:
+    """清理 `clean` 相关数据。"""
     return value.strip() if value else ""
 
 

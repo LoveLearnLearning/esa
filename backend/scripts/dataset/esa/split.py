@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/split.py
+
 """按 template_id 整组切分，并渲染成 LLaMA-Factory 要的 ShareGPT jsonl。
 
 必须整组切分：同一个模板产出的 `计算 sqrt(16)` / `sqrt(25)` / `sqrt(36)` 如果被随机
@@ -76,6 +78,7 @@ def split_warnings(split: dict[str, list[Sample]]) -> list[str]:
 
 
 def assert_no_leak(split: dict[str, list[Sample]]) -> None:
+    """处理 `assert_no_leak` 相关逻辑。"""
     tpl = {k: {s.template_id for s in v} for k, v in split.items()}
     for a in tpl:
         for b in tpl:
@@ -87,6 +90,16 @@ DATASET_INFO_KEYS = {"train": "esa_agent_train", "validation": "esa_agent_valida
 
 
 def write_outputs(split: dict[str, list[Sample]], by_name, out_dir: Path) -> dict:
+    """写入 `outputs` 相关数据。
+
+    Args:
+        split: dict[str, list[Sample]] => `split` 参数。
+        by_name: object => `by_name` 参数。
+        out_dir: Path => `out_dir` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     info = {}
     for bucket, samples in split.items():
@@ -108,6 +121,14 @@ def write_outputs(split: dict[str, list[Sample]], by_name, out_dir: Path) -> dic
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     ap = argparse.ArgumentParser(description="切分并渲染训练数据")
     ap.add_argument("files", nargs="+")
     ap.add_argument("--schemas", default=str(in_dataset("schemas/tool_schemas.json")))

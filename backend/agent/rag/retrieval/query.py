@@ -1,3 +1,5 @@
+# backend/agent/rag/retrieval/query.py
+
 """职责分离、失败可降级的查询翻译、术语扩展与意图路由。"""
 
 from __future__ import annotations
@@ -12,19 +14,25 @@ from ..chunk import ContentRole, DEFAULT_RETRIEVAL_ROLES
 class QueryTranslator(Protocol):
     """把查询翻译成英文；不可用时返回 ``None`` 或抛出异常。"""
 
-    def translate(self, query: str) -> str | None: ...
+    def translate(self, query: str) -> str | None:
+        """处理 `translate` 相关逻辑。"""
+        ...
 
 
 class QueryExpander(Protocol):
     """返回缩写或专业术语对应的附加检索短语。"""
 
-    def expand(self, query: str) -> tuple[str, ...]: ...
+    def expand(self, query: str) -> tuple[str, ...]:
+        """处理 `expand` 相关逻辑。"""
+        ...
 
 
 class QueryIntent(Protocol):
     """根据显式用户意图开放默认被抑制的内容角色。"""
 
-    def content_roles(self, query: str) -> frozenset[ContentRole]: ...
+    def content_roles(self, query: str) -> frozenset[ContentRole]:
+        """处理 `content_roles` 相关逻辑。"""
+        ...
 
 
 @dataclass(frozen=True)
@@ -32,6 +40,7 @@ class NullQueryTranslator:
     """不依赖外部模型的默认翻译器。"""
 
     def translate(self, query: str) -> str | None:
+        """处理 `translate` 相关逻辑。"""
         return None
 
 
@@ -42,6 +51,7 @@ class StaticQueryTranslator:
     translations: dict[str, str]
 
     def translate(self, query: str) -> str | None:
+        """处理 `translate` 相关逻辑。"""
         return self.translations.get(query)
 
 
@@ -63,6 +73,7 @@ _DEFAULT_EXPANSIONS = (
 
 
 def _contains_term(query: str, term: str) -> bool:
+    """处理 `_contains_term` 相关逻辑。"""
     if term.isascii():
         # Python 的 \w 具有 Unicode 语义，因此不会从 ``Missä`` 中截出 ``Miss``。
         return (
@@ -79,6 +90,7 @@ class GlossaryQueryExpansion:
     expansions: tuple[tuple[str, str], ...] = _DEFAULT_EXPANSIONS
 
     def expand(self, query: str) -> tuple[str, ...]:
+        """处理 `expand` 相关逻辑。"""
         return tuple(
             dict.fromkeys(
                 expansion
@@ -106,6 +118,7 @@ class RuleBasedQueryIntent:
     """只负责作者、机构、引用和 metadata 的结构化路由。"""
 
     def content_roles(self, query: str) -> frozenset[ContentRole]:
+        """处理 `content_roles` 相关逻辑。"""
         roles = set(DEFAULT_RETRIEVAL_ROLES)
         if _REFERENCE_INTENT.search(query):
             roles.add(ContentRole.REFERENCE)
@@ -133,6 +146,7 @@ class QueryVariants:
 
     @property
     def bm25_body_query(self) -> str:
+        """处理 `bm25_body_query` 相关逻辑。"""
         return " ".join(
             dict.fromkeys(
                 part
@@ -143,13 +157,17 @@ class QueryVariants:
 
     @property
     def bm25_heading_query(self) -> str:
+        """处理 `bm25_heading_query` 相关逻辑。"""
         parts = (self.translated, *self.expansions)
         query = " ".join(dict.fromkeys(part for part in parts if part.strip()))
         return query or self.original
 
 
 class QueryProcessor(Protocol):
-    def process(self, query: str) -> QueryVariants: ...
+    """定义 `QueryProcessor` 组件协议。"""
+    def process(self, query: str) -> QueryVariants:
+        """处理 `process` 相关数据。"""
+        ...
 
 
 @dataclass(frozen=True)
@@ -161,6 +179,7 @@ class RuleBasedQueryProcessor:
     intent: QueryIntent = field(default_factory=RuleBasedQueryIntent)
 
     def process(self, query: str) -> QueryVariants:
+        """处理 `process` 相关数据。"""
         try:
             translated = (self.translator.translate(query) or "").strip()
         except Exception:

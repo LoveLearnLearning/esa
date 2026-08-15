@@ -1,9 +1,14 @@
+# backend/tests/test_user_course_store.py
+
+"""验证 `user_course_store` 相关行为与回归场景。"""
+
 from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import UserRecord
 
 
 def test_user_course_store_keeps_association_not_kg_copy(tmp_path):
+    """验证 `user_course_store_keeps_association_not_kg_copy` 场景。"""
     database = tmp_path / "users.db"
     users = UserStore(database)
     user = UserRecord(

@@ -1,3 +1,5 @@
+# backend/agent/mm/index.py
+
 """面向单附件会话的进程内混合索引。"""
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ class InMemoryAttachmentIndex(ReferenceIndex):
 
     @property
     def configuration_fingerprint(self) -> str:
+        """处理 `configuration_fingerprint` 相关逻辑。"""
         return configuration_sha256(
             {
                 "backend": "mm-in-memory-attachment-index-0.1",
@@ -22,4 +25,3 @@ class InMemoryAttachmentIndex(ReferenceIndex):
                 "tokenizer": "unicode-cjk-bigram-0.1",
             }
         )
-

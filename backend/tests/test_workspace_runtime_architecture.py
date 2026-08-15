@@ -1,3 +1,7 @@
+# backend/tests/test_workspace_runtime_architecture.py
+
+"""验证 `workspace_runtime_architecture` 相关行为与回归场景。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -28,6 +32,7 @@ from backend.core.utils.config import AGENT_LOOP_TIME, AGENT_TOOL_TIMEOUT_SECOND
 
 
 def _identity(role: str = "student", user_id: str = "u1") -> TrustedIdentity:
+    """处理 `_identity` 相关逻辑。"""
     return TrustedIdentity(user_id, user_id, role)
 
 
@@ -37,6 +42,7 @@ def _route(
     project_id: str | None = None,
     capabilities: frozenset[str] = frozenset(),
 ) -> WorkspaceRoute:
+    """处理 `_route` 相关逻辑。"""
     role = "teacher" if workspace == "teaching" else "student"
     return route_workspace(
         _identity(role),
@@ -51,6 +57,7 @@ def _route(
 
 
 def _turn(route: WorkspaceRoute, **values) -> AgentTurnInput:
+    """处理 `_turn` 相关逻辑。"""
     defaults = {
         "route": route,
         "identity": _identity(
@@ -65,12 +72,14 @@ def _turn(route: WorkspaceRoute, **values) -> AgentTurnInput:
 
 
 def test_workspace_profiles_use_central_agent_runtime_config():
+    """验证 `workspace_profiles_use_central_agent_runtime_config` 场景。"""
     for profile in (LEARNING_PROFILE, RESEARCH_PROFILE, TEACHING_PROFILE):
         assert profile.loop_policy.max_iterations == AGENT_LOOP_TIME
         assert profile.loop_policy.tool_timeout_seconds == AGENT_TOOL_TIMEOUT_SECONDS
 
 
 def test_core_router_fails_closed_for_identity_workspace_and_resources():
+    """验证 `core_router_fails_closed_for_identity_workspace_and_resources` 场景。"""
     with pytest.raises(ResourceAccessDenied):
         route_workspace(
             _identity(),
@@ -101,6 +110,7 @@ def test_core_router_fails_closed_for_identity_workspace_and_resources():
 
 
 def test_scoped_tool_view_has_matching_schema_and_executor_boundaries():
+    """验证 `scoped_tool_view_has_matching_schema_and_executor_boundaries` 场景。"""
     register_builtin_tools()
     learning = ScopedToolView.compile(tr, frozenset({"common", "learning"}))
     schema_names = {
@@ -129,6 +139,7 @@ def test_scoped_tool_view_has_matching_schema_and_executor_boundaries():
         }
     )
     def unscoped_tool():
+        """处理 `unscoped_tool` 相关逻辑。"""
         return "unsafe"
 
     with pytest.raises(ValueError, match="no declared scope"):
@@ -138,6 +149,7 @@ def test_scoped_tool_view_has_matching_schema_and_executor_boundaries():
 
 
 def test_load_skill_executes_only_through_the_bound_scoped_view():
+    """验证 `load_skill_executes_only_through_the_bound_scoped_view` 场景。"""
     register_builtin_tools()
     route = _route()
     compiled = CapabilityRuntime().compile(
@@ -167,6 +179,7 @@ def test_load_skill_executes_only_through_the_bound_scoped_view():
 
 
 def test_bound_executor_rejects_cross_scope_and_forged_arguments():
+    """验证 `bound_executor_rejects_cross_scope_and_forged_arguments` 场景。"""
     register_builtin_tools()
     route = _route()
     context = ToolExecutionContext(
@@ -198,6 +211,7 @@ def test_bound_executor_rejects_cross_scope_and_forged_arguments():
 
 
 def test_capability_fingerprint_excludes_resource_instance_ids():
+    """验证 `capability_fingerprint_excludes_resource_instance_ids` 场景。"""
     register_builtin_tools()
     runtime = WorkspaceRuntime(AgentRuntimeDependencies())
     first = _route("research", project_id="project-a")
@@ -220,11 +234,14 @@ def test_capability_fingerprint_excludes_resource_instance_ids():
 
 
 class _ProfileSnapshot:
+    """封装 `_ProfileSnapshot` 的状态与行为。"""
     def to_prompt_json(self) -> str:
+        """转换 `prompt json` 相关数据。"""
         return '{"explicit_context":[{"field":"major","value":"cs"}]}'
 
 
 def test_context_composer_order_trust_and_deterministic_clipping():
+    """验证 `context_composer_order_trust_and_deterministic_clipping` 场景。"""
     route = _route()
     capabilities = ResolvedCapabilities(
         skill_index="skill index",
@@ -264,6 +281,7 @@ def test_context_composer_order_trust_and_deterministic_clipping():
 
 
 def test_workspace_runtime_builds_trusted_runspec_without_model_owned_identity():
+    """验证 `workspace_runtime_builds_trusted_runspec_without_model_owned_identity` 场景。"""
     register_builtin_tools()
     dependencies = AgentRuntimeDependencies(username="alice")
     spec = WorkspaceRuntime(dependencies).prepare(

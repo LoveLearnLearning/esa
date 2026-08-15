@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tools/capture_skill_bodies.py
+
 """抓取 `load_skill` 的**线上真实返回值**，落成缓存。
 
 为什么要有这个脚本
@@ -85,6 +87,7 @@ def capture(repo: Path) -> dict:
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     ap = argparse.ArgumentParser(description="抓取 load_skill 的线上真实返回值")
     ap.add_argument("--repo", help="本地后端仓库副本；默认 ~/esa")
     ap.add_argument("--download", action="store_true", help="强制下载快照（抓不到本地改动，慎用）")

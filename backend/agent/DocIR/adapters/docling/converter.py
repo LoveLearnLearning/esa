@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/docling/converter.py
+
 """Convert DoclingDocument into the repository's parser-neutral DocIR."""
 
 from __future__ import annotations
@@ -53,6 +55,7 @@ from .bundle import RAW_DOCUMENT_NAME, RAW_METADATA_NAME, DoclingBundle
 
 
 def file_sha256(path: Path) -> str:
+    """处理 `file_sha256` 相关逻辑。"""
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -61,35 +64,42 @@ def file_sha256(path: Path) -> str:
 
 
 def _bytes_sha256(value: bytes) -> str:
+    """处理 `_bytes_sha256` 相关逻辑。"""
     return hashlib.sha256(value).hexdigest()
 
 
 def _stable(prefix: str, *parts: object) -> str:
+    """处理 `_stable` 相关逻辑。"""
     raw = json.dumps(parts, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return f"{prefix}_{hashlib.sha256(raw.encode()).hexdigest()[:24]}"
 
 
 def _media_type(path: Path) -> str:
+    """处理 `_media_type` 相关逻辑。"""
     return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
 def _png_bytes(image: Any) -> bytes:
+    """处理 `_png_bytes` 相关逻辑。"""
     stream = BytesIO()
     image.convert("RGB").save(stream, format="PNG", optimize=False)
     return stream.getvalue()
 
 
 def _label(item: Any) -> str:
+    """处理 `_label` 相关逻辑。"""
     value = getattr(item, "label", None)
     return getattr(value, "value", str(value or type(item).__name__))
 
 
 def _text(item: Any) -> str:
+    """处理 `_text` 相关逻辑。"""
     value = getattr(item, "text", None)
     return value if isinstance(value, str) else ""
 
 
 def _text_content(element_id: str, value: str) -> TextContent | None:
+    """处理 `_text_content` 相关逻辑。"""
     if not value:
         return None
     layer_id = f"text_{element_id}"
@@ -107,6 +117,7 @@ def _text_content(element_id: str, value: str) -> TextContent | None:
 
 
 def _role(item: Any) -> ElementRole:
+    """处理 `_role` 相关逻辑。"""
     label = _label(item)
     if label == DocItemLabel.CAPTION.value:
         return ElementRole.CAPTION
@@ -126,12 +137,14 @@ def _role(item: Any) -> ElementRole:
 
 @dataclass(frozen=True)
 class ConvertedBundle:
+    """封装 `ConvertedBundle` 的状态与行为。"""
     document: Document
     files: dict[str, bytes]
 
 
 @dataclass
 class _State:
+    """封装 `_State` 的状态与行为。"""
     pages: list[Page] = field(default_factory=list)
     elements: list[ElementBase] = field(default_factory=list)
     assets: list[Asset] = field(default_factory=list)
@@ -152,7 +165,9 @@ class _State:
 
 
 class _Converter:
+    """封装 `_Converter` 的状态与行为。"""
     def __init__(self, bundle: DoclingBundle, source: Path, strict: bool) -> None:
+        """初始化 `_Converter` 实例。"""
         self.bundle = bundle
         self.source = Path(source).resolve()
         if not self.source.is_file():
@@ -164,6 +179,7 @@ class _Converter:
         self.raw_metadata_id = "asset_docling_metadata"
 
     def convert(self) -> ConvertedBundle:
+        """转换 `convert` 相关数据。"""
         self._validate_status()
         self._register_fixed_assets()
         self._register_pages()
@@ -172,6 +188,7 @@ class _Converter:
         return ConvertedBundle(self._build_document(), dict(self.state.files))
 
     def _validate_status(self) -> None:
+        """校验 `status` 相关数据。"""
         if self.bundle.status == "failure":
             raise ValueError("Docling conversion status=failure，不能构造 DocIR")
         if self.bundle.status == "partial_success":
@@ -189,6 +206,7 @@ class _Converter:
             raise ValueError(f"Docling conversion status 不可消费: {self.bundle.status}")
 
     def _register_fixed_assets(self) -> None:
+        """注册 `fixed assets` 相关数据。"""
         original_path = f"assets/{self.source.name}"
         self.state.assets.append(
             Asset(
@@ -219,6 +237,7 @@ class _Converter:
             )
 
     def _register_pages(self) -> None:
+        """注册 `pages` 相关数据。"""
         for page_no, raw_page in sorted(self.bundle.document.pages.items()):
             page_id = f"page_{page_no - 1:06d}"
             image_asset_id = None
@@ -251,10 +270,12 @@ class _Converter:
             )
 
     def _content_items(self) -> Iterable[Any]:
+        """处理 `_content_items` 相关逻辑。"""
         for item, _level in self.bundle.document.iterate_items(with_groups=False):
             yield item
 
     def _convert_items(self) -> None:
+        """转换 `items` 相关数据。"""
         items = list(self._content_items())
         index = 0
         while index < len(items):
@@ -278,6 +299,7 @@ class _Converter:
             index += 1
 
     def _base(self, item: Any, element_id: str) -> dict[str, Any]:
+        """处理 `_base` 相关逻辑。"""
         locators = self._locators(item, element_id)
         role = _role(item)
         section_id = "section_root" if role != ElementRole.BODY else self.state.current_section
@@ -307,6 +329,7 @@ class _Converter:
         return common
 
     def _locators(self, item: Any, element_id: str) -> tuple[Locator, ...]:
+        """处理 `_locators` 相关逻辑。"""
         output = []
         for index, prov in enumerate(getattr(item, "prov", ())):
             page = self.bundle.document.pages.get(prov.page_no)
@@ -350,6 +373,7 @@ class _Converter:
         return tuple(output)
 
     def _convert_item(self, item: Any) -> None:
+        """转换 `item` 相关数据。"""
         element_id = _stable("element", self.source_hash, item.self_ref)
         common = self._base(item, element_id)
         if isinstance(item, TitleItem):
@@ -391,6 +415,7 @@ class _Converter:
         self._register(element)
 
     def _convert_list(self, items: list[ListItem]) -> None:
+        """转换 `list` 相关数据。"""
         refs = tuple(item.self_ref for item in items)
         element_id = _stable("element", self.source_hash, "list", refs)
         common = self._base(items[0], element_id)
@@ -431,6 +456,7 @@ class _Converter:
         kind: AssetKind,
         locators: tuple[Locator, ...],
     ) -> str | None:
+        """处理 `_visual_asset` 相关逻辑。"""
         image = item.get_image(self.bundle.document)
         if image is None:
             return None
@@ -454,6 +480,7 @@ class _Converter:
         return asset_id
 
     def _unknown(self, item: Any, common: dict[str, Any]) -> UnknownElement:
+        """处理 `_unknown` 相关逻辑。"""
         issue = QualityIssue(
             issue_id=_stable("issue", "unknown", common["element_id"]),
             code="unknown_docling_item",
@@ -470,9 +497,11 @@ class _Converter:
         )
 
     def _remember_relations(self, item: Any, element_id: str) -> None:
+        """处理 `_remember_relations` 相关逻辑。"""
         self.state.ref_to_element[item.self_ref] = element_id
 
         def refs(name: str) -> tuple[str, ...]:
+            """处理 `refs` 相关逻辑。"""
             return tuple(ref.cref for ref in getattr(item, name, ()))
 
         parent = getattr(getattr(item, "parent", None), "cref", None)
@@ -483,10 +512,12 @@ class _Converter:
         }
 
     def _resolve_relations(self) -> None:
+        """解析 `relations` 相关数据。"""
         for index, element in enumerate(self.state.elements):
             relations = self.state.pending_relations.get(element.element_id, {})
 
             def resolve(value: str | None) -> str | None:
+                """解析 `resolve` 相关数据。"""
                 return self.state.ref_to_element.get(value) if value else None
 
             parent = resolve(relations.get("parent"))
@@ -511,6 +542,7 @@ class _Converter:
             )
 
     def _start_section(self, title_element_id: str, level: int) -> str:
+        """启动 `section` 相关数据。"""
         section_id = _stable("section", title_element_id)
         parent_level = max((value for value in self.state.active_sections if value < level), default=None)
         parent_id = self.state.active_sections[parent_level] if parent_level else "section_root"
@@ -526,12 +558,14 @@ class _Converter:
         return section_id
 
     def _register(self, element: ElementBase) -> None:
+        """注册 `register` 相关数据。"""
         self.state.elements.append(element)
         self.state.section_elements.setdefault(
             element.section_id or "section_root", []
         ).append(element.element_id)
 
     def _build_document(self) -> Document:
+        """构建 `document` 相关数据。"""
         sections = tuple(
             Section(
                 section_id=section_id,
@@ -612,6 +646,16 @@ def build_converted_bundle(
     *,
     strict: bool = False,
 ) -> ConvertedBundle:
+    """构建 `converted bundle` 相关数据。
+
+    Args:
+        bundle: DoclingBundle => `bundle` 参数。
+        source: Path => `source` 参数。
+        strict: bool => `strict` 参数。
+
+    Returns:
+        ConvertedBundle => 处理结果。
+    """
     return _Converter(bundle, source, strict).convert()
 
 

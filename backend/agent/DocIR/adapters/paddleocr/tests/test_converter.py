@@ -1,3 +1,7 @@
+# backend/agent/DocIR/adapters/paddleocr/tests/test_converter.py
+
+"""验证 `converter` 相关行为与回归场景。"""
+
 from __future__ import annotations
 
 import hashlib
@@ -16,12 +20,14 @@ from ..converter import convert_bundle
 
 
 def _png() -> bytes:
+    """处理 `_png` 相关逻辑。"""
     stream = BytesIO()
     Image.new("RGB", (200, 300), "white").save(stream, format="PNG")
     return stream.getvalue()
 
 
 def _page(*, unknown: bool = False) -> dict:
+    """处理 `_page` 相关逻辑。"""
     blocks = [
         {
             "block_label": "doc_title",
@@ -120,6 +126,7 @@ def _page(*, unknown: bool = False) -> dict:
 
 
 def _bundle(*, status: str = "success", unknown: bool = False) -> PaddleOCRBundle:
+    """处理 `_bundle` 相关逻辑。"""
     return PaddleOCRBundle(
         pages=(_page(unknown=unknown),),
         page_images=(_png(),),
@@ -138,6 +145,7 @@ def _bundle(*, status: str = "success", unknown: bool = False) -> PaddleOCRBundl
 
 
 def test_semantics_geometry_confidence_and_assets(tmp_path: Path) -> None:
+    """验证 `semantics_geometry_confidence_and_assets` 场景。"""
     source = tmp_path / "source.png"
     source.write_bytes(_png())
     document = convert_bundle(_bundle(), source)
@@ -170,6 +178,7 @@ def test_semantics_geometry_confidence_and_assets(tmp_path: Path) -> None:
 
 
 def test_status_and_unknown_policy(tmp_path: Path) -> None:
+    """验证 `status_and_unknown_policy` 场景。"""
     source = tmp_path / "source.png"
     source.write_bytes(_png())
     with pytest.raises(ValueError, match="status"):
@@ -181,6 +190,7 @@ def test_status_and_unknown_policy(tmp_path: Path) -> None:
 
 
 def test_atomic_materialization_reload_replay_and_chunking(tmp_path: Path) -> None:
+    """验证 `atomic_materialization_reload_replay_and_chunking` 场景。"""
     source = tmp_path / "source.png"
     source.write_bytes(_png())
     output = tmp_path / "converted"
@@ -199,6 +209,7 @@ def test_atomic_materialization_reload_replay_and_chunking(tmp_path: Path) -> No
 
 
 def test_page_and_image_count_must_match() -> None:
+    """验证 `page_and_image_count_must_match` 场景。"""
     with pytest.raises(ValueError, match="数量不一致"):
         PaddleOCRBundle(
             pages=(_page(),),

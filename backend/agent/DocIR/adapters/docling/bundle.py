@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/docling/bundle.py
+
 """In-memory and on-disk representation of one Docling conversion."""
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ RAW_METADATA_NAME = "conversion_metadata.json"
 
 
 def _json_bytes(value: Any) -> bytes:
+    """处理 `_json_bytes` 相关逻辑。"""
     return (
         json.dumps(
             value,
@@ -40,12 +43,14 @@ class DoclingBundle:
 
     @property
     def document_bytes(self) -> bytes:
+        """处理 `document_bytes` 相关逻辑。"""
         return _json_bytes(
             self.document.model_dump(mode="json", by_alias=True)
         )
 
     @property
     def metadata_bytes(self) -> bytes:
+        """处理 `metadata_bytes` 相关逻辑。"""
         return _json_bytes(
             {
                 "status": self.status,
@@ -83,4 +88,3 @@ def load_bundle(path: Path) -> DoclingBundle:
         timings=dict(metadata.get("timings") or {}),
         root=root,
     )
-

@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/paddleocr/models.py
+
 """Configuration for the local PP-StructureV3-to-DocIR adapter."""
 
 from __future__ import annotations
@@ -44,6 +46,7 @@ class PaddleOCRAdapterConfig(BaseModel):
     @field_validator("device")
     @classmethod
     def gpu_device(cls, value: str) -> str:
+        """处理 `gpu_device` 相关逻辑。"""
         if not re.fullmatch(r"gpu(?::\d+)?", value):
             raise ValueError("PaddleOCR Adapter 只接受 gpu 或 gpu:<index>")
         return value
@@ -51,6 +54,7 @@ class PaddleOCRAdapterConfig(BaseModel):
     @field_validator("engine")
     @classmethod
     def paddle_engine(cls, value: str) -> str:
+        """处理 `paddle_engine` 相关逻辑。"""
         if value != "paddle":
             raise ValueError("PaddleOCR Adapter 只启用本地 PaddlePaddle 引擎")
         return value
@@ -58,6 +62,7 @@ class PaddleOCRAdapterConfig(BaseModel):
     @field_validator("model_source")
     @classmethod
     def supported_model_source(cls, value: str) -> str:
+        """处理 `supported_model_source` 相关逻辑。"""
         if value not in {"huggingface", "modelscope", "aistudio", "bos"}:
             raise ValueError("不支持的 PaddleX 模型源")
         return value

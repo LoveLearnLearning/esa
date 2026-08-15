@@ -1,3 +1,5 @@
+# backend/scripts/dataset/tools/capture_system_prompts.py
+
 """抓取**线上真实 system prompt**，落成缓存。
 
 为什么不复刻
@@ -165,6 +167,7 @@ def render(be, message: str, style: str, tone: str) -> tuple[str, object]:
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     ap = argparse.ArgumentParser(description="抓取线上真实 system prompt")
     ap.add_argument("--repo", help="本地后端仓库副本；默认 ~/esa")
     ap.add_argument("--download", action="store_true", help="强制下载快照（抓不到本地改动，慎用）")

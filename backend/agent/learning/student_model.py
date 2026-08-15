@@ -1,3 +1,5 @@
+# backend/agent/learning/student_model.py
+
 """Pure Student Model V2 algorithms.
 
 This module deliberately has no storage, web, context, or model dependencies.
@@ -14,11 +16,13 @@ from math import exp, log, sqrt
 
 @dataclass(frozen=True)
 class EvidenceSignal:
+    """封装 `EvidenceSignal` 的状态与行为。"""
     performance: float | None
     quality: float
 
 
 class StudentModel:
+    """封装 `StudentModel` 的状态与行为。"""
     MIN_MASTERY = 5.0
     MAX_MASTERY = 98.0
     PRIOR_MASTERY = 50.0
@@ -40,6 +44,16 @@ class StudentModel:
 
     @staticmethod
     def clamp(value: float, low: float, high: float) -> float:
+        """处理 `clamp` 相关逻辑。
+
+        Args:
+            value: float => 输入值。
+            low: float => `low` 参数。
+            high: float => `high` 参数。
+
+        Returns:
+            float => 处理结果。
+        """
         return max(low, min(high, float(value)))
 
     @classmethod
@@ -56,6 +70,22 @@ class StudentModel:
         explanation_score: float | None,
         transfer_score: float | None,
     ) -> EvidenceSignal:
+        """处理 `evidence_signal` 相关逻辑。
+
+        Args:
+            activity_type: str => `activity_type` 参数。
+            correct: bool | None => `correct` 参数。
+            evidence_reliability: float => `evidence_reliability` 参数。
+            hint_level: int => `hint_level` 参数。
+            attempts: int => `attempts` 参数。
+            independent: bool | None => `independent` 参数。
+            recall_score: float | None => `recall_score` 参数。
+            explanation_score: float | None => `explanation_score` 参数。
+            transfer_score: float | None => `transfer_score` 参数。
+
+        Returns:
+            EvidenceSignal => 处理结果。
+        """
         weighted: list[tuple[float, float]] = []
         if correct is not None:
             weighted.append((1.0 if correct else 0.0, 0.55))
@@ -101,6 +131,16 @@ class StudentModel:
         evidence_weight: float,
         signal: EvidenceSignal,
     ) -> tuple[float, float]:
+        """更新 `mastery` 相关数据。
+
+        Args:
+            mastery: float => `mastery` 参数。
+            evidence_weight: float => `evidence_weight` 参数。
+            signal: EvidenceSignal => `signal` 参数。
+
+        Returns:
+            tuple[float, float] => 处理结果。
+        """
         if signal.performance is None:
             return mastery, evidence_weight
         current = cls.clamp(mastery, cls.MIN_MASTERY, cls.MAX_MASTERY)
@@ -125,6 +165,16 @@ class StudentModel:
         mastery: float,
         signal: EvidenceSignal,
     ) -> float:
+        """更新 `stability` 相关数据。
+
+        Args:
+            stability_days: float => `stability_days` 参数。
+            mastery: float => `mastery` 参数。
+            signal: EvidenceSignal => `signal` 参数。
+
+        Returns:
+            float => 处理结果。
+        """
         if signal.performance is None:
             return stability_days
         if signal.performance >= 0.80:
@@ -141,6 +191,7 @@ class StudentModel:
 
     @staticmethod
     def evidence_confidence(evidence_weight: float) -> float:
+        """处理 `evidence_confidence` 相关逻辑。"""
         return 1.0 - exp(-max(0.0, evidence_weight) / 3.5)
 
     @staticmethod
@@ -150,6 +201,16 @@ class StudentModel:
         stability_days: float,
         now: datetime | None = None,
     ) -> float:
+        """处理 `retention` 相关逻辑。
+
+        Args:
+            last_practiced_at: str => `last_practiced_at` 参数。
+            stability_days: float => `stability_days` 参数。
+            now: datetime | None => `now` 参数。
+
+        Returns:
+            float => 处理结果。
+        """
         current = now or datetime.now()
         last = datetime.fromisoformat(last_practiced_at)
         if current.tzinfo is not None and last.tzinfo is None:
@@ -166,6 +227,15 @@ class StudentModel:
         stability_days: float,
         threshold: float | None = None,
     ) -> float:
+        """处理 `days_until_threshold` 相关逻辑。
+
+        Args:
+            stability_days: float => `stability_days` 参数。
+            threshold: float | None => `threshold` 参数。
+
+        Returns:
+            float => 处理结果。
+        """
         normalized = cls.clamp(
             cls.REVIEW_THRESHOLD if threshold is None else threshold,
             0.01,
@@ -175,6 +245,15 @@ class StudentModel:
 
     @staticmethod
     def status(mastery: float | None, confidence: float) -> str:
+        """处理 `status` 相关逻辑。
+
+        Args:
+            mastery: float | None => `mastery` 参数。
+            confidence: float => `confidence` 参数。
+
+        Returns:
+            str => 处理结果。
+        """
         if mastery is None or confidence <= 0.0:
             return "unseen"
         if mastery < 40.0:

@@ -1,3 +1,7 @@
+# backend/tests/test_production_proxy.py
+
+"""验证 `production_proxy` 相关行为与回归场景。"""
+
 from fastapi import Request
 from fastapi.testclient import TestClient
 
@@ -14,7 +18,9 @@ from backend.core.web.webAPI import create_app
 
 
 class _FakeEmailSender:
+    """封装 `_FakeEmailSender` 的状态与行为。"""
     def __init__(self) -> None:
+        """初始化 `_FakeEmailSender` 实例。"""
         self.codes: dict[str, str] = {}
 
     async def send_code(
@@ -25,10 +31,19 @@ class _FakeEmailSender:
         ttl_minutes: int,
         idempotency_key: str,
     ) -> None:
+        """发送 `code` 相关数据。
+
+        Args:
+            email: str => 邮箱地址。
+            code: str => `code` 参数。
+            ttl_minutes: int => `ttl_minutes` 参数。
+            idempotency_key: str => `idempotency_key` 参数。
+        """
         del ttl_minutes, idempotency_key
         self.codes[email] = code
 
     async def close(self) -> None:
+        """释放当前对象持有的资源。"""
         return None
 
 
@@ -38,6 +53,7 @@ def _app(
     enable_legacy_routes: bool = False,
     forwarded_allow_ips: tuple[str, ...] = ("testclient",),
 ):
+    """处理 `_app` 相关逻辑。"""
     database = tmp_path / "production-proxy.db"
     user_store = UserStore(database)
     session_store = SessionStore(database)
@@ -66,6 +82,7 @@ def _app(
 
 
 def test_api_auth_contract_and_health(tmp_path):
+    """验证 `api_auth_contract_and_health` 场景。"""
     app = _app(tmp_path)
     client = TestClient(app)
 
@@ -117,6 +134,7 @@ def test_api_auth_contract_and_health(tmp_path):
 
 
 def test_registration_code_is_single_use(tmp_path):
+    """验证 `registration_code_is_single_use` 场景。"""
     app = _app(tmp_path)
     client = TestClient(app)
     email = "single@example.com"
@@ -138,6 +156,7 @@ def test_registration_code_is_single_use(tmp_path):
 
 
 def test_legacy_user_can_bind_email_and_keep_username_login(tmp_path):
+    """验证 `legacy_user_can_bind_email_and_keep_username_login` 场景。"""
     app = _app(tmp_path)
     legacy = app.state.auth.register("legacy", "correct-password")
     assert legacy is not None and legacy.email is None
@@ -172,6 +191,7 @@ def test_legacy_user_can_bind_email_and_keep_username_login(tmp_path):
 
 
 def test_legacy_username_containing_at_sign_still_logs_in(tmp_path):
+    """验证 `legacy_username_containing_at_sign_still_logs_in` 场景。"""
     app = _app(tmp_path)
     assert app.state.auth.register("legacy@example", "correct-password") is not None
 
@@ -185,6 +205,7 @@ def test_legacy_username_containing_at_sign_still_logs_in(tmp_path):
 
 
 def test_cors_preflight_allows_only_configured_origin(tmp_path):
+    """验证 `cors_preflight_allows_only_configured_origin` 场景。"""
     client = TestClient(_app(tmp_path))
     headers = {
         "Origin": "https://esa.lovelearnlearning.cn",
@@ -209,10 +230,12 @@ def test_cors_preflight_allows_only_configured_origin(tmp_path):
 
 
 def test_trusted_proxy_updates_scheme_client_and_preserves_host(tmp_path):
+    """验证 `trusted_proxy_updates_scheme_client_and_preserves_host` 场景。"""
     app = _app(tmp_path)
 
     @app.get("/api/request-metadata")
     def request_metadata(request: Request):
+        """处理 `request_metadata` 相关逻辑。"""
         return {
             "scheme": request.url.scheme,
             "client": request.client.host if request.client else None,
@@ -238,10 +261,12 @@ def test_trusted_proxy_updates_scheme_client_and_preserves_host(tmp_path):
 
 
 def test_untrusted_client_cannot_spoof_forwarded_headers(tmp_path):
+    """验证 `untrusted_client_cannot_spoof_forwarded_headers` 场景。"""
     app = _app(tmp_path, forwarded_allow_ips=("127.0.0.1",))
 
     @app.get("/api/request-metadata")
     def request_metadata(request: Request):
+        """处理 `request_metadata` 相关逻辑。"""
         return {
             "scheme": request.url.scheme,
             "client": request.client.host if request.client else None,
@@ -265,6 +290,7 @@ def test_untrusted_client_cannot_spoof_forwarded_headers(tmp_path):
 
 
 def test_legacy_routes_remain_available_during_migration(tmp_path):
+    """验证 `legacy_routes_remain_available_during_migration` 场景。"""
     client = TestClient(_app(tmp_path, enable_legacy_routes=True))
 
     response = client.post(

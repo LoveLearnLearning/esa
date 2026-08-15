@@ -1,3 +1,7 @@
+# backend/core/stores/schedule_store.py
+
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
 import sqlite3
@@ -89,10 +93,13 @@ def ensure_schedule_tables_schema(connection: sqlite3.Connection) -> None:
 
 
 class ScheduleStore(BaseSQLiteStore):
+    """封装 `schedule store` 数据持久化操作。"""
     def __init__(self, database_path: str | Path = "data/esa.db") -> None:
+        """初始化 `ScheduleStore` 实例。"""
         super().__init__(database_path)
 
     def _initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         with closing(self._connect()) as connection, connection:
             connection.executescript(
                 """
@@ -150,6 +157,7 @@ class ScheduleStore(BaseSQLiteStore):
 
     @staticmethod
     def _course(row: sqlite3.Row) -> dict:
+        """处理 `_course` 相关逻辑。"""
         return {
             key: row[key]
             for key in (
@@ -170,6 +178,7 @@ class ScheduleStore(BaseSQLiteStore):
     # ---- 课程表（多张课表）管理 ----
 
     def list_tables(self, user_id: str) -> list[dict]:
+        """列出 `tables` 相关数据。"""
         rows = self.query_all(
             """
             SELECT id, name, is_active FROM schedule_tables
@@ -183,6 +192,15 @@ class ScheduleStore(BaseSQLiteStore):
         ]
 
     def get_table(self, user_id: str, table_id: str) -> dict | None:
+        """获取 `table` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            table_id: str => table ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         row = self.query_one(
             "SELECT id, name, is_active FROM schedule_tables "
             "WHERE user_id = ? AND id = ?",
@@ -229,6 +247,16 @@ class ScheduleStore(BaseSQLiteStore):
             return table_id
 
     def create_table(self, user_id: str, name: str, *, activate: bool = True) -> dict:
+        """创建 `table` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            name: str => `name` 参数。
+            activate: bool => `activate` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         table_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         with closing(self._connect()) as connection, connection:
@@ -247,6 +275,16 @@ class ScheduleStore(BaseSQLiteStore):
         return {"id": table_id, "name": name, "is_active": activate}
 
     def rename_table(self, user_id: str, table_id: str, name: str) -> bool:
+        """处理 `rename_table` 相关逻辑。
+
+        Args:
+            user_id: str => 用户 ID。
+            table_id: str => table ID。
+            name: str => `name` 参数。
+
+        Returns:
+            bool => 处理结果。
+        """
         now = datetime.now(timezone.utc).isoformat()
         return (
             self.execute(
@@ -258,6 +296,15 @@ class ScheduleStore(BaseSQLiteStore):
         )
 
     def activate_table(self, user_id: str, table_id: str) -> bool:
+        """处理 `activate_table` 相关逻辑。
+
+        Args:
+            user_id: str => 用户 ID。
+            table_id: str => table ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         now = datetime.now(timezone.utc).isoformat()
         with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -337,6 +384,15 @@ class ScheduleStore(BaseSQLiteStore):
         return [self._course(row) for row in self.query_all(sql, params)]
 
     def get_course(self, user_id: str, course_id: str) -> dict | None:
+        """获取 `course` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            course_id: str => course ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         row = self.query_one(
             """
             SELECT id, name, teacher, location, weekday, start_period,
@@ -348,6 +404,14 @@ class ScheduleStore(BaseSQLiteStore):
         return self._course(row) if row is not None else None
 
     def get_settings(self, user_id: str) -> dict:
+        """获取 `settings` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+
+        Returns:
+            dict => 处理结果。
+        """
         row = self.query_one(
             """
             SELECT morning_period_count, afternoon_period_count,
@@ -419,6 +483,7 @@ class ScheduleStore(BaseSQLiteStore):
 
     @staticmethod
     def _time_conflicts(a: dict, b: dict) -> bool:
+        """处理 `_time_conflicts` 相关逻辑。"""
         return (
             a["weekday"] == b["weekday"]
             and a["start_period"] <= b["end_period"]
@@ -473,6 +538,15 @@ class ScheduleStore(BaseSQLiteStore):
         return imported, skipped
 
     def delete_course(self, user_id: str, course_id: str) -> bool:
+        """删除 `course` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            course_id: str => course ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         return (
             self.execute(
                 "DELETE FROM schedule_courses WHERE user_id = ? AND id = ?",
@@ -482,6 +556,15 @@ class ScheduleStore(BaseSQLiteStore):
         )
 
     def save_settings(self, user_id: str, settings: dict) -> dict:
+        """保存 `settings` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            settings: dict => 设置数据。
+
+        Returns:
+            dict => 处理结果。
+        """
         now = datetime.now(timezone.utc).isoformat()
         values = {**DEFAULT_SETTINGS, **settings}
         self.execute(

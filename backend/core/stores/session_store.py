@@ -1,5 +1,7 @@
 # backend/core/stores/session_store.py
 
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
 import sqlite3
@@ -18,6 +20,7 @@ class SessionStore(BaseSQLiteStore):
     """
 
     def __init__(self, database_path: str | Path = "data/esa.db") -> None:
+        """初始化 `SessionStore` 实例。"""
         super().__init__(database_path)
 
     def _initialize(self) -> None:

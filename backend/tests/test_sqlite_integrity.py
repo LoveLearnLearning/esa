@@ -1,3 +1,7 @@
+# backend/tests/test_sqlite_integrity.py
+
+"""验证 `sqlite_integrity` 相关行为与回归场景。"""
+
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -15,6 +19,7 @@ from backend.core.utils.models import SessionPrincipal, UserRecord
 
 
 def _user(user_id: str = "u1") -> UserRecord:
+    """处理 `_user` 相关逻辑。"""
     return UserRecord(
         id=user_id,
         username=user_id,
@@ -24,6 +29,7 @@ def _user(user_id: str = "u1") -> UserRecord:
 
 
 def _stores(database_path):
+    """处理 `_stores` 相关逻辑。"""
     user_store = UserStore(database_path)
     group_store = GroupStore(database_path)
     chat_store = ChatStore(database_path)
@@ -34,6 +40,7 @@ def _stores(database_path):
 
 
 def test_every_project_connection_enables_foreign_keys(tmp_path):
+    """验证 `every_project_connection_enables_foreign_keys` 场景。"""
     store = UserStore(tmp_path / "users.db")
 
     assert store.query_one("PRAGMA foreign_keys")[0] == 1
@@ -41,6 +48,7 @@ def test_every_project_connection_enables_foreign_keys(tmp_path):
 
 
 def test_owned_tables_reject_orphan_records(tmp_path):
+    """验证 `owned_tables_reject_orphan_records` 场景。"""
     database_path = tmp_path / "users.db"
     user_store, group_store, chat_store, session_store, profile_store = _stores(
         database_path
@@ -82,6 +90,7 @@ def test_owned_tables_reject_orphan_records(tmp_path):
 
 
 def test_user_delete_cascades_all_main_database_records(tmp_path):
+    """验证 `user_delete_cascades_all_main_database_records` 场景。"""
     database_path = tmp_path / "users.db"
     user_store, group_store, chat_store, session_store, profile_store = _stores(
         database_path
@@ -161,6 +170,7 @@ def test_user_delete_cascades_all_main_database_records(tmp_path):
 
 
 def test_conversation_group_must_belong_to_same_user(tmp_path):
+    """验证 `conversation_group_must_belong_to_same_user` 场景。"""
     database_path = tmp_path / "users.db"
     user_store, group_store, chat_store, _, _ = _stores(database_path)
     assert user_store.create(_user("u1"))
@@ -176,6 +186,7 @@ def test_conversation_group_must_belong_to_same_user(tmp_path):
 
 
 def test_legacy_migration_quarantines_orphans_and_preserves_valid_rows(tmp_path):
+    """验证 `legacy_migration_quarantines_orphans_and_preserves_valid_rows` 场景。"""
     database_path = tmp_path / "legacy.db"
     connection = sqlite3.connect(database_path)
     connection.executescript(
@@ -275,6 +286,7 @@ def test_legacy_migration_quarantines_orphans_and_preserves_valid_rows(tmp_path)
 
 
 def test_v10_repairs_databases_that_already_recorded_a_conflicting_v9(tmp_path):
+    """验证 `v10_repairs_databases_that_already_recorded_a_conflicting_v9` 场景。"""
     database_path = tmp_path / "v9-collision.db"
     connection = sqlite3.connect(database_path)
     connection.executescript(

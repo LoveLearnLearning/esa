@@ -1,3 +1,5 @@
+# backend/agent/memories/mastery_store.py
+
 """SQLite persistence for the Student Model V2.
 
 Mastery is a long-term understanding estimate and never decays with time.
@@ -16,6 +18,7 @@ from backend.core.stores.sqlite_connection import connect_sqlite
 
 
 class MasteryStore:
+    """封装 `mastery store` 数据持久化操作。"""
     MIN_MASTERY = StudentModel.MIN_MASTERY
     MAX_MASTERY = StudentModel.MAX_MASTERY
     DEFAULT_MASTERY = StudentModel.PRIOR_MASTERY
@@ -23,14 +26,17 @@ class MasteryStore:
     BASE_STABILITY = StudentModel.INITIAL_STABILITY_DAYS
 
     def __init__(self, database_path: str | Path = "data/mastery.db") -> None:
+        """初始化 `MasteryStore` 实例。"""
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.__initialize()
 
     def __connect(self) -> sqlite3.Connection:
+        """处理 `__connect` 相关逻辑。"""
         return connect_sqlite(self.database_path)
 
     def __initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         with self.__connect() as connection:
             connection.execute(
                 """
@@ -83,10 +89,12 @@ class MasteryStore:
 
     @staticmethod
     def __now_iso() -> str:
+        """处理 `__now_iso` 相关逻辑。"""
         return datetime.now().isoformat()
 
     @staticmethod
     def _unseen(user_name: str, kp_id: str) -> dict:
+        """处理 `_unseen` 相关逻辑。"""
         return {
             "user_name": user_name,
             "kp_id": kp_id,
@@ -104,6 +112,7 @@ class MasteryStore:
 
     @staticmethod
     def _row_state(row: sqlite3.Row, *, now: datetime | None = None) -> dict:
+        """处理 `_row_state` 相关逻辑。"""
         mastery = float(row["mastery_level"])
         stability = float(row["stability_days"])
         weight = float(row["evidence_weight"])
@@ -136,6 +145,15 @@ class MasteryStore:
         }
 
     def get(self, user_name: str, kp_id: str) -> dict | None:
+        """获取 `get` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str => kp ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         user_name = user_name.strip()
         kp_id = kp_id.strip()
         if not user_name or not kp_id:
@@ -156,11 +174,29 @@ class MasteryStore:
         return self._row_state(row)
 
     def get_state(self, user_name: str, kp_id: str) -> dict:
+        """获取 `state` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str => kp ID。
+
+        Returns:
+            dict => 处理结果。
+        """
         return self.get(user_name, kp_id) or self._unseen(
             user_name.strip(), kp_id.strip()
         )
 
     def get_mastery_level(self, user_name: str, kp_id: str) -> float:
+        """获取 `mastery level` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str => kp ID。
+
+        Returns:
+            float => 处理结果。
+        """
         record = self.get(user_name, kp_id)
         return (
             self.DEFAULT_MASTERY
@@ -183,6 +219,24 @@ class MasteryStore:
         explanation_score: float | None = None,
         transfer_score: float | None = None,
     ) -> dict:
+        """处理 `apply_evidence` 相关逻辑。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str => kp ID。
+            activity_type: str => `activity_type` 参数。
+            correct: bool | None => `correct` 参数。
+            evidence_reliability: float => `evidence_reliability` 参数。
+            hint_level: int => `hint_level` 参数。
+            attempts: int => `attempts` 参数。
+            independent: bool | None => `independent` 参数。
+            recall_score: float | None => `recall_score` 参数。
+            explanation_score: float | None => `explanation_score` 参数。
+            transfer_score: float | None => `transfer_score` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         user_name = user_name.strip()
         kp_id = kp_id.strip()
         if not user_name:
@@ -314,6 +368,17 @@ class MasteryStore:
         correct: bool,
         confidence: float = 1.0,
     ) -> dict:
+        """处理 `record_answer` 相关逻辑。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str => kp ID。
+            correct: bool => `correct` 参数。
+            confidence: float => `confidence` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         return self.apply_evidence(
             user_name=user_name,
             kp_id=kp_id,
@@ -332,6 +397,15 @@ class MasteryStore:
         *,
         kp_ids: set[str] | None = None,
     ) -> list[dict]:
+        """列出 `for user` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_ids: set[str] | None => `kp_ids` 参数。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         user_name = user_name.strip()
         if not user_name:
             return []
@@ -353,6 +427,7 @@ class MasteryStore:
         ]
 
     def _top(self, user_name: str, k: int, *, ascending: bool) -> list[dict]:
+        """处理 `_top` 相关逻辑。"""
         states = self.list_for_user(user_name)
         states.sort(
             key=lambda item: float(item["mastery_level"]),
@@ -361,9 +436,27 @@ class MasteryStore:
         return states[: max(0, k)]
 
     def get_top_weak(self, user_name: str, k: int = 3) -> list[dict]:
+        """获取 `top weak` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            k: int => `k` 参数。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         return self._top(user_name, k, ascending=True)
 
     def get_top_strong(self, user_name: str, k: int = 3) -> list[dict]:
+        """获取 `top strong` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            k: int => `k` 参数。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         return self._top(user_name, k, ascending=False)
 
     def get_report(
@@ -372,6 +465,16 @@ class MasteryStore:
         course: str | None = None,
         kg_store=None,
     ) -> dict:
+        """获取 `report` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            course: str | None => `course` 参数。
+            kg_store: object => `kg_store` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         course_ids: set[str] | None = None
         if course:
             if kg_store is None:
@@ -412,6 +515,18 @@ class MasteryStore:
         total_weeks: int,
         kg_store,
     ) -> list[dict]:
+        """获取 `priority ranking` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            course: str => `course` 参数。
+            weeks_to_exam: int => `weeks_to_exam` 参数。
+            total_weeks: int => `total_weeks` 参数。
+            kg_store: object => `kg_store` 参数。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         points = kg_store.get_course_points(course.strip())
         if not user_name.strip() or not points:
             return []
@@ -480,6 +595,16 @@ class MasteryStore:
         kp_id: str,
         threshold: float | None = None,
     ) -> dict:
+        """获取 `review timing` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str => kp ID。
+            threshold: float | None => `threshold` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         state = self.get(user_name, kp_id)
         if state is None:
             return {
@@ -522,6 +647,18 @@ class MasteryStore:
         mastery_threshold: float = 50.0,
         max_depth: int = 5,
     ) -> list[dict]:
+        """获取 `weak prerequisites` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str => kp ID。
+            kg_store: object => `kg_store` 参数。
+            mastery_threshold: float => `mastery_threshold` 参数。
+            max_depth: int => `max_depth` 参数。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         prerequisites = kg_store.get_prerequisites(
             kp_id.strip(), max_depth=max_depth
         )

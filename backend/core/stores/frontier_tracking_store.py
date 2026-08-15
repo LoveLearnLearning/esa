@@ -1,3 +1,7 @@
+# backend/core/stores/frontier_tracking_store.py
+
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
 import json
@@ -14,9 +18,11 @@ class FrontierTrackingStore(BaseSQLiteStore):
     """Persistent queue and results for research-frontier tracking jobs."""
 
     def __init__(self, database_path: str | Path = "data/esa.db") -> None:
+        """初始化 `FrontierTrackingStore` 实例。"""
         super().__init__(database_path)
 
     def _initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
@@ -52,10 +58,12 @@ class FrontierTrackingStore(BaseSQLiteStore):
 
     @staticmethod
     def _now() -> str:
+        """处理 `_now` 相关逻辑。"""
         return datetime.now(timezone.utc).isoformat()
 
     @staticmethod
     def _out(row: sqlite3.Row) -> dict:
+        """处理 `_out` 相关逻辑。"""
         payload = dict(row)
         raw_result = payload.pop("result_json", None)
         payload["result"] = json.loads(raw_result) if raw_result else None
@@ -70,6 +78,18 @@ class FrontierTrackingStore(BaseSQLiteStore):
         time_window_years: int,
         max_results: int,
     ) -> dict:
+        """创建 `job` 相关数据。
+
+        Args:
+            project_id: str => 项目 ID。
+            user_id: str => 用户 ID。
+            query: str => 查询文本。
+            time_window_years: int => `time_window_years` 参数。
+            max_results: int => `max_results` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         now = self._now()
         job_id = str(uuid.uuid4())
         self.execute(
@@ -95,6 +115,15 @@ class FrontierTrackingStore(BaseSQLiteStore):
         return job
 
     def get_job(self, job_id: str, user_id: str | None = None) -> dict | None:
+        """获取 `job` 相关数据。
+
+        Args:
+            job_id: str => job ID。
+            user_id: str | None => 用户 ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         sql = "SELECT * FROM research_frontier_jobs WHERE job_id = ?"
         params: tuple = (job_id,)
         if user_id is not None:
@@ -104,6 +133,15 @@ class FrontierTrackingStore(BaseSQLiteStore):
         return self._out(row) if row is not None else None
 
     def list_jobs(self, project_id: str, user_id: str) -> list[dict]:
+        """列出 `jobs` 相关数据。
+
+        Args:
+            project_id: str => 项目 ID。
+            user_id: str => 用户 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         rows = self.query_all(
             """
             SELECT * FROM research_frontier_jobs
@@ -115,6 +153,14 @@ class FrontierTrackingStore(BaseSQLiteStore):
         return [self._out(row) for row in rows]
 
     def claim_job(self, job_id: str) -> dict | None:
+        """处理 `claim_job` 相关逻辑。
+
+        Args:
+            job_id: str => job ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         now = self._now()
         with closing(self._connect()) as connection, connection:
             cursor = connection.execute(
@@ -134,6 +180,12 @@ class FrontierTrackingStore(BaseSQLiteStore):
         return self._out(row) if row is not None else None
 
     def complete_job(self, job_id: str, result: dict) -> None:
+        """处理 `complete_job` 相关逻辑。
+
+        Args:
+            job_id: str => job ID。
+            result: dict => `result` 参数。
+        """
         now = self._now()
         self.execute(
             """
@@ -146,6 +198,12 @@ class FrontierTrackingStore(BaseSQLiteStore):
         )
 
     def fail_job(self, job_id: str, error: str) -> None:
+        """处理 `fail_job` 相关逻辑。
+
+        Args:
+            job_id: str => job ID。
+            error: str => `error` 参数。
+        """
         now = self._now()
         self.execute(
             """
@@ -157,6 +215,7 @@ class FrontierTrackingStore(BaseSQLiteStore):
         )
 
     def requeue_interrupted(self) -> list[str]:
+        """处理 `requeue_interrupted` 相关逻辑。"""
         now = self._now()
         with closing(self._connect()) as connection, connection:
             rows = connection.execute(

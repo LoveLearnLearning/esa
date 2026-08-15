@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/docling/tests/test_converter.py
+
 """Pure DoclingDocument-to-DocIR conversion tests."""
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ def _prov(
     bbox: tuple[float, float, float, float],
     origin: CoordOrigin = CoordOrigin.TOPLEFT,
 ) -> ProvenanceItem:
+    """处理 `_prov` 相关逻辑。"""
     return ProvenanceItem(
         page_no=1,
         bbox=BoundingBox.from_tuple(bbox, origin=origin),
@@ -40,6 +43,7 @@ def _prov(
 
 
 def _document() -> DoclingDocument:
+    """处理 `_document` 相关逻辑。"""
     document = DoclingDocument(name="fixture")
     document.add_page(page_no=1, size=Size(width=100, height=100))
     document.add_title("Title", prov=_prov((10, 10, 90, 20)))
@@ -78,6 +82,7 @@ def _document() -> DoclingDocument:
 
 
 def _bundle(status: str = "success") -> DoclingBundle:
+    """处理 `_bundle` 相关逻辑。"""
     return DoclingBundle(
         document=_document(),
         status=status,
@@ -90,12 +95,14 @@ def _bundle(status: str = "success") -> DoclingBundle:
 
 
 def _source(tmp_path: Path) -> Path:
+    """处理 `_source` 相关逻辑。"""
     source = tmp_path / "source.pdf"
     source.write_bytes(b"%PDF-synthetic-source")
     return source
 
 
 def test_semantic_types_sections_and_coordinates(tmp_path: Path) -> None:
+    """验证 `semantic_types_sections_and_coordinates` 场景。"""
     document = convert_bundle(_bundle(), _source(tmp_path), strict=True)
 
     assert [element.kind for element in document.elements] == [
@@ -124,6 +131,7 @@ def test_semantic_types_sections_and_coordinates(tmp_path: Path) -> None:
 
 
 def test_partial_success_policy(tmp_path: Path) -> None:
+    """验证 `partial_success_policy` 场景。"""
     source = _source(tmp_path)
     document = convert_bundle(_bundle("partial_success"), source)
     assert document.validation.status.value == "passed_with_warnings"
@@ -133,11 +141,13 @@ def test_partial_success_policy(tmp_path: Path) -> None:
 
 
 def test_failure_is_never_consumable(tmp_path: Path) -> None:
+    """验证 `failure_is_never_consumable` 场景。"""
     with pytest.raises(ValueError, match="status=failure"):
         convert_bundle(_bundle("failure"), _source(tmp_path))
 
 
 def test_atomic_bundle_round_trip_and_chunking(tmp_path: Path) -> None:
+    """验证 `atomic_bundle_round_trip_and_chunking` 场景。"""
     source = _source(tmp_path)
     output = tmp_path / "output"
     materialize_bundle(_bundle(), source, output, strict=True)
@@ -157,4 +167,3 @@ def test_atomic_bundle_round_trip_and_chunking(tmp_path: Path) -> None:
     assert len(chunked.element_dispositions) == len(document.elements)
     with pytest.raises(FileExistsError):
         materialize_bundle(_bundle(), source, output)
-

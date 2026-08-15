@@ -1,5 +1,7 @@
 # backend/core/web/webAPI.py
 
+"""提供 `webAPI` 相关功能。"""
+
 import logging
 from contextlib import asynccontextmanager
 
@@ -150,6 +152,14 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """处理 `lifespan` 相关逻辑。
+
+    Args:
+        app: FastAPI => `app` 参数。
+
+    Returns:
+        object => 处理结果。
+    """
     validate_startup_config()
     mm_config = MMConfig.from_env()
     mm_config.validate_startup()
@@ -269,6 +279,7 @@ async def lifespan(app: FastAPI):
     app.state.agent_action_store = AgentActionStore(DB_PATH)
 
     def _validate_research_action(action: dict) -> None:
+        """校验 `research action` 相关数据。"""
         validate_research_action(
             action,
             project_store=app.state.research_project_store,
@@ -277,6 +288,7 @@ async def lifespan(app: FastAPI):
         )
 
     def _execute_research_action(action: dict) -> dict:
+        """执行 `research action` 相关数据。"""
         return execute_research_action(action, app.state.research_workflow_facade)
 
     app.state.agent_action_service = AgentActionService(
@@ -490,4 +502,5 @@ app = create_app()
 
 @app.get("/", include_in_schema=False)
 def read_root():
+    """读取 `root` 相关数据。"""
     return {"Hello": "World"}

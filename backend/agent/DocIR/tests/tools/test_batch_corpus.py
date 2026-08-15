@@ -47,6 +47,7 @@ requires_multiformat_fixture = pytest.mark.skipif(
 def test_discover_documents_is_sorted_case_insensitive_and_format_bounded(
     tmp_path: Path,
 ):
+    """验证 `discover_documents_is_sorted_case_insensitive_and_format_bounded` 场景。"""
     (tmp_path / "b.PDF").write_bytes(b"b")
     (tmp_path / "a.pdf").write_bytes(b"a")
     (tmp_path / "c.DOCX").write_bytes(b"c")
@@ -67,6 +68,7 @@ def test_discover_documents_is_sorted_case_insensitive_and_format_bounded(
 
 
 def test_source_metadata_only_uses_pdf_reader_for_pdf(tmp_path: Path):
+    """验证 `source_metadata_only_uses_pdf_reader_for_pdf` 场景。"""
     office = tmp_path / "source.docx"
     office.write_bytes(b"not parsed as a PDF")
     image = tmp_path / "source.png"
@@ -84,6 +86,7 @@ def test_source_metadata_only_uses_pdf_reader_for_pdf(tmp_path: Path):
 
 @requires_multiformat_fixture
 def test_pdf_source_metadata_preserves_page_count_and_encryption_behavior():
+    """验证 `pdf_source_metadata_preserves_page_count_and_encryption_behavior` 场景。"""
     pytest.importorskip("pypdf")
     metadata = source_metadata(MULTIFORMAT_SOURCES / "pdf_text.pdf")
     assert metadata.page_count == 2
@@ -92,6 +95,7 @@ def test_pdf_source_metadata_preserves_page_count_and_encryption_behavior():
 
 
 def test_stable_directory_name_uses_hash_and_safe_stem(tmp_path: Path):
+    """验证 `stable_directory_name_uses_hash_and_safe_stem` 场景。"""
     path = tmp_path / "报告.pdf"
     path.write_bytes(b"content")
     digest = hashlib.sha256(b"content").hexdigest()
@@ -99,6 +103,7 @@ def test_stable_directory_name_uses_hash_and_safe_stem(tmp_path: Path):
 
 
 def test_retention_policy_is_exact():
+    """验证 `retention_policy_is_exact` 场景。"""
     assert should_retain(Path("x_middle.json"))
     assert should_retain(Path("x_content_list_v2.json"))
     assert should_retain(Path("x_model.json"))
@@ -113,6 +118,7 @@ def test_retention_policy_is_exact():
 
 
 def test_prune_removes_debug_and_keeps_structural_files(tmp_path: Path):
+    """验证 `prune_removes_debug_and_keeps_structural_files` 场景。"""
     nested = tmp_path / "doc" / "auto"
     nested.mkdir(parents=True)
     retained = {
@@ -134,6 +140,7 @@ def test_prune_removes_debug_and_keeps_structural_files(tmp_path: Path):
 
 
 def test_find_parse_dir_accepts_office_profile_and_requires_v2_pair(tmp_path: Path):
+    """验证 `find_parse_dir_accepts_office_profile_and_requires_v2_pair` 场景。"""
     decoy = tmp_path / "decoy" / "auto"
     decoy.mkdir(parents=True)
     (decoy / "decoy_middle.json").write_text("{}")
@@ -146,6 +153,7 @@ def test_find_parse_dir_accepts_office_profile_and_requires_v2_pair(tmp_path: Pa
 
 
 def test_materialize_visual_assets_copies_declared_images_and_preserves_hash(tmp_path: Path):
+    """验证 `materialize_visual_assets_copies_declared_images_and_preserves_hash` 场景。"""
     source = tmp_path / "mineru" / "images" / "table.jpg"
     source.parent.mkdir(parents=True)
     source.write_bytes(b"jpeg-placeholder")
@@ -162,6 +170,7 @@ def test_materialize_visual_assets_copies_declared_images_and_preserves_hash(tmp
 
 
 def test_aggregate_distinguishes_attempted_and_successful():
+    """验证 `aggregate_distinguishes_attempted_and_successful` 场景。"""
     results = [
         {"status": "success", "source_pages": 3, "metrics": {"docir": {"pages": 3, "elements": 10, "unknown_elements": 2}, "strict_audit": {"passed": False}}},
         {"status": "parse_failed", "source_pages": 4},
@@ -177,6 +186,7 @@ def test_aggregate_distinguishes_attempted_and_successful():
 
 
 def test_resume_does_not_overwrite_verified_success(tmp_path: Path):
+    """验证 `resume_does_not_overwrite_verified_success` 场景。"""
     source = tmp_path / "source.pdf"
     source.write_bytes(b"pdf-placeholder")
     directory = stable_directory_name(source)
@@ -216,6 +226,7 @@ def test_office_sources_complete_without_inventing_page_semantics(
     filename: str,
     media_type: str,
 ):
+    """验证 `office_sources_complete_without_inventing_page_semantics` 场景。"""
     source = MULTIFORMAT_SOURCES / filename
     directory = stable_directory_name(source)
     mineru_run = tmp_path / "mineru"
@@ -265,6 +276,7 @@ def test_image_sources_pass_entry_and_keep_source_media_type(
     filename: str,
     media_type: str,
 ):
+    """验证 `image_sources_pass_entry_and_keep_source_media_type` 场景。"""
     source = MULTIFORMAT_SOURCES / filename
     directory = stable_directory_name(source)
     mineru_run = tmp_path / "mineru"
@@ -302,6 +314,7 @@ def test_image_sources_pass_entry_and_keep_source_media_type(
 
 @requires_real_fixture
 def test_refresh_conversion_reuses_raw_bundle_and_reaudits(tmp_path: Path):
+    """验证 `refresh_conversion_reuses_raw_bundle_and_reaudits` 场景。"""
     source = FIXTURE / "assets" / "source.pdf"
     directory = stable_directory_name(source)
     mineru_run = tmp_path / "mineru"

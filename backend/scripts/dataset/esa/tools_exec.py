@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/tools_exec.py
+
 """真实执行工具，拿真的返回值当 observation。
 
 绝不让生成模型编造工具结果 —— 一旦编造，模型学到的就是「工具会返回我想要的东西」，
@@ -43,6 +45,7 @@ def _cache_key(tool: str, arguments: dict[str, Any]) -> str:
 
 @lru_cache(maxsize=1)
 def _math_cache() -> dict[str, Any]:
+    """处理 `_math_cache` 相关逻辑。"""
     if not MATH_CACHE.exists():
         raise ToolError(
             f"找不到 {MATH_CACHE}。先跑 python3 dataset/tools/capture_math_outputs.py 抓真实返回值。"

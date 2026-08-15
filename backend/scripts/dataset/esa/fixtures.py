@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/fixtures.py
+
 """学情类工具的测试数据库 —— 严格复刻后端实现。
 
 ⚠️ 这个文件的每一个公式、字段名、取整位数都必须和后端一致，否则模型会学会消费一个
@@ -79,6 +81,7 @@ NOW = datetime(2026, 8, 10, 12, 0, 0)
 
 
 def _det_unit(*parts: str) -> float:
+    """处理 `_det_unit` 相关逻辑。"""
     h = hashlib.sha256("|".join(parts).encode("utf-8")).digest()
     return int.from_bytes(h[:4], "big") / 2**32
 
@@ -89,10 +92,21 @@ def _det_unit(*parts: str) -> float:
 
 
 def evidence_confidence(evidence_weight: float) -> float:
+    """处理 `evidence_confidence` 相关逻辑。"""
     return 1.0 - exp(-max(0.0, evidence_weight) / 3.5)
 
 
 def retention(*, last_practiced_at: str, stability_days: float, now: datetime | None = None) -> float:
+    """处理 `retention` 相关逻辑。
+
+    Args:
+        last_practiced_at: str => `last_practiced_at` 参数。
+        stability_days: float => `stability_days` 参数。
+        now: datetime | None => `now` 参数。
+
+    Returns:
+        float => 处理结果。
+    """
     current = now or NOW
     last = datetime.fromisoformat(last_practiced_at)
     days = max(0.0, (current - last).total_seconds() / 86400.0)
@@ -100,6 +114,15 @@ def retention(*, last_practiced_at: str, stability_days: float, now: datetime | 
 
 
 def status(mastery: float | None, confidence: float) -> str:
+    """处理 `status` 相关逻辑。
+
+    Args:
+        mastery: float | None => `mastery` 参数。
+        confidence: float => `confidence` 参数。
+
+    Returns:
+        str => 处理结果。
+    """
     if mastery is None or confidence <= 0.0:
         return "unseen"
     if mastery < 40.0:
@@ -112,6 +135,15 @@ def status(mastery: float | None, confidence: float) -> str:
 
 
 def days_until_threshold(*, stability_days: float, threshold: float | None = None) -> float:
+    """处理 `days_until_threshold` 相关逻辑。
+
+    Args:
+        stability_days: float => `stability_days` 参数。
+        threshold: float | None => `threshold` 参数。
+
+    Returns:
+        float => 处理结果。
+    """
     t = min(max(REVIEW_THRESHOLD if threshold is None else threshold, 0.01), 0.99)
     return -stability_days * log(t) / log(2.0)
 
@@ -140,6 +172,7 @@ def load_kg() -> dict[str, Any]:
 
 
 def known_courses() -> list[str]:
+    """处理 `known_courses` 相关逻辑。"""
     return sorted(load_kg()["by_course"])
 
 
@@ -238,6 +271,7 @@ def _build_reasons(point: dict, weak_prereqs: list[dict], weeks_to_exam: int, to
 
 
 def _priority_ranking(user_name: str, course: str, weeks_to_exam: int, total_weeks: int) -> list[dict]:
+    """处理 `_priority_ranking` 相关逻辑。"""
     kg, states = load_kg(), load_states(user_name)
     ids = kg["by_course"].get(course.strip())
     if not ids:
@@ -279,6 +313,17 @@ def _priority_ranking(user_name: str, course: str, weeks_to_exam: int, total_wee
 
 def recommend_practice(course: str, weeks_to_exam: int, user_name: str = "stu_demo",
                        total_weeks: int = TOTAL_WEEKS_DEFAULT) -> dict[str, Any]:
+    """处理 `recommend_practice` 相关逻辑。
+
+    Args:
+        course: str => `course` 参数。
+        weeks_to_exam: int => `weeks_to_exam` 参数。
+        user_name: str => `user_name` 参数。
+        total_weeks: int => `total_weeks` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     ranking = _priority_ranking(user_name, course, weeks_to_exam, total_weeks)
     if not ranking:
         return {"allowed": True, "user_name": user_name, "course": course, "count": 0,
@@ -325,6 +370,15 @@ def get_mastery_report(course: str = "", user_name: str = "stu_demo") -> dict[st
 
 
 def get_mastery_level(kp_id: str, user_name: str = "stu_demo") -> dict[str, Any]:
+    """获取 `mastery level` 相关数据。
+
+    Args:
+        kp_id: str => kp ID。
+        user_name: str => `user_name` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     st = load_states(user_name).get(kp_id)
     if st is None:
         return {"allowed": True, "user_name": user_name, "kp_id": kp_id, "mastery_level": None,
@@ -335,6 +389,17 @@ def get_mastery_level(kp_id: str, user_name: str = "stu_demo") -> dict[str, Any]
 
 def record_answer(kp_id: str, correct: bool, confidence: float = 1.0,
                   user_name: str = "stu_demo") -> dict[str, Any]:
+    """处理 `record_answer` 相关逻辑。
+
+    Args:
+        kp_id: str => kp ID。
+        correct: bool => `correct` 参数。
+        confidence: float => `confidence` 参数。
+        user_name: str => `user_name` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     if kp_id not in load_kg()["points"]:
         raise ToolError(f"未知知识点 {kp_id!r}")
     if not 0.0 <= confidence <= 1.0:
@@ -559,39 +624,80 @@ RECORD_BLOCKED = "当前会话为 no_write/isolated 模式，禁止记录练习�
 
 
 def _read_blocked_payload(action: str) -> dict[str, Any]:
+    """读取 `blocked payload` 相关数据。"""
     return {"allowed": False, "action": action, "reason": STATE_READ_BLOCKED}
 
 
 def blocked_recommend_practice(course: str, user_name: str = "stu_demo") -> dict[str, Any]:
+    """处理 `blocked_recommend_practice` 相关逻辑。
+
+    Args:
+        course: str => `course` 参数。
+        user_name: str => `user_name` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     return {**_read_blocked_payload("recommend_practice"), "user_name": user_name,
             "course": course, "count": 0, "recommendations": []}
 
 
 def blocked_get_mastery_report(course: str = "", user_name: str = "stu_demo") -> dict[str, Any]:
+    """处理 `blocked_get_mastery_report` 相关逻辑。
+
+    Args:
+        course: str => `course` 参数。
+        user_name: str => `user_name` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     return {**_read_blocked_payload("get_mastery_report"), "user_name": user_name,
             "course": course or None, "total_points": 0, "avg_mastery": 0.0,
             "weak_points": [], "strong_points": [], "stale_points": []}
 
 
 def blocked_record_answer(kp_id: str, user_name: str = "stu_demo") -> dict[str, Any]:
+    """处理 `blocked_record_answer` 相关逻辑。
+
+    Args:
+        kp_id: str => kp ID。
+        user_name: str => `user_name` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     return {"user_name": user_name, "kp_id": kp_id, "saved": False, "reason": RECORD_BLOCKED}
 
 
 def blocked_get_core_memories() -> dict[str, Any]:
+    """处理 `blocked_get_core_memories` 相关逻辑。"""
     return {"allowed": False, "count": 0, "memories": [], "reason": MEMORY_READ_BLOCKED}
 
 
 def blocked_search_core_memories(query: str) -> dict[str, Any]:
+    """处理 `blocked_search_core_memories` 相关逻辑。"""
     return {"allowed": False, "query": query, "count": 0, "memories": [],
             "reason": MEMORY_READ_BLOCKED}
 
 
 def blocked_save_core_memory(memory_key: str, content: str, category: str = "general") -> dict[str, Any]:
+    """处理 `blocked_save_core_memory` 相关逻辑。
+
+    Args:
+        memory_key: str => `memory_key` 参数。
+        content: str => 待处理内容。
+        category: str => `category` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     return {"saved": False, "memory_key": memory_key, "content": content,
             "category": category, "reason": MEMORY_WRITE_BLOCKED}
 
 
 def blocked_delete_core_memory(memory_key: str) -> dict[str, Any]:
+    """处理 `blocked_delete_core_memory` 相关逻辑。"""
     return {"deleted": False, "memory_key": memory_key, "reason": MEMORY_DELETE_BLOCKED}
 
 
@@ -615,6 +721,7 @@ ARXIV_CACHE = ROOT / "dataset/data/cache/arxiv_real.json"
 
 @lru_cache(maxsize=1)
 def _arxiv_cache() -> dict:
+    """处理 `_arxiv_cache` 相关逻辑。"""
     if not ARXIV_CACHE.exists():
         return {}
     import json

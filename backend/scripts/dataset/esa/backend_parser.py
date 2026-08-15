@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/backend_parser.py
+
 """后端 parse_output 的两个版本，供评测和兼容性测试共用。
 
 `parse_output_current` 逐字复刻 backend/core/utils/parser.py + core/utils/tool_arguments.py。
@@ -39,12 +41,14 @@ from typing import Any
 
 @dataclass
 class ToolCall:
+    """封装 `ToolCall` 的状态与行为。"""
     name: str
     arguments: dict
 
 
 @dataclass
 class ParsedOutput:
+    """表示 `parsed output` 数据结构。"""
     reasoning: str = ""
     content: str = ""
     tool_calls: list = field(default_factory=list)
@@ -80,6 +84,7 @@ def declared_schema_type(specification: dict[str, Any]) -> str | None:
 
 
 def _normalize_boolean(key: str, value):
+    """规范化 `boolean` 相关数据。"""
     if isinstance(value, bool):
         return value
     if isinstance(value, int) and not isinstance(value, bool) and value in (0, 1):
@@ -94,6 +99,7 @@ def _normalize_boolean(key: str, value):
 
 
 def _normalize_integer(key: str, value):
+    """规范化 `integer` 相关数据。"""
     if isinstance(value, bool):
         raise ValueError(f"参数 {key!r} 必须是整数")
     if isinstance(value, int):
@@ -111,6 +117,7 @@ def _normalize_integer(key: str, value):
 
 
 def _normalize_number(key: str, value):
+    """规范化 `number` 相关数据。"""
     if isinstance(value, bool):
         raise ValueError(f"参数 {key!r} 必须是数值")
     if isinstance(value, (int, float)):
@@ -127,6 +134,7 @@ def _normalize_number(key: str, value):
 
 
 def _normalize_container(key: str, value, expected_type: type, type_name: str):
+    """规范化 `container` 相关数据。"""
     if isinstance(value, expected_type):
         return value
     if isinstance(value, str):
@@ -183,6 +191,7 @@ def normalize_tool_arguments(schema: dict, arguments: dict) -> dict:
 
 
 def schemas_by_name(schemas) -> dict[str, dict]:
+    """处理 `schemas_by_name` 相关逻辑。"""
     if not schemas:
         return {}
     out: dict[str, dict] = {}

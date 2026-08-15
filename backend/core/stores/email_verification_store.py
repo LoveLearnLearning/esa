@@ -1,3 +1,5 @@
+# backend/core/stores/email_verification_store.py
+
 """Persistent, single-use email verification challenges."""
 
 from __future__ import annotations
@@ -14,21 +16,27 @@ from backend.core.stores.base_sqlite_store import BaseSQLiteStore
 
 @dataclass(frozen=True)
 class IssueResult:
+    """封装 `IssueResult` 的状态与行为。"""
     verification_id: str
     retry_after_seconds: int = 0
 
 
 class VerificationRateLimited(RuntimeError):
+    """表示 `VerificationRateLimited` 异常。"""
     def __init__(self, retry_after_seconds: int) -> None:
+        """初始化 `VerificationRateLimited` 实例。"""
         super().__init__("email verification rate limit exceeded")
         self.retry_after_seconds = max(1, retry_after_seconds)
 
 
 class EmailVerificationStore(BaseSQLiteStore):
+    """封装 `email verification store` 数据持久化操作。"""
     def __init__(self, database_path: str | Path = "data/esa.db") -> None:
+        """初始化 `EmailVerificationStore` 实例。"""
         super().__init__(database_path)
 
     def _initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
@@ -74,6 +82,23 @@ class EmailVerificationStore(BaseSQLiteStore):
         max_attempts: int,
         now: datetime | None = None,
     ) -> IssueResult:
+        """处理 `issue` 相关逻辑。
+
+        Args:
+            email: str => 邮箱地址。
+            purpose: str => `purpose` 参数。
+            code_digest: str => `code_digest` 参数。
+            requested_ip: str => `requested_ip` 参数。
+            ttl_seconds: int => `ttl_seconds` 参数。
+            cooldown_seconds: int => `cooldown_seconds` 参数。
+            email_hourly_limit: int => `email_hourly_limit` 参数。
+            ip_hourly_limit: int => `ip_hourly_limit` 参数。
+            max_attempts: int => `max_attempts` 参数。
+            now: datetime | None => `now` 参数。
+
+        Returns:
+            IssueResult => 处理结果。
+        """
         current = now or datetime.now(timezone.utc)
         current_iso = current.isoformat()
         hour_ago = (current - timedelta(hours=1)).isoformat()
@@ -151,6 +176,7 @@ class EmailVerificationStore(BaseSQLiteStore):
             connection.close()
 
     def revoke(self, verification_id: str) -> None:
+        """处理 `revoke` 相关逻辑。"""
         self.execute(
             "UPDATE email_verification_codes SET consumed_at = ? WHERE verification_id = ?",
             (datetime.now(timezone.utc).isoformat(), verification_id),

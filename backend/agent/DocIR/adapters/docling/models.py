@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/docling/models.py
+
 """Configuration for the Docling-to-DocIR adapter."""
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ class DoclingAdapterConfig(BaseModel):
     @field_validator("device")
     @classmethod
     def cuda_device(cls, value: str) -> str:
+        """处理 `cuda_device` 相关逻辑。"""
         if not re.fullmatch(r"cuda(?::\d+)?", value):
             raise ValueError("Docling Adapter 只接受 cuda 或 cuda:<index>")
         return value
-

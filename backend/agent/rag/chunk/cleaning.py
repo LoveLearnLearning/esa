@@ -1,3 +1,5 @@
+# backend/agent/rag/chunk/cleaning.py
+
 """RAG 检索文本清洁和内容角色分类，不修改 DocIR 原始事实。"""
 
 from __future__ import annotations
@@ -99,6 +101,7 @@ def normalize_retrieval_text(text: str) -> str:
     value = _LINE_BREAK_HYPHEN.sub("", value)
 
     def collapse_math_word(match: re.Match[str]) -> str:
+        """处理 `collapse_math_word` 相关逻辑。"""
         return f"{match.group(1)}{''.join(match.group(2).split())}{match.group(3)}"
 
     value = _SPACED_MATH_WORD.sub(collapse_math_word, value)
@@ -118,6 +121,16 @@ class RetrievalCleaner:
         raw_text: str,
         section_path: tuple[str, ...],
     ) -> RetrievalText:
+        """清理 `clean` 相关数据。
+
+        Args:
+            element: ElementBase => `element` 参数。
+            raw_text: str => `raw_text` 参数。
+            section_path: tuple[str, ...] => `section_path` 参数。
+
+        Returns:
+            RetrievalText => 处理结果。
+        """
         normalized = normalize_retrieval_text(raw_text)
         role = self.classify(element, normalized, section_path)
         return RetrievalText(
@@ -158,6 +171,16 @@ class RetrievalCleaner:
         raw_text: str,
         section_path: tuple[str, ...],
     ) -> ContentRole:
+        """处理 `classify` 相关逻辑。
+
+        Args:
+            element: ElementBase => `element` 参数。
+            raw_text: str => `raw_text` 参数。
+            section_path: tuple[str, ...] => `section_path` 参数。
+
+        Returns:
+            ContentRole => 处理结果。
+        """
         if isinstance(element, TableElement):
             return ContentRole.TABLE
         if isinstance(element, FigureElement) or element.role in {

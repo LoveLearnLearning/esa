@@ -1,3 +1,7 @@
+# backend/agent/DocIR/adapters/paddleocr/tests/test_runtime.py
+
+"""验证 `runtime` 相关行为与回归场景。"""
+
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -6,6 +10,7 @@ from ..models import PaddleOCRAdapterConfig
 
 
 def test_pipeline_receives_string_path(tmp_path: Path, monkeypatch) -> None:
+    """验证 `pipeline_receives_string_path` 场景。"""
     source = tmp_path / "source.png"
     source.write_bytes(b"not-used-by-the-mocked-pipeline")
     result = MagicMock()
@@ -36,6 +41,7 @@ def test_pipeline_receives_string_path(tmp_path: Path, monkeypatch) -> None:
 
 
 def _pixel():
+    """处理 `_pixel` 相关逻辑。"""
     import numpy
 
     return numpy.zeros((1, 1, 3), dtype=numpy.uint8)

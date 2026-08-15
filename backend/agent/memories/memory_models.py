@@ -1,3 +1,5 @@
+# backend/agent/memories/memory_models.py
+
 """结构化用户画像系统的数据模型。"""
 
 from __future__ import annotations
@@ -10,7 +12,10 @@ from typing import Protocol
 
 
 class _TokenEncoding(Protocol):
-    def encode(self, text: str) -> list[int]: ...
+    """定义 `_TokenEncoding` 组件协议。"""
+    def encode(self, text: str) -> list[int]:
+        """编码 `encode` 相关数据。"""
+        ...
 
 
 _TIKTOKEN_ENCODING: _TokenEncoding | None
@@ -24,6 +29,7 @@ except Exception:  # noqa: BLE001
 
 
 def _estimate_tokens(text: str) -> int:
+    """处理 `_estimate_tokens` 相关逻辑。"""
     if _TIKTOKEN_ENCODING is not None:
         return len(_TIKTOKEN_ENCODING.encode(text))
 
@@ -42,6 +48,7 @@ def _estimate_tokens(text: str) -> int:
 
 
 class ProfileOrigin(str, Enum):
+    """封装 `ProfileOrigin` 的状态与行为。"""
     EXPLICIT_SETTING = "explicit_setting"
     EXPLICIT_MEMORY = "explicit_memory"
     CONFIRMED_MEMORY = "confirmed_memory"
@@ -52,6 +59,7 @@ class ProfileOrigin(str, Enum):
 
 @dataclass
 class ProfileField:
+    """封装 `ProfileField` 的状态与行为。"""
     field: str
     value: object
     origin: ProfileOrigin
@@ -60,6 +68,7 @@ class ProfileField:
     last_confirmed_at: datetime | None = None
 
     def to_dict(self) -> dict:
+        """将当前对象转换为字典。"""
         return {
             "field": self.field,
             "value": self.value,
@@ -95,6 +104,7 @@ class ProfileSnapshot:
     generated_at: datetime = dataclass_field(default_factory=datetime.now)
 
     def to_dict(self) -> dict:
+        """将当前对象转换为字典。"""
         return {
             "user_id": self.user_id,
             "profile_version": self.profile_version,
@@ -131,6 +141,7 @@ class ProfileSnapshot:
         ]
 
         def field_to_dict(item: ProfileField) -> dict:
+            """处理 `field_to_dict` 相关逻辑。"""
             return {
                 "field": item.field,
                 "value": item.value,
@@ -139,6 +150,7 @@ class ProfileSnapshot:
             }
 
         def token_count(payload: dict) -> int:
+            """处理 `token_count` 相关逻辑。"""
             text = json.dumps(payload, ensure_ascii=False, indent=2)
             return _estimate_tokens(text)
 
@@ -170,6 +182,7 @@ class ProfileSnapshot:
 
 @dataclass
 class ProfileQuery:
+    """封装 `ProfileQuery` 的状态与行为。"""
     user_id: str
     username: str
     conversation_id: str | None = None

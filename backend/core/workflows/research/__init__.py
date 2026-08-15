@@ -1,3 +1,7 @@
+# backend/core/workflows/research/__init__.py
+
+"""初始化 `backend.core.workflows.research` Python 包。"""
+
 from backend.core.workflows.research.actions import (
     RESEARCH_ACTION_TYPES,
     execute_research_action,

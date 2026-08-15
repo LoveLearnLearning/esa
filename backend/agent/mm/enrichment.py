@@ -1,3 +1,5 @@
+# backend/agent/mm/enrichment.py
+
 """把视觉模型描述安全地物化为 DocIR 模型派生元素。"""
 
 from __future__ import annotations
@@ -37,11 +39,13 @@ VLM_DESCRIPTION_PROMPT = """你在分析一个用户提供的文档视觉资产�
 
 
 def _sha(value: object) -> str:
+    """处理 `_sha` 相关逻辑。"""
     raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _file_sha256(path: Path) -> str:
+    """处理 `_file_sha256` 相关逻辑。"""
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -51,6 +55,7 @@ def _file_sha256(path: Path) -> str:
 
 @dataclass(frozen=True)
 class EnrichmentResult:
+    """封装 `EnrichmentResult` 的状态与行为。"""
     document: Document
     analyzed_assets: int
     failed_assets: tuple[str, ...]
@@ -108,6 +113,14 @@ async def enrich_visual_assets(
     semaphore = asyncio.Semaphore(max_concurrency)
 
     async def analyze(asset_sha256: str) -> tuple[str, VisualAnalysis | Exception]:
+        """处理 `analyze` 相关逻辑。
+
+        Args:
+            asset_sha256: str => `asset_sha256` 参数。
+
+        Returns:
+            tuple[str, VisualAnalysis | Exception] => 处理结果。
+        """
         asset = representative_by_sha[asset_sha256]
         path = (Path(document_root) / asset.path).resolve(strict=True)
         try:

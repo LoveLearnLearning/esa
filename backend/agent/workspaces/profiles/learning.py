@@ -1,3 +1,7 @@
+# backend/agent/workspaces/profiles/learning.py
+
+"""提供 `learning` 相关功能。"""
+
 from backend.agent.workspaces.models import LoopPolicy, WorkspaceRuntimeProfile
 from backend.core.utils.config import AGENT_LOOP_TIME, AGENT_TOOL_TIMEOUT_SECONDS
 
@@ -16,4 +20,3 @@ PROFILE = WorkspaceRuntimeProfile(
         tool_timeout_seconds=AGENT_TOOL_TIMEOUT_SECONDS,
     ),
 )
-

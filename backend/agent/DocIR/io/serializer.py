@@ -20,6 +20,7 @@ from ..core.document import Document
 
 
 def _target_parent(path: Path) -> Path:
+    """处理 `_target_parent` 相关逻辑。"""
     parent = path.parent
     if not parent.exists():
         raise FileNotFoundError(f"DocIR 输出目录不存在: {parent}")

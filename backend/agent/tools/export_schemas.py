@@ -1,3 +1,5 @@
+# backend/agent/tools/export_schemas.py
+
 """导出当前 ToolRegistry 的 JSON Schema 快照。
 
 运行：
@@ -17,6 +19,7 @@ OUTPUT_PATH = Path(__file__).resolve().with_name("tool_schemas.json")
 
 
 def export_tool_schemas(output_path: str | Path = OUTPUT_PATH) -> Path:
+    """导出 `tool schemas` 相关数据。"""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -27,6 +30,7 @@ def export_tool_schemas(output_path: str | Path = OUTPUT_PATH) -> Path:
 
 
 def main() -> None:
+    """运行当前模块的命令行入口。"""
     path = export_tool_schemas()
     print(f"exported {len(tr.schemas)} tool schemas -> {path}")
 

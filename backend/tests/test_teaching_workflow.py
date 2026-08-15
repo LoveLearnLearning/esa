@@ -1,3 +1,7 @@
+# backend/tests/test_teaching_workflow.py
+
+"""验证 `teaching_workflow` 相关行为与回归场景。"""
+
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
@@ -15,6 +19,7 @@ from backend.core.web.webAPI import create_app
 
 
 def _app(tmp_path, monkeypatch):
+    """处理 `_app` 相关逻辑。"""
     database = tmp_path / "teaching.db"
     app = create_app(
         app_lifespan=None,
@@ -38,6 +43,7 @@ def _app(tmp_path, monkeypatch):
 
 
 def _identity(client, username, role):
+    """处理 `_identity` 相关逻辑。"""
     user = client.app.state.auth.register(username, "correct-password", role)
     assert user is not None
     login = client.post(
@@ -49,6 +55,7 @@ def _identity(client, username, role):
 
 
 def test_teacher_student_homework_vertical_slice(tmp_path, monkeypatch):
+    """验证 `teacher_student_homework_vertical_slice` 场景。"""
     client = TestClient(_app(tmp_path, monkeypatch))
     teacher, teacher_headers = _identity(client, "teacher", "teacher")
     student, student_headers = _identity(client, "student", "student")

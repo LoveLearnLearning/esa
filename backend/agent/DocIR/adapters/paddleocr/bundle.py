@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/paddleocr/bundle.py
+
 """Replayable, lossless representation of one PP-StructureV3 run."""
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ RAW_METADATA_NAME = "conversion_metadata.json"
 
 
 def _json_bytes(value: Any) -> bytes:
+    """处理 `_json_bytes` 相关逻辑。"""
     return (
         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         + "\n"
@@ -19,6 +22,7 @@ def _json_bytes(value: Any) -> bytes:
 
 
 def page_image_path(page_index: int) -> str:
+    """处理 `page_image_path` 相关逻辑。"""
     return f"assets/pages/page-{page_index + 1:06d}.png"
 
 
@@ -35,15 +39,18 @@ class PaddleOCRBundle:
     root: Path | None = None
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if len(self.pages) != len(self.page_images):
             raise ValueError("PaddleOCR pages 与 page_images 数量不一致")
 
     @property
     def results_bytes(self) -> bytes:
+        """处理 `results_bytes` 相关逻辑。"""
         return _json_bytes({"pages": list(self.pages)})
 
     @property
     def metadata_bytes(self) -> bytes:
+        """处理 `metadata_bytes` 相关逻辑。"""
         return _json_bytes(
             {
                 "status": self.status,

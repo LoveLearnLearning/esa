@@ -1,3 +1,7 @@
+# backend/tests/test_email_verification.py
+
+"""验证 `email_verification` 相关行为与回归场景。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -21,20 +25,25 @@ from backend.core.stores.email_verification_store import (
 
 
 class _Sender:
+    """封装 `_Sender` 的状态与行为。"""
     def __init__(self, *, fail: bool = False) -> None:
+        """初始化 `_Sender` 实例。"""
         self.fail = fail
         self.code = ""
 
     async def send_code(self, **values) -> None:
+        """发送 `code` 相关数据。"""
         if self.fail:
             raise EmailDeliveryError("failed")
         self.code = values["code"]
 
     async def close(self) -> None:
+        """释放当前对象持有的资源。"""
         return None
 
 
 def _service(tmp_path, *, sender: _Sender | None = None, max_attempts: int = 3):
+    """处理 `_service` 相关逻辑。"""
     actual_sender = sender or _Sender()
     store = EmailVerificationStore(tmp_path / "verification.db")
     service = EmailVerificationService(
@@ -52,6 +61,7 @@ def _service(tmp_path, *, sender: _Sender | None = None, max_attempts: int = 3):
 
 
 def test_code_is_hashed_rate_limited_and_single_use(tmp_path):
+    """验证 `code_is_hashed_rate_limited_and_single_use` 场景。"""
     service, store, sender = _service(tmp_path)
     email = normalize_email("User@Example.COM")
     asyncio.run(service.request_code(email=email, purpose="register", ip="127.0.0.1"))
@@ -72,6 +82,7 @@ def test_code_is_hashed_rate_limited_and_single_use(tmp_path):
 
 
 def test_failed_delivery_removes_challenge(tmp_path):
+    """验证 `failed_delivery_removes_challenge` 场景。"""
     service, store, _ = _service(tmp_path, sender=_Sender(fail=True))
 
     with pytest.raises(EmailDeliveryError):
@@ -88,9 +99,11 @@ def test_failed_delivery_removes_challenge(tmp_path):
 
 
 def test_supercomputer_sender_calls_only_the_standalone_email_service():
+    """验证 `supercomputer_sender_calls_only_the_standalone_email_service` 场景。"""
     captured: dict[str, object] = {}
 
     def handle(request: httpx.Request) -> httpx.Response:
+        """处理 `handle` 相关数据。"""
         captured["path"] = request.url.path
         captured["authorization"] = request.headers["Authorization"]
         captured["body"] = json.loads(request.content)

@@ -1,3 +1,5 @@
+# backend/agent/workspaces/run_spec_builder.py
+
 """Deterministically compile context and capabilities into an AgentRunSpec."""
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from backend.agent.workspaces.models import (
 
 
 class RunSpecBuilder:
+    """封装 `RunSpecBuilder` 的状态与行为。"""
     def build(
         self,
         *,
@@ -22,6 +25,18 @@ class RunSpecBuilder:
         capabilities: CompiledCapabilityView,
         execution_context: ToolExecutionContext,
     ) -> AgentRunSpec:
+        """构建 `build` 相关数据。
+
+        Args:
+            turn: AgentTurnInput => `turn` 参数。
+            profile: WorkspaceRuntimeProfile => `profile` 参数。
+            context: ComposedContext => `context` 参数。
+            capabilities: CompiledCapabilityView => `capabilities` 参数。
+            execution_context: ToolExecutionContext => `execution_context` 参数。
+
+        Returns:
+            AgentRunSpec => 处理结果。
+        """
         messages = (
             {"role": "system", "content": context.rendered},
             *turn.history,
@@ -46,4 +61,3 @@ class RunSpecBuilder:
             capability_fingerprint=capabilities.capabilities.fingerprint,
             run_metadata=metadata,
         )
-

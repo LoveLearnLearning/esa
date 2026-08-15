@@ -1,3 +1,5 @@
+# backend/agent/workspaces/models.py
+
 """Immutable contracts used to compile one workspace agent turn."""
 
 from __future__ import annotations
@@ -10,11 +12,13 @@ from backend.core.router.models import TrustedIdentity, WorkspaceRoute
 
 
 def _mapping(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
+    """处理 `_mapping` 相关逻辑。"""
     return MappingProxyType(dict(value or {}))
 
 
 @dataclass(frozen=True, slots=True)
 class ContextSection:
+    """封装 `ContextSection` 的状态与行为。"""
     key: str
     title: str
     content: str
@@ -25,6 +29,7 @@ class ContextSection:
 
 @dataclass(frozen=True, slots=True)
 class ComposedContext:
+    """封装 `ComposedContext` 的状态与行为。"""
     sections: tuple[ContextSection, ...]
     rendered: str
     estimated_tokens: int
@@ -32,12 +37,14 @@ class ComposedContext:
 
 @dataclass(frozen=True, slots=True)
 class LoopPolicy:
+    """封装 `LoopPolicy` 的状态与行为。"""
     max_iterations: int
     tool_timeout_seconds: float
     parallel_tools: bool = False
     tool_error_policy: str = "return_structured_error"
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if self.max_iterations < 1:
             raise ValueError("max_iterations must be positive")
         if self.tool_timeout_seconds <= 0:
@@ -46,6 +53,7 @@ class LoopPolicy:
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceRuntimeProfile:
+    """封装 `WorkspaceRuntimeProfile` 的状态与行为。"""
     profile_id: str
     workspace_type: str
     prompt_key: str
@@ -61,6 +69,7 @@ class WorkspaceRuntimeProfile:
 
 @dataclass(frozen=True, slots=True)
 class AgentTurnInput:
+    """表示 `agent turn input` 数据结构。"""
     route: WorkspaceRoute
     identity: TrustedIdentity
     conversation_id: str
@@ -76,6 +85,7 @@ class AgentTurnInput:
     request_metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if self.conversation_id != self.route.resource_scope.metadata.get(
             "conversation_id", self.conversation_id
         ):
@@ -94,11 +104,23 @@ class AgentTurnInput:
 
 
 class ToolExecutor(Protocol):
-    async def execute(self, name: str, arguments: Mapping[str, Any]) -> Any: ...
+    """定义 `ToolExecutor` 组件协议。"""
+    async def execute(self, name: str, arguments: Mapping[str, Any]) -> Any:
+        """执行 `execute` 相关数据。
+
+        Args:
+            name: str => `name` 参数。
+            arguments: Mapping[str, Any] => `arguments` 参数。
+
+        Returns:
+            Any => 处理结果。
+        """
+        ...
 
 
 @dataclass(frozen=True, slots=True)
 class ResolvedCapabilities:
+    """封装 `ResolvedCapabilities` 的状态与行为。"""
     skill_index: str
     autoload_skills: str
     tool_schemas: tuple[Mapping[str, Any], ...]
@@ -109,6 +131,7 @@ class ResolvedCapabilities:
 
 @dataclass(frozen=True, slots=True)
 class AgentRunSpec:
+    """封装 `AgentRunSpec` 的状态与行为。"""
     messages: tuple[Mapping[str, Any], ...]
     tool_schemas: tuple[Mapping[str, Any], ...]
     tool_executor: ToolExecutor
@@ -118,6 +141,7 @@ class AgentRunSpec:
     run_metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         object.__setattr__(self, "messages", tuple(_mapping(item) for item in self.messages))
         object.__setattr__(
             self, "tool_schemas", tuple(_mapping(item) for item in self.tool_schemas)

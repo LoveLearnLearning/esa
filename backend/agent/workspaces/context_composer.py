@@ -1,3 +1,5 @@
+# backend/agent/workspaces/context_composer.py
+
 """Pure context composition with deterministic section and token limits."""
 
 from __future__ import annotations
@@ -19,21 +21,26 @@ from backend.core.message.system import SYSTEM_PROMPT
 
 
 def _tokens(text: str) -> int:
+    """处理 `_tokens` 相关逻辑。"""
     return max(1, (len(text) + 3) // 4)
 
 
 def _clip(text: str, token_limit: int) -> str:
+    """处理 `_clip` 相关逻辑。"""
     limit = max(0, token_limit * 4)
     return text if len(text) <= limit else text[:limit].rstrip() + "..."
 
 
 @dataclass(frozen=True, slots=True)
 class StrategyAugmentation:
+    """封装 `StrategyAugmentation` 的状态与行为。"""
     content: str = ""
 
 
 class ContextComposer:
+    """封装 `ContextComposer` 的状态与行为。"""
     def __init__(self, *, max_tokens: int = 8000) -> None:
+        """初始化 `ContextComposer` 实例。"""
         self.max_tokens = max_tokens
 
     def compose(
@@ -43,6 +50,17 @@ class ContextComposer:
         capabilities: ResolvedCapabilities,
         strategy: StrategyAugmentation = StrategyAugmentation(),
     ) -> ComposedContext:
+        """处理 `compose` 相关逻辑。
+
+        Args:
+            turn: AgentTurnInput => `turn` 参数。
+            profile: WorkspaceRuntimeProfile => `profile` 参数。
+            capabilities: ResolvedCapabilities => `capabilities` 参数。
+            strategy: StrategyAugmentation => `strategy` 参数。
+
+        Returns:
+            ComposedContext => 处理结果。
+        """
         prefs = turn.user_preferences
         group = turn.group_context
         style = resolve_style_tone(

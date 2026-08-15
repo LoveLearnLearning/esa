@@ -1,3 +1,5 @@
+# backend/agent/memories/core_memory_models.py
+
 """CoreMemory V2 domain models."""
 
 from __future__ import annotations
@@ -11,10 +13,12 @@ MemoryStatus: TypeAlias = Literal["active", "suppressed"]
 
 @dataclass(frozen=True, slots=True)
 class MemoryScope:
+    """封装 `MemoryScope` 的状态与行为。"""
     scope_type: ScopeType
     workspace_type: str | None = None
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if self.scope_type == "global" and self.workspace_type is not None:
             raise ValueError("global scope cannot include workspace_type")
         if self.scope_type == "workspace" and self.workspace_type not in {
@@ -25,6 +29,7 @@ class MemoryScope:
 
 @dataclass(frozen=True, slots=True)
 class CoreMemoryRecord:
+    """表示 `core memory record` 数据结构。"""
     memory_id: str
     user_id: str
     memory_key: str
@@ -41,6 +46,7 @@ class CoreMemoryRecord:
     updated_at: str
 
     def to_dict(self) -> dict[str, object]:
+        """将当前对象转换为字典。"""
         return {
             "memory_id": self.memory_id,
             "user_id": self.user_id,
@@ -62,6 +68,7 @@ class CoreMemoryRecord:
 
 @dataclass(frozen=True, slots=True)
 class MemoryCandidate:
+    """封装 `MemoryCandidate` 的状态与行为。"""
     candidate_id: str
     user_id: str
     memory_id: str | None
@@ -78,6 +85,7 @@ class MemoryCandidate:
     expires_at: str
 
     def to_dict(self) -> dict[str, object]:
+        """将当前对象转换为字典。"""
         return {
             "candidate_id": self.candidate_id,
             "memory_id": self.memory_id,
@@ -97,11 +105,13 @@ class MemoryCandidate:
 
 
 class MemoryRevisionConflict(RuntimeError):
+    """表示 `MemoryRevisionConflict` 异常。"""
     def __init__(self, current_revision: int) -> None:
+        """初始化 `MemoryRevisionConflict` 实例。"""
         super().__init__(f"memory revision conflict: current={current_revision}")
         self.current_revision = current_revision
 
 
 class MemoryPolicyDenied(PermissionError):
+    """封装 `MemoryPolicyDenied` 的状态与行为。"""
     pass
-

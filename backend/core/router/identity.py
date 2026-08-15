@@ -1,3 +1,5 @@
+# backend/core/router/identity.py
+
 """Conversion from authentication records to trusted routing identity."""
 
 from __future__ import annotations
@@ -11,6 +13,15 @@ def resolve_identity(
     principal: SessionPrincipal,
     user: UserRecord,
 ) -> TrustedIdentity:
+    """解析 `identity` 相关数据。
+
+    Args:
+        principal: SessionPrincipal => `principal` 参数。
+        user: UserRecord => `user` 参数。
+
+    Returns:
+        TrustedIdentity => 处理结果。
+    """
     if principal.user_id != user.id:
         raise WorkspaceAccessDenied("session and user identity do not match")
     if user.status != "active":
@@ -21,4 +32,3 @@ def resolve_identity(
         account_role=user.account_role,
         status=user.status,
     )
-

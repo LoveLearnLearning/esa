@@ -1,3 +1,7 @@
+# backend/tests/test_learning_state_service.py
+
+"""验证 `learning_state_service` 相关行为与回归场景。"""
+
 import sqlite3
 from datetime import datetime, timedelta
 
@@ -10,6 +14,7 @@ from backend.agent.memories.mastery_store import MasteryStore
 
 
 def _service(tmp_path):
+    """处理 `_service` 相关逻辑。"""
     kg = KnowledgeGraphStore(tmp_path / "kg.db")
     kg.add_point("dynamic_programming", "动态规划", "算法", 0.9)
     kg.add_alias("DP", "dynamic_programming")
@@ -23,6 +28,7 @@ def _service(tmp_path):
 
 
 def test_canonical_name_and_alias_are_resolved(tmp_path):
+    """验证 `canonical_name_and_alias_are_resolved` 场景。"""
     service, _, _ = _service(tmp_path)
     assert service.resolve_kp_id("dynamic_programming") == "dynamic_programming"
     assert service.resolve_kp_id("动态规划") == "dynamic_programming"
@@ -30,6 +36,7 @@ def test_canonical_name_and_alias_are_resolved(tmp_path):
 
 
 def test_unknown_knowledge_point_is_rejected(tmp_path):
+    """验证 `unknown_knowledge_point_is_rejected` 场景。"""
     service, _, _ = _service(tmp_path)
     with pytest.raises(ValueError, match="未知知识点"):
         service.record_event(
@@ -41,6 +48,7 @@ def test_unknown_knowledge_point_is_rejected(tmp_path):
 
 
 def test_one_event_updates_evidence_and_mastery(tmp_path):
+    """验证 `one_event_updates_evidence_and_mastery` 场景。"""
     service, mastery, evidence = _service(tmp_path)
     result = service.record_event(
         user_name="alice",
@@ -58,6 +66,7 @@ def test_one_event_updates_evidence_and_mastery(tmp_path):
 
 
 def test_mastery_is_not_changed_when_only_time_passes(tmp_path):
+    """验证 `mastery_is_not_changed_when_only_time_passes` 场景。"""
     service, mastery, _ = _service(tmp_path)
     service.record_event(
         user_name="alice",

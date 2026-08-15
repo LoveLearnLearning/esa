@@ -1,5 +1,7 @@
 # backend/agent/learning/evidence_store.py
 
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
 import sqlite3
@@ -34,14 +36,17 @@ class LearningEvidenceStore:
         self,
         database_path: str | Path = "data/learning_evidence.db",
     ) -> None:
+        """初始化 `LearningEvidenceStore` 实例。"""
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
+        """处理 `_connect` 相关逻辑。"""
         return connect_sqlite(self.database_path)
 
     def _initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         with self._connect() as connection:
             connection.execute(
                 """
@@ -80,6 +85,7 @@ class LearningEvidenceStore:
 
     @staticmethod
     def _clamp_optional(value: float | None) -> float | None:
+        """处理 `_clamp_optional` 相关逻辑。"""
         if value is None:
             return None
         return max(0.0, min(1.0, float(value)))
@@ -102,6 +108,27 @@ class LearningEvidenceStore:
         error_type: str | None = None,
         misconception: str | None = None,
     ) -> dict:
+        """处理 `record` 相关逻辑。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str => kp ID。
+            activity_type: str => `activity_type` 参数。
+            correct: bool | None => `correct` 参数。
+            self_confidence: float | None => `self_confidence` 参数。
+            evidence_reliability: float => `evidence_reliability` 参数。
+            hint_level: int => `hint_level` 参数。
+            attempts: int => `attempts` 参数。
+            independent: bool | None => `independent` 参数。
+            recall_score: float | None => `recall_score` 参数。
+            explanation_score: float | None => `explanation_score` 参数。
+            transfer_score: float | None => `transfer_score` 参数。
+            error_type: str | None => `error_type` 参数。
+            misconception: str | None => `misconception` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         user_name = user_name.strip()
         kp_id = kp_id.strip()
         activity_type = activity_type.strip() or "practice"
@@ -186,6 +213,16 @@ class LearningEvidenceStore:
         kp_id: str | None = None,
         limit: int = 20,
     ) -> list[dict]:
+        """获取 `recent` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str | None => kp ID。
+            limit: int => 返回数量上限。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         user_name = user_name.strip()
         kp_id = (kp_id or "").strip() or None
         limit = max(1, min(200, int(limit)))
@@ -234,6 +271,16 @@ class LearningEvidenceStore:
         kp_id: str | None = None,
         limit: int = 50,
     ) -> dict:
+        """获取 `summary` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str | None => kp ID。
+            limit: int => 返回数量上限。
+
+        Returns:
+            dict => 处理结果。
+        """
         rows = self.get_recent(user_name, kp_id=kp_id, limit=limit)
 
         if not rows:
@@ -253,6 +300,7 @@ class LearningEvidenceStore:
             }
 
         def avg(values: list[float]) -> float | None:
+            """处理 `avg` 相关逻辑。"""
             if not values:
                 return None
             return round(sum(values) / len(values), 3)

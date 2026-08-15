@@ -1,3 +1,7 @@
+# backend/core/web/routers/research_capabilities.py
+
+"""提供 `research_capabilities` 相关功能。"""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -28,6 +32,7 @@ CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 
 
 def _workflow_facade(request: Request) -> ResearchWorkflowFacade:
+    """处理 `_workflow_facade` 相关逻辑。"""
     facade = getattr(request.app.state, "research_workflow_facade", None)
     if facade is not None:
         return facade
@@ -43,6 +48,7 @@ def _workflow_facade(request: Request) -> ResearchWorkflowFacade:
 
 
 def _require_project(request: Request, user_id: str, project_id: str) -> dict:
+    """处理 `_require_project` 相关逻辑。"""
     user_store: UserStore = request.app.state.user_store
     user = user_store.get_by_id(user_id)
     if user is None:
@@ -64,6 +70,16 @@ def list_documents(
     request: Request,
     session: CurrentSession,
 ) -> list[dict]:
+    """列出 `documents` 相关数据。
+
+    Args:
+        project_id: str => 项目 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     _require_project(request, session.user_id, project_id)
     store: ResearchWritingStore = request.app.state.research_writing_store
     return store.list_documents(project_id, session.user_id)
@@ -76,6 +92,17 @@ def create_document(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """创建 `document` 相关数据。
+
+    Args:
+        project_id: str => 项目 ID。
+        body: ResearchDocumentCreateRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     _require_project(request, session.user_id, project_id)
     store: ResearchWritingStore = request.app.state.research_writing_store
     return store.create_document(
@@ -93,6 +120,16 @@ def get_document(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """获取 `document` 相关数据。
+
+    Args:
+        document_id: str => document ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     store: ResearchWritingStore = request.app.state.research_writing_store
     document = store.get_document(document_id, session.user_id)
     if document is None:
@@ -107,6 +144,17 @@ def update_document(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """更新 `document` 相关数据。
+
+    Args:
+        document_id: str => document ID。
+        body: ResearchDocumentUpdateRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     store: ResearchWritingStore = request.app.state.research_writing_store
     document = store.update_document(
         document_id,
@@ -125,6 +173,16 @@ def list_document_versions(
     request: Request,
     session: CurrentSession,
 ) -> list[dict]:
+    """列出 `document versions` 相关数据。
+
+    Args:
+        document_id: str => document ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     store: ResearchWritingStore = request.app.state.research_writing_store
     if store.get_document(document_id, session.user_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "科研文档不存在")
@@ -141,6 +199,17 @@ def create_writing_job(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """创建 `writing job` 相关数据。
+
+    Args:
+        document_id: str => document ID。
+        body: ResearchWritingJobCreateRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     store: ResearchWritingStore = request.app.state.research_writing_store
     document = store.get_document(document_id, session.user_id)
     if document is None:
@@ -162,6 +231,16 @@ def get_writing_job(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """获取 `writing job` 相关数据。
+
+    Args:
+        job_id: str => job ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     store: ResearchWritingStore = request.app.state.research_writing_store
     job = store.get_job(job_id, session.user_id)
     if job is None:
@@ -175,6 +254,16 @@ def list_datasets(
     request: Request,
     session: CurrentSession,
 ) -> list[dict]:
+    """列出 `datasets` 相关数据。
+
+    Args:
+        project_id: str => 项目 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     _require_project(request, session.user_id, project_id)
     store: ResearchDataStore = request.app.state.research_data_store
     return store.list_datasets(project_id, session.user_id)
@@ -188,6 +277,18 @@ async def upload_dataset(
     file: Annotated[UploadFile, File()],
     name: Annotated[str, Form(min_length=1, max_length=120)],
 ) -> dict:
+    """处理 `upload_dataset` 相关逻辑。
+
+    Args:
+        project_id: str => 项目 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        file: Annotated[UploadFile, File()] => `file` 参数。
+        name: Annotated[str, Form(min_length=1, max_length=120)] => `name` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     _require_project(request, session.user_id, project_id)
     content = await file.read(MAX_DATASET_BYTES + 1)
     service: ResearchDataService = request.app.state.research_data_service
@@ -210,6 +311,16 @@ def get_dataset(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """获取 `dataset` 相关数据。
+
+    Args:
+        dataset_id: str => dataset ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     store: ResearchDataStore = request.app.state.research_data_store
     dataset = store.get_dataset(dataset_id, session.user_id)
     if dataset is None:
@@ -223,6 +334,16 @@ def list_analysis_jobs(
     request: Request,
     session: CurrentSession,
 ) -> list[dict]:
+    """列出 `analysis jobs` 相关数据。
+
+    Args:
+        dataset_id: str => dataset ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     store: ResearchDataStore = request.app.state.research_data_store
     if store.get_dataset(dataset_id, session.user_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "科研数据集不存在")
@@ -239,6 +360,17 @@ def create_analysis_job(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """创建 `analysis job` 相关数据。
+
+    Args:
+        dataset_id: str => dataset ID。
+        body: ResearchAnalysisJobCreateRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     store: ResearchDataStore = request.app.state.research_data_store
     dataset = store.get_dataset(dataset_id, session.user_id)
     if dataset is None:
@@ -259,6 +391,16 @@ def get_analysis_job(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """获取 `analysis job` 相关数据。
+
+    Args:
+        job_id: str => job ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     store: ResearchDataStore = request.app.state.research_data_store
     job = store.get_job(job_id, session.user_id)
     if job is None:

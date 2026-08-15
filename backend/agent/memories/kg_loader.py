@@ -1,4 +1,7 @@
 # backend/agent/memories/kg_loader.py
+
+"""提供 `kg_loader` 相关功能。"""
+
 # 知识图谱 YAML 数据加载器：将外置 YAML 文件载入 KnowledgeGraphStore
 # 数据文件：data/knowledge_graph/core_courses.yaml（16 门核心必修）
 #           data/knowledge_graph/elective_courses.yaml（30 门选修 + 数学基础）

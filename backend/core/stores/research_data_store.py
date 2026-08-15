@@ -1,3 +1,7 @@
+# backend/core/stores/research_data_store.py
+
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
 import json
@@ -14,9 +18,11 @@ class ResearchDataStore(BaseSQLiteStore):
     """Dataset metadata and durable analysis jobs; files remain on local disk."""
 
     def __init__(self, database_path: str | Path = "data/esa.db") -> None:
+        """初始化 `ResearchDataStore` 实例。"""
         super().__init__(database_path)
 
     def _initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         with closing(self._connect()) as connection, connection:
             connection.executescript(
                 """
@@ -75,10 +81,12 @@ class ResearchDataStore(BaseSQLiteStore):
 
     @staticmethod
     def _now() -> str:
+        """处理 `_now` 相关逻辑。"""
         return datetime.now(timezone.utc).isoformat()
 
     @staticmethod
     def _dataset_out(row: sqlite3.Row) -> dict:
+        """处理 `_dataset_out` 相关逻辑。"""
         payload = dict(row)
         payload["profile"] = json.loads(payload.pop("profile_json"))
         payload.pop("file_path", None)
@@ -86,6 +94,7 @@ class ResearchDataStore(BaseSQLiteStore):
 
     @staticmethod
     def _job_out(row: sqlite3.Row) -> dict:
+        """处理 `_job_out` 相关逻辑。"""
         payload = dict(row)
         payload["parameters"] = json.loads(payload.pop("parameters_json"))
         raw_result = payload.pop("result_json")
@@ -105,6 +114,22 @@ class ResearchDataStore(BaseSQLiteStore):
         size_bytes: int,
         profile: dict,
     ) -> dict:
+        """创建 `dataset` 相关数据。
+
+        Args:
+            dataset_id: str => dataset ID。
+            project_id: str => 项目 ID。
+            user_id: str => 用户 ID。
+            name: str => `name` 参数。
+            original_filename: str => `original_filename` 参数。
+            media_type: str => `media_type` 参数。
+            file_path: str => 文件路径。
+            size_bytes: int => `size_bytes` 参数。
+            profile: dict => `profile` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         now = self._now()
         self.execute(
             """
@@ -141,6 +166,16 @@ class ResearchDataStore(BaseSQLiteStore):
         *,
         include_path: bool = False,
     ) -> dict | None:
+        """获取 `dataset` 相关数据。
+
+        Args:
+            dataset_id: str => dataset ID。
+            user_id: str => 用户 ID。
+            include_path: bool => `include_path` 参数。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         row = self.query_one(
             "SELECT * FROM research_datasets WHERE dataset_id = ? AND user_id = ?",
             (dataset_id, user_id),
@@ -153,6 +188,15 @@ class ResearchDataStore(BaseSQLiteStore):
         return payload
 
     def list_datasets(self, project_id: str, user_id: str) -> list[dict]:
+        """列出 `datasets` 相关数据。
+
+        Args:
+            project_id: str => 项目 ID。
+            user_id: str => 用户 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         return [
             self._dataset_out(row)
             for row in self.query_all(
@@ -174,6 +218,18 @@ class ResearchDataStore(BaseSQLiteStore):
         analysis_type: str,
         parameters: dict,
     ) -> dict:
+        """创建 `job` 相关数据。
+
+        Args:
+            dataset_id: str => dataset ID。
+            project_id: str => 项目 ID。
+            user_id: str => 用户 ID。
+            analysis_type: str => `analysis_type` 参数。
+            parameters: dict => `parameters` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         now = self._now()
         job_id = str(uuid.uuid4())
         self.execute(
@@ -199,6 +255,15 @@ class ResearchDataStore(BaseSQLiteStore):
         return job
 
     def get_job(self, job_id: str, user_id: str | None = None) -> dict | None:
+        """获取 `job` 相关数据。
+
+        Args:
+            job_id: str => job ID。
+            user_id: str | None => 用户 ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         sql = "SELECT * FROM research_analysis_jobs WHERE job_id = ?"
         params: tuple = (job_id,)
         if user_id is not None:
@@ -208,6 +273,15 @@ class ResearchDataStore(BaseSQLiteStore):
         return self._job_out(row) if row is not None else None
 
     def list_jobs(self, dataset_id: str, user_id: str) -> list[dict]:
+        """列出 `jobs` 相关数据。
+
+        Args:
+            dataset_id: str => dataset ID。
+            user_id: str => 用户 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         return [
             self._job_out(row)
             for row in self.query_all(
@@ -220,6 +294,14 @@ class ResearchDataStore(BaseSQLiteStore):
         ]
 
     def claim_job(self, job_id: str) -> dict | None:
+        """处理 `claim_job` 相关逻辑。
+
+        Args:
+            job_id: str => job ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         now = self._now()
         with closing(self._connect()) as connection, connection:
             cursor = connection.execute(
@@ -239,6 +321,12 @@ class ResearchDataStore(BaseSQLiteStore):
         return self._job_out(row) if row is not None else None
 
     def complete_job(self, job_id: str, result: dict) -> None:
+        """处理 `complete_job` 相关逻辑。
+
+        Args:
+            job_id: str => job ID。
+            result: dict => `result` 参数。
+        """
         now = self._now()
         self.execute(
             """
@@ -250,6 +338,12 @@ class ResearchDataStore(BaseSQLiteStore):
         )
 
     def fail_job(self, job_id: str, error: str) -> None:
+        """处理 `fail_job` 相关逻辑。
+
+        Args:
+            job_id: str => job ID。
+            error: str => `error` 参数。
+        """
         now = self._now()
         self.execute(
             """
@@ -261,6 +355,7 @@ class ResearchDataStore(BaseSQLiteStore):
         )
 
     def requeue_interrupted(self) -> list[str]:
+        """处理 `requeue_interrupted` 相关逻辑。"""
         now = self._now()
         with closing(self._connect()) as connection, connection:
             rows = connection.execute(

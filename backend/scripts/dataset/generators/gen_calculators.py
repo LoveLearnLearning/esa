@@ -1,3 +1,5 @@
+# backend/scripts/dataset/generators/gen_calculators.py
+
 """三计算器生成器：正样本 + 困难负样本。
 
 分工原则见计划第一节：
@@ -34,12 +36,25 @@ SOURCE = "gen_calculators.py"
 
 
 def _fmt_number(v) -> str:
+    """处理 `_fmt_number` 相关逻辑。"""
     if isinstance(v, float) and v.is_integer():
         return str(int(v))
     return str(v)
 
 
 def gen_calculator(seeds, rng, all_names, version, systems) -> list[Sample]:
+    """处理 `gen_calculator` 相关逻辑。
+
+    Args:
+        seeds: object => `seeds` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        version: object => `version` 参数。
+        systems: object => `systems` 参数。
+
+    Returns:
+        list[Sample] => 处理结果。
+    """
     out = []
     for idx, seed in enumerate(seeds):
         expr = seed["expr"]
@@ -73,6 +88,18 @@ def gen_calculator(seeds, rng, all_names, version, systems) -> list[Sample]:
 
 
 def gen_math_solver(seeds, rng, all_names, version, systems) -> list[Sample]:
+    """处理 `gen_math_solver` 相关逻辑。
+
+    Args:
+        seeds: object => `seeds` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        version: object => `version` 参数。
+        systems: object => `systems` 参数。
+
+    Returns:
+        list[Sample] => 处理结果。
+    """
     out = []
     for idx, seed in enumerate(seeds):
         args = {"operation": seed["op"], "expression": seed["expr"], "variable": seed["var"]}
@@ -108,6 +135,18 @@ def gen_math_solver(seeds, rng, all_names, version, systems) -> list[Sample]:
 
 
 def gen_bitwise(seeds, rng, all_names, version, systems) -> list[Sample]:
+    """处理 `gen_bitwise` 相关逻辑。
+
+    Args:
+        seeds: object => `seeds` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        version: object => `version` 参数。
+        systems: object => `systems` 参数。
+
+    Returns:
+        list[Sample] => 处理结果。
+    """
     out = []
     for idx, seed in enumerate(seeds):
         expr = seed["expr"]
@@ -180,6 +219,7 @@ def gen_hard_negatives(seeds, rng, all_names, version, systems) -> list[Sample]:
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     rng = random.Random(20260804)
     seeds = yaml.safe_load(SEEDS.read_text(encoding="utf-8"))
     schemas, version = load_schemas(SCHEMAS)

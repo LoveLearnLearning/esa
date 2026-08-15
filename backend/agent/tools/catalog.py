@@ -1,3 +1,5 @@
+# backend/agent/tools/catalog.py
+
 """Single source of truth for tool scope and schema/executor visibility."""
 
 from __future__ import annotations
@@ -46,6 +48,7 @@ TEACHING_TOOLS = frozenset()
 
 
 def tool_scope(name: str) -> str:
+    """处理 `tool_scope` 相关逻辑。"""
     if name in LEARNING_TOOLS:
         return "learning"
     if name in COMMON_TOOLS:
@@ -59,6 +62,7 @@ def tool_scope(name: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class ScopedToolView:
+    """封装 `ScopedToolView` 的状态与行为。"""
     registry: ToolRegistry
     scopes: frozenset[str]
     names: frozenset[str]
@@ -67,6 +71,15 @@ class ScopedToolView:
 
     @classmethod
     def compile(cls, registry: ToolRegistry, scopes: frozenset[str]) -> "ScopedToolView":
+        """编译 `compile` 相关数据。
+
+        Args:
+            registry: ToolRegistry => `registry` 参数。
+            scopes: frozenset[str] => `scopes` 参数。
+
+        Returns:
+            'ScopedToolView' => 处理结果。
+        """
         entries = []
         for name, (schema, _handler) in registry.registered_tools.items():
             if tool_scope(name) in scopes:
@@ -90,11 +103,21 @@ class ScopedToolView:
         )
 
     def contains(self, name: str) -> bool:
+        """处理 `contains` 相关逻辑。"""
         return name in self.names
 
     def normalize_arguments(
         self, name: str, arguments: Mapping[str, Any]
     ) -> dict[str, Any]:
+        """规范化 `arguments` 相关数据。
+
+        Args:
+            name: str => `name` 参数。
+            arguments: Mapping[str, Any] => `arguments` 参数。
+
+        Returns:
+            dict[str, Any] => 处理结果。
+        """
         if name not in self.names:
             raise KeyError(name)
         schema = self.registry.registered_tools[name][0]
@@ -113,6 +136,15 @@ class ScopedToolView:
         return normalize_tool_arguments(schema, dict(arguments))
 
     async def execute(self, name: str, arguments: Mapping[str, Any]) -> Any:
+        """执行 `execute` 相关数据。
+
+        Args:
+            name: str => `name` 参数。
+            arguments: Mapping[str, Any] => `arguments` 参数。
+
+        Returns:
+            Any => 处理结果。
+        """
         if name not in self.names:
             return {
                 "ok": False,

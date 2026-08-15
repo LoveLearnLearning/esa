@@ -1,3 +1,5 @@
+# backend/tests/test_context_isolation.py
+
 """上下文隔离相关回归测试
 
 覆盖:
@@ -80,6 +82,7 @@ def test_get_model_history_and_append_raises_for_missing_conversation(tmp_path):
 
 
 def _memory_context(mode: str) -> ToolExecutionContext:
+    """处理 `_memory_context` 相关逻辑。"""
     scope = ResourceScope(metadata={"conversation_id": "c1"})
     route = WorkspaceRoute(
         workspace_type="learning", agent_profile_id="learning.v1",
@@ -97,6 +100,7 @@ def _memory_context(mode: str) -> ToolExecutionContext:
 
 
 def test_memory_write_policy_allows_only_normal_mode():
+    """验证 `memory_write_policy_allows_only_normal_mode` 场景。"""
     policy = CoreMemoryPolicy()
     policy.ensure_write(_memory_context("normal"))
     for mode in ("no_write", "isolated"):

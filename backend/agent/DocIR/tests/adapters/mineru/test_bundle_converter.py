@@ -31,6 +31,7 @@ requires_real_fixture = pytest.mark.skipif(
 
 @requires_real_fixture
 def test_real_mineru_fixture_converts():
+    """验证 `real_mineru_fixture_converts` 场景。"""
     bundle = load_bundle(FIXTURE / "raw")
     document = convert_bundle(bundle, FIXTURE / "assets" / "source.pdf", source_page_count=30)
     assert document.schema_name == "docir"
@@ -49,6 +50,7 @@ def test_real_mineru_fixture_converts():
 
 @requires_real_fixture
 def test_real_mineru_fixture_passes_strict_alignment():
+    """验证 `real_mineru_fixture_passes_strict_alignment` 场景。"""
     bundle = load_bundle(FIXTURE / "raw")
     document = convert_bundle(
         bundle,
@@ -62,6 +64,7 @@ def test_real_mineru_fixture_passes_strict_alignment():
 
 
 def test_cross_page_table_continuation_does_not_guess_its_owner(tmp_path: Path):
+    """验证 `cross_page_table_continuation_does_not_guess_its_owner` 场景。"""
     middle_path = tmp_path / "sample_middle.json"
     v2_path = tmp_path / "sample_content_list_v2.json"
     middle_path.write_text("{}")
@@ -126,6 +129,7 @@ def test_cross_page_table_continuation_does_not_guess_its_owner(tmp_path: Path):
 
 
 def test_explicit_mineru_heading_levels_form_a_nested_section_tree(tmp_path: Path):
+    """验证 `explicit_mineru_heading_levels_form_a_nested_section_tree` 场景。"""
     middle_path = tmp_path / "sample_middle.json"
     v2_path = tmp_path / "sample_content_list_v2.json"
     middle_path.write_text("{}")
@@ -204,6 +208,7 @@ def test_explicit_mineru_heading_levels_form_a_nested_section_tree(tmp_path: Pat
 
 
 def test_missing_heading_level_stays_unknown_and_creates_no_relation(tmp_path: Path):
+    """验证 `missing_heading_level_stays_unknown_and_creates_no_relation` 场景。"""
     middle_path = tmp_path / "sample_middle.json"
     v2_path = tmp_path / "sample_content_list_v2.json"
     middle_path.write_text("{}")
@@ -254,6 +259,7 @@ def test_missing_heading_level_stays_unknown_and_creates_no_relation(tmp_path: P
 
 
 def test_existing_visual_file_becomes_a_hashed_docir_asset(tmp_path: Path):
+    """验证 `existing_visual_file_becomes_a_hashed_docir_asset` 场景。"""
     middle_path = tmp_path / "sample_middle.json"
     v2_path = tmp_path / "sample_content_list_v2.json"
     middle_path.write_text("{}")
@@ -292,6 +298,7 @@ def test_existing_visual_file_becomes_a_hashed_docir_asset(tmp_path: Path):
 
 
 def test_page_footer_becomes_a_footer_paragraph(tmp_path: Path):
+    """验证 `page_footer_becomes_a_footer_paragraph` 场景。"""
     middle_path = tmp_path / "sample_middle.json"
     v2_path = tmp_path / "sample_content_list_v2.json"
     middle_path.write_text("{}")

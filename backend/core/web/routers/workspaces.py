@@ -1,3 +1,7 @@
+# backend/core/web/routers/workspaces.py
+
+"""提供 `workspaces` 相关功能。"""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -18,6 +22,15 @@ def get_workspace_manifest(
     request: Request,
     session: CurrentSession,
 ) -> dict[str, object]:
+    """获取 `workspace manifest` 相关数据。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict[str, object] => 处理结果。
+    """
     user_store: UserStore = request.app.state.user_store
     user = user_store.get_by_id(session.user_id)
     if user is None:

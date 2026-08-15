@@ -1,3 +1,5 @@
+# backend/agent/DocIR/adapters/paddleocr/__init__.py
+
 """Public API for the local GPU PP-StructureV3-to-DocIR adapter."""
 
 from .api import convert_source, materialize_bundle

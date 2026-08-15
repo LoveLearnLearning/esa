@@ -1,3 +1,5 @@
+# backend/scripts/dataset/esa/paths.py
+
 """路径定位：让这套流水线放在仓库里的**任何位置**都能跑，也不挑当前工作目录。
 
 为什么需要这个模块

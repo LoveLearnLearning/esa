@@ -1,3 +1,7 @@
+# backend/tests/test_workspace_api.py
+
+"""验证 `workspace_api` 相关行为与回归场景。"""
+
 from fastapi.testclient import TestClient
 
 from backend.agent.tools.bootstrap import register_builtin_tools
@@ -17,6 +21,7 @@ from backend.core.web.webAPI import create_app
 
 
 def _app(tmp_path):
+    """处理 `_app` 相关逻辑。"""
     database = tmp_path / "workspace.db"
     user_store = UserStore(database)
     session_store = SessionStore(database)
@@ -46,6 +51,7 @@ def _register_and_login(
 ) -> dict[str, str]:
     # Registration is covered by the email-verification API suite. These
     # workspace tests seed a verified identity through the domain service.
+    """注册 `and login` 相关数据。"""
     registered = client.app.state.auth.register(
         username,
         "correct-password",
@@ -66,6 +72,7 @@ def _register_and_login(
 
 
 def test_workspace_manifest_uses_backend_role_policy(tmp_path):
+    """验证 `workspace_manifest_uses_backend_role_policy` 场景。"""
     client = TestClient(_app(tmp_path))
     student = _register_and_login(client, "student", "student")
     teacher = _register_and_login(client, "teacher", "teacher")
@@ -89,6 +96,7 @@ def test_workspace_manifest_uses_backend_role_policy(tmp_path):
 
 
 def test_core_memory_workspace_scope_uses_authorized_requested_workspace(tmp_path):
+    """验证 `core_memory_workspace_scope_uses_authorized_requested_workspace` 场景。"""
     client = TestClient(_app(tmp_path))
     student = _register_and_login(client, "memory-student", "student")
 
@@ -124,6 +132,7 @@ def test_core_memory_workspace_scope_uses_authorized_requested_workspace(tmp_pat
 
 
 def test_conversations_are_bound_to_an_authorized_workspace(tmp_path):
+    """验证 `conversations_are_bound_to_an_authorized_workspace` 场景。"""
     client = TestClient(_app(tmp_path))
     student = _register_and_login(client, "student", "student")
 
@@ -158,6 +167,7 @@ def test_conversations_are_bound_to_an_authorized_workspace(tmp_path):
 
 
 def test_research_projects_are_user_scoped_and_bind_research_chats(tmp_path):
+    """验证 `research_projects_are_user_scoped_and_bind_research_chats` 场景。"""
     client = TestClient(_app(tmp_path))
     alice = _register_and_login(client, "alice", "student")
     bob = _register_and_login(client, "bob", "teacher")
@@ -232,6 +242,7 @@ def test_research_projects_are_user_scoped_and_bind_research_chats(tmp_path):
 
 
 def test_research_workspace_has_only_scoped_tools():
+    """验证 `research_workspace_has_only_scoped_tools` 场景。"""
     register_builtin_tools()
     research_view = ScopedToolView.compile(tr, frozenset({"common", "research"}))
     research_tool_names = research_view.names

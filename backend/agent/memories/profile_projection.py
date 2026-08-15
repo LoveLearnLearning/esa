@@ -1,3 +1,5 @@
+# backend/agent/memories/profile_projection.py
+
 """CoreMemory -> ProfileStore 的受控结构化投影层。
 
 设计原则：
@@ -59,12 +61,14 @@ _PROFILE_SAFE_SUFFIXES = (
 
 @dataclass(frozen=True, slots=True)
 class ProjectionResult:
+    """封装 `ProjectionResult` 的状态与行为。"""
     projected: bool
     field_key: str | None = None
     reason: str = ""
     status: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """将当前对象转换为字典。"""
         return {
             "projected": self.projected,
             "field_key": self.field_key,
@@ -79,11 +83,13 @@ class ProfileProjection:
     MAX_PROJECTABLE_CONTENT_CHARS = 240
 
     def __init__(self, user_store, profile_store) -> None:
+        """初始化 `ProfileProjection` 实例。"""
         self._user_store = user_store
         self._profile_store = profile_store
 
     @staticmethod
     def _is_sensitive_key(memory_key: str) -> bool:
+        """判断 `sensitive key` 相关数据。"""
         lowered = memory_key.lower()
         return any(part in lowered for part in _SENSITIVE_KEY_PARTS)
 
@@ -91,6 +97,7 @@ class ProfileProjection:
     def _is_projectable(
         cls, memory_key: str, content: str, category: str
     ) -> tuple[bool, str]:
+        """判断 `projectable` 相关数据。"""
         memory_key = memory_key.strip()
         content = content.strip()
         category = category.strip().lower()
@@ -161,6 +168,7 @@ class ProfileProjection:
         memory_id: str,
         active: bool,
     ) -> ProjectionResult:
+        """处理 `_project` 相关逻辑。"""
         if not active:
             return self._remove(user_id, memory_key, memory_id)
 
@@ -219,6 +227,7 @@ class ProfileProjection:
         self,
         memory: CoreMemoryRecord,
     ) -> ProjectionResult:
+        """移除 `core memory projection` 相关数据。"""
         return self._remove(memory.user_id, memory.memory_key, memory.memory_id)
 
     def remove_memory_projection(
@@ -243,6 +252,7 @@ class ProfileProjection:
         field_key: str,
         memory_id: str,
     ) -> ProjectionResult:
+        """移除 `remove` 相关数据。"""
         if not field_key:
             return ProjectionResult(False, reason="missing_memory_key")
 

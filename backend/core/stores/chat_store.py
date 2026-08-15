@@ -1,5 +1,7 @@
 # backend/core/stores/chat_store.py
 
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
 import json
@@ -18,6 +20,7 @@ class ChatStore(BaseSQLiteStore):
     """聊天记录读写类。"""
 
     def __init__(self, database_path: str | Path = "data/esa.db") -> None:
+        """初始化 `ChatStore` 实例。"""
         super().__init__(database_path)
 
     def _initialize(self) -> None:
@@ -194,6 +197,7 @@ class ChatStore(BaseSQLiteStore):
 
     @staticmethod
     def _now() -> str:
+        """处理 `_now` 相关逻辑。"""
         return datetime.now(timezone.utc).isoformat()
 
     def create_conversation(
@@ -205,6 +209,18 @@ class ChatStore(BaseSQLiteStore):
         workspace_type: str = "learning",
         research_project_id: str | None = None,
     ) -> dict:
+        """创建 `conversation` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            title: str => `title` 参数。
+            group_id: str | None => 分组 ID。
+            workspace_type: str => `workspace_type` 参数。
+            research_project_id: str | None => research project ID。
+
+        Returns:
+            dict => 处理结果。
+        """
         now = self._now()
         conversation: dict = {
             "conversation_id": str(uuid.uuid4()),
@@ -248,6 +264,15 @@ class ChatStore(BaseSQLiteStore):
         conversation_id: str,
         user_id: str | None = None,
     ) -> dict | None:
+        """获取 `conversation` 相关数据。
+
+        Args:
+            conversation_id: str => 对话 ID。
+            user_id: str | None => 用户 ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         sql = """
             SELECT conversation_id, user_id, title, group_id,
                    workspace_type, research_project_id, created_at, updated_at
@@ -304,6 +329,16 @@ class ChatStore(BaseSQLiteStore):
         title: str,
         user_id: str | None = None,
     ) -> bool:
+        """处理 `rename_conversation` 相关逻辑。
+
+        Args:
+            conversation_id: str => 对话 ID。
+            title: str => `title` 参数。
+            user_id: str | None => 用户 ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         sql = """
             UPDATE conversations
             SET title = ?, updated_at = ?
@@ -385,6 +420,15 @@ class ChatStore(BaseSQLiteStore):
         conversation_id: str,
         user_id: str | None = None,
     ) -> bool:
+        """删除 `conversation` 相关数据。
+
+        Args:
+            conversation_id: str => 对话 ID。
+            user_id: str | None => 用户 ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         with closing(self._connect()) as connection, connection:
             where = "conversation_id = ?"
             params: tuple = (conversation_id,)
@@ -414,6 +458,12 @@ class ChatStore(BaseSQLiteStore):
         conversation_id: str,
         messages: list[dict],
     ) -> None:
+        """追加 `messages` 相关数据。
+
+        Args:
+            conversation_id: str => 对话 ID。
+            messages: list[dict] => 消息列表。
+        """
         if not messages:
             return
 
@@ -462,6 +512,14 @@ class ChatStore(BaseSQLiteStore):
             )
 
     def get_history(self, conversation_id: str) -> list[dict]:
+        """获取 `history` 相关数据。
+
+        Args:
+            conversation_id: str => 对话 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         rows = self.query_all(
             """
             SELECT id, role, content, name, attachments_json, created_at
@@ -485,6 +543,7 @@ class ChatStore(BaseSQLiteStore):
         return history
 
     def latest_message_id(self, conversation_id: str) -> int | None:
+        """处理 `latest_message_id` 相关逻辑。"""
         row = self.query_one(
             "SELECT MAX(id) AS id FROM messages WHERE conversation_id = ?",
             (conversation_id,),
@@ -560,6 +619,14 @@ class ChatStore(BaseSQLiteStore):
         return None, history
 
     def get_model_messages(self, conversation_id: str) -> list[dict]:
+        """获取 `model messages` 相关数据。
+
+        Args:
+            conversation_id: str => 对话 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         rows = self.query_all(
             """
             SELECT role, content, name
@@ -624,6 +691,7 @@ class ChatStore(BaseSQLiteStore):
         *,
         use_summary: bool,
     ) -> tuple[str | None, list[dict]]:
+        """获取 `model context and append` 相关数据。"""
         if not messages:
             raise ValueError("messages 不能为空")
 

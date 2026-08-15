@@ -1,3 +1,5 @@
+# backend/core/web/routers/memories.py
+
 """CoreMemory V2 management API and global-only legacy compatibility API."""
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 
 
 def _service(request: Request):
+    """处理 `_service` 相关逻辑。"""
     service = getattr(request.app.state, "core_memory_service", None)
     if service is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "记忆服务尚未初始化")
@@ -42,6 +45,7 @@ def _context(
     session: SessionPrincipal,
     workspace_type: str | None = None,
 ) -> ToolExecutionContext:
+    """处理 `_context` 相关逻辑。"""
     user = request.app.state.user_store.get_by_id(session.user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "用户不存在")
@@ -75,6 +79,7 @@ def _context(
 
 
 def _translate(error: Exception) -> HTTPException:
+    """处理 `_translate` 相关逻辑。"""
     if isinstance(error, MemoryRevisionConflict):
         return HTTPException(
             status.HTTP_409_CONFLICT,
@@ -97,6 +102,7 @@ def _record_context(
     session: SessionPrincipal,
     memory_id: str,
 ) -> ToolExecutionContext:
+    """处理 `_record_context` 相关逻辑。"""
     record = _service(request).store.get(memory_id, session.user_id)
     if record is None:
         raise KeyError(memory_id)
@@ -107,6 +113,17 @@ def _record_context(
 def list_core_memories(
     request: Request, session: CurrentSession, limit: int = 100, offset: int = 0
 ) -> list[dict]:
+    """列出 `core memories` 相关数据。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+        limit: int => 返回数量上限。
+        offset: int => 分页偏移量。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     return _service(request).list_all(session.user_id, limit=limit, offset=offset)
 
 
@@ -114,6 +131,16 @@ def list_core_memories(
 def create_core_memory(
     body: CoreMemoryCreateRequest, request: Request, session: CurrentSession
 ) -> dict:
+    """创建 `core memory` 相关数据。
+
+    Args:
+        body: CoreMemoryCreateRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     try:
         return (
             _service(request)
@@ -137,6 +164,17 @@ def update_core_memory(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """更新 `core memory` 相关数据。
+
+    Args:
+        memory_id: str => memory ID。
+        body: CoreMemoryUpdateRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     try:
         return (
             _service(request)
@@ -161,6 +199,13 @@ def update_core_memory(
 def forget_core_memory(
     memory_id: str, request: Request, session: CurrentSession
 ) -> None:
+    """处理 `forget_core_memory` 相关逻辑。
+
+    Args:
+        memory_id: str => memory ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     try:
         if not _service(request).forget(
             _record_context(request, session, memory_id), memory_id
@@ -174,6 +219,16 @@ def forget_core_memory(
 def suppress_core_memory(
     memory_id: str, request: Request, session: CurrentSession
 ) -> dict:
+    """处理 `suppress_core_memory` 相关逻辑。
+
+    Args:
+        memory_id: str => memory ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     try:
         return (
             _service(request)
@@ -188,6 +243,16 @@ def suppress_core_memory(
 def unsuppress_core_memory(
     memory_id: str, request: Request, session: CurrentSession
 ) -> dict:
+    """处理 `unsuppress_core_memory` 相关逻辑。
+
+    Args:
+        memory_id: str => memory ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     try:
         return (
             _service(request)
@@ -202,6 +267,16 @@ def unsuppress_core_memory(
 def list_versions(
     memory_id: str, request: Request, session: CurrentSession
 ) -> list[dict]:
+    """列出 `versions` 相关数据。
+
+    Args:
+        memory_id: str => memory ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     try:
         return _service(request).versions(session.user_id, memory_id)
     except Exception as error:
@@ -216,6 +291,18 @@ def restore_version(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """处理 `restore_version` 相关逻辑。
+
+    Args:
+        memory_id: str => memory ID。
+        revision: int => `revision` 参数。
+        body: CoreMemoryRestoreRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     try:
         return (
             _service(request)
@@ -233,6 +320,15 @@ def restore_version(
 
 @router.get("/me/memory-candidates")
 def list_candidates(request: Request, session: CurrentSession) -> list[dict]:
+    """列出 `candidates` 相关数据。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     return _service(request).list_candidates(session.user_id)
 
 
@@ -243,6 +339,17 @@ def accept_candidate(
     request: Request,
     session: CurrentSession,
 ) -> dict:
+    """处理 `accept_candidate` 相关逻辑。
+
+    Args:
+        candidate_id: str => candidate ID。
+        body: MemoryCandidateDecisionRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     try:
         service = _service(request)
         candidate = service.store.get_candidate(candidate_id, session.user_id)
@@ -268,6 +375,13 @@ def accept_candidate(
 def reject_candidate(
     candidate_id: str, request: Request, session: CurrentSession
 ) -> None:
+    """处理 `reject_candidate` 相关逻辑。
+
+    Args:
+        candidate_id: str => candidate ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     if not _service(request).reject_candidate(
         session.user_id,
         candidate_id,
@@ -278,6 +392,15 @@ def reject_candidate(
 
 @router.get("/me/memories")
 def list_memories(request: Request, session: CurrentSession) -> list[dict]:
+    """列出 `memories` 相关数据。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     return [
         {
             "memory_key": item["memory_key"],
@@ -293,6 +416,16 @@ def list_memories(request: Request, session: CurrentSession) -> list[dict]:
 def upsert_memory(
     body: CoreMemoryUpsertRequest, request: Request, session: CurrentSession
 ) -> dict:
+    """处理 `upsert_memory` 相关逻辑。
+
+    Args:
+        body: CoreMemoryUpsertRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
     context, service = _context(request, session), _service(request)
     scope = service.policy.resolve_scope(context, "global")
     existing = service.store.get_by_key(
@@ -331,6 +464,13 @@ def upsert_memory(
     response_class=Response,
 )
 def delete_memory(memory_key: str, request: Request, session: CurrentSession) -> None:
+    """删除 `memory` 相关数据。
+
+    Args:
+        memory_key: str => `memory_key` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     context, service = _context(request, session), _service(request)
     existing = service.store.get_by_key(
         session.user_id,

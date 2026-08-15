@@ -68,6 +68,7 @@ class Draft:
 
     @property
     def retrieval_enabled(self) -> bool:
+        """处理 `retrieval_enabled` 相关逻辑。"""
         return all(item.retrieval_enabled for item in self.fragments)
 
 

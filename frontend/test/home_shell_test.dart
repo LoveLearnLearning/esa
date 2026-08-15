@@ -169,6 +169,80 @@ void main() {
     expect(find.text('添加课程'), findsOneWidget);
   });
 
+  testWidgets('workspace sidebar shows complete history and loads courses', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = _ScheduleApi()
+      ..courses.add(
+        const ScheduleCourse(
+          id: 'data-structures-1',
+          name: '数据结构',
+          weekday: 1,
+          startPeriod: 1,
+          endPeriod: 2,
+          startWeek: 1,
+          endWeek: 18,
+          colorValue: 0xFF2563EB,
+        ),
+      )
+      ..courses.add(
+        const ScheduleCourse(
+          id: 'data-structures-2',
+          name: '数据结构',
+          weekday: 3,
+          startPeriod: 3,
+          endPeriod: 4,
+          startWeek: 1,
+          endWeek: 18,
+          colorValue: 0xFF2563EB,
+        ),
+      );
+    final state = createState(api)
+      ..conversations.addAll(
+        List.generate(
+          8,
+          (index) => ChatConversation(
+            id: 'history-$index',
+            title: '历史对话 ${index + 1}',
+            updatedAt: DateTime(2026, 8, 14, 12, 0, index),
+          ),
+        ),
+      );
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('学习助手').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('最近对话'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('workspace-history-heading')),
+      findsOneWidget,
+    );
+    expect(find.text('历史对话 7'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('workspace-courses-heading')),
+      findsOneWidget,
+    );
+    expect(find.text('数据结构'), findsOneWidget);
+    expect(
+      tester
+          .getTopLeft(find.byKey(const ValueKey('workspace-courses-heading')))
+          .dy,
+      greaterThan(
+        tester
+            .getTopLeft(find.byKey(const ValueKey('workspace-history-heading')))
+            .dy,
+      ),
+    );
+  });
+
   testWidgets('narrow timetable keeps the complete seven-day grid visible', (
     tester,
   ) async {

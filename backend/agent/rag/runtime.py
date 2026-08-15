@@ -1,3 +1,7 @@
+# backend/agent/rag/runtime.py
+
+"""组装并管理运行时组件。"""
+
 import os
 from pathlib import Path
 

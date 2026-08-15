@@ -1,3 +1,5 @@
+# backend/core/stores/migrations.py
+
 """SQLite schema migrations used by the backend stores."""
 
 from __future__ import annotations
@@ -113,6 +115,7 @@ CREATE TABLE {table} (
 
 
 def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
+    """处理 `_table_exists` 相关逻辑。"""
     return (
         connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -123,6 +126,7 @@ def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
 
 
 def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
+    """处理 `_columns` 相关逻辑。"""
     return {
         str(row["name"])
         for row in connection.execute(f'PRAGMA table_info("{table}")').fetchall()
@@ -165,6 +169,7 @@ def _has_foreign_key(
     target_column: str,
     on_delete: str,
 ) -> bool:
+    """判断是否存在 `foreign key` 相关数据。"""
     expected_delete = on_delete.upper()
     return any(
         row["from"] == source_column
@@ -176,6 +181,7 @@ def _has_foreign_key(
 
 
 def _ensure_quarantine_table(connection: sqlite3.Connection) -> None:
+    """确保 `quarantine table` 相关数据。"""
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS migration_orphans (
@@ -205,6 +211,7 @@ def _quarantine_rows(
     reason: str,
     query: str,
 ) -> int:
+    """处理 `_quarantine_rows` 相关逻辑。"""
     rows = connection.execute(query).fetchall()
     if not rows:
         return 0
@@ -249,6 +256,7 @@ def _replace_table(
     columns: tuple[str, ...],
     select_sql: str,
 ) -> None:
+    """替换 `table` 相关数据。"""
     replacement = f"__migration_{table}"
     connection.execute(f'DROP TABLE IF EXISTS "{replacement}"')
     connection.execute(ddl.format(table=replacement))
@@ -259,6 +267,7 @@ def _replace_table(
 
 
 def _migrate_sessions(connection: sqlite3.Connection) -> None:
+    """处理 `_migrate_sessions` 相关逻辑。"""
     if not _table_exists(connection, "sessions"):
         connection.execute(SESSIONS_DDL.format(table="sessions"))
         return
@@ -290,6 +299,7 @@ def _migrate_sessions(connection: sqlite3.Connection) -> None:
 
 
 def _migrate_groups(connection: sqlite3.Connection) -> None:
+    """处理 `_migrate_groups` 相关逻辑。"""
     if not _table_exists(connection, "groups"):
         connection.execute(GROUPS_DDL.format(table="groups"))
     elif not _has_foreign_key(
@@ -336,6 +346,7 @@ def _migrate_groups(connection: sqlite3.Connection) -> None:
 
 
 def _migrate_conversations(connection: sqlite3.Connection) -> None:
+    """处理 `_migrate_conversations` 相关逻辑。"""
     if not _table_exists(connection, "conversations"):
         connection.execute(CONVERSATIONS_DDL.format(table="conversations"))
     else:
@@ -422,6 +433,7 @@ def _migrate_conversations(connection: sqlite3.Connection) -> None:
 
 
 def _migrate_messages(connection: sqlite3.Connection) -> None:
+    """处理 `_migrate_messages` 相关逻辑。"""
     if not _table_exists(connection, "messages"):
         connection.execute(MESSAGES_DDL.format(table="messages"))
     else:
@@ -478,6 +490,7 @@ def _migrate_messages(connection: sqlite3.Connection) -> None:
 
 
 def _migrate_profile_tables(connection: sqlite3.Connection) -> None:
+    """处理 `_migrate_profile_tables` 相关逻辑。"""
     if not _table_exists(connection, "profile_audit_log"):
         connection.execute(PROFILE_AUDIT_DDL.format(table="profile_audit_log"))
     elif not _has_foreign_key(
@@ -564,6 +577,7 @@ def _migrate_profile_tables(connection: sqlite3.Connection) -> None:
 
 
 def _create_conversation_owner_triggers(connection: sqlite3.Connection) -> None:
+    """创建 `conversation owner triggers` 相关数据。"""
     connection.execute("DROP TRIGGER IF EXISTS conversations_group_owner_insert")
     connection.execute("DROP TRIGGER IF EXISTS conversations_group_owner_update")
     connection.execute(
@@ -644,6 +658,7 @@ def _migrate_schedule_tables(connection: sqlite3.Connection) -> None:
 
 
 def _migrate_email_identity(connection: sqlite3.Connection) -> None:
+    """处理 `_migrate_email_identity` 相关逻辑。"""
     columns = _columns(connection, "users")
     if "email" not in columns:
         connection.execute("ALTER TABLE users ADD COLUMN email TEXT")

@@ -1,3 +1,5 @@
+# backend/agent/tools/context.py
+
 """Trusted per-turn context and application dependency container for tools."""
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ from backend.core.router.models import ResourceScope, WorkspaceRoute
 
 @dataclass(frozen=True, slots=True)
 class AgentRuntimeDependencies:
+    """封装 `AgentRuntimeDependencies` 的状态与行为。"""
     username: str = ""
     total_weeks: int | None = None
     user_store: Any | None = None
@@ -35,11 +38,13 @@ class AgentRuntimeDependencies:
     extra: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         object.__setattr__(self, "extra", MappingProxyType(dict(self.extra)))
 
 
 @dataclass(frozen=True, slots=True)
 class ToolExecutionContext:
+    """封装 `ToolExecutionContext` 的状态与行为。"""
     user_id: str
     conversation_id: str
     workspace_route: WorkspaceRoute
@@ -49,6 +54,7 @@ class ToolExecutionContext:
     request_id: str
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if not self.user_id or not self.conversation_id or not self.request_id:
             raise ValueError("tool execution context requires trusted identifiers")
         if self.authorized_resources != self.workspace_route.resource_scope:

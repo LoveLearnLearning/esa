@@ -1,3 +1,5 @@
+# backend/agent/tools/learning/runtime.py
+
 """Learning tool handlers using only trusted runtime dependencies."""
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from backend.core.utils.models import UserRecord
 
 
 def _deps(context: ToolExecutionContext):
+    """处理 `_deps` 相关逻辑。"""
     deps = context.runtime_dependencies
     if not deps.username:
         raise RuntimeError("learning tools require a trusted username")
@@ -21,6 +24,16 @@ def _deps(context: ToolExecutionContext):
 def execute_learning_tool(
     context: ToolExecutionContext, name: str, arguments: Mapping[str, Any]
 ) -> dict[str, Any]:
+    """执行 `learning tool` 相关数据。
+
+    Args:
+        context: ToolExecutionContext => `context` 参数。
+        name: str => `name` 参数。
+        arguments: Mapping[str, Any] => `arguments` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     deps = _deps(context)
     user_name = deps.username
     if context.conversation_mode == "isolated" and name != "record_answer":

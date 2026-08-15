@@ -1,3 +1,5 @@
+# backend/core/message/renderer.py
+
 """Pure deterministic rendering of already-authorized prompt sections."""
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ TRUST_PREAMBLE = {
 
 
 def render_sections(sections: Iterable[ContextSection]) -> str:
+    """渲染 `sections` 相关数据。"""
     rendered: list[str] = []
     for section in sorted(sections, key=lambda item: (item.order, item.key)):
         content = section.content.strip()
@@ -29,4 +32,3 @@ def render_sections(sections: Iterable[ContextSection]) -> str:
             raise ValueError(f"unknown context trust level: {section.trust}")
         rendered.append(f"# {section.title}\n\n{preamble}{content}")
     return "\n\n".join(rendered)
-

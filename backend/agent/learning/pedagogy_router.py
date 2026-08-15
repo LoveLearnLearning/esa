@@ -1,5 +1,7 @@
 # backend/agent/learning/pedagogy_router.py
 
+"""提供请求路由与分发逻辑。"""
+
 from __future__ import annotations
 
 import re
@@ -24,6 +26,14 @@ class PedagogyDecision:
     learning_notes: tuple[str, ...] = ()
 
     def to_prompt_context(self, loaded_skill_body: str | None = None) -> str:
+        """转换 `prompt context` 相关数据。
+
+        Args:
+            loaded_skill_body: str | None => `loaded_skill_body` 参数。
+
+        Returns:
+            str => 处理结果。
+        """
         lines = [f"任务类型：{self.task_type}"]
         if self.task_type == "learning":
             if self.primary_kp_id:
@@ -213,6 +223,7 @@ class PedagogyRouter:
 
     @staticmethod
     def _resolve_profile_policy(profile):
+        """解析 `profile policy` 相关数据。"""
         if profile is None or not profile.relevant_learning_state:
             return "standard", None, False, ()
 
@@ -283,6 +294,16 @@ class PedagogyRouter:
         history: list[dict] | None = None,
         profile: "ProfileSnapshot | None" = None,
     ) -> PedagogyDecision:
+        """处理 `route` 相关逻辑。
+
+        Args:
+            message: str => `message` 参数。
+            history: list[dict] | None => `history` 参数。
+            profile: 'ProfileSnapshot | None' => `profile` 参数。
+
+        Returns:
+            PedagogyDecision => 处理结果。
+        """
         text = (message or "").strip()
         lowered = text.lower()
         (
@@ -300,6 +321,18 @@ class PedagogyRouter:
             *,
             resolved_kp_id: str | None = None,
         ) -> PedagogyDecision:
+            """处理 `decision` 相关逻辑。
+
+            Args:
+                skill_name: str | None => `skill_name` 参数。
+                reason: str => `reason` 参数。
+                confidence: float => `confidence` 参数。
+                task_type: str => `task_type` 参数。
+                resolved_kp_id: str | None => resolved kp ID。
+
+            Returns:
+                PedagogyDecision => 处理结果。
+            """
             return PedagogyDecision(
                 skill_name=skill_name,
                 reason=reason,

@@ -1,3 +1,5 @@
+# backend/core/stores/teaching_store.py
+
 """Persistence for the classroom and homework demo workflow."""
 
 from __future__ import annotations
@@ -12,10 +14,12 @@ from backend.core.stores.base_sqlite_store import BaseSQLiteStore
 
 
 def _now() -> str:
+    """处理 `_now` 相关逻辑。"""
     return datetime.now(timezone.utc).isoformat()
 
 
 def _row(row: sqlite3.Row | None) -> dict | None:
+    """处理 `_row` 相关逻辑。"""
     return dict(row) if row is not None else None
 
 
@@ -23,6 +27,7 @@ class TeachingStore(BaseSQLiteStore):
     """Single-database aggregate for the first teaching vertical slice."""
 
     def _initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         with closing(self._connect()) as connection, connection:
             connection.executescript(
                 """
@@ -166,6 +171,16 @@ class TeachingStore(BaseSQLiteStore):
         summary: dict | None = None,
         connection: sqlite3.Connection | None = None,
     ) -> None:
+        """处理 `audit` 相关逻辑。
+
+        Args:
+            actor_id: str => actor ID。
+            action: str => `action` 参数。
+            resource_type: str => `resource_type` 参数。
+            resource_id: str => resource ID。
+            summary: dict | None => `summary` 参数。
+            connection: sqlite3.Connection | None => `connection` 参数。
+        """
         target = connection or self._connect()
         should_close = connection is None
         try:
@@ -194,6 +209,18 @@ class TeachingStore(BaseSQLiteStore):
     def create_class(
         self, *, owner_id: str, name: str, course: str, term: str, description: str
     ) -> dict:
+        """创建 `class` 相关数据。
+
+        Args:
+            owner_id: str => owner ID。
+            name: str => `name` 参数。
+            course: str => `course` 参数。
+            term: str => `term` 参数。
+            description: str => `description` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         class_id = uuid4().hex
         now = _now()
         with closing(self._connect()) as connection, connection:
@@ -214,6 +241,7 @@ class TeachingStore(BaseSQLiteStore):
         return self.get_class(class_id) or {}
 
     def get_class(self, class_id: str) -> dict | None:
+        """获取 `class` 相关数据。"""
         return _row(
             self.query_one(
                 """SELECT c.*,
@@ -227,6 +255,14 @@ class TeachingStore(BaseSQLiteStore):
         )
 
     def list_teacher_classes(self, teacher_id: str) -> list[dict]:
+        """列出 `teacher classes` 相关数据。
+
+        Args:
+            teacher_id: str => teacher ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         return [
             dict(item)
             for item in self.query_all(
@@ -242,6 +278,14 @@ class TeachingStore(BaseSQLiteStore):
         ]
 
     def list_student_classes(self, student_id: str) -> list[dict]:
+        """列出 `student classes` 相关数据。
+
+        Args:
+            student_id: str => student ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         return [
             dict(item)
             for item in self.query_all(
@@ -261,6 +305,16 @@ class TeachingStore(BaseSQLiteStore):
     def invite_student(
         self, *, class_id: str, teacher_id: str, student_id: str
     ) -> dict:
+        """处理 `invite_student` 相关逻辑。
+
+        Args:
+            class_id: str => 班级 ID。
+            teacher_id: str => teacher ID。
+            student_id: str => student ID。
+
+        Returns:
+            dict => 处理结果。
+        """
         now = _now()
         membership_id = uuid4().hex
         with closing(self._connect()) as connection, connection:
@@ -294,6 +348,7 @@ class TeachingStore(BaseSQLiteStore):
         return self.get_membership(membership_id) or {}
 
     def get_membership(self, membership_id: str) -> dict | None:
+        """获取 `membership` 相关数据。"""
         return _row(
             self.query_one(
                 """SELECT m.*, u.username AS student_username
@@ -306,6 +361,15 @@ class TeachingStore(BaseSQLiteStore):
     def get_membership_for_student(
         self, *, class_id: str, student_id: str
     ) -> dict | None:
+        """获取 `membership for student` 相关数据。
+
+        Args:
+            class_id: str => 班级 ID。
+            student_id: str => student ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         return _row(
             self.query_one(
                 "SELECT * FROM teaching_memberships WHERE class_id=? AND student_id=?",
@@ -314,6 +378,14 @@ class TeachingStore(BaseSQLiteStore):
         )
 
     def list_members(self, class_id: str) -> list[dict]:
+        """列出 `members` 相关数据。
+
+        Args:
+            class_id: str => 班级 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         return [
             dict(item)
             for item in self.query_all(
@@ -331,6 +403,16 @@ class TeachingStore(BaseSQLiteStore):
     def respond_membership(
         self, *, membership_id: str, student_id: str, accept: bool
     ) -> dict | None:
+        """处理 `respond_membership` 相关逻辑。
+
+        Args:
+            membership_id: str => membership ID。
+            student_id: str => student ID。
+            accept: bool => `accept` 参数。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         status = "active" if accept else "declined"
         now = _now()
         with closing(self._connect()) as connection, connection:
@@ -351,6 +433,16 @@ class TeachingStore(BaseSQLiteStore):
         return self.get_membership(membership_id)
 
     def remove_member(self, *, class_id: str, student_id: str, teacher_id: str) -> bool:
+        """移除 `member` 相关数据。
+
+        Args:
+            class_id: str => 班级 ID。
+            student_id: str => student ID。
+            teacher_id: str => teacher ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         now = _now()
         with closing(self._connect()) as connection, connection:
             row = connection.execute(
@@ -383,6 +475,19 @@ class TeachingStore(BaseSQLiteStore):
         questions: list[dict],
         teacher_id: str,
     ) -> dict:
+        """创建 `assignment` 相关数据。
+
+        Args:
+            class_id: str => 班级 ID。
+            title: str => `title` 参数。
+            instructions: str => `instructions` 参数。
+            due_at: str | None => `due_at` 参数。
+            questions: list[dict] => `questions` 参数。
+            teacher_id: str => teacher ID。
+
+        Returns:
+            dict => 处理结果。
+        """
         assignment_id = uuid4().hex
         now = _now()
         total = sum(float(item["max_points"]) for item in questions)
@@ -422,6 +527,14 @@ class TeachingStore(BaseSQLiteStore):
         return self.get_assignment(assignment_id) or {}
 
     def get_assignment(self, assignment_id: str) -> dict | None:
+        """获取 `assignment` 相关数据。
+
+        Args:
+            assignment_id: str => 作业 ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         item = _row(
             self.query_one(
                 """SELECT a.*, c.name AS class_name, c.canonical_course,
@@ -448,6 +561,14 @@ class TeachingStore(BaseSQLiteStore):
         return item
 
     def list_class_assignments(self, class_id: str) -> list[dict]:
+        """列出 `class assignments` 相关数据。
+
+        Args:
+            class_id: str => 班级 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         return [
             dict(item)
             for item in self.query_all(
@@ -465,6 +586,14 @@ class TeachingStore(BaseSQLiteStore):
         ]
 
     def list_student_assignments(self, student_id: str) -> list[dict]:
+        """列出 `student assignments` 相关数据。
+
+        Args:
+            student_id: str => student ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         return [
             dict(item)
             for item in self.query_all(
@@ -494,6 +623,15 @@ class TeachingStore(BaseSQLiteStore):
     def get_latest_submission_for_student(
         self, *, assignment_id: str, student_id: str
     ) -> dict | None:
+        """获取 `latest submission for student` 相关数据。
+
+        Args:
+            assignment_id: str => 作业 ID。
+            student_id: str => student ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         row = self.query_one(
             """SELECT submission_id FROM teaching_submissions
                WHERE assignment_id=? AND student_id=?
@@ -505,6 +643,15 @@ class TeachingStore(BaseSQLiteStore):
         return self.get_submission(str(row["submission_id"]))
 
     def publish_assignment(self, *, assignment_id: str, teacher_id: str) -> bool:
+        """处理 `publish_assignment` 相关逻辑。
+
+        Args:
+            assignment_id: str => 作业 ID。
+            teacher_id: str => teacher ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         now = _now()
         with closing(self._connect()) as connection, connection:
             changed = connection.execute(
@@ -525,6 +672,16 @@ class TeachingStore(BaseSQLiteStore):
     def submit(
         self, *, assignment_id: str, student_id: str, answers: list[dict]
     ) -> dict:
+        """处理 `submit` 相关逻辑。
+
+        Args:
+            assignment_id: str => 作业 ID。
+            student_id: str => student ID。
+            answers: list[dict] => `answers` 参数。
+
+        Returns:
+            dict => 处理结果。
+        """
         assignment = self.get_assignment(assignment_id)
         if assignment is None:
             raise ValueError("assignment_not_found")
@@ -566,6 +723,14 @@ class TeachingStore(BaseSQLiteStore):
         return self.get_submission(submission_id) or {}
 
     def get_submission(self, submission_id: str) -> dict | None:
+        """获取 `submission` 相关数据。
+
+        Args:
+            submission_id: str => submission ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         item = _row(
             self.query_one(
                 """SELECT s.*, a.title AS assignment_title, a.total_points,
@@ -595,6 +760,14 @@ class TeachingStore(BaseSQLiteStore):
         return item
 
     def list_submissions(self, assignment_id: str) -> list[dict]:
+        """列出 `submissions` 相关数据。
+
+        Args:
+            assignment_id: str => 作业 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         return [
             dict(item)
             for item in self.query_all(
@@ -609,6 +782,13 @@ class TeachingStore(BaseSQLiteStore):
         ]
 
     def save_analysis(self, *, submission_id: str, results: list[dict], actor_id: str) -> None:
+        """保存 `analysis` 相关数据。
+
+        Args:
+            submission_id: str => submission ID。
+            results: list[dict] => `results` 参数。
+            actor_id: str => actor ID。
+        """
         with closing(self._connect()) as connection, connection:
             connection.execute(
                 "UPDATE teaching_submissions SET analysis_status='running' WHERE submission_id=?",
@@ -637,6 +817,7 @@ class TeachingStore(BaseSQLiteStore):
             )
 
     def mark_analysis_failed(self, submission_id: str) -> None:
+        """处理 `mark_analysis_failed` 相关逻辑。"""
         self.execute(
             "UPDATE teaching_submissions SET analysis_status='failed' WHERE submission_id=?",
             (submission_id,),
@@ -645,6 +826,16 @@ class TeachingStore(BaseSQLiteStore):
     def review_submission(
         self, *, submission_id: str, reviews: list[dict], teacher_id: str
     ) -> dict:
+        """处理 `review_submission` 相关逻辑。
+
+        Args:
+            submission_id: str => submission ID。
+            reviews: list[dict] => `reviews` 参数。
+            teacher_id: str => teacher ID。
+
+        Returns:
+            dict => 处理结果。
+        """
         now = _now()
         with closing(self._connect()) as connection, connection:
             for review in reviews:
@@ -679,6 +870,15 @@ class TeachingStore(BaseSQLiteStore):
         return self.get_submission(submission_id) or {}
 
     def mark_feedback_published(self, *, submission_id: str, teacher_id: str) -> dict:
+        """处理 `mark_feedback_published` 相关逻辑。
+
+        Args:
+            submission_id: str => submission ID。
+            teacher_id: str => teacher ID。
+
+        Returns:
+            dict => 处理结果。
+        """
         now = _now()
         with closing(self._connect()) as connection, connection:
             existing = connection.execute(
@@ -704,6 +904,15 @@ class TeachingStore(BaseSQLiteStore):
         return self.get_submission(submission_id) or {}
 
     def mark_evidence_written(self, answer_id: str, evidence_id: str) -> bool:
+        """处理 `mark_evidence_written` 相关逻辑。
+
+        Args:
+            answer_id: str => answer ID。
+            evidence_id: str => evidence ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         with closing(self._connect()) as connection, connection:
             return bool(
                 connection.execute(
@@ -714,12 +923,21 @@ class TeachingStore(BaseSQLiteStore):
             )
 
     def has_evidence(self, answer_id: str) -> bool:
+        """判断是否存在 `evidence` 相关数据。"""
         return self.query_one(
             "SELECT 1 FROM teaching_evidence_publications WHERE answer_id=?",
             (answer_id,),
         ) is not None
 
     def dashboard(self, teacher_id: str) -> dict:
+        """处理 `dashboard` 相关逻辑。
+
+        Args:
+            teacher_id: str => teacher ID。
+
+        Returns:
+            dict => 处理结果。
+        """
         row = self.query_one(
             """SELECT
                  (SELECT COUNT(*) FROM teaching_classes c WHERE c.owner_teacher_id=? AND c.status='active') AS class_count,
@@ -759,6 +977,15 @@ class TeachingStore(BaseSQLiteStore):
         ]
 
     def student_class_summary(self, *, class_id: str, student_id: str) -> dict:
+        """处理 `student_class_summary` 相关逻辑。
+
+        Args:
+            class_id: str => 班级 ID。
+            student_id: str => student ID。
+
+        Returns:
+            dict => 处理结果。
+        """
         membership = self.get_membership_for_student(
             class_id=class_id, student_id=student_id
         )

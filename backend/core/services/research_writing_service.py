@@ -1,3 +1,7 @@
+# backend/core/services/research_writing_service.py
+
+"""提供领域服务实现。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,17 +11,20 @@ from backend.core.stores.research_writing_store import ResearchWritingStore
 
 
 class ResearchWritingService:
+    """提供 `research writing service` 领域服务。"""
     def __init__(
         self,
         store: ResearchWritingStore,
         llm_client: AuxiliaryLLMClient,
     ) -> None:
+        """初始化 `ResearchWritingService` 实例。"""
         self.store = store
         self.llm_client = llm_client
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
 
     def start(self, *, recover_interrupted: bool = True) -> None:
+        """启动 `start` 相关数据。"""
         if self._worker is not None and not self._worker.done():
             return
         if recover_interrupted:
@@ -26,6 +33,7 @@ class ResearchWritingService:
         self._worker = asyncio.create_task(self._run_worker())
 
     async def stop(self) -> None:
+        """停止 `stop` 相关数据。"""
         worker = self._worker
         self._worker = None
         if worker is None:
@@ -37,9 +45,11 @@ class ResearchWritingService:
             pass
 
     def submit(self, job_id: str) -> None:
+        """处理 `submit` 相关逻辑。"""
         self._queue.put_nowait(job_id)
 
     async def _run_worker(self) -> None:
+        """执行 `worker` 相关数据。"""
         while True:
             job_id = await self._queue.get()
             try:
@@ -48,6 +58,14 @@ class ResearchWritingService:
                 self._queue.task_done()
 
     async def run_job(self, job_id: str) -> dict | None:
+        """执行 `job` 相关数据。
+
+        Args:
+            job_id: str => job ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         job = self.store.claim_job(job_id)
         if job is None:
             return None
@@ -68,6 +86,7 @@ class ResearchWritingService:
 
     @staticmethod
     def _messages(job: dict, document: dict) -> list[dict]:
+        """处理 `_messages` 相关逻辑。"""
         operation_rules = {
             "outline": "生成层级清晰的论文或综述大纲，并说明各部分承担的论证职责。",
             "literature_review": (

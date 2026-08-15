@@ -1,3 +1,5 @@
+# backend/scripts/dataset/generators/gen_new_tools.py
+
 """6 个新增工具的数据生成器。
 
 get_mastery_level / get_weak_prerequisites / get_review_timing /
@@ -72,10 +74,28 @@ BUDGETS = {"record_learning_evidence": 20}
 
 
 def flat_kps(cfg) -> list[tuple[str, str]]:
+    """处理 `flat_kps` 相关逻辑。"""
     return [(course, kp) for course, kps in cfg["kp_pool"].items() for kp in kps]
 
 
 def mk(sid, tpl, category, system, tools, turns, version, rng, all_names, topic=""):
+    """处理 `mk` 相关逻辑。
+
+    Args:
+        sid: object => `sid` 参数。
+        tpl: object => `tpl` 参数。
+        category: object => `category` 参数。
+        system: object => `system` 参数。
+        tools: object => 可用工具列表。
+        turns: object => `turns` 参数。
+        version: object => `version` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        topic: object => `topic` 参数。
+
+    Returns:
+        object => 处理结果。
+    """
     return Sample(
         id=sid, template_id=tpl, category=category, schema_version=version,
         system=system_for(turns), tool_names=pick_tool_names(tools, all_names, rng),
@@ -146,6 +166,19 @@ def _answer_for(tool: str, result: dict, kp: str) -> str:
 
 
 def gen_positive(cfg, tool, group, phrasings, rng, all_names, version, out, budget):
+    """处理 `gen_positive` 相关逻辑。
+
+    Args:
+        cfg: object => `cfg` 参数。
+        tool: object => `tool` 参数。
+        group: object => `group` 参数。
+        phrasings: object => `phrasings` 参数。
+        rng: object => `rng` 参数。
+        all_names: object => `all_names` 参数。
+        version: object => `version` 参数。
+        out: object => `out` 参数。
+        budget: object => `budget` 参数。
+    """
     kps = flat_kps(cfg)
     rng.shuffle(kps)
 
@@ -274,6 +307,7 @@ ROUTINE_REPLIES = [
 
 
 def main() -> int:
+    """运行当前模块的命令行入口。"""
     rng = random.Random(20260810)
     cfg = yaml.safe_load(SEEDS.read_text(encoding="utf-8"))
     schemas, version = load_schemas(SCHEMAS)
