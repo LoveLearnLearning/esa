@@ -14,13 +14,13 @@ import '../widgets/history_drawer.dart';
 import '../widgets/agent_action_sheet.dart';
 import 'chat_page.dart';
 import 'knowledge_map_page.dart';
+import 'planner_page.dart';
 import 'research_project_page.dart';
 import 'research_workspace_page.dart';
-import 'schedule_page.dart';
 import 'student_assignments_page.dart';
 import 'teaching_workspace_page.dart';
 
-enum StudentSection { assistant, assignments, schedule, knowledge, research }
+enum StudentSection { assistant, assignments, planner, knowledge, research }
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -35,8 +35,10 @@ class _HomeShellState extends State<HomeShell> {
   bool _sidebarCollapsed = false;
   bool _sidebarRequested = false;
   bool _scheduleRequested = false;
+  PlannerTab _plannerInitialTab = PlannerTab.schedule;
   ResearchProject? _activeResearchProject;
   bool _researchProjectChatOpen = false;
+  bool _researchProjectsVisible = false;
 
   bool get _inResearch => _section == StudentSection.research;
 
@@ -49,20 +51,42 @@ class _HomeShellState extends State<HomeShell> {
     if (app.isLoggedIn) unawaited(app.loadSchedule());
   }
 
-  Future<void> _select(StudentSection section) async {
+  Future<void> _select(StudentSection section, {PlannerTab? plannerTab}) async {
     FocusManager.instance.primaryFocus?.unfocus();
     final app = AppScope.of(context);
-    final target = section == StudentSection.research
-        ? WorkspaceType.research
-        : section == StudentSection.assignments && app.accountRole == 'teacher'
-        ? WorkspaceType.teaching
-        : WorkspaceType.learning;
-    if (app.activeWorkspace != target) await app.switchWorkspace(target);
-    if (!mounted) return;
+    final WorkspaceType? target;
+    if (section == StudentSection.research) {
+      target = WorkspaceType.research;
+    } else if (section == StudentSection.assignments &&
+        app.accountRole == 'teacher') {
+      target = WorkspaceType.teaching;
+    } else if (section == StudentSection.assistant ||
+        section == StudentSection.assignments) {
+      target = WorkspaceType.learning;
+    } else {
+      target = null;
+    }
     setState(() {
       _section = section;
+      if (section == StudentSection.planner && plannerTab != null) {
+        _plannerInitialTab = plannerTab;
+      }
+      if (section == StudentSection.research) {
+        _activeResearchProject = null;
+        _researchProjectChatOpen = false;
+        _researchProjectsVisible = false;
+        _sidebarCollapsed = false;
+        _sidebarRequested = true;
+      }
       if (section != StudentSection.research) _researchProjectChatOpen = false;
     });
+    if (target != null && app.activeWorkspace != target) {
+      try {
+        await app.switchWorkspace(target);
+      } catch (_) {
+        // 后端未就绪时保留当前界面，工作区数据后续可重试。
+      }
+    }
   }
 
   Widget _page() => switch (_section) {
@@ -75,21 +99,29 @@ class _HomeShellState extends State<HomeShell> {
           : StudentAssignmentsPage(
               onOpenChat: () => unawaited(_select(StudentSection.assistant)),
             ),
-    StudentSection.schedule => const SchedulePage(),
+    StudentSection.planner => PlannerPage(
+      initialTab: _plannerInitialTab,
+      onOpenAssignments: () => unawaited(_select(StudentSection.assignments)),
+    ),
     StudentSection.knowledge => KnowledgeMapPage(
       embedded: true,
       onOpenChat: () => unawaited(_select(StudentSection.assistant)),
-      onOpenSchedule: () => unawaited(_select(StudentSection.schedule)),
+      onOpenSchedule: () => unawaited(
+        _select(StudentSection.planner, plannerTab: PlannerTab.schedule),
+      ),
     ),
     StudentSection.research =>
       _activeResearchProject == null
-          ? ResearchWorkspacePage(
-              onOpenChat: () => unawaited(_select(StudentSection.research)),
-              onOpenProject: (project) => setState(() {
-                _activeResearchProject = project;
-                _researchProjectChatOpen = false;
-              }),
-            )
+          ? MediaQuery.sizeOf(context).width < 1040
+                ? ResearchWorkspacePage(
+                    onOpenChat: () =>
+                        unawaited(_select(StudentSection.research)),
+                    onOpenProject: (project) => setState(() {
+                      _activeResearchProject = project;
+                      _researchProjectChatOpen = false;
+                    }),
+                  )
+                : ChatPage(embedded: true, embeddedTitle: '研究空间')
           : _researchProjectChatOpen
           ? ChatPage(
               embedded: true,
@@ -174,6 +206,37 @@ class _HomeShellState extends State<HomeShell> {
                                   _activeResearchProject = project;
                                   _researchProjectChatOpen = false;
                                 }),
+                                activeResearchProject: _activeResearchProject,
+                                researchProjectsVisible:
+                                    _researchProjectsVisible,
+                                onShowResearchProjects: () => setState(
+                                  () => _researchProjectsVisible = true,
+                                ),
+                                onOpenResearchChat: () => setState(() {
+                                  _activeResearchProject = null;
+                                  _researchProjectChatOpen = false;
+                                }),
+                                onOpenResearchConversation: (conversation) {
+                                  final app = AppScope.of(context);
+                                  ResearchProject? project;
+                                  for (final item in app.researchProjects) {
+                                    if (item.id ==
+                                        conversation.researchProjectId) {
+                                      project = item;
+                                      break;
+                                    }
+                                  }
+                                  setState(() {
+                                    _activeResearchProject = project;
+                                    _researchProjectChatOpen = true;
+                                  });
+                                },
+                                onOpenSchedule: () => unawaited(
+                                  _select(
+                                    StudentSection.planner,
+                                    plannerTab: PlannerTab.schedule,
+                                  ),
+                                ),
                                 onCollapse: () =>
                                     setState(() => _sidebarCollapsed = true),
                               ),
@@ -319,7 +382,7 @@ class _GlobalRail extends StatelessWidget {
         const SizedBox(height: 24),
         _RailButton(
           icon: LucideIcons.messageCircle,
-          tooltip: '学习助手',
+          tooltip: '学习空间',
           active: section == StudentSection.assistant,
           onTap: () => onSelect(StudentSection.assistant),
         ),
@@ -334,6 +397,12 @@ class _GlobalRail extends StatelessWidget {
           tooltip: '研究空间',
           active: section == StudentSection.research,
           onTap: () => onSelect(StudentSection.research),
+        ),
+        _RailButton(
+          icon: LucideIcons.calendarDays,
+          tooltip: '日程',
+          active: section == StudentSection.planner,
+          onTap: () => onSelect(StudentSection.planner),
         ),
         const Spacer(),
         _RailButton(
@@ -403,16 +472,32 @@ class _WorkspaceSidebar extends StatelessWidget {
     required this.onSelect,
     required this.onCollapse,
     required this.onOpenProject,
+    required this.activeResearchProject,
+    required this.researchProjectsVisible,
+    required this.onShowResearchProjects,
+    required this.onOpenResearchChat,
+    required this.onOpenResearchConversation,
+    required this.onOpenSchedule,
   });
   final StudentSection section;
   final ValueChanged<StudentSection> onSelect;
   final VoidCallback onCollapse;
   final ValueChanged<ResearchProject> onOpenProject;
+  final ResearchProject? activeResearchProject;
+  final bool researchProjectsVisible;
+  final VoidCallback onShowResearchProjects;
+  final VoidCallback onOpenResearchChat;
+  final ValueChanged<ChatConversation> onOpenResearchConversation;
+  final VoidCallback onOpenSchedule;
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final research = section == StudentSection.research;
+    if (section == StudentSection.knowledge ||
+        section == StudentSection.planner) {
+      return _standaloneSidebar(context, app);
+    }
     return Container(
       decoration: BoxDecoration(
         color: context.n.n100,
@@ -427,7 +512,7 @@ class _WorkspaceSidebar extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  research ? '科研空间' : '学习空间',
+                  research ? '研究空间' : '学习空间',
                   style: context.texts.titleLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -442,6 +527,7 @@ class _WorkspaceSidebar extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           FilledButton.icon(
+            key: research ? const ValueKey('new-research-project') : null,
             onPressed: research
                 ? () => _createResearchProject(context, app)
                 : () {
@@ -454,22 +540,44 @@ class _WorkspaceSidebar extends StatelessWidget {
           const SizedBox(height: 12),
           TextField(
             readOnly: true,
-            onTap: () => onSelect(
-              research ? StudentSection.research : StudentSection.assistant,
-            ),
+            onTap: () {
+              if (research) {
+                onOpenResearchChat();
+              } else {
+                onSelect(StudentSection.assistant);
+              }
+            },
             decoration: InputDecoration(
               hintText: research ? '搜索项目' : '搜索学习内容',
               prefixIcon: const Icon(LucideIcons.search, size: 17),
               isDense: true,
             ),
           ),
+          if (research) ...[
+            const SizedBox(height: 14),
+            Text('菜单', style: context.texts.labelSmall),
+            const SizedBox(height: 6),
+            _SideEntry(
+              icon: LucideIcons.bot,
+              label: '智能体对话',
+              selected: activeResearchProject == null,
+              onTap: onOpenResearchChat,
+            ),
+            _SideEntry(
+              icon: LucideIcons.folderKanban,
+              label: '科研项目',
+              selected:
+                  activeResearchProject != null || researchProjectsVisible,
+              onTap: onShowResearchProjects,
+            ),
+          ],
           if (!research) ...[
             const SizedBox(height: 14),
             Text('功能', style: context.texts.labelSmall),
             const SizedBox(height: 6),
             _SideEntry(
               icon: LucideIcons.bot,
-              label: '学习助手',
+              label: '学习空间',
               selected: section == StudentSection.assistant,
               onTap: () => onSelect(StudentSection.assistant),
             ),
@@ -479,48 +587,192 @@ class _WorkspaceSidebar extends StatelessWidget {
               selected: section == StudentSection.assignments,
               onTap: () => onSelect(StudentSection.assignments),
             ),
-            _SideEntry(
-              icon: LucideIcons.calendarDays,
-              label: '课表',
-              selected: section == StudentSection.schedule,
-              onTap: () => onSelect(StudentSection.schedule),
-            ),
-            _SideEntry(
-              icon: LucideIcons.gitBranch,
-              label: '知识地图',
-              selected: section == StudentSection.knowledge,
-              onTap: () => onSelect(StudentSection.knowledge),
-            ),
           ],
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  research ? '项目' : '对话分组',
-                  style: context.texts.labelSmall,
-                ),
-              ),
-              IconButton(
-                tooltip: research ? '新建项目' : '新建分组',
-                onPressed: research
-                    ? () => _createResearchProject(context, app)
-                    : () => _showCreateGroup(context, app),
-                icon: const Icon(LucideIcons.plus, size: 16),
-              ),
-            ],
-          ),
+          const SizedBox(height: 12),
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
               children: research
-                  ? _projectEntries(context, app)
+                  ? _researchEntries(context, app)
                   : _learningEntries(context, app),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _standaloneSidebar(BuildContext context, AppState app) {
+    final sectionTitle = section == StudentSection.knowledge ? '知识地图' : '日程';
+    return Container(
+      decoration: BoxDecoration(
+        color: context.n.n100,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: context.n.divider),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  sectionTitle,
+                  style: context.texts.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: '收起侧栏',
+                onPressed: onCollapse,
+                icon: const Icon(LucideIcons.chevronsLeft, size: 17),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text('课程', style: context.texts.labelSmall),
+          const SizedBox(height: 6),
+          if (!app.scheduleLoaded)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: LinearProgressIndicator(minHeight: 2),
+            )
+          else if (app.scheduleCourseNames.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: Text('暂无课程', style: context.texts.bodySmall),
+            )
+          else
+            for (final courseName in app.scheduleCourseNames)
+              _SideEntry(
+                icon: LucideIcons.bookOpen,
+                label: courseName,
+                selected: false,
+                onTap: onOpenSchedule,
+              ),
+          const Spacer(),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(
+    BuildContext context, {
+    required String title,
+    required String tooltip,
+    required VoidCallback onAdd,
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(
+      children: [
+        Expanded(child: Text(title, style: context.texts.labelSmall)),
+        IconButton(
+          tooltip: tooltip,
+          onPressed: onAdd,
+          icon: const Icon(LucideIcons.plus, size: 16),
+        ),
+      ],
+    ),
+  );
+
+  List<Widget> _researchEntries(BuildContext context, AppState app) => [
+    if (researchProjectsVisible) ...[
+      _sectionHeader(
+        context,
+        title: '科研空间',
+        tooltip: '新建项目',
+        onAdd: () => _createResearchProject(context, app),
+      ),
+      ..._projectEntries(context, app),
+      const SizedBox(height: 12),
+    ],
+    ..._conversationEntries(context, app, research: true),
+  ];
+
+  List<Widget> _conversationEntries(
+    BuildContext context,
+    AppState app, {
+    required bool research,
+  }) => [
+    _sectionHeader(
+      context,
+      title: '对话分组',
+      tooltip: '新建分组',
+      onAdd: () => _showCreateGroup(context, app),
+    ),
+    if (app.groups.isEmpty)
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Text('暂无对话分组', style: context.texts.bodySmall),
+      )
+    else
+      ReorderableListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        buildDefaultDragHandles: false,
+        itemCount: app.groups.length,
+        onReorder: (oldIndex, newIndex) =>
+            app.reorderGroups(oldIndex, newIndex),
+        itemBuilder: (context, index) {
+          final group = app.groups[index];
+          return Padding(
+            key: ValueKey(group.id),
+            padding: const EdgeInsets.only(bottom: 4),
+            child: ReorderableDelayedDragStartListener(
+              index: index,
+              child: _ExpandableSidebarRow(
+                icon: LucideIcons.folder,
+                label: group.name,
+                onRename: () => _renameGroup(context, app, group),
+                onDelete: () => _deleteGroup(context, app, group),
+                children: app
+                    .conversationsInGroup(group.id)
+                    .map(
+                      (conversation) => _ConversationEntry(
+                        conversation: conversation,
+                        onTap: () => _openConversation(
+                          context,
+                          app,
+                          conversation,
+                          research: research,
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          );
+        },
+      ),
+    const SizedBox(height: 12),
+    Text(
+      '历史对话',
+      key: const ValueKey('workspace-history-heading'),
+      style: context.texts.labelSmall,
+    ),
+    const SizedBox(height: 6),
+    for (final conversation in app.ungroupedConversations)
+      _ConversationEntry(
+        conversation: conversation,
+        onTap: () =>
+            _openConversation(context, app, conversation, research: research),
+      ),
+  ];
+
+  void _openConversation(
+    BuildContext context,
+    AppState app,
+    ChatConversation conversation, {
+    required bool research,
+  }) {
+    unawaited(app.setActive(conversation.id));
+    if (research) {
+      onOpenResearchConversation(conversation);
+    } else {
+      onSelect(StudentSection.assistant);
+    }
   }
 
   List<Widget> _projectEntries(BuildContext context, AppState app) {
@@ -537,7 +789,7 @@ class _WorkspaceSidebar extends StatelessWidget {
         _SideEntry(
           icon: LucideIcons.brainCircuit,
           label: project.name,
-          selected: false,
+          selected: activeResearchProject?.id == project.id,
           onTap: () => onOpenProject(project),
         ),
     ];
@@ -598,63 +850,7 @@ class _WorkspaceSidebar extends StatelessWidget {
   }
 
   List<Widget> _learningEntries(BuildContext context, AppState app) => [
-    if (app.groups.isEmpty)
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Text('暂无对话分组', style: context.texts.bodySmall),
-      )
-    else
-      ReorderableListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        buildDefaultDragHandles: false,
-        itemCount: app.groups.length,
-        onReorder: (oldIndex, newIndex) =>
-            app.reorderGroups(oldIndex, newIndex),
-        itemBuilder: (context, index) {
-          final group = app.groups[index];
-          return Padding(
-            key: ValueKey(group.id),
-            padding: const EdgeInsets.only(bottom: 4),
-            child: ReorderableDelayedDragStartListener(
-              index: index,
-              child: _ExpandableSidebarRow(
-                icon: LucideIcons.folder,
-                label: group.name,
-                onRename: () => _renameGroup(context, app, group),
-                onDelete: () => _deleteGroup(context, app, group),
-                children: app
-                    .conversationsInGroup(group.id)
-                    .map(
-                      (conversation) => _ConversationEntry(
-                        conversation: conversation,
-                        onTap: () {
-                          unawaited(app.setActive(conversation.id));
-                          onSelect(StudentSection.assistant);
-                        },
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
-          );
-        },
-      ),
-    const SizedBox(height: 12),
-    Text(
-      '历史对话',
-      key: const ValueKey('workspace-history-heading'),
-      style: context.texts.labelSmall,
-    ),
-    const SizedBox(height: 6),
-    for (final conversation in app.ungroupedConversations)
-      _ConversationEntry(
-        conversation: conversation,
-        onTap: () {
-          unawaited(app.setActive(conversation.id));
-          onSelect(StudentSection.assistant);
-        },
-      ),
+    ..._conversationEntries(context, app, research: false),
     const SizedBox(height: 12),
     Text(
       '课程',
@@ -678,7 +874,7 @@ class _WorkspaceSidebar extends StatelessWidget {
           icon: LucideIcons.bookOpen,
           label: courseName,
           selected: false,
-          onTap: () => onSelect(StudentSection.schedule),
+          onTap: onOpenSchedule,
         ),
   ];
 
@@ -969,6 +1165,12 @@ class _StudentContextRail extends StatelessWidget {
         .take(3)
         .map((point) => '${point.name}  ${_masteryLabel(point.masteryLevel)}')
         .toList();
+    if (section == StudentSection.knowledge) {
+      return _knowledgeContextRail(context, app, weakLines);
+    }
+    if (section == StudentSection.planner) {
+      return _plannerContextRail(context, app);
+    }
     if (!research && !conversationActive) {
       return const _LearningOverviewRail();
     }
@@ -1020,6 +1222,63 @@ class _StudentContextRail extends StatelessWidget {
                 lines: recent.isEmpty ? const ['暂无最近对话'] : recent,
               ),
             ],
+    );
+  }
+
+  Widget _knowledgeContextRail(
+    BuildContext context,
+    AppState app,
+    List<String>? weakLines,
+  ) {
+    final courseNames = app.scheduleCourseNames;
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      children: [
+        _ContextCard(
+          icon: LucideIcons.mapPinned,
+          title: '知识地图',
+          lines: [
+            courseNames.isEmpty ? '暂无课程' : '已加入 ${courseNames.length} 门课程',
+            if (app.masteryReport case final report?)
+              '已评估 ${report.totalPoints} 个知识点',
+          ],
+        ),
+        _ContextCard(
+          icon: LucideIcons.circleAlert,
+          title: '薄弱知识点',
+          lines: weakLines == null || weakLines.isEmpty
+              ? const ['暂无薄弱知识点记录']
+              : weakLines,
+        ),
+        _ContextCard(
+          icon: LucideIcons.bookOpen,
+          title: '课程',
+          lines: courseNames.isEmpty
+              ? const ['去日程添加课程']
+              : courseNames.take(4).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _plannerContextRail(BuildContext context, AppState app) {
+    final courseNames = app.scheduleCourseNames;
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      children: [
+        _ContextCard(
+          icon: LucideIcons.calendarDays,
+          title: '日程',
+          lines: ['课表 ${courseNames.length} 门课程', '待办、截止时间与目标集中管理'],
+        ),
+        _ContextCard(
+          icon: LucideIcons.bookOpen,
+          title: '本周课程',
+          lines: courseNames.isEmpty
+              ? const ['暂无课程']
+              : courseNames.take(4).toList(),
+        ),
+      ],
     );
   }
 }
@@ -1318,7 +1577,7 @@ class _MobileHeader extends StatelessWidget {
             StudentSection.research => '研究空间',
             StudentSection.knowledge => '知识地图',
             StudentSection.assignments => '作业',
-            StudentSection.schedule => '课表',
+            StudentSection.planner => '日程',
             StudentSection.assistant => '学习空间',
           }, style: context.texts.headlineSmall),
         ),
@@ -1399,9 +1658,9 @@ class _MobileLearningTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const entries = [
-      (StudentSection.assistant, '学习助手'),
+      (StudentSection.assistant, '学习空间'),
       (StudentSection.assignments, '作业'),
-      (StudentSection.schedule, '课表'),
+      (StudentSection.planner, '日程'),
       (StudentSection.knowledge, '知识地图'),
     ];
     return Padding(

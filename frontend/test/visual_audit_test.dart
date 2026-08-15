@@ -299,6 +299,8 @@ void main() {
     await pumpShell(tester, size: const Size(1440, 900));
     await tester.tap(find.byTooltip('研究空间'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('科研项目'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text(_VisualApi.project.name).last);
     await tester.pumpAndSettle();
     await capture(tester, '.audit-research-desktop.png');

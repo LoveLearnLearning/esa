@@ -64,10 +64,10 @@ void main() {
     await tester.pumpWidget(app(state));
     await tester.pumpAndSettle();
 
-    expect(find.text('学习助手'), findsOneWidget);
-    expect(find.text('课表'), findsOneWidget);
+    expect(find.text('学习空间'), findsOneWidget);
+    expect(find.text('日程'), findsOneWidget);
 
-    await tester.tap(find.text('课表'));
+    await tester.tap(find.text('日程'));
     await tester.pumpAndSettle();
     expect(find.text('添加课程'), findsOneWidget);
     final gridRect = tester.getRect(
@@ -162,9 +162,9 @@ void main() {
     expect(tester.getRect(rail).center.dx, lessThan(1280 / 2));
     expect(find.text('教学'), findsNothing);
 
-    await tester.tap(find.byTooltip('学习助手').first);
+    await tester.tap(find.byTooltip('学习空间').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('课表'));
+    await tester.tap(find.byTooltip('日程'));
     await tester.pumpAndSettle();
     expect(find.text('添加课程'), findsOneWidget);
   });
@@ -217,7 +217,7 @@ void main() {
 
     await tester.pumpWidget(app(state));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('学习助手').first);
+    await tester.tap(find.byTooltip('学习空间').first);
     await tester.pumpAndSettle();
 
     expect(find.text('最近对话'), findsNothing);
@@ -280,7 +280,7 @@ void main() {
 
     await tester.pumpWidget(app(state));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('课表'));
+    await tester.tap(find.text('日程'));
     await tester.pumpAndSettle();
     expect(find.text('高等数学'), findsOneWidget);
     expect(find.text('操作系统'), findsOneWidget);

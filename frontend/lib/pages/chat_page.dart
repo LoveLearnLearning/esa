@@ -977,11 +977,9 @@ class _EmptyState extends StatelessWidget {
     (LucideIcons.calendarCheck2, Color(0xFF3478F6), TaskMode.studyPlan),
     (LucideIcons.lightbulb, Color(0xFF20C85A), TaskMode.concept),
     (LucideIcons.penLine, Color(0xFF8B5CF6), TaskMode.reviewHomework),
-    (LucideIcons.search, Color(0xFFFFA514), TaskMode.searchMaterials),
   ];
 
   static const _researchCards = [
-    (LucideIcons.radar, Color(0xFF3478F6), TaskMode.literatureFrontier),
     (LucideIcons.filePenLine, Color(0xFF20C85A), TaskMode.academicWriting),
     (
       LucideIcons.chartNoAxesCombined,
