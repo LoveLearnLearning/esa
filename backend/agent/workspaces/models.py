@@ -81,6 +81,9 @@ class AgentTurnInput:
     group_context: Mapping[str, Any] = field(default_factory=dict)
     workspace_profile_context: str = ""
     profile_snapshot: Any | None = None
+    learning_context: "LearningTurnContext" = field(
+        default_factory=lambda: LearningTurnContext()
+    )
     authorized_attachments: tuple[Mapping[str, Any], ...] = ()
     request_metadata: Mapping[str, Any] = field(default_factory=dict)
 
@@ -101,6 +104,21 @@ class AgentTurnInput:
             tuple(_mapping(item) for item in self.authorized_attachments),
         )
         object.__setattr__(self, "request_metadata", _mapping(self.request_metadata))
+
+
+@dataclass(frozen=True, slots=True)
+class LearningTurnContext:
+    """Server-resolved learning identifiers available to one Agent turn."""
+
+    resolved_kp_ids: tuple[str, ...] = ()
+    pending_practice_kp_id: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "resolved_kp_ids",
+            tuple(kp_id for kp_id in self.resolved_kp_ids if kp_id),
+        )
 
 
 class ToolExecutor(Protocol):

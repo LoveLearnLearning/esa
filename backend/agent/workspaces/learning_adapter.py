@@ -35,6 +35,8 @@ class LearningAdapter:
                 turn.current_message,
                 history=[dict(item) for item in turn.history],
                 profile=profile_snapshot,
+                resolved_kp_ids=turn.learning_context.resolved_kp_ids,
+                pending_practice_kp_id=turn.learning_context.pending_practice_kp_id,
             )
             body = (
                 skills.load(decision.skill_name)

@@ -25,7 +25,7 @@ related_skills:
 
 ## 开始或继续练习
 
-1. 先确定一个可靠的 canonical `kp_id`。无法确定时先询问，不得猜测，也不得写入学习状态。
+1. 先确定一个可靠的 canonical `kp_id`。若“Resolved learning context”提供了 `resolved_kp_ids` 或 `pending_practice_kp_id`，它们是服务端已解析的可信值：直接使用，不得再次向用户确认。只有该可信上下文为空且无法从当前任务可靠确定时，才询问；不得猜测，也不得写入学习状态。
 2. 在出题前调用 `get_mastery_level(kp_id)`。如需判断提示依赖和常见误区，再调用 `get_learning_evidence_summary(kp_id)`。
 3. 根据返回的掌握状态选择难度：
    - 无记录或 `mastery < 40`：基础概念、识别题或单步骤题。

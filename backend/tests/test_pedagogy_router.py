@@ -59,6 +59,25 @@ def test_short_answer_uses_pending_practice_from_history():
     assert decision.confidence == 1.0
 
 
+def test_short_answer_uses_trusted_pending_practice_without_text_marker():
+    """服务端已绑定练习时，回答不依赖模型输出中的文本标记。"""
+    decision = PedagogyRouter.route(
+        "B",
+        history=[
+            {
+                "role": "assistant",
+                "content": "判断链表头结点的下一跳是否为空。",
+            },
+        ],
+        pending_practice_kp_id="链表",
+        resolved_kp_ids=("链表",),
+    )
+
+    assert decision.skill_name == "adaptive_practice"
+    assert decision.primary_kp_id == "链表"
+    assert decision.confidence == 1.0
+
+
 def test_completed_feedback_does_not_reopen_older_practice():
     """验证 `completed_feedback_does_not_reopen_older_practice` 场景。"""
     decision = PedagogyRouter.route(

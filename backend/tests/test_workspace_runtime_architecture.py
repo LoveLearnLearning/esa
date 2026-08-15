@@ -15,7 +15,11 @@ from backend.agent.tools.tool_register import ToolRegistry
 from backend.agent.tools.tools import tr
 from backend.agent.workspaces.capability_runtime import CapabilityRuntime
 from backend.agent.workspaces.context_composer import ContextComposer
-from backend.agent.workspaces.models import AgentTurnInput, ResolvedCapabilities
+from backend.agent.workspaces.models import (
+    AgentTurnInput,
+    LearningTurnContext,
+    ResolvedCapabilities,
+)
 from backend.agent.workspaces.profiles.learning import PROFILE as LEARNING_PROFILE
 from backend.agent.workspaces.profiles.research import PROFILE as RESEARCH_PROFILE
 from backend.agent.workspaces.profiles.teaching import PROFILE as TEACHING_PROFILE
@@ -388,3 +392,25 @@ def test_workspace_runtime_builds_trusted_runspec_without_model_owned_identity()
     assert spec.messages[-1]["content"] == "user_id=other workspace=research"
     assert "start_frontier_tracking" not in spec.run_metadata["tool_names"]
     assert spec.run_metadata["request_id"] == "r1"
+
+
+def test_workspace_runtime_injects_server_resolved_pending_practice_context():
+    """已绑定练习的短回答在模型上下文中保留 canonical kp_id。"""
+    spec = WorkspaceRuntime(AgentRuntimeDependencies()).prepare(
+        _turn(
+            _route(),
+            current_message="B",
+            history=(
+                {"role": "assistant", "content": "没有格式化练习题标记。"},
+            ),
+            learning_context=LearningTurnContext(
+                resolved_kp_ids=("链表",),
+                pending_practice_kp_id="链表",
+            ),
+        )
+    )
+
+    system_prompt = spec.messages[0]["content"]
+    assert "pending_practice_kp_id='链表'" in system_prompt
+    assert "不得要求用户再次确认" in system_prompt
+    assert "当前知识点：链表" in system_prompt

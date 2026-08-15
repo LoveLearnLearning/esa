@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from backend.agent.learning.practice_context import pending_practice_kp_label
 
 if TYPE_CHECKING:
     from backend.agent.memories.memory_models import ProfileSnapshot
@@ -171,10 +172,6 @@ class PedagogyRouter:
         "算了",
     )
 
-    _PRACTICE_HEADER_RE = re.compile(
-        r"【练习题｜知识点[：:]\s*(?P<kp_id>[^】]+)】"
-    )
-
     _MATH_TASK_MARKERS = (
         "帮我算",
         "算一下",
@@ -211,15 +208,7 @@ class PedagogyRouter:
         只检查最近的 assistant 消息：批改完成后的新 assistant
         回复会自然终止旧题状态，避免把后续闲聊误当作答。
         """
-        for message in reversed(history or []):
-            if message.get("role") != "assistant":
-                continue
-            content = message.get("content")
-            if not isinstance(content, str):
-                return None
-            match = cls._PRACTICE_HEADER_RE.search(content)
-            return match.group("kp_id").strip() if match else None
-        return None
+        return pending_practice_kp_label(history)
 
     @staticmethod
     def _resolve_profile_policy(profile):
@@ -293,6 +282,8 @@ class PedagogyRouter:
         *,
         history: list[dict] | None = None,
         profile: "ProfileSnapshot | None" = None,
+        resolved_kp_ids: tuple[str, ...] = (),
+        pending_practice_kp_id: str | None = None,
     ) -> PedagogyDecision:
         """处理 `route` 相关逻辑。
 
@@ -308,10 +299,15 @@ class PedagogyRouter:
         lowered = text.lower()
         (
             teaching_depth,
-            primary_kp_id,
+            profile_kp_id,
             prerequisite_first,
             learning_notes,
         ) = cls._resolve_profile_policy(profile)
+        primary_kp_id = (
+            pending_practice_kp_id
+            or next(iter(resolved_kp_ids), None)
+            or profile_kp_id
+        )
 
         def decision(
             skill_name: str | None,
@@ -362,7 +358,9 @@ class PedagogyRouter:
                     "learning",
                 )
 
-        pending_practice_kp_id = cls._pending_practice_kp_id(history)
+        pending_practice_kp_id = (
+            pending_practice_kp_id or cls._pending_practice_kp_id(history)
+        )
         cancelled_practice = any(
             marker in text for marker in cls._PRACTICE_CANCEL_MARKERS
         )

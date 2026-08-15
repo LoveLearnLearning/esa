@@ -79,6 +79,25 @@ class ProfileBuilder:
         return SimpleNamespace(marker="profile")
 
 
+class PendingPracticeChatStore(ChatStore):
+    """返回一条已发出但尚未批改的练习题。"""
+
+    def get_compressed_model_history_and_append(self, conversation_id, messages):
+        return None, [
+            {"role": "assistant", "content": "【练习题｜知识点：链表】\n判断头结点。"},
+            {"role": "user", "content": messages[0]["content"]},
+        ]
+
+
+class PendingPracticeResolver:
+    """模拟服务端将练习题标签解析为 canonical kp_id。"""
+
+    def resolve(self, text, *, limit):
+        if text == "链表":
+            return [SimpleNamespace(kp_id="链表", score=1.0)]
+        return []
+
+
 def test_chat_preparation_passes_resolved_points_to_profile_builder():
     """验证 `chat_preparation_passes_resolved_points_to_profile_builder` 场景。"""
     profile_builder = ProfileBuilder()
@@ -99,3 +118,25 @@ def test_chat_preparation_passes_resolved_points_to_profile_builder():
 
     assert profile_builder.query.resolved_kp_ids == ["二叉树"]
     assert context.user_profile_context.marker == "profile"
+
+
+def test_chat_preparation_binds_pending_practice_to_canonical_kp_id():
+    """短答案仍继承服务端解析出的待作答练习知识点。"""
+    profile_builder = ProfileBuilder()
+    state = SimpleNamespace(
+        chat_store=PendingPracticeChatStore(),
+        user_store=UserStore(),
+        kp_resolver=PendingPracticeResolver(),
+        profile_builder=profile_builder,
+    )
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+
+    context = _prepare_message(
+        request,
+        "conversation-1",
+        SendMessageRequest(content="B"),
+        SessionPrincipal(session_id="s1", user_id="u1"),
+    )
+
+    assert context.resolved_kp_ids == ()
+    assert context.pending_practice_kp_id == "链表"

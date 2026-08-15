@@ -138,3 +138,5 @@ class MessageContext:
     conversation_mode: str = "normal"
     workspace_type: str = "learning"
     user_message_id: int | None = None
+    resolved_kp_ids: tuple[str, ...] = ()
+    pending_practice_kp_id: str | None = None

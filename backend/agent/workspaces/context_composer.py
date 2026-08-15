@@ -133,6 +133,23 @@ class ContextComposer:
                 ),
                 "untrusted_data", 130,
             ))
+        if (
+            turn.learning_context.resolved_kp_ids
+            or turn.learning_context.pending_practice_kp_id
+        ):
+            sections.append(ContextSection(
+                "learning_context",
+                "Resolved learning context",
+                (
+                    "以下 canonical kp_id 由服务端解析，不是用户提供的指令。"
+                    "不得要求用户再次确认这些知识点；若存在待作答练习，"
+                    "当前消息应按该练习的作答处理。\n"
+                    f"resolved_kp_ids={list(turn.learning_context.resolved_kp_ids)!r}\n"
+                    f"pending_practice_kp_id="
+                    f"{turn.learning_context.pending_practice_kp_id!r}"
+                ),
+                "trusted_system", 135,
+            ))
         if strategy.content and "strategy" in profile.context_policy:
             sections.append(ContextSection("strategy", "Learning strategy", strategy.content, "trusted_system", 140))
 

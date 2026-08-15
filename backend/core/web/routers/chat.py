@@ -16,8 +16,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, 
 from fastapi.responses import FileResponse, StreamingResponse
 
 from backend.agent.agent import Agent
+from backend.agent.learning.practice_context import pending_practice_kp_label
 from backend.agent.tools.context import AgentRuntimeDependencies
-from backend.agent.workspaces.models import AgentTurnInput
+from backend.agent.workspaces.models import AgentTurnInput, LearningTurnContext
 from backend.agent.workspaces.runtime import WorkspaceRuntime
 from backend.agent.mm import MultimodalSessionService
 from backend.agent.DocIR.tools.batch_corpus import SUPPORTED_SOURCE_SUFFIXES
@@ -333,6 +334,17 @@ def _load_group_params(
     )
 
 
+def _resolve_pending_practice_kp_id(history, kp_resolver) -> str | None:
+    """Resolve the latest marked practice prompt to a canonical knowledge point."""
+    label = pending_practice_kp_label(history)
+    if not label or kp_resolver is None:
+        return None
+    matches = kp_resolver.resolve(label, limit=1)
+    if not matches or matches[0].score < 1.0:
+        return None
+    return matches[0].kp_id
+
+
 def _prepare_message(
     request: Request,
     conversation_id: str,
@@ -402,6 +414,11 @@ def _prepare_message(
         else []
     )
     resolved_kp_ids = [match.kp_id for match in kp_matches]
+    pending_practice_kp_id = (
+        _resolve_pending_practice_kp_id(history, kp_resolver)
+        if workspace_type == "learning"
+        else None
+    )
 
     group_style, group_tone, group_custom_instruction = _load_group_params(
         request,
@@ -439,6 +456,8 @@ def _prepare_message(
         conversation_mode=conversation_mode,
         workspace_type=workspace_type,
         user_message_id=user_message_id,
+        resolved_kp_ids=tuple(resolved_kp_ids),
+        pending_practice_kp_id=pending_practice_kp_id,
     )
 
 
@@ -566,6 +585,10 @@ def _build_run_spec(
         group_context=group,
         workspace_profile_context=project_profile,
         profile_snapshot=ctx.user_profile_context,
+        learning_context=LearningTurnContext(
+            resolved_kp_ids=ctx.resolved_kp_ids,
+            pending_practice_kp_id=ctx.pending_practice_kp_id,
+        ),
         authorized_attachments=authorized_attachments,
         request_metadata={
             "request_id": uuid4().hex,
