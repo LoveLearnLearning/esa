@@ -1088,6 +1088,7 @@ class AppState extends ChangeNotifier {
     final id = activeId!;
     if (_draftConversationId == id) _draftConversationId = null;
     final list = _messages.putIfAbsent(id, () => []);
+    final isFirstQuestion = !list.any((message) => message.isUser);
 
     final visibleInput = (displayText ?? input).trim();
     final selectedAttachmentIds = attachmentIds.isNotEmpty
@@ -1099,7 +1100,7 @@ class AppState extends ChangeNotifier {
       attachments: attachments,
     );
     list.add(userMessage);
-    _touchConversation(id, visibleInput);
+    _touchConversation(id);
 
     final placeholder = ChatMessage.typingPlaceholder();
     list.add(placeholder);
@@ -1115,6 +1116,7 @@ class AppState extends ChangeNotifier {
           placeholder,
           attachmentIds: selectedAttachmentIds,
           userMessage: userMessage,
+          titleInput: isFirstQuestion ? visibleInput : null,
         );
       } else {
         final newMsgs = selectedAttachmentIds.isEmpty
@@ -1126,6 +1128,9 @@ class AppState extends ChangeNotifier {
               );
         list.remove(placeholder);
         list.addAll(newMsgs.where((message) => !message.isUser));
+        if (isFirstQuestion) {
+          await _ensureConversationTitle(id, visibleInput);
+        }
         notifyListeners();
       }
     } catch (e) {
@@ -1181,6 +1186,7 @@ class AppState extends ChangeNotifier {
     List<String> attachmentIds = const [],
     ChatMessage? userMessage,
     int? replaceMessageId,
+    String? titleInput,
   }) async {
     var completed = false;
     final reasoningQueue = Queue<String>();
@@ -1283,6 +1289,14 @@ class AppState extends ChangeNotifier {
             enqueue(reasoningQueue, event.data['delta'] as String? ?? '');
           case 'content':
             enqueue(contentQueue, event.data['delta'] as String? ?? '');
+          case 'title':
+            final title = event.data['title']?.toString().trim() ?? '';
+            final titleConversationId =
+                event.data['conversation_id']?.toString() ?? conversationId;
+            if (title.isNotEmpty) {
+              _setConversationTitle(titleConversationId, title);
+              notifyListeners();
+            }
           case 'tool_start':
             list.remove(assistant);
             list.add(
@@ -1368,6 +1382,9 @@ class AppState extends ChangeNotifier {
 
     if (!completed) {
       throw ApiException(500, '流式连接意外中断');
+    }
+    if (titleInput != null) {
+      await _ensureConversationTitle(conversationId, titleInput);
     }
   }
 
@@ -1467,17 +1484,48 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void _touchConversation(String id, String firstInput) {
+  void _touchConversation(String id) {
     final conv = activeConversation;
     if (conv == null || conv.id != id) return;
     conv.updatedAt = DateTime.now();
-    if (conv.title == '新对话') {
-      final title = firstInput.length > 18
-          ? '${firstInput.substring(0, 18)}…'
-          : firstInput;
-      conv.title = title;
-      // 持久化标题 忽略结果
-      api.renameConversation(id, title).catchError((_) {});
+  }
+
+  void _setConversationTitle(String id, String title) {
+    for (final conversation in conversations) {
+      if (conversation.id == id) {
+        conversation.title = title;
+        return;
+      }
+    }
+  }
+
+  Future<void> _ensureConversationTitle(String id, String firstInput) async {
+    final local = conversations.where((conversation) => conversation.id == id);
+    if (local.isEmpty || local.first.title != '新对话') return;
+    try {
+      final conversation = await api.getConversation(id);
+      _setConversationTitle(id, conversation.title);
+      if (conversation.title != '新对话') {
+        notifyListeners();
+        return;
+      }
+    } catch (error) {
+      if (_handled401(error)) return;
+      // During a rolling deployment the old backend has no single-conversation
+      // endpoint. Continue with the local fallback below.
+    }
+
+    final normalized = firstInput.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.isEmpty) return;
+    final title = normalized.characters.take(24).toString();
+    _setConversationTitle(id, title);
+    notifyListeners();
+    try {
+      await api.renameConversation(id, title);
+    } catch (error) {
+      if (!_handled401(error)) {
+        debugPrint('Failed to persist fallback title for $id: $error');
+      }
     }
   }
 

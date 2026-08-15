@@ -852,6 +852,18 @@ class ApiClient {
         .toList();
   }
 
+  Future<ChatConversation> getConversation(String id) async {
+    if (kOfflineMode) {
+      return _offConvs.firstWhere((conversation) => conversation.id == id);
+    }
+    final response = await http.get(
+      _uri('/conversations/${Uri.encodeComponent(id)}'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return ChatConversation.fromJson(_decode(response) as Map<String, dynamic>);
+  }
+
   Future<List<ChatConversation>> listWorkspaceConversations(
     WorkspaceType workspace,
   ) async {
@@ -1151,9 +1163,7 @@ class ApiClient {
       body: jsonEncode({'content': content}),
     );
     if (response.statusCode != 200) _fail(response);
-    return ResearchDocument.fromJson(
-      _decode(response) as Map<String, dynamic>,
-    );
+    return ResearchDocument.fromJson(_decode(response) as Map<String, dynamic>);
   }
 
   Future<AttachmentContent> fetchConversationAttachment(
@@ -1167,8 +1177,7 @@ class ApiClient {
     if (response.statusCode != 200) _fail(response);
     return AttachmentContent(
       bytes: response.bodyBytes,
-      mediaType:
-          response.headers['content-type'] ?? attachment.mediaType,
+      mediaType: response.headers['content-type'] ?? attachment.mediaType,
       filename: attachment.filename,
     );
   }

@@ -47,6 +47,7 @@ class AgentRuntimeDependencies:
     learning_evidence_store: Any | None = None
     learning_state_service: Any | None = None
     rag_service: Any | None = None
+    mcp_client_manager: Any | None = None
     extra: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

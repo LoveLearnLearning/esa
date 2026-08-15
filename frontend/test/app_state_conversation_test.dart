@@ -35,6 +35,7 @@ class _ConversationApi extends ApiClient {
   Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
     yield const ChatStreamEvent('start', {});
     yield const ChatStreamEvent('content', {'delta': '收到'});
+    yield ChatStreamEvent('title', {'conversation_id': id, 'title': '小模型生成标题'});
     yield const ChatStreamEvent('done', {});
   }
 }
@@ -51,6 +52,27 @@ class _InterruptedToolApi extends _ConversationApi {
 
   @override
   Future<List<ChatMessage>> getMessages(String conversationId) async => [];
+}
+
+class _LegacyConversationApi extends _ConversationApi {
+  final Map<String, String> renamed = {};
+
+  @override
+  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+    yield const ChatStreamEvent('start', {});
+    yield const ChatStreamEvent('content', {'delta': '收到'});
+    yield const ChatStreamEvent('done', {});
+  }
+
+  @override
+  Future<ChatConversation> getConversation(String id) {
+    throw ApiException(405, '旧后端尚未提供此接口');
+  }
+
+  @override
+  Future<void> renameConversation(String id, String title) async {
+    renamed[id] = title;
+  }
 }
 
 class _LearningOverviewApi extends _ConversationApi {
@@ -92,6 +114,7 @@ void main() {
     await state.send('第一个问题');
     expect(api.createCalls, 1);
     expect(state.messages, isNotEmpty);
+    expect(state.activeConversation?.title, '小模型生成标题');
 
     await state.newConversation();
     expect(api.createCalls, 1);
@@ -141,6 +164,20 @@ void main() {
     final tool = state.messages.singleWhere((message) => message.isTool);
     expect(tool.toolRunning, isFalse);
     expect(tool.text, '工具调用未完成：连接已中断');
+  });
+
+  test('旧后端没有标题事件时使用首问短标题兜底', () async {
+    final api = _LegacyConversationApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+
+    await state.send('请解释虚拟内存和页面置换算法之间的关系');
+
+    expect(state.activeConversation?.title, '请解释虚拟内存和页面置换算法之间的关系');
+    expect(api.renamed[state.activeId], state.activeConversation?.title);
   });
 
   test('学习概览从后端课程与掌握度接口加载', () async {

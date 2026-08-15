@@ -80,6 +80,30 @@ canonical prefix 是 `/api`；旧的无前缀路径仅作为迁移期兼容别�
 uvicorn backend.core.web.webAPI:app --host 0.0.0.0 --port 51024
 ```
 
+### 配置 You.com MCP 搜索
+
+`web_search` 通过后端随生命周期启动的本地 STDIO 子进程调用 You.com 官方 MCP，
+不再依赖 SearXNG。先确保超算环境安装 Node.js 18 以上版本，并安装新增的 Python
+依赖：
+
+```bash
+python -m pip install -r requirements.txt
+node --version
+npx --version
+```
+
+在启动 Slurm 作业或后端前设置 API Key：
+
+```bash
+export YDC_API_KEY='你的 You.com API Key'
+./backend/scripts/run_esa_stack.sh
+```
+
+后端固定启动 `npx --yes @youdotcom-oss/mcp@3.5.0`，并通过
+`YDC_ALLOWED_TOOLS=you-search` 只开放搜索工具。FastAPI 启动时初始化 MCP Session，
+退出时关闭 Session、stdin 和整个子进程组；生命周期与用户请求日志使用
+`owner=MCP` 写入 `logs/backend.log`。Key 只从超算进程环境读取，不写入仓库或日志。
+
 ## 启动前端
 
 ```bash

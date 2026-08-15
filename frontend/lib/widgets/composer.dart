@@ -64,8 +64,11 @@ class Composer extends StatefulWidget {
 }
 
 class ComposerState extends State<Composer> {
+  static const _newConversationDraftKey = '__new_conversation__';
+
   final _controller = TextEditingController();
   final _focus = FocusNode();
+  final Map<String, _ComposerDraft> _drafts = {};
   DocumentAttachment? _attachment;
   String? _attachmentConversationId;
   bool _uploadingAttachment = false;
@@ -76,6 +79,7 @@ class ComposerState extends State<Composer> {
       _parseComposerCodeBlocks(_controller.text);
 
   void _handleTextChanged(String value) {
+    _saveCurrentDraft();
     setState(() {});
     final callback = widget.onCodeBlockChanged;
     if (callback == null) return;
@@ -117,6 +121,7 @@ class ComposerState extends State<Composer> {
         offset: block.contentStart + replacement.length,
       ),
     );
+    _saveCurrentDraft(markdownMode: true);
     setState(() => _markdownMode = true);
   }
 
@@ -136,11 +141,44 @@ class ComposerState extends State<Composer> {
   @override
   void didUpdateWidget(covariant Composer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.conversationId == widget.conversationId ||
-        _attachment == null) {
-      return;
+    if (oldWidget.conversationId == widget.conversationId) return;
+
+    _drafts[_draftKey(oldWidget.conversationId)] = _currentDraft();
+    final nextKey = _draftKey(widget.conversationId);
+    // Pressing "new conversation" must open a genuinely empty composer.
+    if (widget.conversationId == null && oldWidget.conversationId != null) {
+      _drafts.remove(nextKey);
     }
-    _removeAttachment();
+    final nextDraft = _drafts[nextKey] ?? const _ComposerDraft();
+    _controller.value = TextEditingValue(
+      text: nextDraft.text,
+      selection: TextSelection.collapsed(
+        offset: nextDraft.selectionOffset.clamp(0, nextDraft.text.length),
+      ),
+    );
+    _markdownMode = nextDraft.markdownMode;
+    if (_attachment != null) _removeAttachment();
+  }
+
+  String _draftKey(String? conversationId) =>
+      conversationId ?? _newConversationDraftKey;
+
+  _ComposerDraft _currentDraft({bool? markdownMode}) {
+    final selection = _controller.selection;
+    final offset = selection.isValid
+        ? selection.extentOffset.clamp(0, _controller.text.length)
+        : _controller.text.length;
+    return _ComposerDraft(
+      text: _controller.text,
+      selectionOffset: offset,
+      markdownMode: markdownMode ?? _markdownMode,
+    );
+  }
+
+  void _saveCurrentDraft({bool? markdownMode}) {
+    _drafts[_draftKey(widget.conversationId)] = _currentDraft(
+      markdownMode: markdownMode,
+    );
   }
 
   /// 手机浏览器上软键盘行为与桌面不同：软键盘的回车会以 Enter KeyEvent
@@ -163,6 +201,7 @@ class ComposerState extends State<Composer> {
       widget.onSend(text, _markdownMode);
     }
     _controller.clear();
+    _drafts[_draftKey(widget.conversationId)] = const _ComposerDraft();
     setState(() {
       _attachment = null;
       _attachmentConversationId = null;
@@ -529,7 +568,10 @@ class ComposerState extends State<Composer> {
     return Tooltip(
       message: active ? '退出 Markdown 输入' : 'Markdown 输入',
       child: InkWell(
-        onTap: () => setState(() => _markdownMode = !_markdownMode),
+        onTap: () => setState(() {
+          _markdownMode = !_markdownMode;
+          _saveCurrentDraft();
+        }),
         customBorder: const CircleBorder(),
         child: AnimatedContainer(
           duration: EsaMotion.fade,
@@ -624,6 +666,7 @@ class ComposerState extends State<Composer> {
       text: nextText,
       selection: TextSelection.collapsed(offset: cursor),
     );
+    _saveCurrentDraft(markdownMode: true);
     setState(() => _markdownMode = true);
     _focus.requestFocus();
   }
@@ -636,6 +679,18 @@ class ComposerState extends State<Composer> {
       child: Icon(LucideIcons.imagePlus, size: 18, color: context.n.n600),
     ),
   );
+}
+
+class _ComposerDraft {
+  const _ComposerDraft({
+    this.text = '',
+    this.selectionOffset = 0,
+    this.markdownMode = false,
+  });
+
+  final String text;
+  final int selectionOffset;
+  final bool markdownMode;
 }
 
 class _ComposerCodeBlock {

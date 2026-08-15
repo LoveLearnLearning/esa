@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
+from contextlib import suppress
 from uuid import uuid4
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -38,6 +39,9 @@ from backend.core.router import (
     route_workspace,
 )
 from backend.core.services.teaching_context_adapter import TeachingContextAdapter
+from backend.core.services.conversation_title_service import (
+    ConversationTitleService,
+)
 from backend.core.services.user_attachment_service import (
     AttachmentTooLarge,
     StoredAttachment,
@@ -461,6 +465,64 @@ def _prepare_message(
     )
 
 
+def _start_title_generation(
+    request: Request,
+    *,
+    conversation: dict,
+    conversation_id: str,
+    body: SendMessageRequest,
+    session: SessionPrincipal,
+    ctx: MessageContext,
+) -> asyncio.Task[str | None] | None:
+    """Start title generation only for the first persisted user question."""
+
+    service = getattr(request.app.state, "conversation_title_service", None)
+    first_question = (
+        body.replace_message_id is None
+        and not ctx.history
+        and not ctx.conversation_summary
+        and conversation.get("title") == ConversationTitleService.default_title
+    )
+    if not first_question or not isinstance(service, ConversationTitleService):
+        return None
+    return asyncio.create_task(
+        service.generate_for_first_question(
+            conversation_id=conversation_id,
+            user_id=session.user_id,
+            question=body.content,
+        ),
+        name=f"conversation-title-{conversation_id}",
+    )
+
+
+async def _finish_title_generation(
+    task: asyncio.Task[str | None] | None,
+) -> str | None:
+    """Await title generation without allowing it to fail a chat response."""
+
+    if task is None:
+        return None
+    try:
+        return await task
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("生成对话标题失败")
+        return None
+
+
+async def _cancel_title_generation(
+    task: asyncio.Task[str | None] | None,
+) -> None:
+    """Cancel an unfinished title request when the parent turn exits early."""
+
+    if task is None or task.done():
+        return
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
+
+
 def _runtime_dependencies(
     request: Request,
     ctx: MessageContext,
@@ -492,6 +554,7 @@ def _runtime_dependencies(
         learning_evidence_store=getattr(state, "learning_evidence_store", None),
         learning_state_service=getattr(state, "learning_state_service", None),
         rag_service=getattr(state, "rag_service", None),
+        mcp_client_manager=getattr(state, "mcp_client_manager", None),
     )
 
 
@@ -712,6 +775,24 @@ def create_conversation(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "classroom binding requires learning or teaching workspace",
+        )
+    return conversation
+
+
+@router.get("/{conversation_id}")
+def get_conversation(
+    conversation_id: str,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    """Return one owned conversation, including its generated title."""
+
+    conversation = _load_owned(request, conversation_id, session)
+    binding_store = getattr(request.app.state, "classroom_conversation_store", None)
+    if isinstance(binding_store, ClassroomConversationStore):
+        conversation["classroom_binding"] = _classroom_binding_out(
+            request,
+            binding_store.get(conversation_id, session.user_id),
         )
     return conversation
 
@@ -1020,11 +1101,23 @@ async def send_message(
             ctx,
             authorized_attachments,
         )
-        new_messages: list[dict] = await agent.run(run_spec)
+        title_task = _start_title_generation(
+            request,
+            conversation=conversation,
+            conversation_id=conversation_id,
+            body=body,
+            session=session,
+            ctx=ctx,
+        )
+        try:
+            new_messages: list[dict] = await agent.run(run_spec)
 
-        generated_messages: list[dict] = new_messages[1:]
-        if generated_messages:
-            chat_store.append_messages(conversation_id, generated_messages)
+            generated_messages: list[dict] = new_messages[1:]
+            if generated_messages:
+                chat_store.append_messages(conversation_id, generated_messages)
+            await _finish_title_generation(title_task)
+        finally:
+            await _cancel_title_generation(title_task)
 
     return [message for message in new_messages if message.get("is_visible", True)]
 
@@ -1073,6 +1166,14 @@ async def stream_message(
             ctx,
             authorized_attachments,
         )
+        title_task = _start_title_generation(
+            request,
+            conversation=conversation,
+            conversation_id=conversation_id,
+            body=body,
+            session=session,
+            ctx=ctx,
+        )
     except BaseException:
         await lease.release()
         raise
@@ -1096,6 +1197,16 @@ async def stream_message(
 
                     if generated_messages:
                         chat_store.append_messages(conversation_id, generated_messages)
+
+                    title = await _finish_title_generation(title_task)
+                    if title is not None:
+                        yield encode_sse(
+                            "title",
+                            {
+                                "conversation_id": conversation_id,
+                                "title": title,
+                            },
+                        )
 
                     yield encode_sse(
                         "done",
@@ -1122,6 +1233,7 @@ async def stream_message(
                 },
             )
         finally:
+            await _cancel_title_generation(title_task)
             await lease.release()
 
     return StreamingResponse(
