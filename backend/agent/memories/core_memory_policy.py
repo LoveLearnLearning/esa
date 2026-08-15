@@ -17,15 +17,28 @@ _SENSITIVE = re.compile(
 
 class CoreMemoryPolicy:
     """封装 `CoreMemoryPolicy` 的状态与行为。"""
+
+    def _settings(self, context: ToolExecutionContext):
+        """读取当前用户的记忆功能设置。"""
+        store = context.runtime_dependencies.user_store
+        if store is None:
+            return None
+        return store.get_memory_settings(context.user_id)
     def ensure_read(self, context: ToolExecutionContext) -> None:
         """确保 `read` 相关数据。"""
         if context.conversation_mode == "isolated":
             raise MemoryPolicyDenied("isolated conversation cannot read memory")
+        settings = self._settings(context)
+        if settings is not None and not settings.saved_memory_enabled:
+            raise MemoryPolicyDenied("saved memory is disabled")
 
     def ensure_write(self, context: ToolExecutionContext) -> None:
         """确保 `write` 相关数据。"""
         if context.conversation_mode != "normal":
             raise MemoryPolicyDenied("conversation mode does not permit memory writes")
+        settings = self._settings(context)
+        if settings is not None and not settings.saved_memory_enabled:
+            raise MemoryPolicyDenied("saved memory is disabled")
 
     def resolve_scope(
         self,

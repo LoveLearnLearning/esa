@@ -12,14 +12,15 @@ from backend.agent.tools.tools import tr
 CONTEXTUAL_TOOL_NAMES = frozenset(
     {
         "load_skill", "save_core_memory", "propose_core_memory",
-        "search_core_memories",
-        "get_core_memories", "delete_core_memory", "recommend_practice",
+        "search_core_memories", "get_core_memories",
+        "delete_core_memory", "recommend_practice",
         "get_mastery_report",
         "get_mastery_level", "get_weak_prerequisites", "get_review_timing",
         "record_answer", "record_learning_evidence",
         "get_learning_evidence_summary", "parse_pdf_attachment",
         "parse_word_attachment", "parse_presentation_attachment",
         "parse_spreadsheet_attachment", "parse_image_attachment",
+        "get_teaching_context",
     }
 )
 
@@ -39,3 +40,22 @@ def register_contextual_schemas() -> None:
             raise RuntimeError("contextual tool requires BoundToolExecutor")
 
         tr.register(schema)(unavailable)
+
+    teaching_schema = {
+        "type": "function",
+        "function": {
+            "name": "get_teaching_context",
+            "description": "Read the currently authorized class and assignment context.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        },
+    }
+
+    def teaching_unavailable(**_arguments):
+        """拒绝在缺少可信运行上下文时调用教学工具。"""
+        raise RuntimeError("contextual tool requires BoundToolExecutor")
+
+    tr.register(teaching_schema)(teaching_unavailable)

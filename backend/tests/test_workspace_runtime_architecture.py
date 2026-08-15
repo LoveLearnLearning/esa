@@ -109,6 +109,32 @@ def test_core_router_fails_closed_for_identity_workspace_and_resources():
         )
 
 
+def test_learning_route_accepts_only_pre_authorized_classroom_resources():
+    """验证学习路由只接受预先授权的班级和作业资源。"""
+    route = route_workspace(
+        _identity(),
+        RoutingContext(
+            ConversationContext(
+                "c1", "u1", "learning", class_id="class-a", assignment_id="a1"
+            ),
+            class_authorized=True,
+            assignment_authorized=True,
+            resource_capabilities=frozenset(
+                {"classroom", "assignment", "own_assignments"}
+            ),
+        ),
+    )
+    assert route.resource_scope.class_id == "class-a"
+    assert route.resource_scope.assignment_id == "a1"
+    with pytest.raises(ResourceAccessDenied):
+        route_workspace(
+            _identity(),
+            RoutingContext(
+                ConversationContext("c1", "u1", "learning", class_id="class-a")
+            ),
+        )
+
+
 def test_scoped_tool_view_has_matching_schema_and_executor_boundaries():
     """验证 `scoped_tool_view_has_matching_schema_and_executor_boundaries` 场景。"""
     register_builtin_tools()
@@ -210,6 +236,68 @@ def test_bound_executor_rejects_cross_scope_and_forged_arguments():
     assert "user_id" in forged["detail"]
 
 
+def test_capability_schema_is_narrowed_for_turn_resources_and_memory_mode():
+    """验证工具 Schema 会随资源绑定和记忆模式收窄。"""
+    register_builtin_tools()
+    research = _route("research")
+    unbound = WorkspaceRuntime(AgentRuntimeDependencies()).prepare(_turn(research))
+    assert "start_frontier_tracking" not in unbound.run_metadata["tool_names"]
+
+    bound = _route("research", project_id="p1")
+    normal = WorkspaceRuntime(AgentRuntimeDependencies()).prepare(_turn(bound))
+    assert "start_frontier_tracking" in normal.run_metadata["tool_names"]
+
+    no_write = WorkspaceRuntime(AgentRuntimeDependencies()).prepare(
+        _turn(bound, conversation_mode="no_write")
+    )
+    assert "save_core_memory" not in no_write.run_metadata["tool_names"]
+    assert "search_core_memories" in no_write.run_metadata["tool_names"]
+    assert "get_core_memories" in no_write.run_metadata["tool_names"]
+
+    isolated = WorkspaceRuntime(AgentRuntimeDependencies()).prepare(
+        _turn(bound, conversation_mode="isolated")
+    )
+    assert "save_core_memory" not in isolated.run_metadata["tool_names"]
+    assert "search_core_memories" not in isolated.run_metadata["tool_names"]
+
+
+def test_workspace_runtime_rejects_route_policy_drift():
+    """验证运行时拒绝与规范配置不一致的路由策略。"""
+    route = _route()
+    drifted = WorkspaceRoute(
+        workspace_type=route.workspace_type,
+        agent_profile_id=route.agent_profile_id,
+        skill_scopes=route.skill_scopes,
+        tool_scopes=route.tool_scopes,
+        prompt_key=route.prompt_key,
+        profile_policy="learning.drifted.v1",
+        memory_policy_id=route.memory_policy_id,
+        resource_scope=route.resource_scope,
+        action_policy=route.action_policy,
+    )
+    with pytest.raises(ValueError, match="does not match runtime profile"):
+        WorkspaceRuntime(AgentRuntimeDependencies()).prepare(_turn(drifted))
+
+
+def test_run_spec_builder_sanitizes_legacy_qwen_tool_history():
+    """验证运行规范会移除旧版 Qwen 复数工具调用历史。"""
+    spec = WorkspaceRuntime(AgentRuntimeDependencies()).prepare(
+        _turn(
+            _route(),
+            history=(
+                {"role": "assistant", "content": "<tool_calls>legacy</tool_calls>"},
+                {"role": "tool", "content": "orphan"},
+                {"role": "assistant", "content": "kept"},
+            ),
+        )
+    )
+    assert tuple(message.get("content") for message in spec.messages) == (
+        spec.messages[0]["content"],
+        "kept",
+        "explain binary search",
+    )
+
+
 def test_capability_fingerprint_excludes_resource_instance_ids():
     """验证 `capability_fingerprint_excludes_resource_instance_ids` 场景。"""
     register_builtin_tools()
@@ -223,7 +311,10 @@ def test_capability_fingerprint_excludes_resource_instance_ids():
         prompt_key=first.prompt_key,
         profile_policy=first.profile_policy,
         memory_policy_id=first.memory_policy_id,
-        resource_scope=ResourceScope(project_id="project-b"),
+        resource_scope=ResourceScope(
+            project_id="project-b",
+            capabilities=frozenset({"research_project"}),
+        ),
         action_policy=first.action_policy,
     )
     first_spec = runtime.prepare(_turn(first))
@@ -283,7 +374,7 @@ def test_context_composer_order_trust_and_deterministic_clipping():
 def test_workspace_runtime_builds_trusted_runspec_without_model_owned_identity():
     """验证 `workspace_runtime_builds_trusted_runspec_without_model_owned_identity` 场景。"""
     register_builtin_tools()
-    dependencies = AgentRuntimeDependencies(username="alice")
+    dependencies = AgentRuntimeDependencies()
     spec = WorkspaceRuntime(dependencies).prepare(
         _turn(
             _route(),

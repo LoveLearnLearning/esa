@@ -80,6 +80,7 @@ def _memory_executor(
     *,
     workspace_type: str,
     request_id: str,
+    user_store: UserStore | None = None,
 ):
     """处理 `_memory_executor` 相关逻辑。"""
     scope = ResourceScope()
@@ -100,7 +101,10 @@ def _memory_executor(
         workspace_route=route,
         authorized_resources=scope,
         conversation_mode="normal",
-        runtime_dependencies=AgentRuntimeDependencies(core_memory_service=service),
+        runtime_dependencies=AgentRuntimeDependencies(
+            user_store=user_store,
+            core_memory_service=service,
+        ),
         request_id=request_id,
     )
     return CapabilityRuntime().compile(
@@ -109,6 +113,33 @@ def _memory_executor(
         profile_fingerprint=f"{workspace_type}:1",
         policy_versions=(route.memory_policy_id,),
     ).bind(context)
+
+
+def test_memory_policy_denial_is_returned_to_the_agent_as_a_tool_error(tmp_path):
+    """验证记忆设置拒绝会转换为结构化工具错误。"""
+    database, conversation_id = _database(tmp_path)
+    users = UserStore(database)
+    users.update_memory_settings("u1", saved_memory_enabled=False)
+    service = CoreMemoryService(CoreMemoryStore(database))
+    register_builtin_tools()
+    executor = _memory_executor(
+        service,
+        conversation_id,
+        workspace_type="learning",
+        request_id="memory-disabled",
+        user_store=users,
+    )
+
+    result = asyncio.run(
+        executor.execute("search_core_memories", {"query": "learning goal"})
+    )
+
+    assert result == {
+        "ok": False,
+        "error": "memory_policy_denied",
+        "tool": "search_core_memories",
+        "detail": "saved memory is disabled",
+    }
 
 
 def test_agent_action_create_is_atomic_and_approval_executes_once(tmp_path):
@@ -145,6 +176,49 @@ def test_agent_action_create_is_atomic_and_approval_executes_once(tmp_path):
     assert final["result"] == {"job_id": "job-1"}
     assert calls == [action_id]
     assert {item["action_id"] for item in results} == {action_id}
+
+
+def test_agent_action_policy_is_explicit_and_revalidates_each_transition(tmp_path):
+    """验证动作策略显式匹配且每次状态转换都会重新校验。"""
+    database, conversation_id = _database(tmp_path)
+    validations: list[str] = []
+
+    def validate(action):
+        """记录动作在各校验阶段的状态。"""
+        validations.append(action.get("status", "proposed"))
+
+    service = AgentActionService(
+        AgentActionStore(database),
+        validators={"start_frontier_tracking": validate},
+        executors={"start_frontier_tracking": lambda _action: {"job_id": "j1"}},
+        policy_modes={"research.v1": "approval_required"},
+    )
+    action = service.request(
+        user_id="u1",
+        conversation_id=conversation_id,
+        workspace_type="research",
+        action_type="start_frontier_tracking",
+        arguments={"query": "agents", "project_id": "p1"},
+        resource_snapshot={"project_id": "p1"},
+        policy_id="research.v1",
+        approval_mode="approval_required",
+    )
+    assert validations == ["proposed"]
+    service.approve(action["action_id"], "u1")
+    service.execute(action["action_id"], "u1")
+    assert validations == ["proposed", "pending", "approved"]
+
+    with pytest.raises(ValueError, match="forbidden"):
+        service.request(
+            user_id="u1",
+            conversation_id=conversation_id,
+            workspace_type="research",
+            action_type="start_frontier_tracking",
+            arguments={"query": "denied"},
+            resource_snapshot={"project_id": "p1"},
+            policy_id="research.v1",
+            approval_mode="forbidden",
+        )
 
 
 def test_agent_action_reject_expire_and_cross_user_guards(tmp_path):
@@ -317,10 +391,15 @@ def test_delete_memory_tool_uses_memory_id_and_enforces_workspace_scope(tmp_path
         workspace_type="learning",
         request_id="cross-workspace-delete",
     )
-    with pytest.raises(PermissionError, match="outside the current workspace"):
-        asyncio.run(
-            learning.execute("delete_core_memory", {"memory_id": memory_id})
-        )
+    denied = asyncio.run(
+        learning.execute("delete_core_memory", {"memory_id": memory_id})
+    )
+    assert denied == {
+        "ok": False,
+        "error": "permission_denied",
+        "tool": "delete_core_memory",
+        "detail": "memory is outside the current workspace scope",
+    }
     assert store.get(memory_id, "u1") is not None
 
     deleted = asyncio.run(

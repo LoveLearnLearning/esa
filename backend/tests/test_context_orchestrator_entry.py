@@ -27,6 +27,10 @@ class ChatStore:
         """
         return None, [{"role": "user", "content": messages[0]["content"]}]
 
+    def latest_message_id(self, conversation_id):
+        """返回刚写入用户消息的测试 ID。"""
+        return 1
+
 
 class UserStore:
     """封装 `user store` 数据持久化操作。"""

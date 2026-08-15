@@ -498,6 +498,9 @@ class UserStore(BaseSQLiteStore):
     def update_memory_settings(
         self,
         user_id: str,
+        saved_memory_enabled: bool | None = None,
+        chat_history_enabled: bool | None = None,
+        auto_extract_enabled: bool | None = None,
         learning_profile_enabled: bool | None = None,
         inferred_profile_enabled: bool | None = None,
         default_conversation_mode: str | None = None,
@@ -523,6 +526,12 @@ class UserStore(BaseSQLiteStore):
 
         # 字段名到传入值的映射 跳过 None
         fields: dict[str, int | str] = {}
+        if saved_memory_enabled is not None:
+            fields["saved_memory_enabled"] = int(saved_memory_enabled)
+        if chat_history_enabled is not None:
+            fields["chat_history_enabled"] = int(chat_history_enabled)
+        if auto_extract_enabled is not None:
+            fields["auto_extract_enabled"] = int(auto_extract_enabled)
         if learning_profile_enabled is not None:
             fields["learning_profile_enabled"] = int(learning_profile_enabled)
         if inferred_profile_enabled is not None:

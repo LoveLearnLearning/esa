@@ -7,7 +7,7 @@
    "backend/core/utils/parser.py": "ae0fa1d7118bbe6e",
    "backend/core/utils/tool_arguments.py": "a053ec4dee58905d"
   },
-  "schema_version": "e62713fb",
+  "schema_version": "749b8a84",
   "note": "由 dataset/tools/capture_parser_golden.py 调用后端真实 parse_output 产出。tests/test_parser_compat.py 断言 esa/backend_parser.py 逐条复现它。禁止手改"
  },
  "cases": [

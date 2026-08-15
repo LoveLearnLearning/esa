@@ -10,11 +10,13 @@ from backend.agent.tools.tools import tr
 from backend.agent.memories.core_memory_service import CoreMemoryService
 from backend.core.services.auth_service import AuthService
 from backend.core.stores.chat_store import ChatStore
+from backend.core.stores.classroom_conversation_store import ClassroomConversationStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.core_memory_store import CoreMemoryStore
 from backend.core.stores.migrations import run_migrations
 from backend.core.stores.research_project_store import ResearchProjectStore
 from backend.core.stores.session_store import SessionStore
+from backend.core.stores.teaching_store import TeachingStore
 from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.stores.user_store import UserStore
 from backend.core.web.webAPI import create_app
@@ -38,6 +40,8 @@ def _app(tmp_path):
     app.state.chat_store = ChatStore(database)
     app.state.research_project_store = ResearchProjectStore(database)
     run_migrations(database)
+    app.state.teaching_store = TeachingStore(database)
+    app.state.classroom_conversation_store = ClassroomConversationStore(database)
     app.state.core_memory_store = CoreMemoryStore(database)
     app.state.core_memory_service = CoreMemoryService(app.state.core_memory_store)
     app.state.auth = AuthService(user_store, session_store)
@@ -166,6 +170,99 @@ def test_conversations_are_bound_to_an_authorized_workspace(tmp_path):
     assert [item["title"] for item in listed.json()] == ["科研对话"]
 
 
+def test_learning_conversations_bind_only_active_student_classrooms(tmp_path):
+    """验证学习对话只能绑定学生已加入的活动班级。"""
+    client = TestClient(_app(tmp_path))
+    student_headers = _register_and_login(client, "class-student", "student")
+    teacher_headers = _register_and_login(client, "class-teacher", "teacher")
+    outsider_headers = _register_and_login(client, "class-outsider", "student")
+    teacher = client.app.state.user_store.get_by_username("class-teacher")
+    student = client.app.state.user_store.get_by_username("class-student")
+    assert teacher is not None and student is not None
+
+    classroom = client.app.state.teaching_store.create_class(
+        owner_id=teacher.id,
+        name="Algorithms",
+        course="Algorithms",
+        term="2026",
+        description="",
+    )
+    membership = client.app.state.teaching_store.invite_student(
+        class_id=classroom["class_id"],
+        teacher_id=teacher.id,
+        student_id=student.id,
+    )
+
+    pending = client.post(
+        "/api/conversations",
+        headers=student_headers,
+        json={
+            "workspace_type": "learning",
+            "class_id": classroom["class_id"],
+        },
+    )
+    assert pending.status_code == 404
+    client.app.state.teaching_store.respond_membership(
+        membership_id=membership["membership_id"],
+        student_id=student.id,
+        accept=True,
+    )
+
+    bound = client.post(
+        "/api/conversations",
+        headers=student_headers,
+        json={
+            "title": "Class study",
+            "workspace_type": "learning",
+            "class_id": classroom["class_id"],
+        },
+    )
+    assert bound.status_code == 201
+    assert bound.json()["classroom_binding"]["class_id"] == classroom["class_id"]
+
+    outsider = client.post(
+        "/api/conversations",
+        headers=outsider_headers,
+        json={
+            "workspace_type": "learning",
+            "class_id": classroom["class_id"],
+        },
+    )
+    assert outsider.status_code == 404
+    assert client.post(
+        "/api/conversations",
+        headers=teacher_headers,
+        json={
+            "workspace_type": "teaching",
+            "class_id": classroom["class_id"],
+        },
+    ).status_code == 201
+
+    assignment = client.app.state.teaching_store.create_assignment(
+        class_id=classroom["class_id"],
+        title="Binary search",
+        instructions="",
+        due_at=None,
+        questions=[],
+        teacher_id=teacher.id,
+    )
+    draft = client.patch(
+        f"/api/conversations/{bound.json()['conversation_id']}",
+        headers=student_headers,
+        json={"assignment_id": assignment["assignment_id"]},
+    )
+    assert draft.status_code == 404
+    assert client.app.state.teaching_store.publish_assignment(
+        assignment_id=assignment["assignment_id"], teacher_id=teacher.id
+    )
+    published = client.patch(
+        f"/api/conversations/{bound.json()['conversation_id']}",
+        headers=student_headers,
+        json={"assignment_id": assignment["assignment_id"]},
+    )
+    assert published.status_code == 204
+
+
 def test_research_projects_are_user_scoped_and_bind_research_chats(tmp_path):
     """验证 `research_projects_are_user_scoped_and_bind_research_chats` 场景。"""
     client = TestClient(_app(tmp_path))
@@ -239,6 +336,21 @@ def test_research_projects_are_user_scoped_and_bind_research_chats(tmp_path):
         },
     )
     assert archived_binding.status_code == 409
+
+    existing_sync = client.post(
+        f"/api/conversations/{bound.json()['conversation_id']}/messages",
+        headers=alice,
+        json={"content": "continue the project discussion"},
+    )
+    assert existing_sync.status_code == 409
+    assert "archived" in existing_sync.json()["detail"]
+
+    existing_stream = client.post(
+        f"/api/conversations/{bound.json()['conversation_id']}/messages/stream",
+        headers=alice,
+        json={"content": "continue the project discussion"},
+    )
+    assert existing_stream.status_code == 409
 
 
 def test_research_workspace_has_only_scoped_tools():

@@ -87,6 +87,277 @@
   {
     "type": "function",
     "function": {
+      "name": "retrieve_knowledge",
+      "description": "从已配置的知识库检索证据、上下文和可回查来源。该工具只读，不会隐式建立或修改索引。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "需要检索的自然语言问题"
+          },
+          "top_k": {
+            "type": "integer",
+            "description": "最多返回多少条结果，默认 5",
+            "default": 5
+          },
+          "similarity_threshold": {
+            "type": "number",
+            "description": "可选的 Reranker 概率阈值；未启用 Reranker 时不能使用"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_knowledge_base_stats",
+      "description": "读取当前知识库、模型、索引后端和检索配置。",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "web_search",
+      "description": "通过互联网搜索信息",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索内容"
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "最大搜索结果，默认为 5 ",
+            "default": 5
+          },
+          "language": {
+            "type": "string",
+            "description": "搜索结果便好语言，默认为中文",
+            "default": "zh-CN"
+          },
+          "time_range": {
+            "type": "string",
+            "enum": [
+              "day",
+              "month",
+              "year"
+            ],
+            "description": "搜索时间范围，可选天月年"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "bitwise_calculator",
+      "description": "位运算与布尔运算计算器，适用于计算机组成、数字逻辑、密码学等课程。位运算符: & | ^ ~ << >>。布尔运算符: and or not。算术运算符: + - * / // % **。函数: bin, oct, hex, int, abs, bit_length, popcount。常量: True, False。支持 0b/0o/0x 进制前缀，如 0xFF, 0b1010。示例: '0xFF & 0xAA', '0b1010 | 0b0101', '~0', '5 ^ 3', 'True and False', 'bin(255)'",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "description": "位运算表达式，例如 '0xFF & 0xAA', '0b1010 | 0b0101', '~0', '5 ^ 3', 'True and False'"
+          }
+        },
+        "required": [
+          "expression"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "calculator",
+      "description": "数学计算器，支持四则运算、幂运算、科学函数和数学常量。运算符: + - * / // % **（或 ^）。函数: sqrt, cbrt, exp, ln(自然对数), log(常用对数底10), log2, log10, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, degrees, radians, abs, round, floor, ceil, trunc, factorial, gcd, hypot, min, max。常量: pi, e, tau, inf。示例: '2+3*4', 'sqrt(16)', 'sin(pi/2)', 'log(e)', '2^10'",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "description": "数学表达式，例如 '2 + 3 * 4', 'sqrt(16)', 'sin(pi/2)', 'log(e)'"
+          }
+        },
+        "required": [
+          "expression"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "math_solver",
+      "description": "符号计算工具，适用于高等数学、线性代数、离散数学等课程。支持求导、积分、极限、级数展开、解方程、化简、展开、因式分解、组合数、排列数、求和。operation 可选: diff, integrate, limit, series, solve, simplify, expand, factor, binomial, permutation, summation。示例: 求导 operation='diff' expression='x**3' variable='x'；定积分 operation='integrate' expression='x**2' variable='x' lower=0 upper=1",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "diff",
+              "integrate",
+              "limit",
+              "series",
+              "solve",
+              "simplify",
+              "expand",
+              "factor",
+              "binomial",
+              "permutation",
+              "summation"
+            ],
+            "description": "运算类型: diff=求导, integrate=积分, limit=极限, series=级数, solve=解方程, simplify=化简, expand=展开, factor=因式分解, binomial=组合数, permutation=排列数, summation=求和"
+          },
+          "expression": {
+            "type": "string",
+            "description": "数学表达式，例如 'x**3 + 2*x', 'sin(x)'"
+          },
+          "variable": {
+            "type": "string",
+            "description": "运算变量，例如 'x'。diff/integrate/limit/series/solve/summation 需要"
+          },
+          "order": {
+            "type": "integer",
+            "description": "求导阶数（diff 使用），默认 1",
+            "default": 1
+          },
+          "lower": {
+            "type": "string",
+            "description": "定积分下界或求和起点，例如 '0'。可选"
+          },
+          "upper": {
+            "type": "string",
+            "description": "定积分上界或求和终点，例如 '1'。可选"
+          },
+          "point": {
+            "type": "string",
+            "description": "极限点或级数展开点，例如 '0'。默认 '0'",
+            "default": "0"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "+",
+              "-"
+            ],
+            "description": "极限方向: '+' 从右侧逼近, '-' 从左侧逼近。默认 '+'",
+            "default": "+"
+          },
+          "n": {
+            "type": "integer",
+            "description": "级数展开项数（series 使用），默认 6",
+            "default": 6
+          }
+        },
+        "required": [
+          "operation",
+          "expression"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "start_frontier_tracking",
+      "description": "为当前已绑定科研项目创建前沿追踪任务",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "time_window_years": {
+            "type": "integer",
+            "default": 5
+          },
+          "max_results": {
+            "type": "integer",
+            "default": 20
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "start_research_writing",
+      "description": "为已授权科研文档创建写作任务",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "document_id": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "instruction": {
+            "type": "string",
+            "default": ""
+          },
+          "source_text": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "required": [
+          "document_id",
+          "operation"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "start_dataset_analysis",
+      "description": "为已授权科研数据集创建分析任务",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "dataset_id": {
+            "type": "string"
+          },
+          "analysis_type": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "analysis_type",
+          "parameters"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "save_core_memory",
       "description": "应用户本轮明确提出的记住、保存或长期保留请求，保存一条正式核心记忆。不得仅因信息看似稳定就调用；从对话中推断出的稳定信息必须使用 propose_core_memory，等待用户确认。不要保存密码、API Key、访问令牌或其他认证秘密。",
       "parameters": {
@@ -508,46 +779,6 @@
   {
     "type": "function",
     "function": {
-      "name": "retrieve_knowledge",
-      "description": "从已配置的知识库检索证据、上下文和可回查来源。该工具只读，不会隐式建立或修改索引。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "需要检索的自然语言问题"
-          },
-          "top_k": {
-            "type": "integer",
-            "description": "最多返回多少条结果，默认 5",
-            "default": 5
-          },
-          "similarity_threshold": {
-            "type": "number",
-            "description": "可选的 Reranker 概率阈值；未启用 Reranker 时不能使用"
-          }
-        },
-        "required": [
-          "query"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "get_knowledge_base_stats",
-      "description": "读取当前知识库、模型、索引后端和检索配置。",
-      "parameters": {
-        "type": "object",
-        "properties": {},
-        "required": []
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
       "name": "load_skill",
       "description": "加载某个 Skill 的详细操作说明；只有任务匹配时才调用",
       "parameters": {
@@ -567,36 +798,34 @@
   {
     "type": "function",
     "function": {
-      "name": "web_search",
-      "description": "通过互联网搜索信息",
+      "name": "get_teaching_context",
+      "description": "Read the currently authorized class and assignment context.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "parse_pdf_attachment",
+      "description": "读取当前消息已授权的 PDF 附件",
       "parameters": {
         "type": "object",
         "properties": {
+          "attachment_id": {
+            "type": "string",
+            "description": "系统附件清单中的附件 ID"
+          },
           "query": {
             "type": "string",
-            "description": "搜索内容"
-          },
-          "max_results": {
-            "type": "integer",
-            "description": "最大搜索结果，默认为 5 ",
-            "default": 5
-          },
-          "language": {
-            "type": "string",
-            "description": "搜索结果便好语言，默认为中文",
-            "default": "zh-CN"
-          },
-          "time_range": {
-            "type": "string",
-            "enum": [
-              "day",
-              "month",
-              "year"
-            ],
-            "description": "搜索时间范围，可选天月年"
+            "description": "需要从文件回答的问题或需要提取的内容"
           }
         },
         "required": [
+          "attachment_id",
           "query"
         ]
       }
@@ -605,18 +834,23 @@
   {
     "type": "function",
     "function": {
-      "name": "bitwise_calculator",
-      "description": "位运算与布尔运算计算器，适用于计算机组成、数字逻辑、密码学等课程。位运算符: & | ^ ~ << >>。布尔运算符: and or not。算术运算符: + - * / // % **。函数: bin, oct, hex, int, abs, bit_length, popcount。常量: True, False。支持 0b/0o/0x 进制前缀，如 0xFF, 0b1010。示例: '0xFF & 0xAA', '0b1010 | 0b0101', '~0', '5 ^ 3', 'True and False', 'bin(255)'",
+      "name": "parse_word_attachment",
+      "description": "读取当前消息已授权的 Word 附件",
       "parameters": {
         "type": "object",
         "properties": {
-          "expression": {
+          "attachment_id": {
             "type": "string",
-            "description": "位运算表达式，例如 '0xFF & 0xAA', '0b1010 | 0b0101', '~0', '5 ^ 3', 'True and False'"
+            "description": "系统附件清单中的附件 ID"
+          },
+          "query": {
+            "type": "string",
+            "description": "需要从文件回答的问题或需要提取的内容"
           }
         },
         "required": [
-          "expression"
+          "attachment_id",
+          "query"
         ]
       }
     }
@@ -624,18 +858,23 @@
   {
     "type": "function",
     "function": {
-      "name": "calculator",
-      "description": "数学计算器，支持四则运算、幂运算、科学函数和数学常量。运算符: + - * / // % **（或 ^）。函数: sqrt, cbrt, exp, ln(自然对数), log(常用对数底10), log2, log10, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, degrees, radians, abs, round, floor, ceil, trunc, factorial, gcd, hypot, min, max。常量: pi, e, tau, inf。示例: '2+3*4', 'sqrt(16)', 'sin(pi/2)', 'log(e)', '2^10'",
+      "name": "parse_presentation_attachment",
+      "description": "读取当前消息已授权的演示文稿附件",
       "parameters": {
         "type": "object",
         "properties": {
-          "expression": {
+          "attachment_id": {
             "type": "string",
-            "description": "数学表达式，例如 '2 + 3 * 4', 'sqrt(16)', 'sin(pi/2)', 'log(e)'"
+            "description": "系统附件清单中的附件 ID"
+          },
+          "query": {
+            "type": "string",
+            "description": "需要从文件回答的问题或需要提取的内容"
           }
         },
         "required": [
-          "expression"
+          "attachment_id",
+          "query"
         ]
       }
     }
@@ -643,72 +882,47 @@
   {
     "type": "function",
     "function": {
-      "name": "math_solver",
-      "description": "符号计算工具，适用于高等数学、线性代数、离散数学等课程。支持求导、积分、极限、级数展开、解方程、化简、展开、因式分解、组合数、排列数、求和。operation 可选: diff, integrate, limit, series, solve, simplify, expand, factor, binomial, permutation, summation。示例: 求导 operation='diff' expression='x**3' variable='x'；定积分 operation='integrate' expression='x**2' variable='x' lower=0 upper=1",
+      "name": "parse_spreadsheet_attachment",
+      "description": "读取当前消息已授权的电子表格附件",
       "parameters": {
         "type": "object",
         "properties": {
-          "operation": {
+          "attachment_id": {
             "type": "string",
-            "enum": [
-              "diff",
-              "integrate",
-              "limit",
-              "series",
-              "solve",
-              "simplify",
-              "expand",
-              "factor",
-              "binomial",
-              "permutation",
-              "summation"
-            ],
-            "description": "运算类型: diff=求导, integrate=积分, limit=极限, series=级数, solve=解方程, simplify=化简, expand=展开, factor=因式分解, binomial=组合数, permutation=排列数, summation=求和"
+            "description": "系统附件清单中的附件 ID"
           },
-          "expression": {
+          "query": {
             "type": "string",
-            "description": "数学表达式，例如 'x**3 + 2*x', 'sin(x)'"
-          },
-          "variable": {
-            "type": "string",
-            "description": "运算变量，例如 'x'。diff/integrate/limit/series/solve/summation 需要"
-          },
-          "order": {
-            "type": "integer",
-            "description": "求导阶数（diff 使用），默认 1",
-            "default": 1
-          },
-          "lower": {
-            "type": "string",
-            "description": "定积分下界或求和起点，例如 '0'。可选"
-          },
-          "upper": {
-            "type": "string",
-            "description": "定积分上界或求和终点，例如 '1'。可选"
-          },
-          "point": {
-            "type": "string",
-            "description": "极限点或级数展开点，例如 '0'。默认 '0'",
-            "default": "0"
-          },
-          "direction": {
-            "type": "string",
-            "enum": [
-              "+",
-              "-"
-            ],
-            "description": "极限方向: '+' 从右侧逼近, '-' 从左侧逼近。默认 '+'",
-            "default": "+"
-          },
-          "n": {
-            "type": "integer",
-            "description": "级数展开项数（series 使用），默认 6",
-            "default": 6
+            "description": "需要从文件回答的问题或需要提取的内容"
           }
         },
         "required": [
-          "operation",
-          "expression"
+          "attachment_id",
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "parse_image_attachment",
+      "description": "读取当前消息已授权的图片附件",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "description": "系统附件清单中的附件 ID"
+          },
+          "query": {
+            "type": "string",
+            "description": "需要从文件回答的问题或需要提取的内容"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "query"
         ]
       }
     }

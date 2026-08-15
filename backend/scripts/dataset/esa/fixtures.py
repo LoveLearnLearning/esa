@@ -545,15 +545,15 @@ def get_learning_evidence_summary(kp_id: str = "", limit: int = 50,
 
 
 CORE_MEMORIES = [
-    {"memory_key": "learning_goal", "content": "这学期把数据结构和算法吃透，准备考研",
+    {"memory_id": "memory-learning-goal", "memory_key": "learning_goal", "content": "这学期把数据结构和算法吃透，准备考研",
      "category": "learning", "updated_at": "2026-07-28 10:12:00"},
-    {"memory_key": "response_style", "content": "喜欢先看直观例子，再看公式推导",
+    {"memory_id": "memory-response-style", "memory_key": "response_style", "content": "喜欢先看直观例子，再看公式推导",
      "category": "preference", "updated_at": "2026-07-30 21:03:00"},
-    {"memory_key": "major_info", "content": "软件工程专业大三",
+    {"memory_id": "memory-major-info", "memory_key": "major_info", "content": "软件工程专业大三",
      "category": "profile", "updated_at": "2026-06-15 09:00:00"},
-    {"memory_key": "weak_topics", "content": "图论相关的知识点普遍薄弱",
+    {"memory_id": "memory-weak-topics", "memory_key": "weak_topics", "content": "图论相关的知识点普遍薄弱",
      "category": "learning", "updated_at": "2026-08-02 16:40:00"},
-    {"memory_key": "exam_schedule", "content": "期末考试从第 16 周开始",
+    {"memory_id": "memory-exam-schedule", "memory_key": "exam_schedule", "content": "期末考试从第 16 周开始",
      "category": "constraint", "updated_at": "2026-07-20 08:30:00"},
 ]
 
@@ -572,10 +572,10 @@ def save_core_memory(memory_key: str, content: str, category: str = "general") -
             "category": category, "profile_projection": None}
 
 
-def delete_core_memory(memory_key: str) -> dict[str, Any]:
-    """复刻 memory_tools.delete_core_memory。不存在的 key 返回 deleted=False，不抛错。"""
-    exists = any(m["memory_key"] == memory_key for m in CORE_MEMORIES)
-    return {"deleted": exists, "memory_key": memory_key, "profile_projection": None}
+def delete_core_memory(memory_id: str) -> dict[str, Any]:
+    """复刻 memory_tools.delete_core_memory 的 memory_id 参数与返回结构。"""
+    exists = any(m["memory_id"] == memory_id for m in CORE_MEMORIES)
+    return {"deleted": exists}
 
 
 def get_core_memories() -> dict[str, Any]:
@@ -696,9 +696,9 @@ def blocked_save_core_memory(memory_key: str, content: str, category: str = "gen
             "category": category, "reason": MEMORY_WRITE_BLOCKED}
 
 
-def blocked_delete_core_memory(memory_key: str) -> dict[str, Any]:
+def blocked_delete_core_memory(memory_id: str) -> dict[str, Any]:
     """处理 `blocked_delete_core_memory` 相关逻辑。"""
-    return {"deleted": False, "memory_key": memory_key, "reason": MEMORY_DELETE_BLOCKED}
+    return {"deleted": False, "memory_id": memory_id, "reason": MEMORY_DELETE_BLOCKED}
 
 
 BLOCKED_BUILDERS = {

@@ -40,21 +40,32 @@ class CoreRouter:
         if workspace == "research" and conversation.research_project_id:
             if not context.project_owned:
                 raise ResourceAccessDenied("research project is not authorized")
-        if workspace != "teaching" and (
+        if workspace not in {"learning", "teaching"} and (
             conversation.class_id or conversation.assignment_id
         ):
-            raise InvalidRoutingContext("classroom binding requires teaching workspace")
+            raise InvalidRoutingContext(
+                "classroom binding requires learning or teaching workspace"
+            )
         if conversation.class_id and not context.class_authorized:
             raise ResourceAccessDenied("classroom is not authorized")
         if conversation.assignment_id and not context.assignment_authorized:
             raise ResourceAccessDenied("assignment is not authorized")
 
+        capabilities = set(context.resource_capabilities)
+        if conversation.research_project_id:
+            capabilities.add("research_project")
+        if context.attachments.attachment_ids:
+            capabilities.add("attachments")
+        if conversation.class_id:
+            capabilities.add("classroom")
+        if conversation.assignment_id:
+            capabilities.add("assignment")
         resource_scope = ResourceScope(
             project_id=conversation.research_project_id,
             class_id=conversation.class_id,
             assignment_id=conversation.assignment_id,
             attachment_ids=context.attachments.attachment_ids,
-            capabilities=context.resource_capabilities,
+            capabilities=frozenset(capabilities),
         )
         return build_workspace_route(registration, resource_scope)
 

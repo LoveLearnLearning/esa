@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -20,7 +19,8 @@ if TYPE_CHECKING:
 
 from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.skills import validate_skill_contracts
-from backend.agent.workspaces.models import AgentRunSpec
+from backend.agent.workspaces.models import ExecutableAgentRun
+from backend.agent.workspaces.history import sanitize_qwen_history as sanitize_qwen_history
 from backend.core.utils.config import DEBUG_MODE
 from backend.core.utils.models import (
     AgentStreamEvent,
@@ -29,10 +29,6 @@ from backend.core.utils.models import (
 )
 
 
-_UNSUPPORTED_TOOL_CALLS_PATTERN = re.compile(
-    r"<[^<>]*tool_calls(?:\s[^<>]*)?>",
-    re.IGNORECASE,
-)
 logger = logging.getLogger(__name__)
 
 
@@ -60,7 +56,7 @@ def _observed_tools_and_actions(
 
 
 def _log_run_finished(
-    run_spec: AgentRunSpec,
+    run_spec: ExecutableAgentRun,
     *,
     mode: str,
     outcome: str,
@@ -70,16 +66,21 @@ def _log_run_finished(
     """记录 `run finished` 相关数据。"""
     tool_names, action_ids = _observed_tools_and_actions(messages)
     logger.info(
-        "agent run finished request_id=%s conversation_id=%s workspace=%s "
-        "profile=%s profile_fingerprint=%s capability=%s prompt_version=%s "
+        "agent run finished run_id=%s request_id=%s conversation_id=%s workspace=%s "
+        "definition_version=%s profile=%s profile_fingerprint=%s capability=%s "
+        "prompt_version=%s policy_versions=%s resource_revisions=%s "
         "mode=%s outcome=%s latency_ms=%.2f tools=%s action_request_ids=%s",
+        run_spec.run_metadata.get("run_id"),
         run_spec.run_metadata.get("request_id"),
         run_spec.run_metadata.get("conversation_id"),
         run_spec.run_metadata.get("workspace_type"),
+        run_spec.run_metadata.get("definition_version"),
         run_spec.run_metadata.get("agent_profile_id"),
         run_spec.run_metadata.get("profile_fingerprint"),
         run_spec.capability_fingerprint,
         run_spec.run_metadata.get("prompt_version"),
+        run_spec.run_metadata.get("policy_versions"),
+        run_spec.run_metadata.get("resource_revisions"),
         mode,
         outcome,
         (time.monotonic() - started_at) * 1000,
@@ -95,37 +96,6 @@ def serialize_tool_result(result: object) -> str:
     不可直接 JSON 化的值，保证传给模型的 observation 始终是合法 JSON。
     """
     return json.dumps(result, ensure_ascii=False, default=str)
-
-
-def sanitize_qwen_history(history: list[dict]) -> list[dict]:
-    """移除不属于 Qwen XML 协议的旧工具调用轮次。
-
-    Qwen 使用单数 ``<tool_call>``。旧会话中可能残留复数
-    ``<...tool_calls>`` 协议；把它重新放进 prompt 会诱导 Qwen 模仿旧格式。
-    删除旧 assistant 调用时，也删除紧随其后的 tool 结果，避免孤立消息。
-    """
-    sanitized: list[dict] = []
-    skip_following_tools = False
-
-    for message in history:
-        role = message.get("role")
-        content = message.get("content", "")
-
-        if role == "assistant":
-            skip_following_tools = isinstance(content, str) and bool(
-                _UNSUPPORTED_TOOL_CALLS_PATTERN.search(content)
-            )
-            if skip_following_tools:
-                continue
-        elif role == "tool":
-            if skip_following_tools:
-                continue
-        else:
-            skip_following_tools = False
-
-        sanitized.append(message)
-
-    return sanitized
 
 
 class Agent:
@@ -165,7 +135,7 @@ class Agent:
             tensor_parallel_size=tensor_parallel_size,
         )
 
-    async def run(self, run_spec: AgentRunSpec) -> list[dict]:
+    async def run(self, run_spec: ExecutableAgentRun) -> list[dict]:
         """Run one non-streaming turn from an already-authorized specification."""
         started_at = time.monotonic()
         logger.info(
@@ -198,7 +168,7 @@ class Agent:
         self,
         messages: list[dict],
         new_messages: list[dict],
-        run_spec: AgentRunSpec,
+        run_spec: ExecutableAgentRun,
     ) -> list[dict]:
         """执行 `loop` 相关数据。"""
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
@@ -280,7 +250,7 @@ class Agent:
 
     async def run_stream(
         self,
-        run_spec: AgentRunSpec,
+        run_spec: ExecutableAgentRun,
     ) -> AsyncIterator[AgentStreamEvent]:
         """执行 `stream` 相关数据。
 
@@ -323,7 +293,7 @@ class Agent:
         self,
         messages: list[dict],
         new_messages: list[dict],
-        run_spec: AgentRunSpec,
+        run_spec: ExecutableAgentRun,
     ) -> AsyncIterator[AgentStreamEvent]:
         """执行 `stream loop` 相关数据。"""
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]

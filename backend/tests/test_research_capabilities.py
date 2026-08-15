@@ -24,6 +24,7 @@ from backend.core.stores.sqlite_connection import connect_sqlite
 from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.stores.user_store import UserStore
 from backend.core.web.webAPI import create_app
+from backend.core.workflows.research import ResearchWorkflowFacade
 
 
 class _QueueRecorder:
@@ -79,6 +80,15 @@ def _app(tmp_path):
     app.state.research_data_service = ResearchDataService(
         app.state.research_data_store,
         tmp_path / "research_data",
+    )
+    app.state.research_workflow_facade = ResearchWorkflowFacade(
+        project_store=app.state.research_project_store,
+        frontier_store=app.state.frontier_tracking_store,
+        frontier_service=app.state.frontier_tracking_service,
+        writing_store=app.state.research_writing_store,
+        writing_service=app.state.research_writing_service,
+        data_store=app.state.research_data_store,
+        data_service=app.state.research_data_service,
     )
     app.state.auth = AuthService(user_store, session_store)
     return app

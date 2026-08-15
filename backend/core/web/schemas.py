@@ -126,63 +126,16 @@ class ConversationCreateRequest(BaseModel):
         """校验 `resource bindings` 相关数据。"""
         if self.research_project_id and self.workspace_type != "research":
             raise ValueError("research_project_id requires the research workspace")
-        if (self.class_id or self.assignment_id) and self.workspace_type != "teaching":
-            raise ValueError("classroom bindings require the teaching workspace")
+        if (self.class_id or self.assignment_id) and self.workspace_type not in {
+            "learning",
+            "teaching",
+        }:
+            raise ValueError(
+                "classroom bindings require the learning or teaching workspace"
+            )
         if self.assignment_id and not self.class_id:
             raise ValueError("assignment_id requires class_id")
         return self
-
-
-class ResearchProjectCreateRequest(BaseModel):
-    """表示 `research project create request` 数据结构。"""
-    name: str = Field(min_length=1, max_length=80)
-    description: str = Field(default="", max_length=1000)
-
-
-class ResearchProjectUpdateRequest(BaseModel):
-    """表示 `research project update request` 数据结构。"""
-    name: str | None = Field(default=None, min_length=1, max_length=80)
-    description: str | None = Field(default=None, max_length=1000)
-    status: Literal["active", "archived"] | None = None
-
-    @model_validator(mode="after")
-    def require_an_update(self):
-        """处理 `require_an_update` 相关逻辑。"""
-        if not self.model_fields_set or all(
-            getattr(self, field) is None for field in self.model_fields_set
-        ):
-            raise ValueError("at least one project field must be provided")
-        return self
-
-
-class FrontierTrackingCreateRequest(BaseModel):
-    """表示 `frontier tracking create request` 数据结构。"""
-    query: str = Field(min_length=2, max_length=300)
-    time_window_years: int = Field(default=5, ge=1, le=20)
-    max_results: int = Field(default=20, ge=5, le=40)
-
-
-class ResearchDocumentCreateRequest(BaseModel):
-    """表示 `research document create request` 数据结构。"""
-    title: str = Field(min_length=1, max_length=120)
-    document_type: Literal["outline", "literature_review", "paper", "notes"]
-    content: str = Field(default="", max_length=200_000)
-
-
-class ResearchWritingJobCreateRequest(BaseModel):
-    """表示 `research writing job create request` 数据结构。"""
-    operation: Literal["outline", "literature_review", "polish", "format_check"]
-    instruction: str = Field(default="", max_length=4000)
-    source_text: str = Field(default="", max_length=200_000)
-
-
-class ResearchAnalysisJobCreateRequest(BaseModel):
-    """表示 `research analysis job create request` 数据结构。"""
-    analysis_type: Literal[
-        "descriptive", "correlation", "group_compare", "text_frequency"
-    ]
-    parameters: dict[str, str] = Field(default_factory=dict)
-
 
 class ConversationPatchRequest(BaseModel):
     """表示 `conversation patch request` 数据结构。"""
@@ -345,6 +298,9 @@ class UpdateProfileExplicitRequest(BaseModel):
 class MemorySettingsOut(BaseModel):
     """记忆与画像开关"""
 
+    saved_memory_enabled: bool = True
+    chat_history_enabled: bool = True
+    auto_extract_enabled: bool = False
     learning_profile_enabled: bool
     inferred_profile_enabled: bool
     default_conversation_mode: str = "normal"
@@ -353,6 +309,9 @@ class MemorySettingsOut(BaseModel):
 class UpdateMemorySettingsRequest(BaseModel):
     """更新记忆与画像开关"""
 
+    saved_memory_enabled: bool | None = Field(None)
+    chat_history_enabled: bool | None = Field(None)
+    auto_extract_enabled: bool | None = Field(None)
     learning_profile_enabled: bool | None = Field(None)
     inferred_profile_enabled: bool | None = Field(None)
     default_conversation_mode: str | None = Field(None)

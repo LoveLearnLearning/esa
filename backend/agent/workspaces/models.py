@@ -4,11 +4,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from types import MappingProxyType
 from typing import Any, Awaitable, Callable, Mapping, Protocol
 
-from backend.core.router.models import TrustedIdentity, WorkspaceRoute
+from backend.agent.workspaces.routing import TrustedIdentity, WorkspaceRoute
 
 
 def _mapping(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
@@ -127,6 +127,71 @@ class ResolvedCapabilities:
     skill_names: frozenset[str]
     tool_names: frozenset[str]
     fingerprint: str
+    action_names: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True, slots=True)
+class RunManifest:
+    """记录一次 Agent 运行所使用的身份、策略、资源和能力版本。"""
+    run_id: str
+    request_id: str
+    runtime_identity: str
+    conversation_id: str
+    workspace_type: str
+    definition_version: int
+    agent_profile_id: str
+    prompt_version: str
+    context_fingerprint: str
+    capability_fingerprint: str
+    resource_references: tuple[str, ...]
+    resource_revisions: Mapping[str, str]
+    policy_versions: Mapping[str, str]
+    conversation_mode: str
+    tool_names: tuple[str, ...]
+    action_names: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """校验标识符并冻结清单中的集合与映射。"""
+        for field_name in ("run_id", "request_id", "runtime_identity"):
+            if not getattr(self, field_name):
+                raise ValueError(f"manifest {field_name} is required")
+        object.__setattr__(self, "resource_references", tuple(self.resource_references))
+        object.__setattr__(self, "resource_revisions", _mapping(self.resource_revisions))
+        object.__setattr__(self, "policy_versions", _mapping(self.policy_versions))
+        object.__setattr__(self, "tool_names", tuple(self.tool_names))
+        object.__setattr__(self, "action_names", tuple(self.action_names))
+
+    def to_dict(self) -> dict[str, Any]:
+        """转换为可序列化字典。"""
+        return {
+            "run_id": self.run_id,
+            "request_id": self.request_id,
+            "runtime_identity": self.runtime_identity,
+            "conversation_id": self.conversation_id,
+            "workspace_type": self.workspace_type,
+            "definition_version": self.definition_version,
+            "agent_profile_id": self.agent_profile_id,
+            "prompt_version": self.prompt_version,
+            "context_fingerprint": self.context_fingerprint,
+            "capability_fingerprint": self.capability_fingerprint,
+            "resource_references": list(self.resource_references),
+            "resource_revisions": dict(self.resource_revisions),
+            "policy_versions": dict(self.policy_versions),
+            "conversation_mode": self.conversation_mode,
+            "tool_names": list(self.tool_names),
+            "action_names": list(self.action_names),
+        }
+
+    def to_run_metadata(self) -> Mapping[str, Any]:
+        """转换为运行时只读元数据。"""
+        return _mapping(
+            {
+                **self.to_dict(),
+                "profile_fingerprint": (
+                    f"{self.agent_profile_id}:{self.definition_version}"
+                ),
+            }
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,11 +199,8 @@ class AgentRunSpec:
     """封装 `AgentRunSpec` 的状态与行为。"""
     messages: tuple[Mapping[str, Any], ...]
     tool_schemas: tuple[Mapping[str, Any], ...]
-    tool_executor: ToolExecutor
-    execution_context: Any
     loop_policy: LoopPolicy
-    capability_fingerprint: str
-    run_metadata: Mapping[str, Any] = field(default_factory=dict)
+    manifest: RunManifest
 
     def __post_init__(self) -> None:
         """完成实例初始化后的校验与派生字段构建。"""
@@ -146,7 +208,74 @@ class AgentRunSpec:
         object.__setattr__(
             self, "tool_schemas", tuple(_mapping(item) for item in self.tool_schemas)
         )
-        object.__setattr__(self, "run_metadata", _mapping(self.run_metadata))
+
+    @property
+    def capability_fingerprint(self) -> str:
+        """返回本次运行的能力指纹。"""
+        return self.manifest.capability_fingerprint
+
+    @property
+    def run_metadata(self) -> Mapping[str, Any]:
+        """返回本次运行的只读元数据。"""
+        return self.manifest.to_run_metadata()
+
+    def to_dict(self) -> dict[str, Any]:
+        """转换为不包含执行器对象的可序列化结构。"""
+        return {
+            "messages": [dict(item) for item in self.messages],
+            "tool_schemas": [dict(item) for item in self.tool_schemas],
+            "loop_policy": asdict(self.loop_policy),
+            "manifest": self.manifest.to_dict(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class BoundExecutionContext:
+    """绑定工具执行器和可信的单轮执行上下文。"""
+    tool_executor: ToolExecutor
+    execution_context: Any
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutableAgentRun:
+    """组合可序列化运行规范与不可序列化执行绑定。"""
+    spec: AgentRunSpec
+    binding: BoundExecutionContext
+
+    @property
+    def messages(self):
+        """代理访问运行规范中的消息。"""
+        return self.spec.messages
+
+    @property
+    def tool_schemas(self):
+        """代理访问运行规范中的工具 Schema。"""
+        return self.spec.tool_schemas
+
+    @property
+    def loop_policy(self):
+        """代理访问运行循环策略。"""
+        return self.spec.loop_policy
+
+    @property
+    def capability_fingerprint(self):
+        """代理访问能力指纹。"""
+        return self.spec.capability_fingerprint
+
+    @property
+    def run_metadata(self):
+        """代理访问运行元数据。"""
+        return self.spec.run_metadata
+
+    @property
+    def tool_executor(self):
+        """返回已绑定的工具执行器。"""
+        return self.binding.tool_executor
+
+    @property
+    def execution_context(self):
+        """返回已绑定的可信工具上下文。"""
+        return self.binding.execution_context
 
 
 ToolHandler = Callable[..., Any | Awaitable[Any]]

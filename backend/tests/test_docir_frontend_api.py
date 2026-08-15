@@ -178,6 +178,7 @@ def test_upload_attachment_returns_docir_frontend_contract(tmp_path):
         "page_count": 0,
         "validation_status": "pending",
         "quality_issue_count": 0,
+        "media_type": "application/pdf",
         "size_bytes": len(b"pdf-content"),
     }
     stored = state.user_attachment_store.get(

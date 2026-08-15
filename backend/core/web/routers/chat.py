@@ -32,9 +32,11 @@ from backend.core.router import (
     AttachmentAuthorization,
     ConversationContext,
     RoutingContext,
+    authorize_classroom_resources,
     resolve_identity,
     route_workspace,
 )
+from backend.core.services.teaching_context_adapter import TeachingContextAdapter
 from backend.core.services.user_attachment_service import (
     AttachmentTooLarge,
     StoredAttachment,
@@ -207,6 +209,26 @@ def _load_owned(
     return conversation
 
 
+def _ensure_message_allowed(
+    request: Request,
+    conversation: dict,
+    session: SessionPrincipal,
+) -> None:
+    """Reject writes to archived research conversations with a stable 4xx."""
+    project_id = conversation.get("research_project_id")
+    if not project_id:
+        return
+    project_store: ResearchProjectStore = request.app.state.research_project_store
+    project = project_store.get_project(project_id, session.user_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "research project not found")
+    if project.get("status") != "active":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "archived research project is read-only",
+        )
+
+
 def _validate_group_owned(
     request: Request,
     group_id: str | None,
@@ -246,6 +268,37 @@ def _classroom_binding_out(request: Request, binding: dict | None) -> dict | Non
         if assignment is not None:
             result["assignment_title"] = assignment.get("title")
     return result
+
+
+def _authorize_classroom_binding(
+    request: Request,
+    *,
+    session: SessionPrincipal,
+    user: UserRecord,
+    workspace_type: str,
+    class_id: str | None,
+    assignment_id: str | None,
+):
+    """校验对话绑定的班级和作业，并返回授权能力。"""
+    identity = resolve_identity(session, user)
+    if class_id is None and assignment_id is None:
+        return authorize_classroom_resources(
+            teaching_store=None,
+            identity=identity,
+            workspace_type=workspace_type,
+            class_id=None,
+            assignment_id=None,
+        )
+    teaching_store = getattr(request.app.state, "teaching_store", None)
+    if teaching_store is None:
+        raise RuntimeError("teaching store is required for classroom bindings")
+    return authorize_classroom_resources(
+        teaching_store=teaching_store,
+        identity=identity,
+        workspace_type=workspace_type,
+        class_id=class_id,
+        assignment_id=assignment_id,
+    )
 
 
 def _load_group_params(
@@ -395,13 +448,15 @@ def _runtime_dependencies(
 ) -> AgentRuntimeDependencies:
     """处理 `_runtime_dependencies` 相关逻辑。"""
     state = request.app.state
+    teaching_store = getattr(state, "teaching_store", None)
     return AgentRuntimeDependencies(
-        username=ctx.user.username,
-        total_weeks=ctx.user.total_weeks,
         user_store=getattr(state, "user_store", None),
         profile_store=getattr(state, "profile_store", None),
         chat_store=getattr(state, "chat_store", None),
-        teaching_store=getattr(state, "teaching_store", None),
+        teaching_store=teaching_store,
+        teaching_context_reader=(
+            TeachingContextAdapter(teaching_store) if teaching_store is not None else None
+        ),
         research_project_store=getattr(state, "research_project_store", None),
         research_project_profile_service=getattr(
             state, "research_project_profile_service", None
@@ -411,7 +466,6 @@ def _runtime_dependencies(
         frontier_tracking_service=getattr(state, "frontier_tracking_service", None),
         research_writing_service=getattr(state, "research_writing_service", None),
         research_data_service=getattr(state, "research_data_service", None),
-        research_workflow_facade=getattr(state, "research_workflow_facade", None),
         attachment_store=getattr(state, "user_attachment_store", None),
         multimodal_sessions=getattr(state, "mm_sessions", None),
         knowledge_graph_store=getattr(state, "knowledge_graph_store", None),
@@ -452,6 +506,21 @@ def _build_run_spec(
         profile = profile_service.get(project_id, session.user_id)
         if profile is not None:
             project_profile = profile["agent_instructions"]
+    project = (
+        request.app.state.research_project_store.get_project(
+            project_id, session.user_id
+        )
+        if project_id
+        else None
+    )
+    classroom_authorization = _authorize_classroom_binding(
+        request,
+        session=session,
+        user=ctx.user,
+        workspace_type=conversation.get("workspace_type", "learning"),
+        class_id=class_id,
+        assignment_id=assignment_id,
+    )
     route = route_workspace(
         identity,
         RoutingContext(
@@ -466,21 +535,14 @@ def _build_run_spec(
             attachments=AttachmentAuthorization(
                 tuple(item["attachment_id"] for item in authorized_attachments)
             ),
-            project_owned=project_id is None or (
-                request.app.state.research_project_store.get_project(
-                    project_id, session.user_id
-                )
-                is not None
-            ),
-            class_authorized=class_id is None or (
-                request.app.state.teaching_store.get_class(class_id) or {}
-            ).get("owner_teacher_id") == session.user_id,
-            assignment_authorized=assignment_id is None or (
-                request.app.state.teaching_store.get_assignment(assignment_id) or {}
-            ).get("owner_teacher_id") == session.user_id,
+            project_owned=project_id is None or project is not None,
+            class_authorized=classroom_authorization.class_authorized,
+            assignment_authorized=classroom_authorization.assignment_authorized,
             resource_capabilities=frozenset(
                 {"attachments"} if authorized_attachments else set()
-            ),
+            )
+            | frozenset({"research_project"} if project_id else set())
+            | classroom_authorization.capabilities,
         ),
     )
     group = {
@@ -505,7 +567,10 @@ def _build_run_spec(
         workspace_profile_context=project_profile,
         profile_snapshot=ctx.user_profile_context,
         authorized_attachments=authorized_attachments,
-        request_metadata={"request_id": uuid4().hex},
+        request_metadata={
+            "request_id": uuid4().hex,
+            "total_weeks": ctx.user.total_weeks,
+        },
     )
     runtime = WorkspaceRuntime(
         _runtime_dependencies(request, ctx)
@@ -595,17 +660,20 @@ def create_conversation(
         workspace_type=body.workspace_type,
         research_project_id=body.research_project_id,
     )
-    if body.workspace_type == "teaching" and body.class_id is not None:
-        teaching_store = request.app.state.teaching_store
-        classroom = teaching_store.get_class(body.class_id)
-        if classroom is None or classroom["owner_teacher_id"] != session.user_id:
-            chat_store.delete_conversation(conversation["conversation_id"], session.user_id)
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "classroom not found")
-        if body.assignment_id is not None:
-            assignment = teaching_store.get_assignment(body.assignment_id)
-            if assignment is None or assignment["class_id"] != body.class_id:
-                chat_store.delete_conversation(conversation["conversation_id"], session.user_id)
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "assignment not found")
+    if body.workspace_type in {"learning", "teaching"} and body.class_id is not None:
+        authorization = _authorize_classroom_binding(
+            request,
+            session=session,
+            user=user,
+            workspace_type=body.workspace_type,
+            class_id=body.class_id,
+            assignment_id=body.assignment_id,
+        )
+        if not authorization.authorized:
+            chat_store.delete_conversation(
+                conversation["conversation_id"], session.user_id
+            )
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "classroom resource not found")
         binding_store = request.app.state.classroom_conversation_store
         conversation["classroom_binding"] = _classroom_binding_out(
             request,
@@ -618,7 +686,10 @@ def create_conversation(
         )
     elif body.class_id is not None or body.assignment_id is not None:
         chat_store.delete_conversation(conversation["conversation_id"], session.user_id)
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "classroom binding requires teaching workspace")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "classroom binding requires learning or teaching workspace",
+        )
     return conversation
 
 
@@ -661,23 +732,42 @@ def update_conversation(
 
     if "class_id" in updates or "assignment_id" in updates:
         conversation = _load_owned(request, conversation_id, session)
-        if conversation.get("workspace_type") != "teaching":
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "classroom binding requires teaching workspace")
-        class_id = updates.get("class_id")
-        assignment_id = updates.get("assignment_id")
-        if class_id is None:
-            request.app.state.classroom_conversation_store.unbind(
-                conversation_id, session.user_id
+        workspace_type = conversation.get("workspace_type", "learning")
+        if workspace_type not in {"learning", "teaching"}:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "classroom binding requires learning or teaching workspace",
             )
-        else:
-            classroom = request.app.state.teaching_store.get_class(class_id)
-            if classroom is None or classroom["owner_teacher_id"] != session.user_id:
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "classroom not found")
+        binding_store = request.app.state.classroom_conversation_store
+        current = binding_store.get(conversation_id, session.user_id) or {}
+        class_id = updates.get("class_id", current.get("class_id"))
+        assignment_id = updates.get("assignment_id", current.get("assignment_id"))
+        if "class_id" in updates and class_id != current.get("class_id"):
+            assignment_id = updates.get("assignment_id")
+        if class_id is None:
             if assignment_id is not None:
-                assignment = request.app.state.teaching_store.get_assignment(assignment_id)
-                if assignment is None or assignment["class_id"] != class_id:
-                    raise HTTPException(status.HTTP_404_NOT_FOUND, "assignment not found")
-            request.app.state.classroom_conversation_store.bind(
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "assignment_id requires class_id",
+                )
+            binding_store.unbind(conversation_id, session.user_id)
+        else:
+            user = request.app.state.user_store.get_by_id(session.user_id)
+            if user is None:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "user no longer exists")
+            authorization = _authorize_classroom_binding(
+                request,
+                session=session,
+                user=user,
+                workspace_type=workspace_type,
+                class_id=class_id,
+                assignment_id=assignment_id,
+            )
+            if not authorization.authorized:
+                raise HTTPException(
+                    status.HTTP_404_NOT_FOUND, "classroom resource not found"
+                )
+            binding_store.bind(
                 conversation_id=conversation_id, user_id=session.user_id,
                 class_id=class_id, assignment_id=assignment_id,
             )
@@ -880,7 +970,8 @@ async def send_message(
     Returns:
         list[dict] => 处理结果。
     """
-    _load_owned(request, conversation_id, session)
+    conversation = _load_owned(request, conversation_id, session)
+    _ensure_message_allowed(request, conversation, session)
     lease = await _acquire_turn(request, conversation_id)
     async with lease:
         authorized_attachments, attachments = _attachment_inventory(
@@ -933,7 +1024,8 @@ async def stream_message(
     Returns:
         StreamingResponse => 处理结果。
     """
-    _load_owned(request, conversation_id, session)
+    conversation = _load_owned(request, conversation_id, session)
+    _ensure_message_allowed(request, conversation, session)
     lease = await _acquire_turn(request, conversation_id)
     try:
         authorized_attachments, attachments = _attachment_inventory(

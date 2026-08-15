@@ -8,6 +8,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 
+from backend.agent.tools.catalog import capability_declaration
 from backend.agent.tools.skills import SkillDefinition, list_skill_definitions
 
 SKILL_CATALOG_VERSION = 1
@@ -23,6 +24,32 @@ def skill_scope(skill: SkillDefinition) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class SkillCapabilityDeclaration:
+    """描述 Skill 的范围、版本、资源能力和工具依赖。"""
+    name: str
+    scope: str
+    version: int
+    required_resource_capabilities: frozenset[str]
+    required_tools: tuple[str, ...]
+
+
+def skill_declaration(skill: SkillDefinition) -> SkillCapabilityDeclaration:
+    """从 Skill 元数据及其工具依赖派生能力声明。"""
+    resources: set[str] = set()
+    for tool_name in skill.requires_tools:
+        resources.update(
+            capability_declaration(tool_name).required_resource_capabilities
+        )
+    return SkillCapabilityDeclaration(
+        name=skill.name,
+        scope=skill_scope(skill),
+        version=skill.version,
+        required_resource_capabilities=frozenset(resources),
+        required_tools=skill.requires_tools,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class ScopedSkillView:
     """封装 `ScopedSkillView` 的状态与行为。"""
     scopes: frozenset[str]
@@ -30,11 +57,17 @@ class ScopedSkillView:
     fingerprint: str
 
     @classmethod
-    def compile(cls, scopes: frozenset[str]) -> "ScopedSkillView":
+    def compile(
+        cls,
+        scopes: frozenset[str],
+        *,
+        tool_names: frozenset[str] | None = None,
+    ) -> "ScopedSkillView":
         """编译 `compile` 相关数据。
 
         Args:
             scopes: frozenset[str] => `scopes` 参数。
+            tool_names: 当前运行时实际可用的工具名称；用于过滤依赖缺失的 Skill。
 
         Returns:
             'ScopedSkillView' => 处理结果。
@@ -45,13 +78,25 @@ class ScopedSkillView:
                     skill
                     for skill in list_skill_definitions()
                     if skill_scope(skill) in scopes
+                    and (
+                        tool_names is None
+                        or set(skill.requires_tools) <= tool_names
+                    )
                 ),
                 key=lambda skill: (-skill.priority, skill.name),
             )
         )
+        declarations = tuple(skill_declaration(skill) for skill in selected)
         payload = [
-            (skill.name, skill.version, skill_scope(skill), skill.autoload)
-            for skill in selected
+            (
+                declaration.name,
+                declaration.version,
+                declaration.scope,
+                skill.autoload,
+                declaration.required_tools,
+                tuple(sorted(declaration.required_resource_capabilities)),
+            )
+            for skill, declaration in zip(selected, declarations)
         ]
         canonical = json.dumps(payload, separators=(",", ":"))
         fingerprint = hashlib.sha256(
