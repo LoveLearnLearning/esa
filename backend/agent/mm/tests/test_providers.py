@@ -37,7 +37,10 @@ def test_parse_visual_analysis_skips_unrelated_json_object() -> None:
     assert result.description == "课表"
 
 
-@pytest.mark.parametrize("content", ["没有 JSON", "[]", '{"description":""}'])
+@pytest.mark.parametrize(
+    "content",
+    ["没有 JSON", "[]", '{"description":""}', '{"description":"图","content_type":""}'],
+)
 def test_parse_visual_analysis_rejects_invalid_content(content: str) -> None:
     """验证 `parse_visual_analysis_rejects_invalid_content` 场景。"""
     with pytest.raises(ValueError):

@@ -27,11 +27,14 @@ from .config import MMConfig
 from .contracts import (
     AttachmentMode,
     DocumentParser,
+    MM_VISUAL_CONTRACT_VERSION,
     PreparedAttachment,
     TokenCounter,
     VisionProvider,
 )
 from .enrichment import VLM_DESCRIPTION_PROMPT, enrich_visual_assets
+from .routing import MM_VISUAL_ROUTING_VERSION
+from .selection import MM_VISUAL_SELECTION_VERSION
 from .index import InMemoryAttachmentIndex
 from .parser import MinerUDocumentParser
 from .providers import OpenAICompatibleVisionProvider, TransformersTokenCounter
@@ -196,7 +199,7 @@ class MultimodalIngestionService:
                     len(enrichment.failed_assets),
                 )
                 manifest = {
-                    "schema_version": "mm-run-0.1",
+                    "schema_version": "mm-run-0.2",
                     "status": "success",
                     "source": {
                         "filename": source.name,
@@ -215,6 +218,22 @@ class MultimodalIngestionService:
                     "vlm": {
                         "analyzed_assets": enrichment.analyzed_assets,
                         "failed_asset_ids": list(enrichment.failed_assets),
+                        "review_asset_ids": list(enrichment.reviewed_assets),
+                        "rejected_asset_ids": list(enrichment.rejected_assets),
+                        "outcomes": [
+                            {
+                                "asset_id": outcome.request.asset_id,
+                                "element_id": outcome.request.element_id,
+                                "route": outcome.route_decision.route.value,
+                                "risk": outcome.route_decision.risk.value,
+                                "decision": outcome.decision.value,
+                                "reason": outcome.reason,
+                            }
+                            for outcome in enrichment.outcomes
+                        ],
+                        "contract_version": MM_VISUAL_CONTRACT_VERSION,
+                        "routing_version": MM_VISUAL_ROUTING_VERSION,
+                        "selection_version": MM_VISUAL_SELECTION_VERSION,
                         "provider_fingerprint": (
                             self.vision.configuration_fingerprint
                         ),
@@ -236,7 +255,7 @@ class MultimodalIngestionService:
             _atomic_json(
                 manifest_path,
                 {
-                    "schema_version": "mm-run-0.1",
+                    "schema_version": "mm-run-0.2",
                     "status": "failed",
                     "source": {"filename": source.name, "sha256": source_sha256},
                     "pipeline_fingerprint": pipeline_fingerprint,
@@ -273,7 +292,10 @@ class MultimodalIngestionService:
         """处理 `_pipeline_fingerprint` 相关逻辑。"""
         return _canonical_sha256(
             {
-                "schema": "mm-pipeline-0.2",
+                "schema": "mm-pipeline-0.3",
+                "visual_contract": MM_VISUAL_CONTRACT_VERSION,
+                "visual_routing": MM_VISUAL_ROUTING_VERSION,
+                "visual_selection": MM_VISUAL_SELECTION_VERSION,
                 "parser": self.parser.configuration_fingerprint,
                 "vision": self.vision.configuration_fingerprint,
                 "prompt_sha256": hashlib.sha256(

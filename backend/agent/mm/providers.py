@@ -180,4 +180,6 @@ def _visual_analysis_from_mapping(parsed: object) -> VisualAnalysis:
     content_type = parsed.get("content_type", "image")
     if not isinstance(visible, str) or not isinstance(content_type, str):
         raise ValueError("VLM response text fields must be strings")
+    if not content_type.strip():
+        raise ValueError("VLM response content_type must be non-empty")
     return VisualAnalysis(description.strip(), visible.strip(), content_type.strip())

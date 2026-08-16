@@ -209,6 +209,8 @@ def test_visual_enrichment_is_attached_after_parent(tmp_path: Path) -> None:
     assert derived.locators[0].label == "第 1 页"
     assert derived.text.layers[0].origin is TextOrigin.VLM_DERIVED
     assert derived.text.layers[0].quote_eligible is False
+    assert result.outcomes[0].decision.value == "accept"
+    assert result.outcomes[0].write_to_docir is True
     assert result.document.sections[0].element_ids[-1] == derived.element_id
     assert "网络拓扑图" in render_document_markdown(result.document)
 
@@ -228,6 +230,27 @@ def test_vlm_failure_records_warning_and_keeps_document_valid(tmp_path: Path) ->
     assert result.failed_assets == ("visual",)
     assert result.document.quality_issues[0].code == "vlm_description_failed"
     assert result.document.validation.status is ValidationStatus.PASSED_WITH_WARNINGS
+
+
+def test_missing_visual_asset_is_marked_for_review(tmp_path: Path) -> None:
+    """缺少可解析资产时不得静默跳过视觉元素。"""
+    source = tmp_path / "note.png"
+    source.write_bytes(b"image")
+    parsed = FakeParser().parse(source, tmp_path / "doc")
+    figure = parsed.document.elements[0].model_copy(update={"asset_id": None})
+    document = Document.model_validate(
+        {
+            **parsed.document.model_dump(mode="python"),
+            "elements": (figure,),
+        }
+    )
+
+    result = asyncio.run(enrich_visual_assets(document, parsed.document_root, FakeVision()))
+
+    assert result.reviewed_assets == ("figure_1",)
+    assert result.document.quality_issues[0].code == "visual_enrichment_review_required"
+    assert result.document.elements[0].quality_issue_ids
+    assert len(result.document.elements) == 1
 
 
 def test_same_visual_bytes_are_analyzed_once(tmp_path: Path) -> None:
