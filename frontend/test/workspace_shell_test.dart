@@ -138,4 +138,54 @@ void main() {
     expect(state.activeId, 'research-chat');
     expect(find.byKey(const ValueKey('composer-input')), findsOneWidget);
   });
+
+  testWidgets('research sidebar creates chats and projects from group section', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = _WorkspaceApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'student';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(
+      AppScope(
+        state: state,
+        child: MaterialApp(
+          theme: esaTheme(brightness: Brightness.dark),
+          home: const HomeShell(),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+
+    await tester.tap(
+      find.byKey(const ValueKey('student-research-destination')),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(state.activeWorkspace, WorkspaceType.research);
+    expect(find.byKey(const ValueKey('new-research-chat')), findsOneWidget);
+    expect(find.text('新建对话'), findsOneWidget);
+    expect(find.text('科研项目'), findsOneWidget);
+
+    await tester.tap(find.text('科研项目'));
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.byTooltip('新建项目'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.enterText(
+      find.widgetWithText(TextField, '项目名称'),
+      '桌面科研',
+    );
+    await tester.tap(find.text('创建并打开'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('桌面科研'), findsWidgets);
+  });
 }

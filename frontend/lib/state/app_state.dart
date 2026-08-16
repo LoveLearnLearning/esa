@@ -32,6 +32,7 @@ class AppState extends ChangeNotifier {
   static const _scheduleSettingsStoragePrefix = 'esa.schedule.settings.';
   static const _codeEditorIndentSizeKey = 'esa.editor.indent_size';
   static const _codeEditorThemeKey = 'esa.editor.theme';
+  static const _groupProjectBindingsPrefix = 'esa.group_projects.';
 
   // ---- 本地设置(不落后端) ----
   ThemeMode themeMode = ThemeMode.dark;
@@ -73,8 +74,11 @@ class AppState extends ChangeNotifier {
   final List<ChatConversation> conversations = [];
   final Map<String, List<ChatMessage>> _messages = {};
   final Set<String> _pinned = {}; // 本地置顶集合
+  final Set<String> _pinnedGroupIds = {}; // 本地分组置顶集合
+  final Map<String, String> _groupProjectBindings = {}; // 科研分组归属项目(前端本地)
   final List<ChatGroup> groups = [];
   String? activeGroupId;
+  String? activeResearchProjectId;
   bool loadingGroups = false;
   bool groupsLoaded = false;
   String? activeId;
@@ -92,6 +96,19 @@ class AppState extends ChangeNotifier {
 
   String get username => api.username ?? '';
   bool get isLoggedIn => api.isLoggedIn;
+
+  bool isGroupPinned(String groupId) => _pinnedGroupIds.contains(groupId);
+
+  String? groupProjectId(String groupId) => _groupProjectBindings[groupId];
+
+  List<ChatGroup> groupsForProject(String projectId) => groups.where((group) {
+    if (_groupProjectBindings[group.id] == projectId) return true;
+    return conversations.any(
+      (conversation) =>
+          conversation.researchProjectId == projectId &&
+          conversation.groupId == group.id,
+    );
+  }).toList();
 
   List<ChatMessage> get messages =>
       activeId == null ? const [] : (_messages[activeId] ?? const []);
@@ -112,6 +129,22 @@ class AppState extends ChangeNotifier {
 
   List<ChatConversation> conversationsInGroup(String groupId) =>
       conversations.where((c) => c.groupId == groupId).toList();
+
+  List<ChatConversation> conversationsInGroupForProject(
+    String groupId,
+    String projectId,
+  ) => conversations
+      .where(
+        (c) => c.groupId == groupId && c.researchProjectId == projectId,
+      )
+      .toList();
+
+  List<ChatConversation> ungroupedConversationsInProject(String projectId) =>
+      conversations
+          .where(
+            (c) => c.groupId == null && c.researchProjectId == projectId,
+          )
+          .toList();
 
   List<String> get scheduleCourseNames {
     final seen = <String>{};
@@ -203,6 +236,7 @@ class AppState extends ChangeNotifier {
     await Future.wait([
       loadConversations(),
       loadGroups(),
+      _loadGroupProjectBindings(),
       loadPreferencesAndProfile(),
       loadLearningOverview(),
     ]);
@@ -386,8 +420,11 @@ class AppState extends ChangeNotifier {
     conversations.clear();
     _messages.clear();
     _pinned.clear();
+    _pinnedGroupIds.clear();
+    _groupProjectBindings.clear();
     groups.clear();
     activeGroupId = null;
+    activeResearchProjectId = null;
     groupsLoaded = false;
     loadingGroups = false;
     scheduleCourses.clear();
@@ -659,6 +696,9 @@ class AppState extends ChangeNotifier {
           : await api.listWorkspaceConversations(activeWorkspace);
       for (final c in list) {
         c.pinned = _pinned.contains(c.id);
+        if (c.researchProjectId != null && c.groupId != null) {
+          _groupProjectBindings[c.groupId!] = c.researchProjectId!;
+        }
       }
       conversations
         ..clear()
@@ -669,6 +709,43 @@ class AppState extends ChangeNotifier {
       loadingConversations = false;
       notifyListeners();
     }
+  }
+
+  String get _groupProjectBindingsKey =>
+      '$_groupProjectBindingsPrefix${api.userId ?? 'guest'}';
+
+  Future<void> _loadGroupProjectBindings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_groupProjectBindingsKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        _groupProjectBindings
+          ..clear()
+          ..addAll(
+            decoded.map(
+              (key, value) => MapEntry(key.toString(), value.toString()),
+            ),
+          );
+      }
+    } catch (_) {
+      // 本地缓存损坏时直接忽略，分组归属仍可从对话数据恢复。
+    }
+  }
+
+  Future<void> _saveGroupProjectBindings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _groupProjectBindingsKey,
+      jsonEncode(_groupProjectBindings),
+    );
+  }
+
+  void _bindGroupToProject(String groupId, String projectId) {
+    if (_groupProjectBindings[groupId] == projectId) return;
+    _groupProjectBindings[groupId] = projectId;
+    unawaited(_saveGroupProjectBindings());
   }
 
   // ============ 对话分组 ============
@@ -695,6 +772,7 @@ class AppState extends ChangeNotifier {
     String customInstruction = '',
     String? style,
     String? tone,
+    String? projectId,
   }) async {
     final group = await api.createGroup(
       name: name.trim(),
@@ -704,6 +782,9 @@ class AppState extends ChangeNotifier {
       tone: tone,
     );
     groups.insert(0, group);
+    if (projectId != null) {
+      _bindGroupToProject(group.id, projectId);
+    }
     activeGroupId = group.id;
     notifyListeners();
     return group;
@@ -712,6 +793,20 @@ class AppState extends ChangeNotifier {
   void setActiveGroup(String? groupId) {
     if (activeGroupId == groupId) return;
     activeGroupId = groupId;
+    notifyListeners();
+  }
+
+  void toggleGroupPin(String groupId) {
+    if (_pinnedGroupIds.contains(groupId)) {
+      _pinnedGroupIds.remove(groupId);
+    } else {
+      _pinnedGroupIds.add(groupId);
+      final index = groups.indexWhere((group) => group.id == groupId);
+      if (index > 0) {
+        final group = groups.removeAt(index);
+        groups.insert(0, group);
+      }
+    }
     notifyListeners();
   }
 
@@ -753,6 +848,8 @@ class AppState extends ChangeNotifier {
   Future<void> deleteGroup(String groupId) async {
     await api.deleteGroup(groupId);
     groups.removeWhere((group) => group.id == groupId);
+    _groupProjectBindings.remove(groupId);
+    unawaited(_saveGroupProjectBindings());
     if (activeGroupId == groupId) activeGroupId = null;
     for (final conversation in conversations) {
       if (conversation.groupId == groupId) conversation.groupId = null;
@@ -773,6 +870,10 @@ class AppState extends ChangeNotifier {
     if (previousGroupId == groupId) return;
     await api.moveConversation(conversationId, groupId);
     conversations[index].groupId = groupId;
+    final projectId = conversations[index].researchProjectId;
+    if (projectId != null && groupId != null) {
+      _bindGroupToProject(groupId, projectId);
+    }
     _adjustGroupCounts(previousGroupId, groupId);
     notifyListeners();
   }
@@ -961,6 +1062,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> newConversationInGroup(
+    String groupId, {
+    String? researchProjectId,
+  }) async {
+    activeGroupId = groupId;
+    activeResearchProjectId =
+        researchProjectId ?? _groupProjectBindings[groupId];
+    notifyListeners();
+    await newConversation();
+  }
+
+  Future<void> startResearchChat() async {
+    activeGroupId = null;
+    activeResearchProjectId = null;
+    notifyListeners();
+    await newConversation();
+  }
+
   Future<void> _discardDraftConversation({String? exceptId}) async {
     final id = _draftConversationId;
     if (id == null || id == exceptId) return;
@@ -1009,6 +1128,7 @@ class AppState extends ChangeNotifier {
           ? await api.createConversation(groupId: activeGroupId)
           : await api.createWorkspaceConversation(
               activeWorkspace,
+              researchProjectId: activeResearchProjectId,
               groupId: activeGroupId,
             );
       conversations.insert(0, conv);

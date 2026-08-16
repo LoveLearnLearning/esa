@@ -8,6 +8,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import '../widgets/conversation_move_dialog.dart';
 import '../widgets/profile_sheet.dart';
 import '../widgets/memory_sheet.dart';
 import '../widgets/history_drawer.dart';
@@ -527,15 +528,18 @@ class _WorkspaceSidebar extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           FilledButton.icon(
-            key: research ? const ValueKey('new-research-project') : null,
+            key: research ? const ValueKey('new-research-chat') : null,
             onPressed: research
-                ? () => _createResearchProject(context, app)
+                ? () {
+                    unawaited(app.startResearchChat());
+                    onOpenResearchChat();
+                  }
                 : () {
                     unawaited(app.newConversation());
                     onSelect(StudentSection.assistant);
                   },
             icon: const Icon(LucideIcons.plus, size: 17),
-            label: Text(research ? '新建项目' : '新对话'),
+            label: Text(research ? '新建对话' : '新对话'),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -688,14 +692,48 @@ class _WorkspaceSidebar extends StatelessWidget {
       ..._projectEntries(context, app),
       const SizedBox(height: 12),
     ],
-    ..._conversationEntries(context, app, research: true),
+    ..._researchHistoryEntries(context, app),
   ];
 
-  List<Widget> _conversationEntries(
-    BuildContext context,
-    AppState app, {
-    required bool research,
-  }) => [
+  List<Widget> _researchHistoryEntries(BuildContext context, AppState app) {
+    final generic = app.conversations
+        .where(
+          (conversation) =>
+              conversation.workspaceType == WorkspaceType.research &&
+              conversation.researchProjectId == null,
+        )
+        .toList();
+    return [
+      Text(
+        '历史对话',
+        key: const ValueKey('research-history-heading'),
+        style: context.texts.labelSmall,
+      ),
+      const SizedBox(height: 6),
+      if (generic.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Text('暂无历史对话', style: context.texts.bodySmall),
+        )
+      else
+        for (final conversation in generic)
+          _ConversationEntry(
+            conversation: conversation,
+            allowGrouping: false,
+            onPin: () => app.togglePin(conversation.id),
+            onRename: () => _renameConversation(context, app, conversation),
+            onDelete: () => app.deleteConversation(conversation.id),
+            onTap: () => _openConversation(
+              context,
+              app,
+              conversation,
+              research: true,
+            ),
+          ),
+    ];
+  }
+
+  List<Widget> _conversationEntries(BuildContext context, AppState app) => [
     _sectionHeader(
       context,
       title: '对话分组',
@@ -725,6 +763,12 @@ class _WorkspaceSidebar extends StatelessWidget {
               child: _ExpandableSidebarRow(
                 icon: LucideIcons.folder,
                 label: group.name,
+                pinned: app.isGroupPinned(group.id),
+                onPin: () => app.toggleGroupPin(group.id),
+                onAddConversation: () {
+                  unawaited(app.newConversationInGroup(group.id));
+                  onSelect(StudentSection.assistant);
+                },
                 onRename: () => _renameGroup(context, app, group),
                 onDelete: () => _deleteGroup(context, app, group),
                 children: app
@@ -732,11 +776,18 @@ class _WorkspaceSidebar extends StatelessWidget {
                     .map(
                       (conversation) => _ConversationEntry(
                         conversation: conversation,
+                        onPin: () => app.togglePin(conversation.id),
+                        onMove: () =>
+                            _moveConversation(context, app, conversation),
+                        onRename: () =>
+                            _renameConversation(context, app, conversation),
+                        onDelete: () =>
+                            app.deleteConversation(conversation.id),
                         onTap: () => _openConversation(
                           context,
                           app,
                           conversation,
-                          research: research,
+                          research: false,
                         ),
                       ),
                     )
@@ -756,10 +807,92 @@ class _WorkspaceSidebar extends StatelessWidget {
     for (final conversation in app.ungroupedConversations)
       _ConversationEntry(
         conversation: conversation,
+        onPin: () => app.togglePin(conversation.id),
+        onMove: () => _moveConversation(context, app, conversation),
+        onRename: () => _renameConversation(context, app, conversation),
+        onDelete: () => app.deleteConversation(conversation.id),
         onTap: () =>
-            _openConversation(context, app, conversation, research: research),
+            _openConversation(context, app, conversation, research: false),
       ),
   ];
+
+  Future<void> _moveConversation(
+    BuildContext context,
+    AppState app,
+    ChatConversation conversation,
+  ) async {
+    final target = await showMoveConversationDialog(
+      context,
+      app,
+      conversation,
+    );
+    if (target == null || !context.mounted) return;
+    try {
+      await app.moveConversationToGroup(conversation.id, target.groupId);
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('移动失败：$error')),
+      );
+    }
+  }
+
+  Future<void> _moveConversationInProject(
+    BuildContext context,
+    AppState app,
+    ChatConversation conversation,
+    ResearchProject project,
+  ) async {
+    final target = await showMoveConversationDialog(
+      context,
+      app,
+      conversation,
+      groups: app.groupsForProject(project.id),
+    );
+    if (target == null || !context.mounted) return;
+    try {
+      await app.moveConversationToGroup(conversation.id, target.groupId);
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('移动失败：$error')),
+      );
+    }
+  }
+
+  Future<void> _renameConversation(
+    BuildContext context,
+    AppState app,
+    ChatConversation conversation,
+  ) async {
+    final controller = TextEditingController(text: conversation.title);
+    final accepted = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('重命名对话'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: '对话名称'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    final name = accepted?.trim();
+    if (name != null && name.isNotEmpty) {
+      await app.renameConversation(conversation.id, name);
+    }
+    controller.dispose();
+  }
 
   void _openConversation(
     BuildContext context,
@@ -786,11 +919,48 @@ class _WorkspaceSidebar extends StatelessWidget {
     }
     return [
       for (final project in app.researchProjects)
-        _SideEntry(
-          icon: LucideIcons.brainCircuit,
-          label: project.name,
+        _ResearchProjectRow(
+          project: project,
+          groups: app.groupsForProject(project.id),
           selected: activeResearchProject?.id == project.id,
-          onTap: () => onOpenProject(project),
+          isGroupPinned: app.isGroupPinned,
+          onOpen: () => onOpenProject(project),
+          onAddGroup: () =>
+              _showCreateGroupInProject(context, app, project),
+          onAddGroupConversation: (group) {
+            unawaited(
+              app.newConversationInGroup(
+                group.id,
+                researchProjectId: project.id,
+              ),
+            );
+            onOpenResearchChat();
+          },
+          onPinGroup: (group) => app.toggleGroupPin(group.id),
+          onRenameGroup: (group) => _renameGroup(context, app, group),
+          onDeleteGroup: (group) => _deleteGroup(context, app, group),
+          conversationsInGroup: (group) =>
+              app.conversationsInGroupForProject(group.id, project.id),
+          ungroupedConversations:
+              app.ungroupedConversationsInProject(project.id),
+          onOpenConversation: (conversation) => _openConversation(
+            context,
+            app,
+            conversation,
+            research: true,
+          ),
+          onPinConversation: (conversation) =>
+              app.togglePin(conversation.id),
+          onMoveConversation: (conversation) => _moveConversationInProject(
+            context,
+            app,
+            conversation,
+            project,
+          ),
+          onRenameConversation: (conversation) =>
+              _renameConversation(context, app, conversation),
+          onDeleteConversation: (conversation) =>
+              app.deleteConversation(conversation.id),
         ),
     ];
   }
@@ -850,7 +1020,7 @@ class _WorkspaceSidebar extends StatelessWidget {
   }
 
   List<Widget> _learningEntries(BuildContext context, AppState app) => [
-    ..._conversationEntries(context, app, research: false),
+    ..._conversationEntries(context, app),
     const SizedBox(height: 12),
     Text(
       '课程',
@@ -970,6 +1140,42 @@ class _WorkspaceSidebar extends StatelessWidget {
     }
     controller.dispose();
   }
+
+  Future<void> _showCreateGroupInProject(
+    BuildContext context,
+    AppState app,
+    ResearchProject project,
+  ) async {
+    final controller = TextEditingController();
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('在「${project.name}」新建分组'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: '分组名称'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('创建'),
+          ),
+        ],
+      ),
+    );
+    if (accepted == true && controller.text.trim().isNotEmpty) {
+      await app.createGroup(
+        name: controller.text.trim(),
+        projectId: project.id,
+      );
+    }
+    controller.dispose();
+  }
 }
 
 class _RevealSidebarButton extends StatelessWidget {
@@ -1039,17 +1245,221 @@ class _SideEntry extends StatelessWidget {
   );
 }
 
+class _ResearchProjectRow extends StatefulWidget {
+  const _ResearchProjectRow({
+    required this.project,
+    required this.groups,
+    required this.selected,
+    required this.isGroupPinned,
+    required this.onOpen,
+    required this.onAddGroup,
+    required this.onAddGroupConversation,
+    required this.onPinGroup,
+    required this.onRenameGroup,
+    required this.onDeleteGroup,
+    required this.conversationsInGroup,
+    required this.ungroupedConversations,
+    required this.onOpenConversation,
+    required this.onPinConversation,
+    required this.onMoveConversation,
+    required this.onRenameConversation,
+    required this.onDeleteConversation,
+  });
+
+  final ResearchProject project;
+  final List<ChatGroup> groups;
+  final bool selected;
+  final bool Function(String groupId) isGroupPinned;
+  final VoidCallback onOpen;
+  final VoidCallback onAddGroup;
+  final ValueChanged<ChatGroup> onAddGroupConversation;
+  final ValueChanged<ChatGroup> onPinGroup;
+  final ValueChanged<ChatGroup> onRenameGroup;
+  final ValueChanged<ChatGroup> onDeleteGroup;
+  final List<ChatConversation> Function(ChatGroup group) conversationsInGroup;
+  final List<ChatConversation> ungroupedConversations;
+  final ValueChanged<ChatConversation> onOpenConversation;
+  final ValueChanged<ChatConversation> onPinConversation;
+  final ValueChanged<ChatConversation> onMoveConversation;
+  final ValueChanged<ChatConversation> onRenameConversation;
+  final ValueChanged<ChatConversation> onDeleteConversation;
+
+  @override
+  State<_ResearchProjectRow> createState() => _ResearchProjectRowState();
+}
+
+class _ResearchProjectRowState extends State<_ResearchProjectRow> {
+  bool expanded = true;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: widget.selected
+              ? EsaColors.accent.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(7),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(7),
+            onTap: () => setState(() => expanded = !expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.brainCircuit,
+                    size: 16,
+                    color: widget.selected
+                        ? const Color(0xFF5D98FF)
+                        : context.n.n600,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      widget.project.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '打开项目',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 26,
+                      minHeight: 26,
+                    ),
+                    iconSize: 14,
+                    icon: Icon(
+                      LucideIcons.arrowUpRight,
+                      size: 14,
+                      color: context.n.n600,
+                    ),
+                    onPressed: widget.onOpen,
+                  ),
+                  Icon(
+                    expanded
+                        ? LucideIcons.chevronDown
+                        : LucideIcons.chevronRight,
+                    size: 14,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (expanded)
+          Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, bottom: 2),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '对话分组',
+                          style: context.texts.labelSmall,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '新建分组',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 26,
+                          minHeight: 26,
+                        ),
+                        iconSize: 14,
+                        icon: const Icon(LucideIcons.plus, size: 14),
+                        onPressed: widget.onAddGroup,
+                      ),
+                    ],
+                  ),
+                ),
+                if (widget.groups.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text('暂无分组', style: context.texts.bodySmall),
+                  )
+                else
+                  for (final group in widget.groups)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: _ExpandableSidebarRow(
+                        icon: LucideIcons.folder,
+                        label: group.name,
+                        pinned: widget.isGroupPinned(group.id),
+                        onPin: () => widget.onPinGroup(group),
+                        onAddConversation: () =>
+                            widget.onAddGroupConversation(group),
+                        onRename: () => widget.onRenameGroup(group),
+                        onDelete: () => widget.onDeleteGroup(group),
+                        children: widget
+                            .conversationsInGroup(group)
+                            .map(
+                              (conversation) => _ConversationEntry(
+                                conversation: conversation,
+                                onPin: () =>
+                                    widget.onPinConversation(conversation),
+                                onMove: () =>
+                                    widget.onMoveConversation(conversation),
+                                onRename: () =>
+                                    widget.onRenameConversation(conversation),
+                                onDelete: () =>
+                                    widget.onDeleteConversation(conversation),
+                                onTap: () =>
+                                    widget.onOpenConversation(conversation),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                if (widget.ungroupedConversations.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, bottom: 2),
+                    child: Text('未分组', style: context.texts.labelSmall),
+                  ),
+                  for (final conversation in widget.ungroupedConversations)
+                    _ConversationEntry(
+                      conversation: conversation,
+                      onPin: () => widget.onPinConversation(conversation),
+                      onMove: () => widget.onMoveConversation(conversation),
+                      onRename: () =>
+                          widget.onRenameConversation(conversation),
+                      onDelete: () =>
+                          widget.onDeleteConversation(conversation),
+                      onTap: () => widget.onOpenConversation(conversation),
+                    ),
+                ],
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
 class _ExpandableSidebarRow extends StatefulWidget {
   const _ExpandableSidebarRow({
     required this.icon,
     required this.label,
     required this.children,
+    this.pinned = false,
+    this.onPin,
+    this.onAddConversation,
     this.onRename,
     this.onDelete,
   });
   final IconData icon;
   final String label;
   final List<Widget> children;
+  final bool pinned;
+  final VoidCallback? onPin;
+  final VoidCallback? onAddConversation;
   final VoidCallback? onRename;
   final VoidCallback? onDelete;
 
@@ -1079,29 +1489,80 @@ class _ExpandableSidebarRowState extends State<_ExpandableSidebarRow> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (widget.onRename != null)
+              if (widget.onPin != null)
                 IconButton(
-                  tooltip: '重命名分组',
+                  tooltip: widget.pinned ? '取消置顶分组' : '置顶分组',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(
                     minWidth: 26,
                     minHeight: 26,
                   ),
                   iconSize: 14,
-                  icon: const Icon(LucideIcons.pencil),
-                  onPressed: widget.onRename,
+                  icon: Icon(
+                    LucideIcons.star,
+                    color: widget.pinned ? EsaColors.accent : context.n.n600,
+                  ),
+                  onPressed: widget.onPin,
                 ),
-              if (widget.onDelete != null)
+              if (widget.onAddConversation != null)
                 IconButton(
-                  tooltip: '删除分组',
+                  tooltip: '在分组中新建对话',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(
                     minWidth: 26,
                     minHeight: 26,
                   ),
                   iconSize: 14,
-                  icon: const Icon(LucideIcons.trash2),
-                  onPressed: widget.onDelete,
+                  icon: Icon(LucideIcons.plus, color: context.n.n600),
+                  onPressed: widget.onAddConversation,
+                ),
+              if (widget.onRename != null || widget.onDelete != null)
+                SizedBox(
+                  width: 26,
+                  height: 26,
+                  child: PopupMenuButton<_SidebarGroupAction>(
+                    tooltip: '更多分组操作',
+                    padding: EdgeInsets.zero,
+                    icon: Icon(
+                      LucideIcons.moreHorizontal,
+                      size: 15,
+                      color: context.n.n600,
+                    ),
+                    onSelected: (action) {
+                      switch (action) {
+                        case _SidebarGroupAction.rename:
+                          widget.onRename?.call();
+                          break;
+                        case _SidebarGroupAction.delete:
+                          widget.onDelete?.call();
+                          break;
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      if (widget.onRename != null)
+                        const PopupMenuItem(
+                          value: _SidebarGroupAction.rename,
+                          child: Row(
+                            children: [
+                              Icon(LucideIcons.pencil, size: 15),
+                              SizedBox(width: 8),
+                              Text('重命名分组'),
+                            ],
+                          ),
+                        ),
+                      if (widget.onDelete != null)
+                        const PopupMenuItem(
+                          value: _SidebarGroupAction.delete,
+                          child: Row(
+                            children: [
+                              Icon(LucideIcons.trash2, size: 15),
+                              SizedBox(width: 8),
+                              Text('删除分组'),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               Icon(
                 expanded ? LucideIcons.chevronDown : LucideIcons.chevronRight,
@@ -1121,25 +1582,126 @@ class _ExpandableSidebarRowState extends State<_ExpandableSidebarRow> {
 }
 
 class _ConversationEntry extends StatelessWidget {
-  const _ConversationEntry({required this.conversation, required this.onTap});
+  const _ConversationEntry({
+    required this.conversation,
+    required this.onTap,
+    required this.onPin,
+    this.onMove,
+    required this.onRename,
+    required this.onDelete,
+    this.allowGrouping = true,
+  });
   final ChatConversation conversation;
   final VoidCallback onTap;
+  final VoidCallback onPin;
+  final VoidCallback? onMove;
+  final VoidCallback onRename;
+  final VoidCallback onDelete;
+  final bool allowGrouping;
 
   @override
   Widget build(BuildContext context) => ListTile(
     dense: true,
     minLeadingWidth: 18,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+    contentPadding: const EdgeInsets.only(left: 8, right: 2),
     leading: const Icon(LucideIcons.messageSquare, size: 15),
-    title: Text(
-      conversation.title,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: const TextStyle(fontSize: 12.5),
+    title: Row(
+      children: [
+        Expanded(
+          child: Text(
+            conversation.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12.5),
+          ),
+        ),
+        if (conversation.pinned)
+          const Padding(
+            padding: EdgeInsets.only(left: 4),
+            child: Icon(
+              LucideIcons.star,
+              size: 12,
+              color: EsaColors.accent,
+            ),
+          ),
+      ],
+    ),
+    trailing: PopupMenuButton<_ConversationEntryAction>(
+      tooltip: '对话操作',
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+      icon: Icon(LucideIcons.moreHorizontal, size: 16, color: context.n.n600),
+      onSelected: (action) {
+        switch (action) {
+          case _ConversationEntryAction.pin:
+            onPin();
+            break;
+          case _ConversationEntryAction.move:
+            onMove?.call();
+            break;
+          case _ConversationEntryAction.rename:
+            onRename();
+            break;
+          case _ConversationEntryAction.delete:
+            onDelete();
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: _ConversationEntryAction.pin,
+          child: Row(
+            children: [
+              Icon(
+                LucideIcons.star,
+                size: 15,
+                color: conversation.pinned ? EsaColors.accent : null,
+              ),
+              const SizedBox(width: 8),
+              Text(conversation.pinned ? '取消置顶' : '置顶'),
+            ],
+          ),
+        ),
+        if (allowGrouping && onMove != null)
+          const PopupMenuItem(
+            value: _ConversationEntryAction.move,
+            child: Row(
+              children: [
+                Icon(LucideIcons.folderInput, size: 15),
+                SizedBox(width: 8),
+                Text('移动到分组'),
+              ],
+            ),
+          ),
+        const PopupMenuItem(
+          value: _ConversationEntryAction.rename,
+          child: Row(
+            children: [
+              Icon(LucideIcons.pencil, size: 15),
+              SizedBox(width: 8),
+              Text('重命名'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: _ConversationEntryAction.delete,
+          child: Row(
+            children: [
+              Icon(LucideIcons.trash2, size: 15),
+              SizedBox(width: 8),
+              Text('删除'),
+            ],
+          ),
+        ),
+      ],
     ),
     onTap: onTap,
   );
 }
+
+enum _SidebarGroupAction { rename, delete }
+
+enum _ConversationEntryAction { pin, move, rename, delete }
 
 class _StudentContextRail extends StatelessWidget {
   const _StudentContextRail({

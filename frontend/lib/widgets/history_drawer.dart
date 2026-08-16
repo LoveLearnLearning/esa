@@ -9,6 +9,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import 'conversation_move_dialog.dart';
 import '../widgets/esa_buttons.dart';
 import 'profile_sheet.dart';
 
@@ -259,6 +260,15 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
   Widget _row(BuildContext context, AppState app, ChatConversation c) {
     final active = app.activeId == c.id;
     final editing = _renameId == c.id;
+    String? groupName;
+    if (c.groupId != null) {
+      for (final group in app.groups) {
+        if (group.id == c.groupId) {
+          groupName = group.name;
+          break;
+        }
+      }
+    }
     return Container(
       margin: const EdgeInsets.only(bottom: 2),
       decoration: BoxDecoration(
@@ -282,29 +292,56 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                 Expanded(
                   child: editing
                       ? _renameField(context, app)
-                      : Text(
-                          c.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13.5),
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              c.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13.5),
+                            ),
+                            if (groupName != null)
+                              Text(
+                                groupName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: context.n.n600,
+                                ),
+                              ),
+                          ],
                         ),
                 ),
                 if (!editing) ...[
                   _MiniIconButton(
                     icon: LucideIcons.star,
                     size: 24,
+                    tooltip: c.pinned ? '取消置顶' : '置顶',
                     color: c.pinned ? EsaColors.accent : context.n.n600,
                     fill: c.pinned,
                     onTap: () => app.togglePin(c.id),
                   ),
+                  if (c.workspaceType != WorkspaceType.research ||
+                      c.researchProjectId != null)
+                    _MiniIconButton(
+                      icon: LucideIcons.folderInput,
+                      size: 24,
+                      tooltip: '移动到分组',
+                      onTap: () => _moveConversation(context, app, c),
+                    ),
                   _MiniIconButton(
                     icon: LucideIcons.pencil,
                     size: 24,
+                    tooltip: '重命名',
                     onTap: () => _startRename(c),
                   ),
                   _MiniIconButton(
                     icon: LucideIcons.trash2,
                     size: 24,
+                    tooltip: '删除',
                     hoverRed: true,
                     onTap: () => app.deleteConversation(c.id),
                   ),
@@ -315,6 +352,27 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
         ),
       ),
     );
+  }
+
+  Future<void> _moveConversation(
+    BuildContext context,
+    AppState app,
+    ChatConversation conversation,
+  ) async {
+    final target = await showMoveConversationDialog(
+      context,
+      app,
+      conversation,
+    );
+    if (target == null || !context.mounted) return;
+    try {
+      await app.moveConversationToGroup(conversation.id, target.groupId);
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('移动失败：$error')),
+      );
+    }
   }
 
   Widget _renameField(BuildContext context, AppState app) {
@@ -420,6 +478,7 @@ class _MiniIconButton extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.size = 30,
+    this.tooltip,
     this.color,
     this.fill = false,
     this.hoverRed = false,
@@ -428,13 +487,14 @@ class _MiniIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final double size;
+  final String? tooltip;
   final Color? color;
   final bool fill;
   final bool hoverRed;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final button = InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(EsaRadii.iconButton),
       hoverColor: hoverRed
@@ -450,5 +510,6 @@ class _MiniIconButton extends StatelessWidget {
         ),
       ),
     );
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }
