@@ -195,24 +195,28 @@ if (( rag_gpu_count == 1 )); then
 fi
 
 if [[ "$rag_enabled" == "1" ]]; then
+    qdrant_binary="${ESA_QDRANT_BINARY:-$PROJECT_ROOT/runtime/qdrant/bin/qdrant}"
+    qdrant_storage="${ESA_QDRANT_STORAGE_PATH:-$runtime_root/qdrant-storage}"
+    qdrant_snapshots="${ESA_QDRANT_SNAPSHOTS_PATH:-$runtime_root/qdrant-snapshots}"
+    qdrant_temp="${ESA_QDRANT_TEMP_PATH:-$runtime_root/qdrant-temp}"
     if ! curl -q --noproxy '*' --silent --show-error --fail \
         --max-time 2 "${rag_qdrant_url%/}/healthz" >/dev/null 2>&1; then
         if [[ "$rag_qdrant_url" != "http://127.0.0.1:6333" && "$rag_qdrant_url" != "http://localhost:6333" ]]; then
             echo "ERROR: 外部 Qdrant 不可用：$rag_qdrant_url" >&2
             exit 1
         fi
-        qdrant_binary="${ESA_QDRANT_BINARY:-$PROJECT_ROOT/runtime/qdrant/bin/qdrant}"
-        qdrant_storage="${ESA_QDRANT_STORAGE_PATH:-$runtime_root/qdrant-storage}"
         if [[ ! -x "$qdrant_binary" ]]; then
             echo "ERROR: RAG 已启用但找不到 Qdrant：$qdrant_binary" >&2
             exit 1
         fi
-        mkdir -p "$qdrant_storage"
-        qdrant_storage_type="$(stat -f -c '%T' "$qdrant_storage" 2>/dev/null || true)"
-        if [[ "$qdrant_storage_type" == nfs* ]]; then
-            echo "ERROR: Qdrant storage 不能位于 NFS：$qdrant_storage；请把 ESA_QDRANT_STORAGE_PATH 指向本地持久盘。" >&2
-            exit 1
-        fi
+        mkdir -p "$qdrant_storage" "$qdrant_snapshots" "$qdrant_temp"
+        for qdrant_local_path in "$qdrant_storage" "$qdrant_snapshots" "$qdrant_temp"; do
+            qdrant_path_type="$(stat -f -c '%T' "$qdrant_local_path" 2>/dev/null || true)"
+            if [[ "$qdrant_path_type" == nfs* ]]; then
+                echo "ERROR: Qdrant 活动目录不能位于 NFS：$qdrant_local_path" >&2
+                exit 1
+            fi
+        done
         echo "===== Starting local Qdrant ====="
         (
             cd "$(dirname "$qdrant_binary")/.."
@@ -220,6 +224,8 @@ if [[ "$rag_enabled" == "1" ]]; then
             export QDRANT__SERVICE__HTTP_PORT=6333
             export QDRANT__SERVICE__GRPC_PORT=6334
             export QDRANT__STORAGE__STORAGE_PATH="$qdrant_storage"
+            export QDRANT__STORAGE__SNAPSHOTS_PATH="$qdrant_snapshots"
+            export QDRANT__STORAGE__TEMP_PATH="$qdrant_temp"
             exec "$qdrant_binary" --disable-telemetry
         ) >logs/qdrant.log 2>&1 &
         qdrant_pid=$!
@@ -242,24 +248,28 @@ if [[ "$rag_enabled" == "1" ]]; then
         exit 1
     fi
     qdrant_snapshot="${ESA_QDRANT_SNAPSHOT_PATH:-}"
-    if [[ -n "$qdrant_pid" && -n "$qdrant_snapshot" ]]; then
+    if ! curl -q --noproxy '*' --silent --show-error --fail \
+        --max-time 5 "${rag_qdrant_url%/}/collections/${rag_qdrant_collection}" \
+        >/dev/null 2>&1; then
+        if [[ -z "$qdrant_snapshot" ]]; then
+            echo "ERROR: Qdrant Collection 不存在，且未设置 ESA_QDRANT_SNAPSHOT_PATH：${rag_qdrant_collection}" >&2
+            exit 1
+        fi
         if [[ ! -f "$qdrant_snapshot" ]]; then
             echo "ERROR: Qdrant snapshot 不存在：$qdrant_snapshot" >&2
             exit 1
         fi
-        if ! curl -q --noproxy '*' --silent --show-error --fail \
-            --max-time 5 "${rag_qdrant_url%/}/collections/${rag_qdrant_collection}" \
-            >/dev/null 2>&1; then
-            echo "===== Restoring Qdrant snapshot ====="
-            if ! curl -q --noproxy '*' --silent --show-error --fail \
-                --max-time 300 --request POST \
-                --form "snapshot=@${qdrant_snapshot}" \
-                "${rag_qdrant_url%/}/collections/${rag_qdrant_collection}/snapshots/upload?priority=snapshot" \
-                >/dev/null; then
-                echo "ERROR: Qdrant snapshot 恢复失败：$qdrant_snapshot" >&2
-                exit 1
-            fi
+        if [[ -n "$qdrant_pid" ]]; then
+            mkdir -p "$qdrant_snapshots/$rag_qdrant_collection"
         fi
+        echo "===== Restoring and verifying Qdrant snapshot ====="
+        PYTHON_BIN="${PYTHON_BIN:-python}" \
+        "$PROJECT_ROOT/bin/restore-qdrant-snapshot" \
+            --snapshot "$qdrant_snapshot" \
+            --collection "$rag_qdrant_collection" \
+            --qdrant-url "$rag_qdrant_url" \
+            --timeout "${ESA_QDRANT_RESTORE_TIMEOUT:-1800}" \
+            --wait-seconds "${ESA_QDRANT_RESTORE_WAIT_SECONDS:-300}"
     fi
 fi
 
