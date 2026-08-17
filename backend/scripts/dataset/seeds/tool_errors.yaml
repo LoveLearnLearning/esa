@@ -380,17 +380,26 @@ empty_result:
 registry:
   # 完全字面量。web_search 那 5 条是 gen_external.py 早先就在用的，一并登记。
   literal:
-    - { text: "[Error]: 搜索请求超时", src: backend/agent/tools/web_search.py:94 }
-    - { text: "[Error]: SearXNG 禁止 JSON 输出，请检查 settings.yml 中是否启用了 search.formats.json",
-        src: backend/agent/tools/web_search.py:98-104 }
-    - { text: "[Error]: SearXNG 返回 HTTP 502", src: backend/agent/tools/web_search.py:105 }
-    - { text: "[Error]: 无法连接到 SearXNG：Connection refused", src: backend/agent/tools/web_search.py:110 }
-    - { text: "[Error]: SearXNG 返回的不是有效 JSON", src: backend/agent/tools/web_search.py:113 }
-    - { text: "当前会话为 isolated 模式，禁止读取长期学习状态", src: backend/agent/tools/mastery_tools.py:71 }
-    - { text: "当前会话为 isolated 模式，禁止读取长期记忆", src: backend/agent/tools/memory_tools.py:244,295 }
-    - { text: "当前会话为 no_write/isolated 模式，禁止写入记忆", src: backend/agent/tools/memory_tools.py:162 }
-    - { text: "当前会话为 no_write/isolated 模式，禁止删除长期记忆", src: backend/agent/tools/memory_tools.py:334 }
-    - { text: "当前会话为 no_write/isolated 模式，禁止记录练习结果", src: backend/agent/tools/mastery_tools.py:471 }
+    # ⚠️ 2026-08-15：原来这里有 5 条 SearXNG 文案（"搜索请求超时"、"SearXNG 返回 HTTP 502" 等）。
+    # 后端 `1b64473` 把 web_search **整个换成了 You.com MCP 适配器**，
+    # 那 5 句在后端一条都不剩了，我们那 5 条样本一夜之间全变成线上不存在的文案。
+    # 顺带形状也变了：不再是 `[Error]: …` 字符串，而是执行器包出来的 dict
+    # （capability_runtime.py 给 web_search 开了专用分支，RuntimeError 在 :165 被接住）。
+    #
+    # ⚠️ 这次没被任何检查拦住 —— `check_error_texts_registered` 只保证
+    # 「样本用的文案在本表里登记过」，**不保证本表里的文案后端还存在**。
+    # 这是本表的固有盲区：删掉旧的、补上新的只能靠人跑一次后端。
+    - { text: "You.com MCP search service is not configured", src: backend/agent/tools/web_search.py:126 }
+    # ⚠️ 2026-08-15：上面原来有 5 条中文阻断文案（"当前会话为 isolated 模式，禁止…"），
+    # 全部删除 —— 那 5 句**是我们自己写的**，后端从来没有过。
+    # 真实的阻断文案是下面这两句英文（tools/learning/runtime.py:25-30），
+    # 由 data/cache/learning_real.json 的真实抓取钉住。
+    - { text: "isolated mode", src: backend/agent/tools/learning/runtime.py:26 }
+    - { text: "conversation mode forbids writes", src: backend/agent/tools/learning/runtime.py:30 }
+    # 记忆侧的策略拒绝（normal 模式也会发生，与会话模式无关）。
+    # 经 BoundToolExecutor 后长成 {"ok":false,"error":"memory_policy_denied","detail":<下面这句>}
+    - { text: "sensitive credentials cannot be stored", src: backend/agent/memories/core_memory_policy.py:63 }
+    - { text: "memory content cannot be empty", src: backend/agent/memories/core_memory_policy.py:59 }
   # 内插了变量的，用正则登记
   patterns:
     - { re: "^\\S+ skill not found!$", src: backend/agent/tools/skills.py:249 }
@@ -400,76 +409,104 @@ registry:
 # ---------------------------------------------------------------------------
 # ③ 会话模式阻断类 —— 调用完全正确，是当前会话模式不允许
 #
-# 观测由 fixtures.BLOCKED_BUILDERS 产出，逐字复刻后端的阻断分支（含键顺序）。
-# 模型无从预知会话模式，所以先调用是对的；要学的是**读懂 allowed/saved 为 False
-# 并如实转达**，而不是当成成功继续往下编。
+# ⚠️ 2026-08-15 重写。上一版这里有 6 条，其中 **4 条记忆工具的是虚构的场景**。
+#
+# 跑真实 BoundToolExecutor 才发现（见 tools/capture_memory_tools.py 文件头）：
+# 记忆工具在受限会话里**根本不在工具表里**——`CapabilityRuntime.compile()`
+# 在编能力视图时就把它们摘掉了（capability_runtime.py:199-203，
+# isolated 摘掉全部 5 个、no_write 摘掉 3 个写工具）。
+# 模型看不见的工具不会被调用，所以「调了记忆工具被拒」这个场景线上不存在，
+# 那 4 条样本教的是一套虚构的对话。已删除。
+#
+# 学情工具**不受这个摘除影响**（compile 只摘记忆/科研/附件），
+# 所以它们的阻断分支是真的，保留 —— 但载荷和文案全部改成真实的：
+#   isolated + 读工具       {"allowed": false, "action": <工具名>, "reason": "isolated mode"}
+#   非 normal + 写工具      {"saved": false, "reason": "conversation mode forbids writes"}
+# （tools/learning/runtime.py:25-30，由 data/cache/learning_real.json 钉住）
+#
+# ⚠️ reason 是**英文**。上一版写的中文长句（"当前会话为 isolated 模式，禁止…"）
+# 是我们自己编的，后端从来没有过，而回答正文还逐字引用了它。
+# 现在回答里不再照抄这句英文，而是把它的**意思**讲清楚 —— 线上就是这么一个
+# 英文短语，让模型学会翻译它、而不是把它原样甩给学生。
+#
+# 要学的是：读懂 allowed/saved 为 False 并如实转达，而不是当成成功继续往下编。
 # ---------------------------------------------------------------------------
 blocked:
-  - id: blocked_get_core_memories
-    tool: get_core_memories
-    args: {}
-    lures: [get_core_memories, search_core_memories, save_core_memory]
-    q: "把你记着我的那些信息都列出来我看看"
-    a: |
-      这次会话是隔离模式，读不了你的长期记忆——工具返回的是 `allowed: False`，原因写着
-      「当前会话为 isolated 模式，禁止读取长期记忆」。
-
-      所以我现在手上一条你的历史记录都没有，也不会凭印象编几条给你。想查完整记忆，换一个普通会话再问我一次就行。
-
-  - id: blocked_search_core_memories
-    tool: search_core_memories
-    args: { query: "学习目标" }
-    lures: [search_core_memories, get_core_memories]
-    q: "我之前跟你说过的学习目标是什么来着"
-    a: |
-      查不到——不是没记，是这次会话为 isolated 模式，禁止读取长期记忆（工具返回 `allowed: False`）。
-
-      你要是现在告诉我目标是什么，我们这一轮可以照着用；但它不会被存下来，下次还得再说一遍。
-
-  - id: blocked_save_core_memory
-    tool: save_core_memory
-    args: { memory_key: "response_style", content: "回答尽量简短", category: "preference" }
-    lures: [save_core_memory, delete_core_memory, get_core_memories]
-    # 话术不能和 gen_negatives 的 save 正例撞车（那边已有「以后回答简短一点，记住这个偏好」），
-    # 否则同一句话在两处有不同标签。是 check_exact_duplicates 抓出来的。
-    q: "把「回答尽量简短」这条偏好存进你的长期记忆里"
-    a: |
-      这次没存成：工具返回 `saved: False`，原因是「当前会话为 no_write/isolated 模式，禁止写入记忆」。
-
-      我不会假装已经记住了——那样你下次发现我又开始长篇大论，只会更莫名其妙。
-      这一轮我先按简短来；等换到可写入的会话你再说一次，我就能长期记住。
-
-  - id: blocked_delete_core_memory
-    tool: delete_core_memory
-    args: { memory_id: "memory-learning-goal" }
-    lures: [delete_core_memory, save_core_memory, get_core_memories]
-    # 同上：不能和 gen_negatives 的 delete 正例撞话术
-    q: "帮我把 learning_goal 那条记忆删了，我打算重新规划一下"
-    a: |
-      没能删掉：工具返回 `deleted: False`，原因是「当前会话为 no_write/isolated 模式，禁止删除长期记忆」。
-
-      也就是说那条记忆**还在**。这点必须说清楚，不然你以为删了、实际没删，比不删更麻烦。
-      换到普通会话再说一次，我就能真删掉。
-
   - id: blocked_recommend_practice
     tool: recommend_practice
+    mode: isolated
     args: { course: "数据结构", weeks_to_exam: 3 }
     lures: [recommend_practice, get_mastery_report, get_review_timing]
     q: "数据结构还有 3 周考试，按我的掌握情况帮我排个练习优先级"
     a: |
-      排不了——这次会话是隔离模式，读不到你的长期学习状态（工具返回 `allowed: False`，
-      原因「当前会话为 isolated 模式，禁止读取长期学习状态」）。
+      排不了——这次是隔离会话，读不到你的长期学习状态（工具返回 `allowed: false`，
+      原因是 `isolated mode`）。
 
       没有掌握度数据，我给的任何「优先级」都是拍脑袋的，不如不给。
       两个办法：换个普通会话我按真实学情排；或者你现在口头说说哪几块最没底，我按这个先给个粗排。
 
+  - id: blocked_get_mastery_report
+    tool: get_mastery_report
+    mode: isolated
+    args: { course: "操作系统" }
+    lures: [get_mastery_report, get_mastery_level, recommend_practice]
+    q: "把我操作系统的掌握情况整体给我看一下"
+    a: |
+      这次会话是隔离模式，学情数据读不出来（`allowed: false`，`isolated mode`）——
+      所以我手上一个掌握度数字都没有。
+
+      我不会照着印象编一份报告给你，那比不给更误导。换普通会话再问我一次就能查到；
+      要是你现在就想过一遍，可以口头跟我说说哪几章有把握、哪几章没有，我帮你梳理。
+
   - id: blocked_record_answer
     tool: record_answer
+    mode: no_write
     args: { kp_id: "二叉树遍历", correct: true }
     lures: [record_answer, record_learning_evidence, get_mastery_level]
     q: "刚才那道二叉树遍历的题我做对了，记一下"
     a: |
-      没记上：工具返回 `saved: False`，原因是「当前会话为 no_write/isolated 模式，禁止记录练习结果」。
+      没记上：工具返回 `saved: false`，原因是 `conversation mode forbids writes`——
+      当前会话不允许写入学习记录。
 
       所以这次做对**不会**反映到掌握度上。要留痕的话换个可写入的会话再告诉我一次；
       不留痕也没关系，我们接着往下练。
+
+  - id: blocked_record_learning_evidence
+    tool: record_learning_evidence
+    mode: isolated
+    args: { kp_id: "死锁", activity_type: "teach_back", explanation_score: 0.7 }
+    lures: [record_learning_evidence, record_answer, get_learning_evidence_summary]
+    q: "我把死锁的四个条件给室友讲了一遍，讲得挺顺的，帮我记一下"
+    a: |
+      这次记不进去：隔离会话下学习证据是写不了的（`allowed: false`，`isolated mode`）。
+
+      讲得顺这件事本身是个好信号——复述能讲通常说明是真懂了，不是背下来的。
+      只是它这次没法落到你的学习档案里。换个普通会话再说一次我就能记上。
+
+# ---------------------------------------------------------------------------
+# ④ 策略拒绝类 —— 与会话模式无关，普通会话里也会发生
+#
+# 这是 2026-08-15 新增的一组。记忆写入会被 CoreMemoryPolicy 拦下，
+# 经 BoundToolExecutor 包成 `{"ok": false, "error": <码>, "tool": ..., "detail": <文案>}`
+# （capability_runtime.py:151-171）—— 又一种失败长相，键名和前三种都不一样。
+#
+# 「不要保存密码、API Key、访问令牌或其他认证秘密」这句话就写在 save_core_memory
+# 的 schema 描述里，而**赛题《02—伦理与安全合规性声明》也要求承诺这一条**。
+# 光在提示词里写一句没用，得有样本教模型：被拒之后如实说明、并给出安全的替代做法。
+# ---------------------------------------------------------------------------
+denied:
+  - id: denied_save_api_key
+    tool: save_core_memory
+    args: { memory_key: "api_cred", content: "我的 api_key 是 sk-abc123", category: "general" }
+    lures: [save_core_memory, propose_core_memory, get_core_memories]
+    q: "帮我把我的 api_key 是 sk-abc123 记下来，我老是忘"
+    a: |
+      这条存不了，系统直接拦下了：`sensitive credentials cannot be stored`——
+      API Key、密码、令牌这类东西不允许写进长期记忆。
+
+      这个限制是对的，我也不建议绕过它：长期记忆会在后续对话里被检索出来，
+      凭据一旦进去，就等于散落在往后每一次会话里。
+
+      更稳妥的做法是用密码管理器（1Password、Bitwarden 这类）或者你系统的钥匙串存，
+      需要时从那里取。如果你是想让我记住「你在用哪个服务」，那我可以存——
+      比如「常用 OpenAI API 做课程项目」，这句不含凭据，要我记下来吗？

@@ -47,14 +47,25 @@ def capture(repo: Path) -> dict:
     """跑真实 load_skill()，返回落盘用的全部字段。"""
     sys.path.insert(0, str(repo))
     try:
-        from backend.agent.tools.bootstrap import register_builtin_tools  # noqa: PLC0415
+        # ⚠️ 必须先显式注册工具，再 import skills。
+        # 后端 2026-08-13 重构后，`tools/__init__.py` 明写
+        # "no registration side effects on import" —— 注册改成了显式调用
+        # `bootstrap.register_builtin_tools()`。而 skills 的契约校验会拿
+        # `tr.registered_tools` 去核 `requires_tools`（skills.py:170-178），
+        # 不先注册就会报「requires_tools 引用了未注册工具」。
+        # 别把这里改成跳过校验 —— 那个校验正是我们想要的。
+        from backend.agent.tools.bootstrap import (  # noqa: PLC0415
+            register_builtin_tools,
+        )
+
+        register_builtin_tools()
         from backend.agent.tools.skills import (  # noqa: PLC0415
             build_skills_context, list_skills, list_skills_detail, load_skill,
         )
     except ImportError as exc:
         raise SystemExit(
             f"无法 import 后端 skills 模块：{exc}\n"
-            "它会连带 import 整个 tool registry，缺依赖就先 pip install。"
+            "缺依赖就先 pip install。"
             "注意不要改用本地复刻顶替 —— 那正是这个脚本要修掉的问题。"
         ) from exc
 
@@ -123,7 +134,7 @@ def main() -> int:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    print(f"\n抓到 {len(bodies)} 份 Skill 正文 → {out_path.relative_to(ROOT)}")
+    print(f"\n抓到 {len(bodies)} 份 Skill 正文 → {backend_repo.display_path(out_path, ROOT)}")
     print(f"  来源：{backend.describe()}")
     print(f"  未知 skill 的失败文案：{not_found_template!r}")
     return 0

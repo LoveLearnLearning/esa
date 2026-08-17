@@ -84,8 +84,15 @@ def _build_is_stable() -> bool:
     """同一份 IR 连续 build 两次，产出的记录序列必须完全一致。"""
     from esa.evalset import build, gold_of
     from esa.ir import iter_ir_files, load_samples
+    from esa.paths import in_dataset
 
-    samples = [s for f in iter_ir_files("dataset/data/ir") for s in load_samples(f)]
+    # ⚠️ 这里原来写死了相对路径 "dataset/data/ir"，只有在仓库根跑才对。
+    # 搬进 backend/scripts/dataset/ 之后（组长指定的落点）路径是
+    # backend/scripts/dataset/data/ir，于是 iter_ir_files 一个文件都找不到，
+    # samples 成了空表 —— 接着 assert_no_stale 会把台账里全部 56 条
+    # 报成「样本已不存在」，看起来像台账烂了，其实是路径错了。
+    # 其余代码早就走 esa/paths.py 做位置无关，这里漏了一处。
+    samples = [s for f in iter_ir_files(in_dataset("data/ir")) for s in load_samples(f)]
 
     def fingerprint():
         """处理 `fingerprint` 相关逻辑。"""

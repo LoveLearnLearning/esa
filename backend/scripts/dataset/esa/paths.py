@@ -58,3 +58,39 @@ def repo_root(start: Path | None = None) -> Path:
 def in_dataset(*parts: str) -> Path:
     """`dataset/` 下的路径。给 argparse 默认值用，替掉 CWD 相对的字符串。"""
     return DATASET_DIR.joinpath(*parts)
+
+
+def backend_repo() -> Path | None:
+    """**后端源码**所在的仓库根；找不到返回 `None`。
+
+    与 `repo_root()` 的区别：`repo_root()` 找的是"我在哪个仓库里"，
+    而这里找的是"后端源码在哪"。两者在后端仓库里是同一个目录，
+    在我们的工作副本里**不是** —— 工作副本自己是个 git 仓库（有 `.git`），
+    但它下面没有 `backend/agent/`。
+
+    2026-08-17 加这个函数的直接原因：上游给 `system_prompt.py` 加了缓存指纹闸门，
+    用的是 `REPO_ROOT = ROOT.parents[1]`。那个写法只在
+    `<repo>/backend/scripts/dataset/` 这一种布局下成立；在我们的
+    `~/Desktop/项目/dataset/` 下会算出 `/Users/apple`，闸门直接抛
+    `FileNotFoundError: no prompt source files found`。
+    这和 `paths.py` 开头那段要修的病是同一个 —— **写死层数**。
+
+    三种布局，按顺序试：
+      1. 数据集就在后端仓库里 → `repo_root()`
+      2. 独立工作副本 + 本地后端 clone → `$ESA_BACKEND`，否则 `~/esa`
+      3. 都没有（例如发布出去的独立仓库）→ `None`
+
+    ⚠️ 返回 `None` 时**调用方要如实报「无法校验」，别静默放行**，
+    也别硬失败 —— 发布仓库里本来就没有后端源码，那不是错误。
+    """
+    import os  # noqa: PLC0415
+
+    candidates: list[Path] = [repo_root()]
+    env = os.environ.get("ESA_BACKEND")
+    if env:
+        candidates.append(Path(env).expanduser())
+    candidates.append(Path("~/esa").expanduser())
+    for d in candidates:
+        if (d / "backend/agent/skills").is_dir():
+            return d
+    return None

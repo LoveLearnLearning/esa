@@ -1,0 +1,1898 @@
+{
+  "_meta": {
+    "captured_at": "2026-08-17T17:38:12+00:00",
+    "source": "github.com/LoveLearnLearning/esa",
+    "source_repo": "local-clone@ce37198",
+    "note": "由 dataset/tools/capture_learning_tools.py 在临时 SQLite 上跑真实 execute_learning_tool 产出，禁止手改。⚠️ result 里的数值**不是逐日可复现的**（apply_evidence 带时间衰减），所以数据生成一律以 esa/fixtures.py 的确定性取值为准；本文件的权威部分是 `shape`（结构），由 test_fixture_contract.py 校验。",
+    "knowledge_graph": {
+      "points": 479,
+      "edges": 447
+    }
+  },
+  "calls": [
+    {
+      "mode": "normal",
+      "tool": "recommend_practice",
+      "arguments": {
+        "course": "操作系统",
+        "weeks_to_exam": 2
+      },
+      "result": {
+        "allowed": true,
+        "user_name": "stu_demo",
+        "course": "操作系统",
+        "count": 5,
+        "recommendations": [
+          {
+            "kp_id": "死锁",
+            "name": "死锁",
+            "course": "操作系统",
+            "weight": 0.07,
+            "mastery_level": 25.35,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "practice_count": 4,
+            "has_record": true,
+            "priority": 0.5086,
+            "reasons": [
+              "掌握度低(mastery=25.4)",
+              "距期末仅 2 周",
+              "前置薄弱(3 个前置掌握度<50)"
+            ],
+            "weak_prerequisites": [
+              {
+                "kp_id": "操作系统概述",
+                "name": "操作系统概述",
+                "course": "操作系统",
+                "depth": 3,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "进程与线程",
+                "name": "进程与线程",
+                "course": "操作系统",
+                "depth": 2,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "进程同步",
+                "name": "进程同步",
+                "course": "操作系统",
+                "depth": 1,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              }
+            ]
+          },
+          {
+            "kp_id": "设备管理",
+            "name": "设备管理",
+            "course": "操作系统",
+            "weight": 0.04,
+            "mastery_level": 37.72,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "practice_count": 4,
+            "has_record": true,
+            "priority": 0.4593,
+            "reasons": [
+              "掌握度低(mastery=37.7)",
+              "距期末仅 2 周",
+              "前置薄弱(5 个前置掌握度<50)"
+            ],
+            "weak_prerequisites": [
+              {
+                "kp_id": "冯诺依曼结构",
+                "name": "冯诺依曼结构",
+                "course": "计算机组成原理",
+                "depth": 5,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "指令系统",
+                "name": "指令系统",
+                "course": "计算机组成原理",
+                "depth": 4,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "CPU数据通路",
+                "name": "CPU数据通路",
+                "course": "计算机组成原理",
+                "depth": 3,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "控制器",
+                "name": "控制器",
+                "course": "计算机组成原理",
+                "depth": 2,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "中断系统",
+                "name": "中断系统",
+                "course": "计算机组成原理",
+                "depth": 1,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              }
+            ]
+          },
+          {
+            "kp_id": "虚拟内存",
+            "name": "虚拟内存",
+            "course": "操作系统",
+            "weight": 0.09,
+            "mastery_level": 50.61,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "practice_count": 4,
+            "has_record": true,
+            "priority": 0.4242,
+            "reasons": [
+              "距期末仅 2 周",
+              "前置薄弱(3 个前置掌握度<50)"
+            ],
+            "weak_prerequisites": [
+              {
+                "kp_id": "操作系统概述",
+                "name": "操作系统概述",
+                "course": "操作系统",
+                "depth": 3,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "内存管理",
+                "name": "内存管理",
+                "course": "操作系统",
+                "depth": 2,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "分页",
+                "name": "分页",
+                "course": "操作系统",
+                "depth": 1,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              }
+            ]
+          },
+          {
+            "kp_id": "经典同步问题",
+            "name": "经典同步问题",
+            "course": "操作系统",
+            "weight": 0.06,
+            "mastery_level": null,
+            "retention": null,
+            "evidence_confidence": 0.0,
+            "practice_count": 0,
+            "has_record": false,
+            "priority": 0.4028,
+            "reasons": [
+              "尚无学习证据",
+              "距期末仅 2 周",
+              "前置薄弱(3 个前置掌握度<50)"
+            ],
+            "weak_prerequisites": [
+              {
+                "kp_id": "操作系统概述",
+                "name": "操作系统概述",
+                "course": "操作系统",
+                "depth": 4,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "进程与线程",
+                "name": "进程与线程",
+                "course": "操作系统",
+                "depth": 3,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "进程同步",
+                "name": "进程同步",
+                "course": "操作系统",
+                "depth": 2,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              }
+            ]
+          },
+          {
+            "kp_id": "页面置换算法",
+            "name": "页面置换算法",
+            "course": "操作系统",
+            "weight": 0.06,
+            "mastery_level": null,
+            "retention": null,
+            "evidence_confidence": 0.0,
+            "practice_count": 0,
+            "has_record": false,
+            "priority": 0.4028,
+            "reasons": [
+              "尚无学习证据",
+              "距期末仅 2 周",
+              "前置薄弱(3 个前置掌握度<50)"
+            ],
+            "weak_prerequisites": [
+              {
+                "kp_id": "操作系统概述",
+                "name": "操作系统概述",
+                "course": "操作系统",
+                "depth": 4,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "内存管理",
+                "name": "内存管理",
+                "course": "操作系统",
+                "depth": 3,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "分页",
+                "name": "分页",
+                "course": "操作系统",
+                "depth": 2,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              }
+            ]
+          }
+        ]
+      },
+      "shape": {
+        "allowed": "bool",
+        "user_name": "str",
+        "course": "str",
+        "count": "int",
+        "recommendations": [
+          {
+            "kp_id": "str",
+            "name": "str",
+            "course": "str",
+            "weight": "float",
+            "mastery_level": "float",
+            "retention": "float",
+            "evidence_confidence": "float",
+            "practice_count": "int",
+            "has_record": "bool",
+            "priority": "float",
+            "reasons": [
+              "str"
+            ],
+            "weak_prerequisites": [
+              {
+                "kp_id": "str",
+                "name": "str",
+                "course": "str",
+                "depth": "int",
+                "mastery_level": "NoneType",
+                "status": "str",
+                "retention": "NoneType",
+                "evidence_confidence": "float"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "recommend_practice",
+      "arguments": {
+        "course": "不存在的课",
+        "weeks_to_exam": 2
+      },
+      "result": {
+        "allowed": true,
+        "user_name": "stu_demo",
+        "course": "不存在的课",
+        "count": 0,
+        "recommendations": [],
+        "note": "未找到课程 '不存在的课' 的知识点"
+      },
+      "shape": {
+        "allowed": "bool",
+        "user_name": "str",
+        "course": "str",
+        "count": "int",
+        "recommendations": [],
+        "note": "str"
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "get_mastery_report",
+      "arguments": {
+        "course": "操作系统"
+      },
+      "result": {
+        "allowed": true,
+        "user_name": "stu_demo",
+        "course": "操作系统",
+        "total_points": 5,
+        "avg_mastery": 51.29,
+        "weak_points": [
+          {
+            "user_name": "stu_demo",
+            "kp_id": "死锁",
+            "has_record": true,
+            "mastery_level": 25.35,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 1.5,
+            "evidence_weight": 4.0,
+            "status": "weak",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 0,
+            "last_practiced_at": "2026-08-18T01:38:12.119187",
+            "created_at": "2026-08-18T01:38:12.118467",
+            "updated_at": "2026-08-18T01:38:12.119187",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "设备管理",
+            "has_record": true,
+            "mastery_level": 37.72,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 2.72,
+            "evidence_weight": 4.0,
+            "status": "weak",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 1,
+            "last_practiced_at": "2026-08-18T01:38:12.116253",
+            "created_at": "2026-08-18T01:38:12.115431",
+            "updated_at": "2026-08-18T01:38:12.116253",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "虚拟内存",
+            "has_record": true,
+            "mastery_level": 50.61,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 5.99,
+            "evidence_weight": 4.0,
+            "status": "learning",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 2,
+            "last_practiced_at": "2026-08-18T01:38:12.118220",
+            "created_at": "2026-08-18T01:38:12.117444",
+            "updated_at": "2026-08-18T01:38:12.118220",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "进程调度",
+            "has_record": true,
+            "mastery_level": 64.19,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 13.44,
+            "evidence_weight": 4.0,
+            "status": "learning",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 3,
+            "last_practiced_at": "2026-08-18T01:38:12.117217",
+            "created_at": "2026-08-18T01:38:12.116496",
+            "updated_at": "2026-08-18T01:38:12.117217",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "信号量",
+            "has_record": true,
+            "mastery_level": 78.58,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 30.6,
+            "evidence_weight": 4.0,
+            "status": "good",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 4,
+            "last_practiced_at": "2026-08-18T01:38:12.120158",
+            "created_at": "2026-08-18T01:38:12.119433",
+            "updated_at": "2026-08-18T01:38:12.120158",
+            "model_version": 2
+          }
+        ],
+        "strong_points": [
+          {
+            "user_name": "stu_demo",
+            "kp_id": "信号量",
+            "has_record": true,
+            "mastery_level": 78.58,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 30.6,
+            "evidence_weight": 4.0,
+            "status": "good",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 4,
+            "last_practiced_at": "2026-08-18T01:38:12.120158",
+            "created_at": "2026-08-18T01:38:12.119433",
+            "updated_at": "2026-08-18T01:38:12.120158",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "进程调度",
+            "has_record": true,
+            "mastery_level": 64.19,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 13.44,
+            "evidence_weight": 4.0,
+            "status": "learning",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 3,
+            "last_practiced_at": "2026-08-18T01:38:12.117217",
+            "created_at": "2026-08-18T01:38:12.116496",
+            "updated_at": "2026-08-18T01:38:12.117217",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "虚拟内存",
+            "has_record": true,
+            "mastery_level": 50.61,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 5.99,
+            "evidence_weight": 4.0,
+            "status": "learning",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 2,
+            "last_practiced_at": "2026-08-18T01:38:12.118220",
+            "created_at": "2026-08-18T01:38:12.117444",
+            "updated_at": "2026-08-18T01:38:12.118220",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "设备管理",
+            "has_record": true,
+            "mastery_level": 37.72,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 2.72,
+            "evidence_weight": 4.0,
+            "status": "weak",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 1,
+            "last_practiced_at": "2026-08-18T01:38:12.116253",
+            "created_at": "2026-08-18T01:38:12.115431",
+            "updated_at": "2026-08-18T01:38:12.116253",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "死锁",
+            "has_record": true,
+            "mastery_level": 25.35,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 1.5,
+            "evidence_weight": 4.0,
+            "status": "weak",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 0,
+            "last_practiced_at": "2026-08-18T01:38:12.119187",
+            "created_at": "2026-08-18T01:38:12.118467",
+            "updated_at": "2026-08-18T01:38:12.119187",
+            "model_version": 2
+          }
+        ],
+        "stale_points": []
+      },
+      "shape": {
+        "allowed": "bool",
+        "user_name": "str",
+        "course": "str",
+        "total_points": "int",
+        "avg_mastery": "float",
+        "weak_points": [
+          {
+            "user_name": "str",
+            "kp_id": "str",
+            "has_record": "bool",
+            "mastery_level": "float",
+            "retention": "float",
+            "evidence_confidence": "float",
+            "stability_days": "float",
+            "evidence_weight": "float",
+            "status": "str",
+            "needs_review": "bool",
+            "practice_count": "int",
+            "correct_count": "int",
+            "last_practiced_at": "str",
+            "created_at": "str",
+            "updated_at": "str",
+            "model_version": "int"
+          }
+        ],
+        "strong_points": [
+          {
+            "user_name": "str",
+            "kp_id": "str",
+            "has_record": "bool",
+            "mastery_level": "float",
+            "retention": "float",
+            "evidence_confidence": "float",
+            "stability_days": "float",
+            "evidence_weight": "float",
+            "status": "str",
+            "needs_review": "bool",
+            "practice_count": "int",
+            "correct_count": "int",
+            "last_practiced_at": "str",
+            "created_at": "str",
+            "updated_at": "str",
+            "model_version": "int"
+          }
+        ],
+        "stale_points": []
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "get_mastery_report",
+      "arguments": {},
+      "result": {
+        "allowed": true,
+        "user_name": "stu_demo",
+        "course": null,
+        "total_points": 5,
+        "avg_mastery": 51.29,
+        "weak_points": [
+          {
+            "user_name": "stu_demo",
+            "kp_id": "死锁",
+            "has_record": true,
+            "mastery_level": 25.35,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 1.5,
+            "evidence_weight": 4.0,
+            "status": "weak",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 0,
+            "last_practiced_at": "2026-08-18T01:38:12.119187",
+            "created_at": "2026-08-18T01:38:12.118467",
+            "updated_at": "2026-08-18T01:38:12.119187",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "设备管理",
+            "has_record": true,
+            "mastery_level": 37.72,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 2.72,
+            "evidence_weight": 4.0,
+            "status": "weak",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 1,
+            "last_practiced_at": "2026-08-18T01:38:12.116253",
+            "created_at": "2026-08-18T01:38:12.115431",
+            "updated_at": "2026-08-18T01:38:12.116253",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "虚拟内存",
+            "has_record": true,
+            "mastery_level": 50.61,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 5.99,
+            "evidence_weight": 4.0,
+            "status": "learning",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 2,
+            "last_practiced_at": "2026-08-18T01:38:12.118220",
+            "created_at": "2026-08-18T01:38:12.117444",
+            "updated_at": "2026-08-18T01:38:12.118220",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "进程调度",
+            "has_record": true,
+            "mastery_level": 64.19,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 13.44,
+            "evidence_weight": 4.0,
+            "status": "learning",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 3,
+            "last_practiced_at": "2026-08-18T01:38:12.117217",
+            "created_at": "2026-08-18T01:38:12.116496",
+            "updated_at": "2026-08-18T01:38:12.117217",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "信号量",
+            "has_record": true,
+            "mastery_level": 78.58,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 30.6,
+            "evidence_weight": 4.0,
+            "status": "good",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 4,
+            "last_practiced_at": "2026-08-18T01:38:12.120158",
+            "created_at": "2026-08-18T01:38:12.119433",
+            "updated_at": "2026-08-18T01:38:12.120158",
+            "model_version": 2
+          }
+        ],
+        "strong_points": [
+          {
+            "user_name": "stu_demo",
+            "kp_id": "信号量",
+            "has_record": true,
+            "mastery_level": 78.58,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 30.6,
+            "evidence_weight": 4.0,
+            "status": "good",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 4,
+            "last_practiced_at": "2026-08-18T01:38:12.120158",
+            "created_at": "2026-08-18T01:38:12.119433",
+            "updated_at": "2026-08-18T01:38:12.120158",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "进程调度",
+            "has_record": true,
+            "mastery_level": 64.19,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 13.44,
+            "evidence_weight": 4.0,
+            "status": "learning",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 3,
+            "last_practiced_at": "2026-08-18T01:38:12.117217",
+            "created_at": "2026-08-18T01:38:12.116496",
+            "updated_at": "2026-08-18T01:38:12.117217",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "虚拟内存",
+            "has_record": true,
+            "mastery_level": 50.61,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 5.99,
+            "evidence_weight": 4.0,
+            "status": "learning",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 2,
+            "last_practiced_at": "2026-08-18T01:38:12.118220",
+            "created_at": "2026-08-18T01:38:12.117444",
+            "updated_at": "2026-08-18T01:38:12.118220",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "设备管理",
+            "has_record": true,
+            "mastery_level": 37.72,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 2.72,
+            "evidence_weight": 4.0,
+            "status": "weak",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 1,
+            "last_practiced_at": "2026-08-18T01:38:12.116253",
+            "created_at": "2026-08-18T01:38:12.115431",
+            "updated_at": "2026-08-18T01:38:12.116253",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "死锁",
+            "has_record": true,
+            "mastery_level": 25.35,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 1.5,
+            "evidence_weight": 4.0,
+            "status": "weak",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 0,
+            "last_practiced_at": "2026-08-18T01:38:12.119187",
+            "created_at": "2026-08-18T01:38:12.118467",
+            "updated_at": "2026-08-18T01:38:12.119187",
+            "model_version": 2
+          }
+        ],
+        "stale_points": []
+      },
+      "shape": {
+        "allowed": "bool",
+        "user_name": "str",
+        "course": "NoneType",
+        "total_points": "int",
+        "avg_mastery": "float",
+        "weak_points": [
+          {
+            "user_name": "str",
+            "kp_id": "str",
+            "has_record": "bool",
+            "mastery_level": "float",
+            "retention": "float",
+            "evidence_confidence": "float",
+            "stability_days": "float",
+            "evidence_weight": "float",
+            "status": "str",
+            "needs_review": "bool",
+            "practice_count": "int",
+            "correct_count": "int",
+            "last_practiced_at": "str",
+            "created_at": "str",
+            "updated_at": "str",
+            "model_version": "int"
+          }
+        ],
+        "strong_points": [
+          {
+            "user_name": "str",
+            "kp_id": "str",
+            "has_record": "bool",
+            "mastery_level": "float",
+            "retention": "float",
+            "evidence_confidence": "float",
+            "stability_days": "float",
+            "evidence_weight": "float",
+            "status": "str",
+            "needs_review": "bool",
+            "practice_count": "int",
+            "correct_count": "int",
+            "last_practiced_at": "str",
+            "created_at": "str",
+            "updated_at": "str",
+            "model_version": "int"
+          }
+        ],
+        "stale_points": []
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "get_mastery_level",
+      "arguments": {
+        "kp_id": "进程调度"
+      },
+      "result": {
+        "allowed": true,
+        "has_record": true,
+        "user_name": "stu_demo",
+        "kp_id": "进程调度",
+        "mastery_level": 64.19,
+        "retention": 1.0,
+        "evidence_confidence": 0.681,
+        "stability_days": 13.44,
+        "evidence_weight": 4.0,
+        "status": "learning",
+        "needs_review": false,
+        "practice_count": 4,
+        "correct_count": 3,
+        "last_practiced_at": "2026-08-18T01:38:12.117217",
+        "created_at": "2026-08-18T01:38:12.116496",
+        "updated_at": "2026-08-18T01:38:12.117217",
+        "model_version": 2
+      },
+      "shape": {
+        "allowed": "bool",
+        "has_record": "bool",
+        "user_name": "str",
+        "kp_id": "str",
+        "mastery_level": "float",
+        "retention": "float",
+        "evidence_confidence": "float",
+        "stability_days": "float",
+        "evidence_weight": "float",
+        "status": "str",
+        "needs_review": "bool",
+        "practice_count": "int",
+        "correct_count": "int",
+        "last_practiced_at": "str",
+        "created_at": "str",
+        "updated_at": "str",
+        "model_version": "int"
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "get_mastery_level",
+      "arguments": {
+        "kp_id": "从没练过的知识点"
+      },
+      "result": {
+        "allowed": true,
+        "has_record": false,
+        "user_name": "stu_demo",
+        "kp_id": "从没练过的知识点",
+        "mastery_level": null,
+        "status": "unseen",
+        "retention": null,
+        "evidence_confidence": 0.0,
+        "practice_count": 0,
+        "correct_count": 0
+      },
+      "shape": {
+        "allowed": "bool",
+        "has_record": "bool",
+        "user_name": "str",
+        "kp_id": "str",
+        "mastery_level": "NoneType",
+        "status": "str",
+        "retention": "NoneType",
+        "evidence_confidence": "float",
+        "practice_count": "int",
+        "correct_count": "int"
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "get_weak_prerequisites",
+      "arguments": {
+        "kp_id": "死锁"
+      },
+      "result": {
+        "allowed": true,
+        "count": 3,
+        "weak_prerequisites": [
+          {
+            "kp_id": "操作系统概述",
+            "name": "操作系统概述",
+            "course": "操作系统",
+            "depth": 3,
+            "mastery_level": null,
+            "status": "unseen",
+            "retention": null,
+            "evidence_confidence": 0.0
+          },
+          {
+            "kp_id": "进程与线程",
+            "name": "进程与线程",
+            "course": "操作系统",
+            "depth": 2,
+            "mastery_level": null,
+            "status": "unseen",
+            "retention": null,
+            "evidence_confidence": 0.0
+          },
+          {
+            "kp_id": "进程同步",
+            "name": "进程同步",
+            "course": "操作系统",
+            "depth": 1,
+            "mastery_level": null,
+            "status": "unseen",
+            "retention": null,
+            "evidence_confidence": 0.0
+          }
+        ]
+      },
+      "shape": {
+        "allowed": "bool",
+        "count": "int",
+        "weak_prerequisites": [
+          {
+            "kp_id": "str",
+            "name": "str",
+            "course": "str",
+            "depth": "int",
+            "mastery_level": "NoneType",
+            "status": "str",
+            "retention": "NoneType",
+            "evidence_confidence": "float"
+          }
+        ]
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "get_review_timing",
+      "arguments": {
+        "kp_id": "进程调度"
+      },
+      "result": {
+        "allowed": true,
+        "has_record": true,
+        "needs_review": false,
+        "current_retention": 1.0,
+        "days_until_review": 6,
+        "recommended_date": "2026-08-24",
+        "stability_days": 13.44,
+        "practice_count": 4
+      },
+      "shape": {
+        "allowed": "bool",
+        "has_record": "bool",
+        "needs_review": "bool",
+        "current_retention": "float",
+        "days_until_review": "int",
+        "recommended_date": "str",
+        "stability_days": "float",
+        "practice_count": "int"
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "record_answer",
+      "arguments": {
+        "kp_id": "进程调度",
+        "correct": true
+      },
+      "result": {
+        "saved": true,
+        "evidence": {
+          "id": "2e922f6209f643b1a4218927aa476c5a",
+          "user_name": "stu_demo",
+          "kp_id": "进程调度",
+          "activity_type": "practice",
+          "correct": true,
+          "self_confidence": null,
+          "evidence_reliability": 1.0,
+          "hint_level": 0,
+          "attempts": 1,
+          "independent": null,
+          "recall_score": null,
+          "explanation_score": null,
+          "transfer_score": null,
+          "error_type": null,
+          "misconception": null,
+          "created_at": "2026-08-18T01:38:12.130873"
+        },
+        "state": {
+          "user_name": "stu_demo",
+          "kp_id": "进程调度",
+          "has_record": true,
+          "mastery_level": 69.76,
+          "retention": 1.0,
+          "evidence_confidence": 0.76,
+          "stability_days": 22.3,
+          "evidence_weight": 5.0,
+          "status": "learning",
+          "needs_review": false,
+          "practice_count": 5,
+          "correct_count": 4,
+          "last_practiced_at": "2026-08-18T01:38:12.131169",
+          "created_at": "2026-08-18T01:38:12.116496",
+          "updated_at": "2026-08-18T01:38:12.131169",
+          "model_version": 2,
+          "old_mastery": 64.19,
+          "mastery_delta": 5.57,
+          "signal_performance": 1.0,
+          "evidence_quality": 1.0
+        }
+      },
+      "shape": {
+        "saved": "bool",
+        "evidence": {
+          "id": "str",
+          "user_name": "str",
+          "kp_id": "str",
+          "activity_type": "str",
+          "correct": "bool",
+          "self_confidence": "NoneType",
+          "evidence_reliability": "float",
+          "hint_level": "int",
+          "attempts": "int",
+          "independent": "NoneType",
+          "recall_score": "NoneType",
+          "explanation_score": "NoneType",
+          "transfer_score": "NoneType",
+          "error_type": "NoneType",
+          "misconception": "NoneType",
+          "created_at": "str"
+        },
+        "state": {
+          "user_name": "str",
+          "kp_id": "str",
+          "has_record": "bool",
+          "mastery_level": "float",
+          "retention": "float",
+          "evidence_confidence": "float",
+          "stability_days": "float",
+          "evidence_weight": "float",
+          "status": "str",
+          "needs_review": "bool",
+          "practice_count": "int",
+          "correct_count": "int",
+          "last_practiced_at": "str",
+          "created_at": "str",
+          "updated_at": "str",
+          "model_version": "int",
+          "old_mastery": "float",
+          "mastery_delta": "float",
+          "signal_performance": "float",
+          "evidence_quality": "float"
+        }
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "record_learning_evidence",
+      "arguments": {
+        "kp_id": "进程调度",
+        "activity_type": "practice",
+        "correct": true,
+        "independent": true,
+        "hint_level": 0
+      },
+      "result": {
+        "saved": true,
+        "evidence": {
+          "id": "ea5d08ba1a214471b45181cb3d733cc6",
+          "user_name": "stu_demo",
+          "kp_id": "进程调度",
+          "activity_type": "practice",
+          "correct": true,
+          "self_confidence": null,
+          "evidence_reliability": 1.0,
+          "hint_level": 0,
+          "attempts": 1,
+          "independent": true,
+          "recall_score": null,
+          "explanation_score": null,
+          "transfer_score": null,
+          "error_type": null,
+          "misconception": null,
+          "created_at": "2026-08-18T01:38:12.131595"
+        },
+        "state": {
+          "user_name": "stu_demo",
+          "kp_id": "进程调度",
+          "has_record": true,
+          "mastery_level": 74.2,
+          "retention": 1.0,
+          "evidence_confidence": 0.82,
+          "stability_days": 37.53,
+          "evidence_weight": 6.0,
+          "status": "good",
+          "needs_review": false,
+          "practice_count": 6,
+          "correct_count": 5,
+          "last_practiced_at": "2026-08-18T01:38:12.131846",
+          "created_at": "2026-08-18T01:38:12.116496",
+          "updated_at": "2026-08-18T01:38:12.131846",
+          "model_version": 2,
+          "old_mastery": 69.76,
+          "mastery_delta": 4.43,
+          "signal_performance": 1.0,
+          "evidence_quality": 1.0
+        }
+      },
+      "shape": {
+        "saved": "bool",
+        "evidence": {
+          "id": "str",
+          "user_name": "str",
+          "kp_id": "str",
+          "activity_type": "str",
+          "correct": "bool",
+          "self_confidence": "NoneType",
+          "evidence_reliability": "float",
+          "hint_level": "int",
+          "attempts": "int",
+          "independent": "bool",
+          "recall_score": "NoneType",
+          "explanation_score": "NoneType",
+          "transfer_score": "NoneType",
+          "error_type": "NoneType",
+          "misconception": "NoneType",
+          "created_at": "str"
+        },
+        "state": {
+          "user_name": "str",
+          "kp_id": "str",
+          "has_record": "bool",
+          "mastery_level": "float",
+          "retention": "float",
+          "evidence_confidence": "float",
+          "stability_days": "float",
+          "evidence_weight": "float",
+          "status": "str",
+          "needs_review": "bool",
+          "practice_count": "int",
+          "correct_count": "int",
+          "last_practiced_at": "str",
+          "created_at": "str",
+          "updated_at": "str",
+          "model_version": "int",
+          "old_mastery": "float",
+          "mastery_delta": "float",
+          "signal_performance": "float",
+          "evidence_quality": "float"
+        }
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "get_learning_evidence_summary",
+      "arguments": {},
+      "result": {
+        "allowed": true,
+        "user_name": "stu_demo",
+        "kp_id": null,
+        "evidence_count": 2,
+        "correct_rate": 1.0,
+        "avg_self_confidence": null,
+        "avg_hint_level": 0.0,
+        "independent_rate": 1.0,
+        "avg_recall_score": null,
+        "avg_explanation_score": null,
+        "avg_transfer_score": null,
+        "error_type_counts": {},
+        "recent_misconceptions": []
+      },
+      "shape": {
+        "allowed": "bool",
+        "user_name": "str",
+        "kp_id": "NoneType",
+        "evidence_count": "int",
+        "correct_rate": "float",
+        "avg_self_confidence": "NoneType",
+        "avg_hint_level": "float",
+        "independent_rate": "float",
+        "avg_recall_score": "NoneType",
+        "avg_explanation_score": "NoneType",
+        "avg_transfer_score": "NoneType",
+        "error_type_counts": {},
+        "recent_misconceptions": []
+      }
+    },
+    {
+      "mode": "isolated",
+      "tool": "recommend_practice",
+      "arguments": {
+        "course": "操作系统",
+        "weeks_to_exam": 2
+      },
+      "result": {
+        "allowed": false,
+        "action": "recommend_practice",
+        "reason": "isolated mode"
+      },
+      "shape": {
+        "allowed": "bool",
+        "action": "str",
+        "reason": "str"
+      }
+    },
+    {
+      "mode": "isolated",
+      "tool": "get_mastery_report",
+      "arguments": {
+        "course": "操作系统"
+      },
+      "result": {
+        "allowed": false,
+        "action": "get_mastery_report",
+        "reason": "isolated mode"
+      },
+      "shape": {
+        "allowed": "bool",
+        "action": "str",
+        "reason": "str"
+      }
+    },
+    {
+      "mode": "isolated",
+      "tool": "record_answer",
+      "arguments": {
+        "kp_id": "进程调度",
+        "correct": true
+      },
+      "result": {
+        "saved": false,
+        "reason": "conversation mode forbids writes"
+      },
+      "shape": {
+        "saved": "bool",
+        "reason": "str"
+      }
+    },
+    {
+      "mode": "isolated",
+      "tool": "record_learning_evidence",
+      "arguments": {
+        "kp_id": "进程调度",
+        "activity_type": "practice",
+        "correct": true
+      },
+      "result": {
+        "allowed": false,
+        "action": "record_learning_evidence",
+        "reason": "isolated mode"
+      },
+      "shape": {
+        "allowed": "bool",
+        "action": "str",
+        "reason": "str"
+      }
+    },
+    {
+      "mode": "no_write",
+      "tool": "recommend_practice",
+      "arguments": {
+        "course": "操作系统",
+        "weeks_to_exam": 2
+      },
+      "result": {
+        "allowed": true,
+        "user_name": "stu_demo",
+        "course": "操作系统",
+        "count": 5,
+        "recommendations": [
+          {
+            "kp_id": "死锁",
+            "name": "死锁",
+            "course": "操作系统",
+            "weight": 0.07,
+            "mastery_level": 25.35,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "practice_count": 4,
+            "has_record": true,
+            "priority": 0.5086,
+            "reasons": [
+              "掌握度低(mastery=25.4)",
+              "距期末仅 2 周",
+              "前置薄弱(3 个前置掌握度<50)"
+            ],
+            "weak_prerequisites": [
+              {
+                "kp_id": "操作系统概述",
+                "name": "操作系统概述",
+                "course": "操作系统",
+                "depth": 3,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "进程与线程",
+                "name": "进程与线程",
+                "course": "操作系统",
+                "depth": 2,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "进程同步",
+                "name": "进程同步",
+                "course": "操作系统",
+                "depth": 1,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              }
+            ]
+          },
+          {
+            "kp_id": "设备管理",
+            "name": "设备管理",
+            "course": "操作系统",
+            "weight": 0.04,
+            "mastery_level": 37.72,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "practice_count": 4,
+            "has_record": true,
+            "priority": 0.4593,
+            "reasons": [
+              "掌握度低(mastery=37.7)",
+              "距期末仅 2 周",
+              "前置薄弱(5 个前置掌握度<50)"
+            ],
+            "weak_prerequisites": [
+              {
+                "kp_id": "冯诺依曼结构",
+                "name": "冯诺依曼结构",
+                "course": "计算机组成原理",
+                "depth": 5,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "指令系统",
+                "name": "指令系统",
+                "course": "计算机组成原理",
+                "depth": 4,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "CPU数据通路",
+                "name": "CPU数据通路",
+                "course": "计算机组成原理",
+                "depth": 3,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "控制器",
+                "name": "控制器",
+                "course": "计算机组成原理",
+                "depth": 2,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "中断系统",
+                "name": "中断系统",
+                "course": "计算机组成原理",
+                "depth": 1,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              }
+            ]
+          },
+          {
+            "kp_id": "虚拟内存",
+            "name": "虚拟内存",
+            "course": "操作系统",
+            "weight": 0.09,
+            "mastery_level": 50.61,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "practice_count": 4,
+            "has_record": true,
+            "priority": 0.4242,
+            "reasons": [
+              "距期末仅 2 周",
+              "前置薄弱(3 个前置掌握度<50)"
+            ],
+            "weak_prerequisites": [
+              {
+                "kp_id": "操作系统概述",
+                "name": "操作系统概述",
+                "course": "操作系统",
+                "depth": 3,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "内存管理",
+                "name": "内存管理",
+                "course": "操作系统",
+                "depth": 2,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "分页",
+                "name": "分页",
+                "course": "操作系统",
+                "depth": 1,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              }
+            ]
+          },
+          {
+            "kp_id": "经典同步问题",
+            "name": "经典同步问题",
+            "course": "操作系统",
+            "weight": 0.06,
+            "mastery_level": null,
+            "retention": null,
+            "evidence_confidence": 0.0,
+            "practice_count": 0,
+            "has_record": false,
+            "priority": 0.4028,
+            "reasons": [
+              "尚无学习证据",
+              "距期末仅 2 周",
+              "前置薄弱(3 个前置掌握度<50)"
+            ],
+            "weak_prerequisites": [
+              {
+                "kp_id": "操作系统概述",
+                "name": "操作系统概述",
+                "course": "操作系统",
+                "depth": 4,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "进程与线程",
+                "name": "进程与线程",
+                "course": "操作系统",
+                "depth": 3,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "进程同步",
+                "name": "进程同步",
+                "course": "操作系统",
+                "depth": 2,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              }
+            ]
+          },
+          {
+            "kp_id": "页面置换算法",
+            "name": "页面置换算法",
+            "course": "操作系统",
+            "weight": 0.06,
+            "mastery_level": null,
+            "retention": null,
+            "evidence_confidence": 0.0,
+            "practice_count": 0,
+            "has_record": false,
+            "priority": 0.4028,
+            "reasons": [
+              "尚无学习证据",
+              "距期末仅 2 周",
+              "前置薄弱(3 个前置掌握度<50)"
+            ],
+            "weak_prerequisites": [
+              {
+                "kp_id": "操作系统概述",
+                "name": "操作系统概述",
+                "course": "操作系统",
+                "depth": 4,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "内存管理",
+                "name": "内存管理",
+                "course": "操作系统",
+                "depth": 3,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              },
+              {
+                "kp_id": "分页",
+                "name": "分页",
+                "course": "操作系统",
+                "depth": 2,
+                "mastery_level": null,
+                "status": "unseen",
+                "retention": null,
+                "evidence_confidence": 0.0
+              }
+            ]
+          }
+        ]
+      },
+      "shape": {
+        "allowed": "bool",
+        "user_name": "str",
+        "course": "str",
+        "count": "int",
+        "recommendations": [
+          {
+            "kp_id": "str",
+            "name": "str",
+            "course": "str",
+            "weight": "float",
+            "mastery_level": "float",
+            "retention": "float",
+            "evidence_confidence": "float",
+            "practice_count": "int",
+            "has_record": "bool",
+            "priority": "float",
+            "reasons": [
+              "str"
+            ],
+            "weak_prerequisites": [
+              {
+                "kp_id": "str",
+                "name": "str",
+                "course": "str",
+                "depth": "int",
+                "mastery_level": "NoneType",
+                "status": "str",
+                "retention": "NoneType",
+                "evidence_confidence": "float"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "mode": "no_write",
+      "tool": "get_mastery_report",
+      "arguments": {
+        "course": "操作系统"
+      },
+      "result": {
+        "allowed": true,
+        "user_name": "stu_demo",
+        "course": "操作系统",
+        "total_points": 5,
+        "avg_mastery": 53.29,
+        "weak_points": [
+          {
+            "user_name": "stu_demo",
+            "kp_id": "死锁",
+            "has_record": true,
+            "mastery_level": 25.35,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 1.5,
+            "evidence_weight": 4.0,
+            "status": "weak",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 0,
+            "last_practiced_at": "2026-08-18T01:38:12.119187",
+            "created_at": "2026-08-18T01:38:12.118467",
+            "updated_at": "2026-08-18T01:38:12.119187",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "设备管理",
+            "has_record": true,
+            "mastery_level": 37.72,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 2.72,
+            "evidence_weight": 4.0,
+            "status": "weak",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 1,
+            "last_practiced_at": "2026-08-18T01:38:12.116253",
+            "created_at": "2026-08-18T01:38:12.115431",
+            "updated_at": "2026-08-18T01:38:12.116253",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "虚拟内存",
+            "has_record": true,
+            "mastery_level": 50.61,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 5.99,
+            "evidence_weight": 4.0,
+            "status": "learning",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 2,
+            "last_practiced_at": "2026-08-18T01:38:12.118220",
+            "created_at": "2026-08-18T01:38:12.117444",
+            "updated_at": "2026-08-18T01:38:12.118220",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "进程调度",
+            "has_record": true,
+            "mastery_level": 74.2,
+            "retention": 1.0,
+            "evidence_confidence": 0.82,
+            "stability_days": 37.53,
+            "evidence_weight": 6.0,
+            "status": "good",
+            "needs_review": false,
+            "practice_count": 6,
+            "correct_count": 5,
+            "last_practiced_at": "2026-08-18T01:38:12.131846",
+            "created_at": "2026-08-18T01:38:12.116496",
+            "updated_at": "2026-08-18T01:38:12.131846",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "信号量",
+            "has_record": true,
+            "mastery_level": 78.58,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 30.6,
+            "evidence_weight": 4.0,
+            "status": "good",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 4,
+            "last_practiced_at": "2026-08-18T01:38:12.120158",
+            "created_at": "2026-08-18T01:38:12.119433",
+            "updated_at": "2026-08-18T01:38:12.120158",
+            "model_version": 2
+          }
+        ],
+        "strong_points": [
+          {
+            "user_name": "stu_demo",
+            "kp_id": "信号量",
+            "has_record": true,
+            "mastery_level": 78.58,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 30.6,
+            "evidence_weight": 4.0,
+            "status": "good",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 4,
+            "last_practiced_at": "2026-08-18T01:38:12.120158",
+            "created_at": "2026-08-18T01:38:12.119433",
+            "updated_at": "2026-08-18T01:38:12.120158",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "进程调度",
+            "has_record": true,
+            "mastery_level": 74.2,
+            "retention": 1.0,
+            "evidence_confidence": 0.82,
+            "stability_days": 37.53,
+            "evidence_weight": 6.0,
+            "status": "good",
+            "needs_review": false,
+            "practice_count": 6,
+            "correct_count": 5,
+            "last_practiced_at": "2026-08-18T01:38:12.131846",
+            "created_at": "2026-08-18T01:38:12.116496",
+            "updated_at": "2026-08-18T01:38:12.131846",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "虚拟内存",
+            "has_record": true,
+            "mastery_level": 50.61,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 5.99,
+            "evidence_weight": 4.0,
+            "status": "learning",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 2,
+            "last_practiced_at": "2026-08-18T01:38:12.118220",
+            "created_at": "2026-08-18T01:38:12.117444",
+            "updated_at": "2026-08-18T01:38:12.118220",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "设备管理",
+            "has_record": true,
+            "mastery_level": 37.72,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 2.72,
+            "evidence_weight": 4.0,
+            "status": "weak",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 1,
+            "last_practiced_at": "2026-08-18T01:38:12.116253",
+            "created_at": "2026-08-18T01:38:12.115431",
+            "updated_at": "2026-08-18T01:38:12.116253",
+            "model_version": 2
+          },
+          {
+            "user_name": "stu_demo",
+            "kp_id": "死锁",
+            "has_record": true,
+            "mastery_level": 25.35,
+            "retention": 1.0,
+            "evidence_confidence": 0.681,
+            "stability_days": 1.5,
+            "evidence_weight": 4.0,
+            "status": "weak",
+            "needs_review": false,
+            "practice_count": 4,
+            "correct_count": 0,
+            "last_practiced_at": "2026-08-18T01:38:12.119187",
+            "created_at": "2026-08-18T01:38:12.118467",
+            "updated_at": "2026-08-18T01:38:12.119187",
+            "model_version": 2
+          }
+        ],
+        "stale_points": []
+      },
+      "shape": {
+        "allowed": "bool",
+        "user_name": "str",
+        "course": "str",
+        "total_points": "int",
+        "avg_mastery": "float",
+        "weak_points": [
+          {
+            "user_name": "str",
+            "kp_id": "str",
+            "has_record": "bool",
+            "mastery_level": "float",
+            "retention": "float",
+            "evidence_confidence": "float",
+            "stability_days": "float",
+            "evidence_weight": "float",
+            "status": "str",
+            "needs_review": "bool",
+            "practice_count": "int",
+            "correct_count": "int",
+            "last_practiced_at": "str",
+            "created_at": "str",
+            "updated_at": "str",
+            "model_version": "int"
+          }
+        ],
+        "strong_points": [
+          {
+            "user_name": "str",
+            "kp_id": "str",
+            "has_record": "bool",
+            "mastery_level": "float",
+            "retention": "float",
+            "evidence_confidence": "float",
+            "stability_days": "float",
+            "evidence_weight": "float",
+            "status": "str",
+            "needs_review": "bool",
+            "practice_count": "int",
+            "correct_count": "int",
+            "last_practiced_at": "str",
+            "created_at": "str",
+            "updated_at": "str",
+            "model_version": "int"
+          }
+        ],
+        "stale_points": []
+      }
+    },
+    {
+      "mode": "no_write",
+      "tool": "record_answer",
+      "arguments": {
+        "kp_id": "进程调度",
+        "correct": true
+      },
+      "result": {
+        "saved": false,
+        "reason": "conversation mode forbids writes"
+      },
+      "shape": {
+        "saved": "bool",
+        "reason": "str"
+      }
+    },
+    {
+      "mode": "no_write",
+      "tool": "record_learning_evidence",
+      "arguments": {
+        "kp_id": "进程调度",
+        "activity_type": "practice",
+        "correct": true
+      },
+      "result": {
+        "saved": false,
+        "reason": "conversation mode forbids writes"
+      },
+      "shape": {
+        "saved": "bool",
+        "reason": "str"
+      }
+    }
+  ]
+}

@@ -194,9 +194,15 @@ def gen_wrong_tool(cfg, section, version, rng, all_names, out):
     for j, item in enumerate(cfg[section].get("混淆_应调其它工具", [])):
         tool, args = item["tool"], item["args"]
         result = execute(tool, args)
-        # 回答模板可以引用真实返回值，保证 grounding 检查过得去
-        fields = {"value": result.get("result"), **{k: v for k, v in result.items()
-                                                    if isinstance(v, (str, int, float))}}
+        # 回答模板可以引用真实返回值，保证 grounding 检查过得去。
+        # 返回 list 的工具（get_core_memories / search_core_memories）没有顶层字段可摊，
+        # 给它们一组按位置取的占位符。
+        if isinstance(result, list):
+            fields = {"value": len(result), "count": len(result),
+                      "first": result[0]["content"] if result else ""}
+        else:
+            fields = {"value": result.get("result"), **{k: v for k, v in result.items()
+                                                        if isinstance(v, (str, int, float))}}
         out.append(mk(
             f"{section}_wrongtool_{j:02d}", f"{section}__应调其它工具__{j:02d}",
             "single_tool_call", [tool, item["lure"]],

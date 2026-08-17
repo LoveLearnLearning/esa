@@ -1,0 +1,898 @@
+{
+  "_meta": {
+    "captured_at": "2026-08-17T17:38:11+00:00",
+    "source": "github.com/LoveLearnLearning/esa",
+    "source_repo": "local-clone@ce37198",
+    "workspace": "learning",
+    "layer": "BoundToolExecutor.execute",
+    "note": "由 dataset/tools/capture_memory_tools.py 在临时 SQLite 上跑真实 CapabilityRuntime.compile().bind().execute() 产出，禁止手改。抓的是**模型真正看得见的那一层**（线上再套一层 json.dumps）。memory_id 与各时间戳每次抓取都会变，所以**只用它钉字段名和结构，不要把具体值写进种子**；命中判定用 search_matrix（只存 memory_key，稳定可复现）。"
+  },
+  "tool_availability": {
+    "normal": [
+      "arxiv_search",
+      "bitwise_calculator",
+      "calculator",
+      "delete_core_memory",
+      "get_core_memories",
+      "get_knowledge_base_stats",
+      "get_learning_evidence_summary",
+      "get_mastery_level",
+      "get_mastery_report",
+      "get_review_timing",
+      "get_time",
+      "get_weak_prerequisites",
+      "get_weather",
+      "load_skill",
+      "math_solver",
+      "propose_core_memory",
+      "recommend_practice",
+      "record_answer",
+      "record_learning_evidence",
+      "retrieve_knowledge",
+      "save_core_memory",
+      "search_core_memories",
+      "web_search"
+    ],
+    "no_write": [
+      "arxiv_search",
+      "bitwise_calculator",
+      "calculator",
+      "get_core_memories",
+      "get_knowledge_base_stats",
+      "get_learning_evidence_summary",
+      "get_mastery_level",
+      "get_mastery_report",
+      "get_review_timing",
+      "get_time",
+      "get_weak_prerequisites",
+      "get_weather",
+      "load_skill",
+      "math_solver",
+      "recommend_practice",
+      "record_answer",
+      "record_learning_evidence",
+      "retrieve_knowledge",
+      "search_core_memories",
+      "web_search"
+    ],
+    "isolated": [
+      "arxiv_search",
+      "bitwise_calculator",
+      "calculator",
+      "get_knowledge_base_stats",
+      "get_learning_evidence_summary",
+      "get_mastery_level",
+      "get_mastery_report",
+      "get_review_timing",
+      "get_time",
+      "get_weak_prerequisites",
+      "get_weather",
+      "load_skill",
+      "math_solver",
+      "recommend_practice",
+      "record_answer",
+      "record_learning_evidence",
+      "retrieve_knowledge",
+      "web_search"
+    ]
+  },
+  "search_matrix": {
+    "偏好": [],
+    "学习目标": [],
+    "专业": [
+      {
+        "memory_key": "major_info",
+        "score": 9.0,
+        "estimated_tokens": 3
+      }
+    ],
+    "讲解方式": [],
+    "薄弱": [
+      {
+        "memory_key": "weak_topics",
+        "score": 9.0,
+        "estimated_tokens": 4
+      }
+    ],
+    "期末": [
+      {
+        "memory_key": "exam_schedule",
+        "score": 9.0,
+        "estimated_tokens": 5
+      }
+    ],
+    "学习习惯": [],
+    "入门": []
+  },
+  "calls": [
+    {
+      "mode": "normal",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "learning_goal",
+        "content": "这学期把数据结构和算法吃透，准备考研",
+        "category": "learning"
+      },
+      "branch": "created",
+      "result": {
+        "status": "created",
+        "memory": {
+          "memory_id": "e25fea0ff9b44a04bb7609fe155938b4",
+          "user_id": "stu_demo",
+          "memory_key": "learning_goal",
+          "content": "这学期把数据结构和算法吃透，准备考研",
+          "category": "learning",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.540590+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.540590+00:00",
+          "updated_at": "2026-08-17T17:38:11.540590+00:00"
+        }
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "response_style",
+        "content": "喜欢先看直观例子，再看公式推导",
+        "category": "preference"
+      },
+      "branch": "created",
+      "result": {
+        "status": "created",
+        "memory": {
+          "memory_id": "f20845dc3f524f948aab8479da0b2bc8",
+          "user_id": "stu_demo",
+          "memory_key": "response_style",
+          "content": "喜欢先看直观例子，再看公式推导",
+          "category": "preference",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.541963+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.541963+00:00",
+          "updated_at": "2026-08-17T17:38:11.541963+00:00"
+        }
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "major_info",
+        "content": "软件工程专业大三",
+        "category": "profile"
+      },
+      "branch": "created",
+      "result": {
+        "status": "created",
+        "memory": {
+          "memory_id": "050132f6630f49d1a5fbfba9c8c20789",
+          "user_id": "stu_demo",
+          "memory_key": "major_info",
+          "content": "软件工程专业大三",
+          "category": "profile",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.543207+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.543207+00:00",
+          "updated_at": "2026-08-17T17:38:11.543207+00:00"
+        }
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "weak_topics",
+        "content": "图论相关的知识点普遍薄弱",
+        "category": "learning"
+      },
+      "branch": "created",
+      "result": {
+        "status": "created",
+        "memory": {
+          "memory_id": "47149821b7c2468788e5d4fea9edaf81",
+          "user_id": "stu_demo",
+          "memory_key": "weak_topics",
+          "content": "图论相关的知识点普遍薄弱",
+          "category": "learning",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.544425+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.544425+00:00",
+          "updated_at": "2026-08-17T17:38:11.544425+00:00"
+        }
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "exam_schedule",
+        "content": "期末考试从第 16 周开始",
+        "category": "constraint"
+      },
+      "branch": "created",
+      "result": {
+        "status": "created",
+        "memory": {
+          "memory_id": "78d1aa95b374442d9da9b1cd4be86e1f",
+          "user_id": "stu_demo",
+          "memory_key": "exam_schedule",
+          "content": "期末考试从第 16 周开始",
+          "category": "constraint",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.545765+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.545765+00:00",
+          "updated_at": "2026-08-17T17:38:11.545765+00:00"
+        }
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "get_core_memories",
+      "arguments": {},
+      "result": [
+        {
+          "memory_id": "78d1aa95b374442d9da9b1cd4be86e1f",
+          "user_id": "stu_demo",
+          "memory_key": "exam_schedule",
+          "content": "期末考试从第 16 周开始",
+          "category": "constraint",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.545765+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.545765+00:00",
+          "updated_at": "2026-08-17T17:38:11.545765+00:00"
+        },
+        {
+          "memory_id": "47149821b7c2468788e5d4fea9edaf81",
+          "user_id": "stu_demo",
+          "memory_key": "weak_topics",
+          "content": "图论相关的知识点普遍薄弱",
+          "category": "learning",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.544425+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.544425+00:00",
+          "updated_at": "2026-08-17T17:38:11.544425+00:00"
+        },
+        {
+          "memory_id": "050132f6630f49d1a5fbfba9c8c20789",
+          "user_id": "stu_demo",
+          "memory_key": "major_info",
+          "content": "软件工程专业大三",
+          "category": "profile",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.543207+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.543207+00:00",
+          "updated_at": "2026-08-17T17:38:11.543207+00:00"
+        },
+        {
+          "memory_id": "f20845dc3f524f948aab8479da0b2bc8",
+          "user_id": "stu_demo",
+          "memory_key": "response_style",
+          "content": "喜欢先看直观例子，再看公式推导",
+          "category": "preference",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.541963+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.541963+00:00",
+          "updated_at": "2026-08-17T17:38:11.541963+00:00"
+        },
+        {
+          "memory_id": "e25fea0ff9b44a04bb7609fe155938b4",
+          "user_id": "stu_demo",
+          "memory_key": "learning_goal",
+          "content": "这学期把数据结构和算法吃透，准备考研",
+          "category": "learning",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.540590+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.540590+00:00",
+          "updated_at": "2026-08-17T17:38:11.540590+00:00"
+        }
+      ]
+    },
+    {
+      "mode": "normal",
+      "tool": "search_core_memories",
+      "arguments": {
+        "query": "偏好",
+        "limit": 5
+      },
+      "result": []
+    },
+    {
+      "mode": "normal",
+      "tool": "search_core_memories",
+      "arguments": {
+        "query": "学习目标",
+        "limit": 5
+      },
+      "result": []
+    },
+    {
+      "mode": "normal",
+      "tool": "search_core_memories",
+      "arguments": {
+        "query": "专业",
+        "limit": 5
+      },
+      "result": [
+        {
+          "memory_id": "050132f6630f49d1a5fbfba9c8c20789",
+          "user_id": "stu_demo",
+          "memory_key": "major_info",
+          "content": "软件工程专业大三",
+          "category": "profile",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.543207+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.543207+00:00",
+          "updated_at": "2026-08-17T17:38:11.543207+00:00",
+          "score": 9.0,
+          "estimated_tokens": 3
+        }
+      ]
+    },
+    {
+      "mode": "normal",
+      "tool": "search_core_memories",
+      "arguments": {
+        "query": "讲解方式",
+        "limit": 5
+      },
+      "result": []
+    },
+    {
+      "mode": "normal",
+      "tool": "search_core_memories",
+      "arguments": {
+        "query": "薄弱",
+        "limit": 5
+      },
+      "result": [
+        {
+          "memory_id": "47149821b7c2468788e5d4fea9edaf81",
+          "user_id": "stu_demo",
+          "memory_key": "weak_topics",
+          "content": "图论相关的知识点普遍薄弱",
+          "category": "learning",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.544425+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.544425+00:00",
+          "updated_at": "2026-08-17T17:38:11.544425+00:00",
+          "score": 9.0,
+          "estimated_tokens": 4
+        }
+      ]
+    },
+    {
+      "mode": "normal",
+      "tool": "search_core_memories",
+      "arguments": {
+        "query": "期末",
+        "limit": 5
+      },
+      "result": [
+        {
+          "memory_id": "78d1aa95b374442d9da9b1cd4be86e1f",
+          "user_id": "stu_demo",
+          "memory_key": "exam_schedule",
+          "content": "期末考试从第 16 周开始",
+          "category": "constraint",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.545765+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.545765+00:00",
+          "updated_at": "2026-08-17T17:38:11.545765+00:00",
+          "score": 9.0,
+          "estimated_tokens": 5
+        }
+      ]
+    },
+    {
+      "mode": "normal",
+      "tool": "search_core_memories",
+      "arguments": {
+        "query": "学习习惯",
+        "limit": 5
+      },
+      "result": []
+    },
+    {
+      "mode": "normal",
+      "tool": "search_core_memories",
+      "arguments": {
+        "query": "入门",
+        "limit": 5
+      },
+      "result": []
+    },
+    {
+      "mode": "normal",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "study_time_preference",
+        "content": "倾向晚上学习",
+        "category": "preference"
+      },
+      "branch": "created",
+      "result": {
+        "status": "created",
+        "memory": {
+          "memory_id": "9633a247e14041568cf5a3b8544093f8",
+          "user_id": "stu_demo",
+          "memory_key": "study_time_preference",
+          "content": "倾向晚上学习",
+          "category": "preference",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.564002+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.564002+00:00",
+          "updated_at": "2026-08-17T17:38:11.564002+00:00"
+        }
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "response_style",
+        "content": "喜欢先看直观例子，再看公式推导",
+        "category": "preference"
+      },
+      "branch": "unchanged",
+      "result": {
+        "status": "unchanged",
+        "memory": {
+          "memory_id": "f20845dc3f524f948aab8479da0b2bc8",
+          "user_id": "stu_demo",
+          "memory_key": "response_style",
+          "content": "喜欢先看直观例子，再看公式推导",
+          "category": "preference",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.541963+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.541963+00:00",
+          "updated_at": "2026-08-17T17:38:11.541963+00:00"
+        }
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "response_style",
+        "content": "改成先看公式推导再看例子",
+        "category": "preference"
+      },
+      "branch": "confirmation_required",
+      "result": {
+        "status": "confirmation_required",
+        "candidate": {
+          "candidate_id": "55324612321947be93c48ca7f92d1c04",
+          "memory_id": "f20845dc3f524f948aab8479da0b2bc8",
+          "memory_key": "response_style",
+          "proposed_content": "改成先看公式推导再看例子",
+          "category": "preference",
+          "scope_type": "global",
+          "workspace_type": null,
+          "candidate_type": "replace",
+          "status": "pending",
+          "expected_revision": 1,
+          "resulting_memory_id": null,
+          "created_at": "2026-08-17T17:38:11.565811+00:00",
+          "decided_at": null,
+          "expires_at": "2026-09-16T17:38:11.565804+00:00"
+        }
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "api_cred",
+        "content": "我的 api_key 是 sk-abc123",
+        "category": "general"
+      },
+      "branch": "sensitive",
+      "result": {
+        "ok": false,
+        "error": "memory_policy_denied",
+        "tool": "save_core_memory",
+        "detail": "sensitive credentials cannot be stored"
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "blank_one",
+        "content": "   ",
+        "category": "general"
+      },
+      "branch": "empty_content",
+      "result": {
+        "ok": false,
+        "error": "tool_execution_error",
+        "tool": "save_core_memory",
+        "detail": "memory content cannot be empty"
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "Preferred Code Language",
+        "content": "平时写 Python",
+        "category": "preference"
+      },
+      "branch": "key_normalized",
+      "result": {
+        "status": "created",
+        "memory": {
+          "memory_id": "860c2c7d22554e8d98cc295dd2fcb107",
+          "user_id": "stu_demo",
+          "memory_key": "preferred_code_language",
+          "content": "平时写 Python",
+          "category": "preference",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.568042+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.568042+00:00",
+          "updated_at": "2026-08-17T17:38:11.568042+00:00"
+        }
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "propose_core_memory",
+      "arguments": {
+        "memory_key": "study_pace",
+        "content": "倾向每天固定两小时",
+        "category": "preference"
+      },
+      "result": {
+        "status": "confirmation_required",
+        "candidate": {
+          "candidate_id": "041a2b24732e439d8829b67dc94193ca",
+          "memory_id": null,
+          "memory_key": "study_pace",
+          "proposed_content": "倾向每天固定两小时",
+          "category": "preference",
+          "scope_type": "global",
+          "workspace_type": null,
+          "candidate_type": "create",
+          "status": "pending",
+          "expected_revision": null,
+          "resulting_memory_id": null,
+          "created_at": "2026-08-17T17:38:11.569273+00:00",
+          "decided_at": null,
+          "expires_at": "2026-09-16T17:38:11.569266+00:00"
+        }
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "delete_core_memory",
+      "arguments": {
+        "memory_id": "78d1aa95b374442d9da9b1cd4be86e1f"
+      },
+      "branch": "ok",
+      "result": {
+        "deleted": true
+      }
+    },
+    {
+      "mode": "normal",
+      "tool": "delete_core_memory",
+      "arguments": {
+        "memory_id": "does-not-exist"
+      },
+      "branch": "missing",
+      "raises": {
+        "type": "KeyError",
+        "message": "'does-not-exist'"
+      }
+    },
+    {
+      "mode": "no_write",
+      "tool": "search_core_memories",
+      "arguments": {
+        "query": "学习目标",
+        "limit": 5
+      },
+      "result": [
+        {
+          "memory_id": "9633a247e14041568cf5a3b8544093f8",
+          "user_id": "stu_demo",
+          "memory_key": "study_time_preference",
+          "content": "倾向晚上学习",
+          "category": "preference",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.564002+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.564002+00:00",
+          "updated_at": "2026-08-17T17:38:11.564002+00:00",
+          "score": 1.0,
+          "estimated_tokens": 2
+        }
+      ]
+    },
+    {
+      "mode": "no_write",
+      "tool": "get_core_memories",
+      "arguments": {},
+      "result": [
+        {
+          "memory_id": "860c2c7d22554e8d98cc295dd2fcb107",
+          "user_id": "stu_demo",
+          "memory_key": "preferred_code_language",
+          "content": "平时写 Python",
+          "category": "preference",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.568042+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.568042+00:00",
+          "updated_at": "2026-08-17T17:38:11.568042+00:00"
+        },
+        {
+          "memory_id": "9633a247e14041568cf5a3b8544093f8",
+          "user_id": "stu_demo",
+          "memory_key": "study_time_preference",
+          "content": "倾向晚上学习",
+          "category": "preference",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.564002+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.564002+00:00",
+          "updated_at": "2026-08-17T17:38:11.564002+00:00"
+        },
+        {
+          "memory_id": "47149821b7c2468788e5d4fea9edaf81",
+          "user_id": "stu_demo",
+          "memory_key": "weak_topics",
+          "content": "图论相关的知识点普遍薄弱",
+          "category": "learning",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.544425+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.544425+00:00",
+          "updated_at": "2026-08-17T17:38:11.544425+00:00"
+        },
+        {
+          "memory_id": "050132f6630f49d1a5fbfba9c8c20789",
+          "user_id": "stu_demo",
+          "memory_key": "major_info",
+          "content": "软件工程专业大三",
+          "category": "profile",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.543207+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.543207+00:00",
+          "updated_at": "2026-08-17T17:38:11.543207+00:00"
+        },
+        {
+          "memory_id": "f20845dc3f524f948aab8479da0b2bc8",
+          "user_id": "stu_demo",
+          "memory_key": "response_style",
+          "content": "喜欢先看直观例子，再看公式推导",
+          "category": "preference",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.541963+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.541963+00:00",
+          "updated_at": "2026-08-17T17:38:11.541963+00:00"
+        },
+        {
+          "memory_id": "e25fea0ff9b44a04bb7609fe155938b4",
+          "user_id": "stu_demo",
+          "memory_key": "learning_goal",
+          "content": "这学期把数据结构和算法吃透，准备考研",
+          "category": "learning",
+          "scope_type": "global",
+          "workspace_type": null,
+          "status": "active",
+          "source_type": "explicit_user",
+          "revision": 1,
+          "confirmed_at": "2026-08-17T17:38:11.540590+00:00",
+          "review_after": null,
+          "expires_at": null,
+          "created_at": "2026-08-17T17:38:11.540590+00:00",
+          "updated_at": "2026-08-17T17:38:11.540590+00:00"
+        }
+      ]
+    },
+    {
+      "mode": "no_write",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "k",
+        "content": "v",
+        "category": "general"
+      },
+      "result": {
+        "ok": false,
+        "error": "tool_not_available",
+        "tool": "save_core_memory"
+      }
+    },
+    {
+      "mode": "no_write",
+      "tool": "delete_core_memory",
+      "arguments": {
+        "memory_id": "78d1aa95b374442d9da9b1cd4be86e1f"
+      },
+      "result": {
+        "ok": false,
+        "error": "tool_not_available",
+        "tool": "delete_core_memory"
+      }
+    },
+    {
+      "mode": "isolated",
+      "tool": "search_core_memories",
+      "arguments": {
+        "query": "学习目标",
+        "limit": 5
+      },
+      "result": {
+        "ok": false,
+        "error": "tool_not_available",
+        "tool": "search_core_memories"
+      }
+    },
+    {
+      "mode": "isolated",
+      "tool": "get_core_memories",
+      "arguments": {},
+      "result": {
+        "ok": false,
+        "error": "tool_not_available",
+        "tool": "get_core_memories"
+      }
+    },
+    {
+      "mode": "isolated",
+      "tool": "save_core_memory",
+      "arguments": {
+        "memory_key": "k",
+        "content": "v",
+        "category": "general"
+      },
+      "result": {
+        "ok": false,
+        "error": "tool_not_available",
+        "tool": "save_core_memory"
+      }
+    },
+    {
+      "mode": "isolated",
+      "tool": "delete_core_memory",
+      "arguments": {
+        "memory_id": "78d1aa95b374442d9da9b1cd4be86e1f"
+      },
+      "result": {
+        "ok": false,
+        "error": "tool_not_available",
+        "tool": "delete_core_memory"
+      }
+    }
+  ]
+}

@@ -23,7 +23,6 @@
 
 from __future__ import annotations
 
-import inspect
 import random
 import sys
 from pathlib import Path
@@ -171,16 +170,21 @@ def gen_empty_result(cfg, version, rng, all_names, out) -> None:
 
 
 def gen_blocked(cfg, version, rng, all_names, out) -> None:
-    """③ 会话模式阻断：allowed/saved/deleted 为 False + 一句 reason。
+    """③ 会话模式阻断：allowed/saved 为 False + 一句 reason。
 
     既不是 [Error]: 也没有 error 键 —— 这是第三种失败长相。
-    观测由 fixtures.BLOCKED_BUILDERS 复刻后端阻断分支（含键顺序）。
+    观测由 fixtures.blocked_learning 按**真实抓取**产出（learning_real.json 钉住）。
+
+    ⚠️ 只有学情工具走这一支。记忆工具在受限会话里根本不在工具表里，
+    「调了被拒」的场景线上不存在，那 4 条样本已删（见种子文件里的说明）。
+
+    ⚠️ 工具表也要按模式裁：isolated 会话里模型看不见记忆工具，
+    干扰项里摆一个它看不见的工具，等于教它一个线上不成立的选择题。
     """
     for item in cfg["blocked"]:
-        tool = item["tool"]
-        builder = fixtures.BLOCKED_BUILDERS[tool]
-        accepted = set(inspect.signature(builder).parameters)
-        result = builder(**{k: v for k, v in item["args"].items() if k in accepted})
+        tool, mode = item["tool"], item["mode"]
+        result = fixtures.BLOCKED_BUILDERS[tool](mode=mode)
+        visible = fixtures.memory_tools_available(mode)
         out.append(mk(
             f"toolerr_{item['id']}", f"toolerr__{tool}__{item['id']}",
             item["lures"],
@@ -189,6 +193,30 @@ def gen_blocked(cfg, version, rng, all_names, out) -> None:
              Turn(role="tool_result", results=[ToolResult(tool, result, is_error=True)]),
              Turn(role="assistant",
                   content=_fmt(item["a"], reason=result["reason"], err="", value="", latex=""))],
+            version, rng, [n for n in all_names if n in visible]))
+
+
+def gen_denied(cfg, version, rng, all_names, out) -> None:
+    """④ 策略拒绝：`{"ok": false, "error": <码>, "tool": ..., "detail": <文案>}`。
+
+    第四种失败长相，键名和前三种全都不一样，是 BoundToolExecutor 把
+    MemoryPolicyDenied / ValueError 接住后包出来的（capability_runtime.py:151-171）。
+    与会话模式无关 —— 普通会话里存一句带 API Key 的内容就会走到这里。
+    """
+    for item in cfg.get("denied", []):
+        tool, args = item["tool"], item["args"]
+        result = execute(tool, args)
+        if result.get("ok") is not False:
+            print(f"    ⚠️  {item['id']}: {tool}({args}) 居然没被拒，种子写错了，已跳过")
+            continue
+        out.append(mk(
+            f"toolerr_{item['id']}", f"toolerr__{tool}__{item['id']}",
+            item["lures"],
+            [Turn(role="user", content=item["q"]),
+             Turn(role="tool_call", calls=[ToolCall(tool, args)]),
+             Turn(role="tool_result", results=[ToolResult(tool, result, is_error=True)]),
+             Turn(role="assistant",
+                  content=_fmt(item["a"], reason=result["detail"], err="", value="", latex=""))],
             version, rng, all_names))
 
 
@@ -204,6 +232,7 @@ def main() -> int:
     gen_calculators(cfg, version, rng, all_names, out)
     gen_empty_result(cfg, version, rng, all_names, out)
     gen_blocked(cfg, version, rng, all_names, out)
+    gen_denied(cfg, version, rng, all_names, out)
 
     dump_samples(out, OUT)
     from collections import Counter
@@ -214,6 +243,8 @@ def main() -> int:
         r = [x for t in s.turns for x in t.results if x.is_error][0].content
         if isinstance(r, str):
             shapes["① [Error]: 字符串"] += 1
+        elif r.get("ok") is False:
+            shapes["④ 执行器包的 ok/error/detail"] += 1
         elif "error" in r:
             shapes["② 带 error 键的 dict"] += 1
         else:

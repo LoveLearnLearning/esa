@@ -28,6 +28,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from esa import fixtures  # noqa: E402
 from esa.ir import Sample, ToolCall, ToolResult, Turn, dump_samples, load_schemas  # noqa: E402
 from esa.render import pick_tool_names  # noqa: E402
 from esa.system_prompt import system_for  # noqa: E402
@@ -47,25 +48,63 @@ SYSTEM = (
 )
 
 # 明确要求保存/删除时该传什么参数。取自 scenarios.yaml 的 S004 话术。
+#
+# `known` = 这条样本开始时记忆库里已有哪些 key。它决定走哪个分支，
+# 所以必须显式写出来 —— 后端 save_explicit 有三条路（core_memory_service.py:196-234）：
+#   库里没这个 key            → status="created"
+#   有且内容分类都一样         → status="unchanged"
+#   有但内容不同              → status="confirmation_required"，**不覆盖**，产出待确认候选
+# 上一版按"恒定存成功"写，等于教模型在需要用户确认时谎报已保存。
+# 这里三种各配了样本，用户话术不变、库状态不同，正好教模型看返回值说话。
 SAVE_ARGS = {
     "记一下，我是软件工程大三的，准备考研":
-        {"memory_key": "major_info", "content": "软件工程专业大三，准备考研", "category": "profile"},
+        {"args": {"memory_key": "major_info", "content": "软件工程专业大三，准备考研",
+                  "category": "profile"},
+         "known": ["major_info"]},                      # 已有"软件工程专业大三" → 待确认
     "请记住：我更喜欢先看直观例子，再看公式推导。":
-        {"memory_key": "response_style", "content": "先看直观例子，再看公式推导", "category": "preference"},
+        {"args": {"memory_key": "response_style", "content": "先看直观例子，再看公式推导",
+                  "category": "preference"},
+         "known": []},                                   # 空库 → created
     "帮我存个学习目标——这学期把数据结构和算法吃透":
-        {"memory_key": "learning_goal", "content": "这学期把数据结构和算法吃透", "category": "learning"},
+        {"args": {"memory_key": "learning_goal", "content": "这学期把数据结构和算法吃透",
+                  "category": "learning"},
+         "known": []},                                   # 空库 → created
     "以后回答简短一点，记住这个偏好":
-        {"memory_key": "response_style", "content": "回答尽量简短", "category": "preference"},
+        {"args": {"memory_key": "response_style", "content": "回答尽量简短",
+                  "category": "preference"},
+         "known": ["response_style"]},                   # 已有别的风格 → 待确认
     "记下来，我的期末考试从第 16 周开始":
-        {"memory_key": "exam_schedule", "content": "期末考试从第 16 周开始", "category": "constraint"},
+        {"args": {"memory_key": "exam_schedule", "content": "期末考试从第 16 周开始",
+                  "category": "constraint"},
+         "known": ["exam_schedule"]},                    # 一模一样 → unchanged
 }
+
+# 删除是**两步**的：`delete_core_memory` 只认 memory_id，而 id 只能来自
+# `get_core_memories` / `search_core_memories` 的返回值（schema 描述里明写）。
+# 上一版一步就删，还传了个 memory_key —— 那个参数后端 2026-08-13 就没了。
+#
+# 为什么用 get_core_memories 而不是 search：这些话术里的词（学习目标 / 回答风格 /
+# 薄弱 / 考试安排）大多是抽象词，实测真实检索**搜不到**（见 memory_real.json
+# 的 search_matrix）。要拿到 id 就得列全部，这本身就是要教的东西。
 DELETE_ARGS = {
-    "把我之前设的学习目标删掉吧": ("learning_goal", "memory-learning-goal"),
-    "忘掉你记的我的回答风格偏好": ("response_style", "memory-response-style"),
-    "请删除关于我薄弱知识点的那条记忆。": ("weak_topics", "memory-weak-topics"),
-    "我不想让你再记着我的考试安排了，删了它": ("exam_schedule", "memory-exam-schedule"),
-    "之前存的那个学习目标不作数了，清掉": ("learning_goal", "memory-learning-goal"),
-    "帮我把回答风格那条记忆去掉": ("response_style", "memory-response-style"),
+    "把我之前设的学习目标删掉吧": "learning_goal",
+    "忘掉你记的我的回答风格偏好": "response_style",
+    "请删除关于我薄弱知识点的那条记忆。": "weak_topics",
+    "我不想让你再记着我的考试安排了，删了它": "exam_schedule",
+    "之前存的那个学习目标不作数了，清掉": "learning_goal",
+    "帮我把回答风格那条记忆去掉": "response_style",
+}
+
+# 按 save 返回的 status 说话。三句话必须不同 —— 用同一句打发，
+# 等于告诉模型"存没存成不重要"。
+SAVE_REPLIES = {
+    "created": "记住了：{content}。之后我会按这个来。",
+    "unchanged": "这条我已经记着了，内容和你说的一样（{content}），就不重复存一遍了。",
+    "confirmation_required": (
+        "这条得你点个头才能改：你之前存的「{key}」是「{old}」，现在要换成「{new}」。\n\n"
+        "系统没有直接覆盖，而是挂了一条待确认的修改。你确认一下我就让它生效——"
+        "在那之前**旧的那条仍然有效**。"
+    ),
 }
 
 
@@ -121,36 +160,57 @@ def gen_memory_positives(version, rng, all_names, out):
     cfg = yaml.safe_load(SCENARIO_SEEDS.read_text(encoding="utf-8"))["S004"]["phrasings"]
 
     for i, q in enumerate(cfg["明确要求记住"]):
-        args = SAVE_ARGS.get(q)
-        if args is None:
+        spec = SAVE_ARGS.get(q)
+        if spec is None:
             print(f"    ⚠️  没有为 {q!r} 配置 save 参数，已跳过")
             continue
-        result = execute("save_core_memory", args)
+        args = spec["args"]
+        result = fixtures.save_core_memory(**args, known=fixtures.memory_store(*spec["known"]))
+        status = result["status"]
+        if status == "confirmation_required":
+            cand = result["candidate"]
+            old = fixtures.memory_store(*spec["known"])[cand["memory_key"]]["content"]
+            answer = SAVE_REPLIES[status].format(
+                key=cand["memory_key"], old=old, new=cand["proposed_content"], content="")
+        else:
+            answer = SAVE_REPLIES[status].format(content=result["memory"]["content"])
         out.append(mk(
-            f"save_pos_{i:03d}", f"mem__save__{args['memory_key']}__{i:03d}",
-            "single_tool_call", ["save_core_memory", "delete_core_memory"],
+            f"save_pos_{i:03d}", f"mem__save__{status}__{args['memory_key']}__{i:03d}",
+            "single_tool_call", ["save_core_memory", "propose_core_memory", "delete_core_memory"],
             [Turn(role="user", content=q),
              Turn(role="tool_call", calls=[ToolCall("save_core_memory", args)]),
              Turn(role="tool_result", results=[ToolResult("save_core_memory", result)]),
-             Turn(role="assistant",
-                  content=f"记住了：{result['content']}。之后我会按这个来。")],
+             Turn(role="assistant", content=answer)],
             version, rng, all_names))
 
     for i, q in enumerate(cfg["明确要求删除"]):
-        target = DELETE_ARGS.get(q)
-        if target is None:
+        key = DELETE_ARGS.get(q)
+        if key is None:
             print(f"    ⚠️  没有为 {q!r} 配置 delete 参数，已跳过")
             continue
-        key, memory_id = target
-        result = execute("delete_core_memory", {"memory_id": memory_id})
+        listed = execute("get_core_memories", {})
+        target = next((m for m in listed if m["memory_key"] == key), None)
+        if target is None:
+            print(f"    ⚠️  记忆库里没有 {key!r}，删不了，已跳过")
+            continue
+        deleted = execute("delete_core_memory", {"memory_id": target["memory_id"]})
         out.append(mk(
             f"del_pos_{i:03d}", f"mem__delete__{key}__{i:03d}",
-            "single_tool_call", ["delete_core_memory", "save_core_memory"],
+            # 两次调用 → 不是 single_tool_call。删除**天生是两步**的
+            # （先查 id 再删），类别得如实标成多轮工具样本。
+            "multi_turn_tool",
+            ["delete_core_memory", "get_core_memories", "save_core_memory"],
             [Turn(role="user", content=q),
-             Turn(role="tool_call", calls=[ToolCall("delete_core_memory", {"memory_id": memory_id})]),
-             Turn(role="tool_result", results=[ToolResult("delete_core_memory", result)]),
+             # 第一步：拿 id。删除工具只认 memory_id，模型手上没有，必须先查。
+             Turn(role="tool_call", calls=[ToolCall("get_core_memories", {})]),
+             Turn(role="tool_result", results=[ToolResult("get_core_memories", listed)]),
+             # 第二步：拿查到的 id 去删。
+             Turn(role="tool_call",
+                  calls=[ToolCall("delete_core_memory", {"memory_id": target["memory_id"]})]),
+             Turn(role="tool_result", results=[ToolResult("delete_core_memory", deleted)]),
              Turn(role="assistant",
-                  content=f"已经删掉「{key}」这条记忆了。")],
+                  content=f"已经删掉「{target['memory_key']}」这条记忆了"
+                          f"（内容是「{target['content']}」）。")],
             version, rng, all_names))
 
 

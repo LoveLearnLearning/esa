@@ -23,6 +23,7 @@ LLaMA-Factory 自动画的 loss 曲线不是基线 —— 那只说明模型在�
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -75,7 +76,7 @@ def build_messages(rec: dict) -> list[dict]:
 
 
 def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
-                  timeout: int = 120, api_key: str | None = None) -> str:
+                  timeout: int = 600, api_key: str | None = None) -> str:
     """OpenAI 兼容的 chat/completions。返回原始文本，不让服务端替我们解析工具调用
     —— 评测要考的正是模型自己产出的格式对不对。
 
@@ -87,7 +88,15 @@ def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
         "messages": messages,
         "tools": tools,
         "temperature": 0.0,     # 评测必须确定性，否则两次跑分不可比
-        "max_tokens": 1024,
+        # 与线上一致：`MODEL_MAX_OUTPUT_TOKENS: int = 8192`
+        # （backend/core/utils/config.py:35 → webAPI.py:365 → vllm_service.py:148）
+        #
+        # ⚠️ 原来写死 1024，**只有线上的八分之一**。2026-08-16 第一次真实推理就露馅了：
+        # qwen3_5 是 ReasoningTemplate，`<think>` 先吃掉两三百 token，正文写到一半
+        # 就被砍断（实测 5 条里有 2 条断在 markdown 表格中间）。
+        # 评测集里 160 道题考「工具返回后怎么说」，被截断的话
+        # 「结果响应率」「结果忠实度」测出来的是**我们的取数设置，不是模型能力**。
+        "max_tokens": 8192,
     }
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -135,10 +144,65 @@ def cmd_predict(args) -> int:
               f"产出的是**不完整**的预测，只能用来看端点通不通。")
     api_key = args.api_key or os.environ.get("ESA_EVAL_API_KEY") or os.environ.get("OPENAI_API_KEY")
     out_path = EVAL_DIR / f"pred_{args.tag}.jsonl"
-    done = 0
+
+    # 续跑（`--resume`）
+    # ------------------
+    # 全量 481 题按实测 41 秒/条要跑 5.5 小时，而作业会被超时/抢占/节点故障打断。
+    # 没有续跑的话，第 5 小时断掉 = 481 题全丢，还要再排一次队、再加载一次权重。
+    #
+    # ⚠️ **只认「已有且非空」的预测**。空预测是上一轮请求失败的产物，
+    # 判分时算「格式不合法」—— 续跑必须重试它们，不能当成已经做完。
+    # 把失败结果当成功跳过，正是"数据是错的、仪表盘是绿的"那类 bug。
+    fingerprint = eval_fingerprint()
+    already: dict[str, str] = {}
+    if getattr(args, "resume", False) and out_path.exists():
+        lines = out_path.read_text(encoding="utf-8").splitlines()
+        seen_fp = None
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue        # 上次被 kill 时写了半行，丢掉重跑
+            if "id" not in row:
+                seen_fp = row.get("_meta", {}).get("eval_fingerprint")
+                continue
+            if row.get("raw", "").strip():
+                already[row["id"]] = row["raw"]
+
+        # 🔴 续跑闸门：这份 pred 必须是对着**同一版评测集**跑出来的。
+        # 判据不能是「id 对得上」—— 改标注/改对话正文时 id 根本不变。
+        if seen_fp != fingerprint:
+            sys.exit(
+                f"❌ 拒绝续跑：{out_path.name} 不是对着当前评测集跑的。\n"
+                f"   它的指纹：{seen_fp or '（没有 —— 旧版 predict 产出的）'}\n"
+                f"   当前评测集：{fingerprint}\n"
+                "   续跑的判据是「这个 id 已有非空预测就跳过」，而评测集改了之后 id 往往不变，\n"
+                "   所以硬续会**瞬间「跑完」全部题目、一条都不真跑**，再拿旧输出和新评测集判分 ——\n"
+                "   数字是错的，报告却长得和正常的一模一样。\n"
+                f"   要重跑就先删掉它：rm {out_path}"
+            )
+        todo = [r for r in recs if r["gold"]["id"] not in already]
+        print(f"↻ 续跑：指纹一致（{fingerprint}），"
+              f"已有 {len(already)} 条有效预测，本次还要跑 {len(todo)} 条")
+    else:
+        todo = recs
+
+    done = len(already)
     errors: list[tuple[str, str]] = []
+    # 用 "w" 重写：先把已有的原样写回，再追加新的。
+    # 不用 "a" 是为了把上次可能写坏的半行清掉。
     with out_path.open("w", encoding="utf-8") as fh:
-        for i, rec in enumerate(recs, 1):
+        # 指纹行写在最前面：下次续跑靠它判断「这份预测配不配得上当前评测集」。
+        # `load_preds` 会跳过没有 `id` 的行，所以判分不受影响。
+        fh.write(json.dumps(
+            {"_meta": {"eval_fingerprint": fingerprint, "tag": args.tag}},
+            ensure_ascii=False) + "\n")
+        for sid, raw in already.items():
+            fh.write(json.dumps({"id": sid, "raw": raw}, ensure_ascii=False) + "\n")
+        fh.flush()
+        for i, rec in enumerate(todo, 1):
             tools = json.loads(rec["tools"])
             try:
                 raw = call_endpoint(args.endpoint, args.model, build_messages(rec), tools,
@@ -148,9 +212,10 @@ def cmd_predict(args) -> int:
                 errors.append((rec["gold"]["id"], str(exc)[:120]))
                 raw = ""
             fh.write(json.dumps({"id": rec["gold"]["id"], "raw": raw}, ensure_ascii=False) + "\n")
+            fh.flush()      # 每条落盘：作业被 kill 时文件仍是完整可续跑的
             done += 1
             if done % 20 == 0:
-                print(f"  已完成 {done}/{len(recs)}")
+                print(f"  已完成 {done}/{len(recs)}", flush=True)
     print(f"预测完成 {done} 条 → {out_path}")
     if done < total:
         print(f"   （评测集共 {total} 条，这份只有 {done} 条，是试跑产物）")
@@ -240,7 +305,12 @@ def coerce_to_schema(args: dict, params: dict) -> dict:
     return out
 
 
-_NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
+# ⚠️ 负号前必须不是数字/小数点，否则**范围写法会被抠成负数**：
+# 「第 5-10 周」→ 旧正则给出 {5, -10}，而 -10 在工具返回值里当然找不到，
+# 于是被判成「疑似编造」。2026-08-16 基线跑完才发现，
+# 报告里那串 ['-10','-14','-16'] 全是复习计划表里的周次区间。
+# 加了 lookbehind 之后「5-10」→ {5, 10}，是它本来的意思。
+_NUM_RE = re.compile(r"(?<![\d.])-?\d+(?:\.\d+)?")
 
 
 def _num_variants(text: str) -> set[str]:
@@ -255,7 +325,87 @@ def _num_variants(text: str) -> set[str]:
     return out
 
 
-def unsupported_numbers(answer: str, context: str) -> set[str]:
+def observation_entities(observations: list[str]) -> dict[str, set[float]]:
+    """从工具观测里抽「实体名 → 它自己的那些数值」。
+
+    观测是结构化的，实体和它的数就在同一个 dict 里：
+
+        {"name": "设备管理", "mastery_level": 15.98, "practice_count": 8,
+         "reasons": ["掌握度低(mastery=16.0)"], "weak_prerequisites": [...]}
+
+    → `设备管理` 关联 {15.98, 8, 16.0}
+
+    **只关联同一层**：嵌套的 `weak_prerequisites` 里的「中断系统 22.44」
+    自己成一条，不并到 `设备管理` 名下 —— 否则等于给每个实体发一张通行证，
+    模型把前置的数安到主知识点上也查不出来。
+
+    字符串里的数也算（`"掌握度低(mastery=16.0)"` → 16.0），
+    因为后端就是这么把数值写进 `reasons` 的，回答照抄它是忠实的。
+    """
+    out: dict[str, set[float]] = {}
+
+    def collect(node) -> None:
+        if isinstance(node, dict):
+            names, nums = [], set()
+
+            def take(v) -> None:
+                if isinstance(v, bool):
+                    return
+                if isinstance(v, (int, float)):
+                    nums.add(float(v))
+                elif isinstance(v, str):
+                    for t in _NUM_RE.findall(v):
+                        try:
+                            nums.add(float(t))
+                        except ValueError:
+                            pass
+
+            for v in node.values():
+                take(v)
+                if isinstance(v, str) and len(v) >= 2 and not _NUM_RE.fullmatch(v.strip()):
+                    names.append(v)
+                elif isinstance(v, list):
+                    # `reasons: ["掌握度低(mastery=16.0)", …]` —— 标量列表里的数
+                    # 同样属于这个实体。不下探到 dict：那是下一层实体自己的事。
+                    for item in v:
+                        if not isinstance(item, (dict, list)):
+                            take(item)
+            for name in names:
+                out.setdefault(name, set()).update(nums)
+            for v in node.values():
+                collect(v)
+        elif isinstance(node, list):
+            for v in node:
+                collect(v)
+
+    for obs in observations:
+        try:
+            collect(json.loads(obs))
+        except (json.JSONDecodeError, TypeError):
+            continue        # 字符串型观测，抽不出实体 —— 由调用方判为「无法比对」
+    return out
+
+
+# 「向前看」的措辞：这一行在**提建议**，不是在转述工具返回值。
+# 2026-08-16 基线实测，被判编造的数字里有一大半落在这类行上：
+#   「第 11-14 周」「1.5 小时」「掌握度提升至 60%+」「建议先花 30 分钟」
+# 它们是模型自己排的计划，不是伪造的工具事实 —— 查它们等于在惩罚模型多说有用的话。
+_FORWARD_RE = re.compile(
+    r"建议|目标|提升至|提高到|达到|计划|预计|安排|冲刺|周|小时|分钟|阶段|轮"
+)
+
+# 指标词：这一行在**报告一个工具会返回的量**，即使没点名是哪个知识点。
+#
+# 补的是配对校验的一个真实盲区：「你的掌握度是 987654 分」既没提实体名、
+# 也不是计划，纯粹是编的 —— 只按实体配对会整条放过它。
+# `test_eval_scoring.py` 的 fabricate 用例就钉着这一条，2026-08-16 它当场红了。
+_METRIC_RE = re.compile(
+    r"掌握度|掌握|保持率|retention|练习|置信|优先级|权重|命中|正确率|熟练"
+)
+
+
+def unsupported_numbers(answer: str, context: str,
+                        entities: dict[str, set[float]] | None = None) -> set[str]:
     """回答里出现、但**整个给定上下文里都找不到**的数字。
 
     这是 `RESPOND_TOOL_RESULT` 那条 Contract「不得伪造不存在结果」的机器化：
@@ -276,17 +426,66 @@ def unsupported_numbers(answer: str, context: str) -> set[str]:
     宁可漏报也不要误报：一个会误报的指标没人会信，最后只会被关掉。
     """
     ctx = _num_variants(context)
-    out = set()
-    for n in _NUM_RE.findall(answer):
+    ctx_f = []
+    for c in ctx:
         try:
-            f = float(n)
+            ctx_f.append(float(c))
         except ValueError:
-            continue
-        norm = str(int(f)) if f.is_integer() else str(f)
-        if len(norm.lstrip("-").replace(".", "")) < 2:
-            continue  # 个位整数，散文噪声
-        if norm not in ctx:
-            out.add(norm)
+            pass
+
+    def is_rounding_of_context(v: float, text: str) -> bool:
+        """`v` 是不是上下文里某个数按它自己的精度四舍五入来的。
+
+        工具返回 `82.72`，回答写「82.7%」或「83%」—— 那是**正常的口语化转述**，
+        不是伪造。2026-08-16 基线实测：被判「疑似编造」的 512 个数里
+        **306 个（60%）是这一类**，指标因此完全失真。
+
+        按 `v` 自己的小数位数取整再比：82.7 → round(82.72,1)=82.7 ✅；
+        83 → round(82.72,0)=83 ✅；而真编的 46 对 44 → round(44,0)=44 ≠ 46 ❌。
+        """
+        d = len(text.split(".")[1]) if "." in text else 0
+        return any(round(c, d) == v for c in ctx_f)
+
+    def ok(f: float, norm: str, allowed: list[float]) -> bool:
+        if norm in ctx or f in allowed:
+            return True
+        d = len(norm.split(".")[1]) if "." in norm else 0
+        return any(round(c, d) == f for c in allowed) or is_rounding_of_context(f, norm)
+
+    out = set()
+    for line in answer.splitlines():
+        # 配对校验（2026-08-16 用户拍板）：**只查「紧挨着某个工具返回过的实体名」的数字**。
+        #
+        # Contract 要管的是「不得伪造工具返回的结果」。回答里还有大量模型
+        # 自己提的计划数字（周次、时长、目标值），它们不是在转述工具，查了就是误报。
+        # 实测：旧判据报出 512 个「疑似编造」，其中 60% 是四舍五入、其余绝大多数是计划数字。
+        #
+        # 判据按**行**走：markdown 表格一行就是一条记录，散文一段也在一行里。
+        # 行里出现过工具返回的实体名 → 这行的数字要对得上那些实体的值；
+        # 行里没有实体名 → 不查。
+        if entities is not None:
+            if _FORWARD_RE.search(line):
+                continue                    # 这行在提建议/排计划，不是在转述
+            hits = [n for n in entities if n in line]
+            if hits:
+                allowed = [v for n in hits for v in entities[n]]
+            elif _METRIC_RE.search(line):
+                allowed = []                # 报了个量却没点名 → 按整段上下文查
+            else:
+                continue                    # 既没提实体也没报量 → 不查
+        else:
+            allowed = []                    # 没有观测：退回「整段上下文」的老判据
+
+        for n in _NUM_RE.findall(line):
+            try:
+                f = float(n)
+            except ValueError:
+                continue
+            norm = str(int(f)) if f.is_integer() else str(f)
+            if len(norm.lstrip("-").replace(".", "")) < 2:
+                continue  # 个位整数，散文噪声
+            if not ok(f, norm, allowed):
+                out.add(norm)
     return out
 
 
@@ -388,11 +587,19 @@ def score(recs: list[dict], preds: dict[str, str], parser_name: str,
             # 只对"真的答了"的那些算，否则空回答会白拿一个满分忠实度。
             if answered:
                 n = g["n_turns_given"]
-                context = rec["system"] + " ".join(
-                    str(c["value"]) for c in rec["conversations"][:n])
-                bad = unsupported_numbers(p.content, context)
-                m["faith_checked"] += 1
-                m["faith_ok"] += (not bad)
+                turns = rec["conversations"][:n]
+                context = rec["system"] + " ".join(str(c["value"]) for c in turns)
+                ents = observation_entities(
+                    [str(c["value"]) for c in turns if c["from"] == "observation"])
+                # 观测抽不出实体（字符串型返回值）→ **如实报「无法比对」，不判失败**。
+                # 空容器推不出结构，硬判会造出一个只会误报的指标。
+                if not ents:
+                    m["faith_skipped"] = m.get("faith_skipped", 0) + 1
+                    bad = set()
+                else:
+                    bad = unsupported_numbers(p.content, context, ents)
+                    m["faith_checked"] += 1
+                    m["faith_ok"] += (not bad)
                 if bad:
                     failures.append({
                         "id": g["id"],
@@ -505,13 +712,37 @@ def load_eval() -> list[dict]:
             if line.strip()]
 
 
+def eval_fingerprint() -> str:
+    """当前评测集的指纹。**续跑闸门就靠它。**
+
+    为什么需要：`--resume` 的判据是「这个 id 已有非空预测就跳过」，
+    而**评测集改了之后 id 往往不变**（改的是对话正文或标注）。
+    2026-08-16 改 `修改参数` 模板就是这样 —— `s002_修改参数_0028` 还是它。
+    残留一份旧 `pred_base.jsonl` 的话，续跑会**瞬间「完成」481 条、一条不真跑**，
+    然后拿旧模型输出去和新评测集判分：结果看着完全正常，数字却是错的，
+    没有任何东西会报警。这正是本项目最贵的那类 bug。
+    """
+    raw = (EVAL_DIR / "eval.jsonl").read_bytes()
+    n = sum(1 for line in raw.splitlines() if line.strip())
+    return f"{hashlib.sha256(raw).hexdigest()[:16]}#{n}"
+
+
 def load_preds(tag: str) -> dict[str, str]:
-    """加载 `preds` 相关数据。"""
+    """加载 `preds` 相关数据。首行可能是指纹行（没有 `id`），跳过它。"""
     p = EVAL_DIR / f"pred_{tag}.jsonl"
     if not p.exists():
         sys.exit(f"找不到 {p}。先跑：python3 -m esa.eval predict --tag {tag} ...")
-    return {json.loads(line)["id"]: json.loads(line)["raw"]
-            for line in p.read_text(encoding="utf-8").splitlines() if line.strip()}
+    out: dict[str, str] = {}
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if "id" in row:
+            out[row["id"]] = row["raw"]
+    return out
 
 
 def score_by_layer(recs: list[dict], preds: dict[str, str], parser_name: str,
@@ -573,6 +804,26 @@ def cmd_score(args) -> int:
             "   如果是跑到一半断了：predict 结尾会打印失败条数，先修请求再重跑。"
         )
 
+    # 解析器错配闸门。
+    #
+    # 这个坑骗了我们两次（2026-08-16 两次全量基线）：`current` 只认 XML，
+    # 而本流水线存进 pred 的是 JSON 文本形式，于是判出
+    # **工具选择 0.0% / 漏调 100% / 参数匹配 0.0%**，报告却毫无异样。
+    # 两次都是靠人眼发现「样本 raw 里明明写着 <tool_call>」才识破的 ——
+    # 这种只能靠人眼兜住的失败，就该做成闸门。
+    json_form = sum(1 for v in preds.values()
+                    if "<tool_call>" in v and "<function=" not in v)
+    if args.parser == "current" and json_form > len(preds) * 0.1:
+        raise SystemExit(
+            f"❌ 拒绝判分：解析器与预测格式对不上。\n"
+            f"   {json_form}/{len(preds)} 条预测是 JSON 形式（<tool_call>{{…}}），"
+            f"而 --parser current 只认 XML（<function=…>）。\n"
+            "   照这样判会得到「工具选择 0.0% / 漏调 100%」—— 那是解析器的锅，不是模型的。\n"
+            "   本流水线的 pred 存的不是模型原始输出：LLaMA-Factory 的 API 会把工具调用\n"
+            "   解析成结构化 tool_calls，call_endpoint 再还原成 qwen 的 JSON 文本形式。\n"
+            "   改用：python3 -m esa.eval --parser dual score --tag " + args.tag
+        )
+
     r = score(recs, preds, args.parser, by_name)
     r["_by_layer"] = {k: {m: v[m] for m in TARGETS} for k, v in
                       score_by_layer(recs, preds, args.parser, by_name).items()}
@@ -629,8 +880,22 @@ def main(argv=None) -> int:
     """
     ap = argparse.ArgumentParser(description="ESA 评测器")
     ap.add_argument("--schemas", default=str(in_dataset("schemas/tool_schemas.json")))
-    ap.add_argument("--parser", default="current", choices=list(PARSERS),
-                    help="用哪个后端解析器判分。必须与线上实际使用的一致")
+    # 默认从 `current` 改成 `dual`（2026-08-16，被同一个坑骗了两次之后）。
+    #
+    # `current` 是后端那个只认 XML（`<function=…>`）的解析器。而 `pred_*.jsonl` 里
+    # 存的**不是模型的原始输出** —— LLaMA-Factory 的 API 会把工具调用解析成结构化
+    # `tool_calls`，`call_endpoint` 再把它还原成 qwen 的 **JSON 文本**形式
+    # （见本文件 `call_endpoint` 末尾）。于是 `current` 一条都读不出来，
+    # 报出**工具选择 0.0% / 漏调 100% / 参数匹配 0.0%**，
+    # 而报告长得和正常的一模一样 —— 两次都是靠人眼看出「样本 raw 里明明有调用」才发现的。
+    #
+    # `dual` 两种格式都认，所以**永远不会少读**，当默认值是安全的。
+    # 要专门量「严格 XML 合规率」时再显式 `--parser current`。
+    # ⚠️ 这条链路回答不了 B3（模型原始文本能否被后端读懂），那是
+    # `test_parser_compat.py` 的事。见超算手册 3.3。
+    ap.add_argument("--parser", default="dual", choices=list(PARSERS),
+                    help="用哪个后端解析器判分。默认 dual（兼收 XML/JSON）；"
+                         "current 只认 XML，用它判分本流水线的产出会全 0")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("predict", help="调模型产出预测")
@@ -639,6 +904,9 @@ def main(argv=None) -> int:
     p.add_argument("--tag", required=True, help="如 base / lora-1500")
     p.add_argument("--api-key", help="中转站/云端 API 的密钥；也可用环境变量 "
                                      "ESA_EVAL_API_KEY 或 OPENAI_API_KEY（本地 vLLM 不需要）")
+    p.add_argument("--resume", action="store_true",
+                   help="接着上次的 pred_<tag>.jsonl 往下跑，跳过已有且非空的预测。"
+                        "空预测（上次请求失败的产物）会重试。")
     p.add_argument("--limit", type=int, help="只跑前 N 条，用于试通端点。"
                                              "产出的 pred 文件不完整，score 会拒绝判分")
     p.set_defaults(func=cmd_predict)

@@ -93,28 +93,96 @@ get_review_timing:
 # 判别点：只有对错 → record_answer；
 #         涉及独立完成/提示等级/自评信心/复述/迁移/错误类型 → record_learning_evidence
 # ---------------------------------------------------------------------------
+# ⚠️ 2026-08-15：这一段的每条话术现在都自带参数。
+#
+# 原来参数是**按组**写死在生成器的 `EVIDENCE_GROUPS` 里的
+# （比如 `正例_transfer` 全组 `correct: False`），而组内几条话术说的根本不是一回事：
+# 「今天试了个新题型没做出来」和「勉强做对了」被打上同一个 correct=False。
+# 这个错误以前看不见 —— budget 截断让每组只有第一条话术进得了数据，
+# 直到 2026-08-15 生成器改成按话术轮流取，10 条样本当场被 answer_polarity 抓出来。
+#
+# 规矩和 `混淆_应调record_answer` 那组一样，而且是同一条：
+# **凡是语义标签，一律从种子里读，不在生成器里猜。**
+# 生成器能程序化决定的是"参数怎么填进 JSON"，不是"学生到底做对没做对、
+# 用了几级提示、有多少把握"。
 record_learning_evidence:
   正例_teach_back:
-    - "我把{kp}给同学讲了一遍，讲得还算顺，中间卡了一下"
-    - "我试着复述了{kp}，大概能说清楚七成"
-    - "刚给室友讲{kp}，发现自己有个地方说不明白"
+    - q: "我把{kp}给同学讲了一遍，讲得还算顺，中间卡了一下"
+      activity_type: teach_back
+      explanation_score: 0.7
+      independent: true
+    - q: "我试着复述了{kp}，大概能说清楚七成"
+      activity_type: teach_back
+      explanation_score: 0.7
+      independent: true
+    - q: "刚给室友讲{kp}，发现自己有个地方说不明白"
+      # "有个地方说不明白" → 解释质量明显低于上面两条，不能照抄 0.7
+      activity_type: teach_back
+      explanation_score: 0.5
+      independent: true
   正例_hint:
-    - "{kp}这题我看了两次提示才做出来"
-    - "我做{kp}的时候提示用了三级，最后才做对"
-    - "{kp}那道题我自己没做出来，看了答案才懂"
+    - q: "{kp}这题我看了两次提示才做出来"
+      # "两次提示" → hint_level 2，不是全组统一的 3
+      activity_type: hint
+      hint_level: 2
+      correct: true
+      independent: false
+    - q: "我做{kp}的时候提示用了三级，最后才做对"
+      activity_type: hint
+      hint_level: 3
+      correct: true
+      independent: false
+    - q: "{kp}那道题我自己没做出来，看了答案才懂"
+      # 看了答案 = 提示等级拉满且**没做对**。原来这条被打成 correct=true。
+      activity_type: hint
+      hint_level: 5
+      correct: false
+      independent: false
   正例_transfer:
-    - "{kp}换个场景我就不会用了，今天试了个新题型没做出来"
-    - "我把{kp}用到一个没见过的题上，勉强做对了"
+    - q: "{kp}换个场景我就不会用了，今天试了个新题型没做出来"
+      activity_type: transfer
+      transfer_score: 0.2
+      correct: false
+    - q: "我把{kp}用到一个没见过的题上，勉强做对了"
+      # 做对了就是 correct=true。原来这条被打成 false —— 用户说对的，数据教成错的。
+      activity_type: transfer
+      transfer_score: 0.6
+      correct: true
   正例_带自评信心:
-    # 学生**明确表达**了信心，才可以传 self_confidence
-    - "{kp}这题我做对了，但说实话我只有五成把握"
-    - "我{kp}答对了，感觉挺有信心的，大概九成吧"
-    - "{kp}蒙对的，其实我一点把握都没有"
+    # 学生**明确表达**了信心，才可以传 self_confidence；数值照他说的填，不要归一成一个值
+    - q: "{kp}这题我做对了，但说实话我只有五成把握"
+      activity_type: practice
+      correct: true
+      self_confidence: 0.5
+    - q: "我{kp}答对了，感觉挺有信心的，大概九成吧"
+      activity_type: practice
+      correct: true
+      self_confidence: 0.9
+    - q: "{kp}蒙对的，其实我一点把握都没有"
+      # 蒙对了：结果是对的，信心接近 0 —— 这一对反差正是这条样本的价值
+      activity_type: practice
+      correct: true
+      self_confidence: 0.1
   正例_带错误类型:
-    # 有明确错误证据，才可以填 error_type
-    - "{kp}我又做错了，是把概念理解反了"
-    - "做{kp}的时候步骤记错了顺序"
-    - "{kp}这题我是漏看了条件，不是不会"
+    # 有明确错误证据，才可以填 error_type；类型照他描述的填，别整组共用一个
+    - q: "{kp}我又做错了，是把概念理解反了"
+      activity_type: practice
+      correct: false
+      error_type: conceptual
+      misconception: "把最坏情况当成平均情况"
+    - q: "做{kp}的时候步骤记错了顺序"
+      # 步骤顺序错 = procedural，不是 conceptual
+      activity_type: practice
+      correct: false
+      error_type: procedural
+      misconception: "把算法步骤的先后顺序记反了"
+    - q: "{kp}这题我是漏看了条件，不是不会"
+      # 学生自己说了"不是不会"，那就不是概念错，是 careless。
+      # misconception 按 schema 要求写具体的，不写"粗心"两个字。
+      activity_type: practice
+      correct: false
+      error_type: careless
+      misconception: "读题时漏掉了题干给出的限制条件"
 
   混淆_应调record_answer:
     # 只有对错，没有过程信息 → record_answer 更合适。
@@ -166,15 +234,69 @@ get_learning_evidence_summary:
 # gate：不要在每轮对话开始时例行调用
 # ---------------------------------------------------------------------------
 search_core_memories:
+  # ⚠️ `query` 是**必填**的，不能省。
+  #
+  # 2026-08-15 之前这里只有问句，生成器拿**知识点名**去当检索词
+  # （`{"query": kp}`）。实测真实检索（core_memory_retrieval.py 纯词法）：
+  # 29 个知识点名里 23 个搜出空，6 个是字符二元组巧合误命中
+  # （"ARP" 命中 learning_goal，是因为 "learning" 里有 "ar"）。
+  # 也就是说那 48 条样本教的是「拿知识点名去翻记忆库」——
+  # 一个线上几乎必然落空的动作，而观测是编的、还永远非空。
+  #
+  # 现在 query 由种子作者显式写出：用户问的是"我的偏好/我的目标"，
+  # 就该拿这些词去搜，而不是拿讲解主题去搜。
+  # **命中与否不由种子决定**——由 capture 跑真实检索定，
+  # 落在 data/cache/memory_real.json 的 search_matrix 里。
+  # 目前这 6 条真实结果是 3 命中 3 落空，落空的那三条正好用来教
+  # 「工具没返回东西时不编，如实说并追问」。
   正例:
-    - "按我之前说的偏好来讲{kp}"
-    - "还记得我的学习目标吗，按那个给我建议"
-    - "我之前提过我的专业方向，结合那个说说{kp}怎么学"
-    - "用我习惯的方式讲一下{kp}"
-    - "我之前说过我哪块弱，针对那个给我出题"
-    - "按我之前定的考试时间安排一下复习"
+    - q: "按我之前说的偏好来讲{kp}"
+      query: "偏好"
+    - q: "还记得我的学习目标吗，按那个给我建议"
+      query: "学习目标"
+    - q: "我之前提过我的专业方向，结合那个说说{kp}怎么学"
+      query: "专业"
+    - q: "用我习惯的方式讲一下{kp}"
+      query: "讲解方式"
+    - q: "我之前说过我哪块弱，针对那个给我出题"
+      query: "薄弱"
+    - q: "按我之前定的考试时间安排一下复习"
+      query: "期末"
+    # ↓ 2026-08-17 从 scenarios.yaml 的 S004__仅提及未要求 移来（见交接文档 5.22）。
+    #   那一组注释自己写着「疑问句其实在查记忆、危险」，而第一批 35 条
+    #   写在该规则确立之前，混进了 17 条疑问句 —— 陈述句仍留在负样本里。
+    - q: "我之前好像跟你说过我的学习目标？"
+      query: "学习目标"
+    - q: "你还记得我喜欢什么讲解方式吗"
+      query: "讲解方式"
+    - q: "那个学习目标我都快忘了是啥了"
+      query: "学习目标"
+    - q: "我是不是给你说过我的考试时间"
+      query: "期末"
+    - q: "我之前的偏好设置是什么来着"
+      query: "偏好"
+    - q: "我记性不太好，之前定了什么目标"
+      query: "学习目标"
+    - q: "我是不是跟你聊过我的薄弱科目"
+      query: "薄弱"
+    - q: "我的学习习惯你应该有印象吧"
+      query: "学习习惯"
+    - q: "我是不是讲过我入门比别人晚"
+      query: "入门"
+    - q: "我是不是提过我更吃例子那一套"
+      query: "讲解方式"
+    - q: "我之前是不是提过我怕数学"
+      query: "薄弱"
+    - q: "我好像提到过我在准备什么考试"
+      query: "期末"
   混淆_应调get_core_memories:
     # 要的是"全部列出来"，不是"检索相关的"
     - "你都记住了我哪些事"
     - "把我保存的核心记忆全列出来"
     - "看看你那边存了我什么信息"
+    # ↓ 2026-08-17 从 S004__仅提及未要求 移来。线上规则：「用户明确要求查看、管理或列出全部长期记忆时」才调 get_core_memories。
+    - "你之前记的那些东西还在吗"
+    - "你对我了解多少啊"
+    - "之前那些设定还有用吗"
+    - "你那边存了我哪些信息呀"
+    - "我之前记录的那些还准吗"

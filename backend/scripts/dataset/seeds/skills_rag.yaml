@@ -80,11 +80,19 @@ load_skill:
       args: { expression: "factorial(15)" }
       lure: load_skill
       a: "15 的阶乘是 ${value}$。这种算术直接用计算器算就行，不需要加载教学技能。"
-    - q: "把我的学习目标删掉"
-      tool: delete_core_memory
-      args: { memory_id: "memory-learning-goal" }
+    # ⚠️ 2026-08-15：这条原来是「把我的学习目标删掉」→ 一步调
+    # `delete_core_memory(memory_key="learning_goal")`。两个问题：
+    #   1. `memory_key` 这个参数后端 2026-08-13 就删了，现在只认 `memory_id`；
+    #   2. id 只能来自 get/search 的返回值，所以删除**天生是两步的**，
+    #      而这一组的模板是单次调用。
+    # 这一组要教的是「记忆管理不需要加载教学技能」，跟删不删无关，
+    # 所以换成一个本来就只需一步的记忆动作。两步删除的样本在
+    # gen_negatives.py 的 del_pos_* 里，那边是完整的。
+    - q: "看看你那边都记着我哪些事，顺便说下要不要加载什么技能"
+      tool: get_core_memories
+      args: {}
       lure: load_skill
-      a: "已经删除指定的长期记忆。这是记忆管理，不需要加载教学技能。"
+      a: "我这边一共记着你 {count} 条信息，比如「{first}」。这是记忆管理，不需要加载教学技能。"
 
   # profile_personalization 是 autoload:true，已经在 system prompt 里，
   # 不该再用 load_skill 加载一次

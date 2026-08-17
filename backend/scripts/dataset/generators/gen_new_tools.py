@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import random
 import sys
+from itertools import zip_longest
 from pathlib import Path
 
 import yaml
@@ -55,16 +56,19 @@ CONFUSION_TARGET = {
     "混淆_应调get_core_memories": "get_core_memories",
 }
 
-# record_learning_evidence 各正例组对应的活动类型与附加参数。
-# 这些参数不能乱填 —— schema 明确写了 self_confidence「学生没有提供时不要猜测、不要传」，
-# error_type「只有确有错误证据时填写」。所以只在话术里真的出现了对应信息时才带上。
-EVIDENCE_GROUPS = {
-    "正例_teach_back": {"activity_type": "teach_back", "explanation_score": 0.7, "independent": True},
-    "正例_hint": {"activity_type": "hint", "hint_level": 3, "correct": True, "independent": False},
-    "正例_transfer": {"activity_type": "transfer", "transfer_score": 0.4, "correct": False},
-    "正例_带自评信心": {"activity_type": "practice", "correct": True, "self_confidence": 0.5},
-    "正例_带错误类型": {"activity_type": "practice", "correct": False, "error_type": "conceptual",
-                  "misconception": "把最坏情况当成平均情况"},
+# record_learning_evidence 的参数**逐条**写在种子里，不再按组写死。
+#
+# ⚠️ 这里原来是一张 `EVIDENCE_GROUPS` 表，一组一套参数。问题是组内几条话术
+# 说的不是一回事：`正例_transfer` 里「今天试了个新题型没做出来」和「勉强做对了」
+# 共用 `correct: False`，等于把用户说对的记成错的。
+# 生成器改成按话术轮流取之后，这 10 条当场被 validate 的 answer_polarity 抓出来。
+#
+# 和 `混淆_应调record_answer` 是同一条规矩：**语义标签从种子读，不在生成器里猜**。
+# 生成器只负责把种子里除 q 之外的键原样填进参数。
+EVIDENCE_KEYS_FROM_SEED = {
+    "activity_type", "correct", "self_confidence", "evidence_reliability",
+    "hint_level", "attempts", "independent", "recall_score",
+    "explanation_score", "transfer_score", "error_type", "misconception",
 }
 
 
@@ -133,10 +137,26 @@ def _answer_for(tool: str, result: dict, kp: str) -> str:
                 f"平均提示等级 {result['avg_hint_level']}，正确率 {result['correct_rate']}。"
                 f"错误类型分布：{errs}。")
     if tool == "search_core_memories":
-        if result["count"] == 0:
-            return "我这边没有检索到相关的长期记忆。"
-        m = result["memories"][0]
-        return f"我记得你的「{m['memory_key']}」：{m['content']}。我按这个来。"
+        # ⚠️ 线上返回的是 **list**，没有 count / memories 这两个键（上一版按 dict 写的）。
+        # 空结果是常态而不是异常：抽象词（偏好 / 讲解方式 / 学习目标）在真实检索里
+        # 一条都搜不到（core_memory_retrieval.py 是纯词法的）。
+        # 这一支正是评测里「结果忠实度」要考的：**工具没返回东西时不要编**。
+        #
+        # ⚠️ kp 只有在用户话术里真的提到时才能引用。话术不带 {kp} 时
+        # 生成器随机挑了一个知识点，写进回答就是在替用户编他没说过的话。
+        if not result:
+            if kp:
+                return (f"我搜了一下长期记忆，没有查到你之前提过相关的内容——所以我不猜。\n\n"
+                        f"你直接说一下想怎么讲「{kp}」？比如先看例子还是先看定义、"
+                        f"要不要带推导。你说了我这轮就照着来，也可以顺手帮你记下来。")
+            return ("我搜了一下长期记忆，没有查到相关的内容——可能是当时没存下来，"
+                    "也可能是存的说法和我搜的词对不上。总之我这边现在是空的，就不替你编一个了。\n\n"
+                    "你再跟我说一遍就行，这轮我照着用；要是想让我长期记着，说一声我就存下来。")
+        m = result[0]
+        if kp:
+            return (f"查到了，你之前存过「{m['memory_key']}」：{m['content']}。"
+                    f"那我讲「{kp}」就按这个来。")
+        return f"查到了，你之前存过「{m['memory_key']}」：{m['content']}。我就按这个来。"
     if tool == "record_learning_evidence":
         st = result["state"]
         return (f"记下了。「{st['kp_id']}」的掌握度更新为 **{st['mastery_level']}**，"
@@ -152,16 +172,20 @@ def _answer_for(tool: str, result: dict, kp: str) -> str:
         return (f"建议优先练「{r0['name']}」，掌握度 {r0['mastery_level']}，"
                 f"优先级 {r0['priority']}——{'；'.join(r0['reasons'])}。")
     if tool == "get_core_memories":
-        ms = result["memories"]
-        items = "；".join(f"{m['memory_key']}：{m['content']}" for m in ms[:3])
-        return f"我一共保存了 {result['count']} 条关于你的核心记忆，包括：{items}。"
+        # 同样是 **list**，没有 count 键 —— 要数数量就 len()。
+        items = "；".join(f"{m['memory_key']}：{m['content']}" for m in result[:3])
+        return f"我一共保存了 {len(result)} 条关于你的核心记忆，包括：{items}。"
     if tool == "record_answer":
         # 答对和答错要给不同的回应 —— 用同一句话打发，等于告诉模型对错无所谓。
-        head = "记下了。" if result["correct"] else "记下了，这次没做对。"
-        tail = ("" if result["correct"]
-                else f"要不要我帮你看看「{result['kp_id']}」是卡在哪一步？")
-        return (f"{head}「{result['kp_id']}」的掌握度从 {result['mastery_before']} "
-                f"更新到 **{result['mastery_after']}**，累计练习 {result['practice_count']} 次。{tail}")
+        # 字段全在 evidence / state 两层里（顶层只有 saved/evidence/state），
+        # 上一版按 {correct, kp_id, mastery_before, mastery_after, practice_count}
+        # 七个平铺的键写，一个都对不上。
+        ev, st = result["evidence"], result["state"]
+        head = "记下了。" if ev["correct"] else "记下了，这次没做对。"
+        tail = ("" if ev["correct"]
+                else f"要不要我帮你看看「{st['kp_id']}」是卡在哪一步？")
+        return (f"{head}「{st['kp_id']}」的掌握度从 {st['old_mastery']} "
+                f"更新到 **{st['mastery_level']}**，累计练习 {st['practice_count']} 次。{tail}")
     return "好的。"
 
 
@@ -186,25 +210,51 @@ def gen_positive(cfg, tool, group, phrasings, rng, all_names, version, out, budg
     # 否则每个知识点都会渲染出同一句话。前面已经因此混进过两批字面重复，
     # 这次是 check_exact_duplicates 自动抓出来的。
     # 不带占位符的话术只出一条，凑不满预算就如实报缺，不复制粘贴。
-    pairs: list[tuple[str, str]] = []
-    for p in phrasings:
+    # ⚠️ 按话术**轮流**取，不是一条话术铺满再换下一条。
+    #
+    # 原来是先把话术 1 × 全部知识点排完，再排话术 2……然后被 budget 从中间截断。
+    # 后果：`get_mastery_level` 手写了 6 条话术，数据里**只出现 2 条**
+    # （28 条"我{kp}掌握得怎么样了" + 20 条"查一下我{kp}这个点的掌握度"），
+    # 另外 4 条一条都没进去，而覆盖率报告显示 48/48 —— 又一次仪表盘绿着而数据是偏的。
+    # 轮流取之后 6 条话术各出约 8 条，样本数不变，话术多样性从 2 变成 6。
+    per_phrasing: list[list[tuple[str, str, dict]]] = []
+    for item in phrasings:
+        p, meta = _seed_text_meta(item)
         if "{kp}" in p:
-            pairs += [(kp, p) for _, kp in kps]
+            per_phrasing.append([(kp, p, meta) for _, kp in kps])
         else:
-            pairs.append((rng.choice(kps)[1], p))
+            # 不带占位符的话术渲染出来只有一句，多出的知识点没有意义，只出一条。
+            per_phrasing.append([(rng.choice(kps)[1], p, meta)])
+
+    pairs: list[tuple[str, str, dict]] = []
+    for row in zip_longest(*per_phrasing):
+        pairs += [item for item in row if item is not None]
 
     n = 0
-    for kp, p in pairs:
+    for kp, p, meta in pairs:
         if n >= budget:
             break
         query = p.format(kp=kp, kp2="链表")
         has_kp = "{kp}" in p
         if tool == "record_learning_evidence":
-            args = {"kp_id": kp, **EVIDENCE_GROUPS[group]}
+            extra = {k: v for k, v in meta.items() if k in EVIDENCE_KEYS_FROM_SEED}
+            if "activity_type" not in extra:
+                raise SystemExit(
+                    f"seeds/new_tools.yaml 的 {group} 里这条没写 activity_type：{p!r}\n"
+                    "record_learning_evidence 的语义参数必须逐条写在种子里，不能按组套用。"
+                )
+            args = {"kp_id": kp, **extra}
         elif tool == "get_learning_evidence_summary":
             args = {"kp_id": kp} if has_kp else {}
         elif tool == "search_core_memories":
-            args = {"query": kp if has_kp else "学习目标"}
+            # ⚠️ 检索词由种子显式给出，**不再拿知识点名顶替**。
+            # 用户问的是"按我之前说的偏好来讲虚拟内存"，该搜的是"偏好"不是"虚拟内存"。
+            # 实测拿知识点名去搜：29 个里 23 个返回空，6 个是字符二元组巧合误命中。
+            if not meta.get("query"):
+                raise SystemExit(
+                    f"seeds/new_tools.yaml 的 search_core_memories 正例缺 query 字段：{p!r}"
+                )
+            args = {"query": meta["query"]}
         else:
             args = {"kp_id": kp}
         try:
@@ -218,7 +268,8 @@ def gen_positive(cfg, tool, group, phrasings, rng, all_names, version, out, budg
             [Turn(role="user", content=query),
              Turn(role="tool_call", calls=[ToolCall(tool, args)]),
              Turn(role="tool_result", results=[ToolResult(tool, result)]),
-             Turn(role="assistant", content=_answer_for(tool, result, kp))],
+             # 话术里没提知识点时传空串 —— 回答不能引用用户没说过的东西。
+             Turn(role="assistant", content=_answer_for(tool, result, kp if has_kp else ""))],
             version, rng, all_names, topic=kp))
         n += 1
     if n < budget:

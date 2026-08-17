@@ -492,15 +492,20 @@ def check_negative_not_positive(samples: list[Sample]) -> list[Finding]:
 def _failure_text(content: Any) -> str | None:
     """从一条失败观测里取出报错文案。
 
-    三种失败长相各取各的位置（见 seeds/tool_errors.yaml 文件头）：
+    四种失败长相各取各的位置（见 seeds/tool_errors.yaml 文件头）：
       ① 字符串         → 整条就是文案（"[Error]: 搜索请求超时"）
       ② 带 error 键     → error 的值（三个计算器）
       ③ 阻断 / 空结果   → reason 或 note 的值
+      ④ 执行器包出来的   → detail 的值（`{"ok":false,"error":"<码>","detail":"<正文>"}`）
+
+    ④ 里 `error` 是错误**码**（memory_policy_denied / tool_execution_error），
+    真正的文案在 `detail`，所以 detail 优先 —— 不然全组都只登记成一个码，
+    「凭印象编报错」这道闸门就形同虚设。
     """
     if isinstance(content, str):
         return content
     if isinstance(content, dict):
-        for key in ("error", "reason", "note"):
+        for key in ("detail", "error", "reason", "note"):
             if content.get(key):
                 return str(content[key])
     return None
