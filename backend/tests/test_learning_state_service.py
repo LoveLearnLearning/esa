@@ -65,6 +65,44 @@ def test_one_event_updates_evidence_and_mastery(tmp_path):
     )["evidence_count"] == 1
 
 
+def test_same_idempotency_key_does_not_double_count(tmp_path):
+    """同一可信请求的工具重试只产生一条证据。"""
+    service, mastery, evidence = _service(tmp_path)
+    first = service.record_event(
+        user_name="alice",
+        kp_id="DP",
+        activity_type="practice",
+        correct=True,
+        idempotency_key="request-1:event-1",
+    )
+    second = service.record_event(
+        user_name="alice",
+        kp_id="DP",
+        activity_type="practice",
+        correct=True,
+        idempotency_key="request-1:event-1",
+    )
+
+    assert first["duplicate"] is False
+    assert second["duplicate"] is True
+    assert mastery.get("alice", "dynamic_programming")["practice_count"] == 1
+    assert evidence.get_summary(
+        "alice", kp_id="dynamic_programming"
+    )["evidence_count"] == 1
+
+
+def test_invalid_activity_type_is_rejected(tmp_path):
+    """Tool schema 之外的活动类型不能污染学习状态。"""
+    service, _, _ = _service(tmp_path)
+    with pytest.raises(ValueError, match="activity_type"):
+        service.record_event(
+            user_name="alice",
+            kp_id="DP",
+            activity_type="invented",
+            correct=True,
+        )
+
+
 def test_mastery_is_not_changed_when_only_time_passes(tmp_path):
     """验证 `mastery_is_not_changed_when_only_time_passes` 场景。"""
     service, mastery, _ = _service(tmp_path)

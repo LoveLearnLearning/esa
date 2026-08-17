@@ -47,6 +47,7 @@ class LearningStateService:
         transfer_score: float | None = None,
         error_type: str | None = None,
         misconception: str | None = None,
+        idempotency_key: str | None = None,
     ) -> dict:
         """处理 `record_event` 相关逻辑。
 
@@ -65,6 +66,7 @@ class LearningStateService:
             transfer_score: float | None => `transfer_score` 参数。
             error_type: str | None => `error_type` 参数。
             misconception: str | None => `misconception` 参数。
+            idempotency_key: 同一可信请求内重试时使用的幂等键。
 
         Returns:
             dict => 处理结果。
@@ -85,7 +87,14 @@ class LearningStateService:
             transfer_score=transfer_score,
             error_type=error_type,
             misconception=misconception,
+            idempotency_key=idempotency_key,
         )
+        if evidence.get("duplicate"):
+            return {
+                "evidence": evidence,
+                "state": self.mastery_store.get(user_name, resolved_kp_id),
+                "duplicate": True,
+            }
         state = self.mastery_store.apply_evidence(
             user_name=user_name,
             kp_id=resolved_kp_id,
@@ -99,4 +108,4 @@ class LearningStateService:
             explanation_score=explanation_score,
             transfer_score=transfer_score,
         )
-        return {"evidence": evidence, "state": state}
+        return {"evidence": evidence, "state": state, "duplicate": False}

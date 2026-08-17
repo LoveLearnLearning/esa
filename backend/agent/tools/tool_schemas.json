@@ -88,7 +88,7 @@
     "type": "function",
     "function": {
       "name": "retrieve_knowledge",
-      "description": "从已配置的知识库检索证据、上下文和可回查来源。该工具只读，不会隐式建立或修改索引。",
+      "description": "从已配置的知识库检索证据、上下文和可回查来源。在学习空间回答课程知识点、概念、原理，或需要依据内部教材时优先调用。该工具只读，不会隐式建立或修改索引。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -553,13 +553,13 @@
     "type": "function",
     "function": {
       "name": "get_mastery_level",
-      "description": "读取当前用户某个知识点的掌握度和练习统计；当 Skill 需要针对单个知识点调节讲解深度时调用。Agent 准备针对明确 kp_id 生成自适应练习题时，应在出题前调用本工具。",
+      "description": "读取当前用户某个知识点的掌握度和练习统计；支持 canonical id、知识点名称或已登记别名，返回 canonical kp_id。生成自适应练习题前应调用；普通概念回答只有在掌握度会实质改变讲解时才调用。",
       "parameters": {
         "type": "object",
         "properties": {
           "kp_id": {
             "type": "string",
-            "description": "知识点 id"
+            "description": "知识点 canonical id、名称或已登记别名"
           }
         },
         "required": [
@@ -628,7 +628,7 @@
     "type": "function",
     "function": {
       "name": "record_answer",
-      "description": "记录当前用户一次简化练习结果并更新知识点掌握度。该工具为兼容用简化入口；需要记录提示、独立性、误区等证据时，优先使用 record_learning_evidence。同一次作答不得同时调用两个写入工具，否则会重复计数。confidence 是这次答案作为掌握证据的可靠性权重，不是学生主观自信；学生自评信心应记录到 record_learning_evidence。",
+      "description": "已弃用的兼容练习写入入口，仅为旧客户端保留。新学习流程必须使用 record_learning_evidence；同一次作答不得同时调用两种写入工具。服务端会对同一请求的完全相同重试做幂等处理，但这不允许重复调用。confidence 是证据可靠性，不是学生主观自信。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -658,7 +658,7 @@
     "type": "function",
     "function": {
       "name": "record_learning_evidence",
-      "description": "记录一次学习过程证据，例如是否独立完成、使用几级提示、自评信心、解释能力、迁移能力和错误类型。这是 Agent 批改练习或作业时的首选统一写入入口，会同时更新 Learning Evidence 和掌握度。只有在学生已经实际作答/复述/尝试后才调用，不得凭空生成证据。同一次作答不得再调用 record_answer。",
+      "description": "学习场景的统一写入入口，同时更新 Learning Evidence 和掌握度。只有学生已实际作答、复述或尝试且能够可靠评价时才调用；上层批改/练习 Skill 每次表现只写一次，子 Skill 不重复写。同一请求的完全相同重试由服务端幂等处理。同一次作答不得再调用 record_answer。",
       "parameters": {
         "type": "object",
         "properties": {

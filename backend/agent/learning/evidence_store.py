@@ -31,6 +31,15 @@ class LearningEvidenceStore:
         "careless",
         "unknown",
     }
+    ACTIVITY_TYPES = {
+        "practice",
+        "homework",
+        "retrieval",
+        "hint",
+        "teach_back",
+        "transfer",
+        "review",
+    }
 
     def __init__(
         self,
@@ -66,10 +75,21 @@ class LearningEvidenceStore:
                     transfer_score REAL,
                     error_type TEXT,
                     misconception TEXT,
+                    idempotency_key TEXT,
                     created_at TEXT NOT NULL
                 )
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(learning_evidence)"
+                ).fetchall()
+            }
+            if "idempotency_key" not in columns:
+                connection.execute(
+                    "ALTER TABLE learning_evidence ADD COLUMN idempotency_key TEXT"
+                )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_learning_evidence_user_kp_time
@@ -80,6 +100,13 @@ class LearningEvidenceStore:
                 """
                 CREATE INDEX IF NOT EXISTS idx_learning_evidence_user_time
                 ON learning_evidence(user_name, created_at DESC)
+                """
+            )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_learning_evidence_idempotency
+                ON learning_evidence(user_name, idempotency_key)
+                WHERE idempotency_key IS NOT NULL
                 """
             )
 
@@ -107,6 +134,7 @@ class LearningEvidenceStore:
         transfer_score: float | None = None,
         error_type: str | None = None,
         misconception: str | None = None,
+        idempotency_key: str | None = None,
     ) -> dict:
         """处理 `record` 相关逻辑。
 
@@ -125,6 +153,7 @@ class LearningEvidenceStore:
             transfer_score: float | None => `transfer_score` 参数。
             error_type: str | None => `error_type` 参数。
             misconception: str | None => `misconception` 参数。
+            idempotency_key: 同一可信请求内重试时使用的幂等键。
 
         Returns:
             dict => 处理结果。
@@ -132,11 +161,14 @@ class LearningEvidenceStore:
         user_name = user_name.strip()
         kp_id = kp_id.strip()
         activity_type = activity_type.strip() or "practice"
+        idempotency_key = (idempotency_key or "").strip() or None
 
         if not user_name:
             raise ValueError("user_name 不能为空")
         if not kp_id:
             raise ValueError("kp_id 不能为空")
+        if activity_type not in self.ACTIVITY_TYPES:
+            raise ValueError(f"不支持的 activity_type={activity_type!r}")
 
         hint_level = max(0, min(5, int(hint_level)))
         attempts = max(1, int(attempts))
@@ -156,6 +188,23 @@ class LearningEvidenceStore:
         created_at = datetime.now().isoformat()
 
         with self._connect() as connection:
+            if idempotency_key is not None:
+                existing = connection.execute(
+                    """
+                    SELECT * FROM learning_evidence
+                    WHERE user_name = ? AND idempotency_key = ?
+                    """,
+                    (user_name, idempotency_key),
+                ).fetchone()
+                if existing is not None:
+                    item = dict(existing)
+                    if item["correct"] is not None:
+                        item["correct"] = bool(item["correct"])
+                    if item["independent"] is not None:
+                        item["independent"] = bool(item["independent"])
+                    item.pop("idempotency_key", None)
+                    item["duplicate"] = True
+                    return item
             connection.execute(
                 """
                 INSERT INTO learning_evidence (
@@ -163,9 +212,9 @@ class LearningEvidenceStore:
                     self_confidence, evidence_reliability,
                     hint_level, attempts, independent,
                     recall_score, explanation_score, transfer_score,
-                    error_type, misconception, created_at
+                    error_type, misconception, idempotency_key, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     evidence_id,
@@ -183,6 +232,7 @@ class LearningEvidenceStore:
                     self._clamp_optional(transfer_score),
                     normalized_error_type,
                     normalized_misconception,
+                    idempotency_key,
                     created_at,
                 ),
             )
@@ -203,6 +253,7 @@ class LearningEvidenceStore:
             "transfer_score": self._clamp_optional(transfer_score),
             "error_type": normalized_error_type,
             "misconception": normalized_misconception,
+            "duplicate": False,
             "created_at": created_at,
         }
 

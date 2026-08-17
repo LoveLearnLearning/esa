@@ -1,13 +1,9 @@
 # backend/scripts/dataset/esa/backend_parser.py
 
-"""后端 parse_output 的两个版本，供评测和兼容性测试共用。
+"""后端 parse_output 的离线复刻，供评测和兼容性测试共用。
 
-`parse_output_current` 逐字复刻 backend/core/utils/parser.py + core/utils/tool_arguments.py。
-`parse_output_dual` 是建议的修复版：同时认 Qwen 原生 JSON 和现有 XML。
-
-为什么要有两份：LLaMA-Factory 的 qwen 模板产出 JSON，后端只认 XML，
-两者不兼容且失败时静默返回空对象。评测必须用**后端实际会用的那个解析器**，
-否则测出来的分数和线上表现对不上。见交接文档 6.1。
+`parse_output_current` 逐字复刻 backend/core/utils/parser.py + core/utils/tool_arguments.py，
+同时支持 Qwen 原生 JSON 和现有 XML。`parse_output_dual` 保留为兼容别名。
 
 为什么这里允许复刻（其它地方一律"能跑就别想"）
 ------------------------------------------------
@@ -230,11 +226,7 @@ def _xml_arguments(block: str, schema: dict | None) -> dict:
 
 
 def parse_output_current(raw_text: str, tool_schemas=None) -> ParsedOutput:
-    """后端当前实现。只认 <function=X><parameter=K>v</parameter> 这种 XML。
-
-    ⚠️ 匹配不到 `<function=...>` 时 `continue`，最终 tool_calls 为空且 content 也从未赋值
-    —— 返回一个完全空的对象，无异常无日志。这正是 6.1 那个静默失败。
-    """
+    """复刻生产解析器：先试 Qwen JSON，再回退现有 XML。"""
     result = ParsedOutput()
     lookup = schemas_by_name(tool_schemas)
 
@@ -249,6 +241,38 @@ def parse_output_current(raw_text: str, tool_schemas=None) -> ParsedOutput:
         return result
 
     for block in blocks:
+        try:
+            payload = json.loads(block.strip())
+        except json.JSONDecodeError:
+            payload = None
+
+        json_calls = payload if isinstance(payload, list) else [payload]
+        parsed_json_call = False
+        for call in json_calls:
+            if not isinstance(call, dict) or not isinstance(call.get("name"), str):
+                continue
+            arguments = call.get("arguments", {})
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    continue
+            if not isinstance(arguments, dict):
+                continue
+
+            name = call["name"]
+            schema = lookup.get(name)
+            if schema is not None:
+                try:
+                    arguments = normalize_tool_arguments(schema, arguments)
+                except ValueError:
+                    pass
+            result.tool_calls.append(ToolCall(name=name, arguments=arguments))
+            parsed_json_call = True
+
+        if parsed_json_call:
+            continue
+
         fm = re.search(r"<function=([^>\s]+)>", block)
         if not fm:
             continue
@@ -260,46 +284,8 @@ def parse_output_current(raw_text: str, tool_schemas=None) -> ParsedOutput:
 
 
 def parse_output_dual(raw_text: str, tool_schemas=None) -> ParsedOutput:
-    """建议的修复版：先试 Qwen 原生 JSON，再回退 XML；且解析不出调用时不吞掉正文。
-
-    JSON 分支不做类型恢复：`{"arguments":{"num":3}}` 本来就带类型，
-    再掰一次只会把正确的值掰坏。类型恢复是 XML 这条路径特有的补救。
-    """
-    result = ParsedOutput()
-    lookup = schemas_by_name(tool_schemas)
-
-    m = re.search(r"(?:<think>)?(.*?)</think>", raw_text, re.DOTALL)
-    if m:
-        result.reasoning = m.group(1).strip()
-    body = re.sub(r"(?:<think>)?.*?</think>", "", raw_text, flags=re.DOTALL)
-
-    blocks = re.findall(r"<tool_call>(.*?)</tool_call>", body, re.DOTALL)
-    if not blocks:
-        result.content = body.strip()
-        return result
-
-    for block in blocks:
-        block = block.strip()
-        try:
-            payload = json.loads(block)
-            for c in payload if isinstance(payload, list) else [payload]:
-                if isinstance(c, dict) and "name" in c:
-                    result.tool_calls.append(
-                        ToolCall(name=c["name"], arguments=c.get("arguments", {}))
-                    )
-            continue
-        except (json.JSONDecodeError, TypeError, AttributeError):
-            pass
-        fm = re.search(r"<function=([^>\s]+)>", block)
-        if fm:
-            name = fm.group(1)
-            result.tool_calls.append(
-                ToolCall(name=name, arguments=_xml_arguments(block, lookup.get(name)))
-            )
-
-    if not result.tool_calls:
-        result.content = body.strip()
-    return result
+    """兼容旧评测配置的别名。"""
+    return parse_output_current(raw_text, tool_schemas)
 
 
 PARSERS = {"current": parse_output_current, "dual": parse_output_dual}

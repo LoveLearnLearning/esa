@@ -14,9 +14,9 @@ load_skill —— 观测值是**调后端真实 load_skill() 抓来的正文**
   等于训练模型无视系统指令。所以正例前先查一次真实路由结果，命中的那些改成
   「已自动加载 → 直接执行，不要再调」的负样本。
 
-RAG —— 只做负样本与约束样本。retrieve_knowledge 的返回依赖真实语料库，
-  不知道索引了哪些文档就生成正例，等于编造可追溯来源，而「内容可追溯」
-  是赛题明写的评分项。正例需要 RAG 负责人提供真实检索导出。
+RAG —— 成功检索样本必须来自真实语料库导出。没有真实导出时生成
+  “调用检索 → 明确失败 → 同轮降级回答”样本，既不编造来源，也不把概念讲解
+  错标成“不该检索”。
 
 用法：
     python3 dataset/generators/gen_skills_rag.py
@@ -107,7 +107,6 @@ FOLLOW_UP = {
     "error_diagnosis": "要定位根源，我需要看具体是哪一类错。你把这几次做错的题发我，或者告诉我错在哪一步——我判断一下是概念没通、步骤记错，还是前置知识的问题。",
     "teach_back": "好，你讲，我不打断。讲完我会指出哪些点说清楚了、哪些还有缺口，缺口部分我们再补。",
     "study_plan": "那我按剩余时间和你的真实掌握情况来排。先确认两件事：是哪门课，距离考试还有几周？",
-    "retrieve_first": "在讲之前先做个低成本回忆——你现在对这个概念知道多少？哪怕只记得一两句也说说，我针对缺口讲会更有效率。",
 }
 
 
@@ -217,11 +216,23 @@ def gen_rag(cfg, version, rng, all_names, out):
         all_names: object => `all_names` 参数。
         out: object => `out` 参数。
     """
-    for j, item in enumerate(cfg["rag"]["混淆_不该检索"]):
+    retrieval_error = {
+        "ok": False,
+        "error": "tool_execution_error",
+        "tool": "retrieve_knowledge",
+        "detail": "RAG retrieval service is not configured",
+    }
+    for j, item in enumerate(cfg["rag"]["概念讲解_检索失败降级"]):
         out.append(mk(
-            f"rag_neg_{j:02d}", f"rag__不该检索__{j:02d}", "hard_negative",
+            f"rag_fallback_{j:02d}", f"rag__检索失败降级__{j:02d}", "tool_error",
             ["retrieve_knowledge", "get_knowledge_base_stats", "calculator"],
             [Turn(role="user", content=item["q"]),
+             Turn(role="tool_call", calls=[
+                 ToolCall("retrieve_knowledge", {"query": item["q"]})
+             ]),
+             Turn(role="tool_result", results=[
+                 ToolResult("retrieve_knowledge", retrieval_error, is_error=True)
+             ]),
              Turn(role="assistant", content=item["a"])],
             version, rng, all_names, review=True))
 
@@ -254,9 +265,8 @@ def main() -> int:
     print(f"生成 {len(out)} 条 → {OUT.relative_to(ROOT)}")
     for cat, n in sorted(Counter(s.category for s in out).items()):
         print(f"  {cat:20s} {n}")
-    print("\n⚠️  retrieve_knowledge / get_knowledge_base_stats 只有负样本。")
-    print("    正例需要 RAG 负责人提供真实语料库的检索导出 —— 不知道索引了哪些文档就造正例，")
-    print("    等于编造可追溯来源，而「内容可追溯」是赛题评分项。")
+    print("\nretrieve_knowledge 已包含检索失败后的同轮降级样本。")
+    print("成功检索正例仍需 RAG 负责人提供真实语料库导出，禁止编造来源。")
     return 0
 
 

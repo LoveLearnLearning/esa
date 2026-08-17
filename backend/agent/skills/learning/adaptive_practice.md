@@ -1,7 +1,7 @@
 ---
 name: adaptive_practice
 description: 用户请求出题、开始或继续练习，或正在回答 Agent 上一轮练习题时使用
-version: 1
+version: 2
 category: pedagogy
 priority: 98
 autoload: false
@@ -26,7 +26,7 @@ related_skills:
 ## 开始或继续练习
 
 1. 先确定一个可靠的 canonical `kp_id`。若“Resolved learning context”提供了 `resolved_kp_ids` 或 `pending_practice_kp_id`，它们是服务端已解析的可信值：直接使用，不得再次向用户确认。只有该可信上下文为空且无法从当前任务可靠确定时，才询问；不得猜测，也不得写入学习状态。
-2. 在出题前调用 `get_mastery_level(kp_id)`。如需判断提示依赖和常见误区，再调用 `get_learning_evidence_summary(kp_id)`。
+2. 在出题前调用 `get_mastery_level(kp_id)`。如需判断提示依赖和常见误区，再调用 `get_learning_evidence_summary(kp_id)`；需要确认是否应先补前置知识时，调用 `get_weak_prerequisites(kp_id)`。
 3. 根据返回的掌握状态选择难度：
    - 无记录或 `mastery < 40`：基础概念、识别题或单步骤题。
    - `40 <= mastery < 75`：标准应用题和常见易错点。
@@ -53,6 +53,9 @@ related_skills:
    - 只有真有依据时才写 `error_type`和 `misconception`。
 4. 同一次作答只能写入一次；禁止再调用 `record_answer`。
 5. 工具返回 `saved=false` 时明确说明未保存，不得假装已经更新掌握度。
+
+如果读取掌握度、证据或前置知识的工具失败，仍然可以出一道保守的基础题，
+但要把难度标为“暂按未知水平”，不要编造掌握度；写入工具失败时照常反馈作答结果并说明未保存。
 
 ## 禁止写入的情况
 

@@ -64,6 +64,42 @@ def parse_output(
         return result
 
     for block in tool_call_blocks:
+        # Qwen/LLaMA-Factory 的原生 Tool 格式是在 <tool_call> 中放 JSON。
+        # 生产模型也可能继续输出现有 XML，因此先试 JSON，再回退 XML。
+        try:
+            payload = json.loads(block.strip())
+        except json.JSONDecodeError:
+            payload = None
+
+        json_calls = payload if isinstance(payload, list) else [payload]
+        parsed_json_call = False
+        for call in json_calls:
+            if not isinstance(call, dict) or not isinstance(call.get("name"), str):
+                continue
+            arguments = call.get("arguments", {})
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    continue
+            if not isinstance(arguments, dict):
+                continue
+
+            func_name = call["name"]
+            schema = schema_lookup.get(func_name)
+            if schema is not None:
+                try:
+                    arguments = normalize_tool_arguments(schema, arguments)
+                except ValueError:
+                    pass
+            result.tool_calls.append(
+                ToolCall(name=func_name, arguments=arguments)
+            )
+            parsed_json_call = True
+
+        if parsed_json_call:
+            continue
+
         # 提取 function 名字
         func_match = re.search(r"<function=([^>\s]+)>", block)
         if not func_match:

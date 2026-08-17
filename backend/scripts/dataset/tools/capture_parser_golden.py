@@ -161,7 +161,7 @@ def main() -> int:
             },
             "cases": cases,
         }
-        out_path = Path(args.out)
+        out_path = Path(args.out).resolve()
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 

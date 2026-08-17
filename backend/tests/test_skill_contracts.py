@@ -28,6 +28,20 @@ def test_skill_contracts_match_registered_tools():
     assert errors == []
 
 
+def test_required_tools_have_actionable_skill_instructions():
+    """声明依赖的 Tool 必须出现在正文中，不能只影响能力过滤。"""
+    missing = {
+        skill.name: [
+            tool_name
+            for tool_name in skill.requires_tools
+            if tool_name not in skill.body
+        ]
+        for skill in skill_catalog.list_skill_definitions()
+    }
+
+    assert {name: tools for name, tools in missing.items() if tools} == {}
+
+
 def test_tool_schema_snapshots_match_the_registered_runtime():
     """验证运行时工具 Schema 与两个版本化快照一致。"""
     register_builtin_tools()
@@ -39,6 +53,13 @@ def test_tool_schema_snapshots_match_the_registered_runtime():
 
     assert backend_snapshot.read_bytes() == dataset_snapshot.read_bytes()
     assert json.loads(backend_snapshot.read_text(encoding="utf-8")) == tr.schemas
+
+    record_answer = next(
+        schema
+        for schema in tr.schemas
+        if schema["function"]["name"] == "record_answer"
+    )
+    assert "已弃用" in record_answer["function"]["description"]
 
 
 def test_new_pedagogy_skills_are_loadable():
@@ -61,16 +82,60 @@ def test_new_pedagogy_skills_are_loadable():
     assert "bitwise_calculator" in body
 
 
+def test_concept_explanation_skill_answers_now_and_uses_rag():
+    """概念提问应直接得到有依据的讲解，而不是先被反问。"""
+    definition = next(
+        skill
+        for skill in skill_catalog.list_skill_definitions()
+        if skill.name == "grounded_explanation"
+    )
+
+    assert "retrieve_knowledge" in definition.requires_tools
+    assert "先调用 `retrieve_knowledge`" in definition.body
+    assert "本轮直接回答" in definition.body
+    assert "正式讲解前，先问" not in definition.body
+
+
 def test_profile_policy_is_actually_autoloaded():
-    """验证 `profile_policy_is_actually_autoloaded` 场景。"""
+    """全局学习边界常驻，个性化策略按需加载。"""
     context = build_autoload_skills_context()
-    assert "profile_personalization" in context
+    assert "learning_policy" in context
+    assert "profile_personalization" not in context
     assert "工程任务" in context
+
+
+def test_global_learning_policy_has_no_tool_dependency():
+    """学习状态服务缺失时，全局学习边界不能随个性化 Skill 一起消失。"""
+    policy = next(
+        skill
+        for skill in skill_catalog.list_skill_definitions()
+        if skill.name == "learning_policy"
+    )
+
+    assert policy.autoload is True
+    assert policy.requires_tools == ()
+
+
+def test_profile_personalization_is_conditional():
+    """个性化 Skill 只在掌握度 Tool 可用时进入能力视图。"""
+    full = ScopedSkillView.compile(
+        frozenset({"learning"}),
+        tool_names=frozenset({"get_mastery_level"}),
+    )
+    limited = ScopedSkillView.compile(
+        frozenset({"learning"}),
+        tool_names=frozenset(),
+    )
+
+    assert "profile_personalization" in full.names
+    assert "profile_personalization" not in limited.names
+    assert "learning_policy" in limited.names
 
 
 def test_semantic_triggers_resolve_through_the_skill_catalog():
     assert skill_name_for_trigger("request_hint") == "progressive_hint"
     assert skill_name_for_trigger("submitted_attempt") == "homework_review"
+    assert skill_name_for_trigger("explanation_request") == "grounded_explanation"
 
 
 def test_skill_fingerprint_changes_when_body_changes(monkeypatch):

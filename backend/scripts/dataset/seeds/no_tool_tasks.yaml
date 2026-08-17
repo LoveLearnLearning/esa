@@ -32,7 +32,7 @@
 # 路由命中时后端会把某个 Skill 正文注入 prompt 并要求"按正文执行"，
 # 而这批样本的正确行为是直接把活干掉，不套教学脚手架。
 # 实测踩到过两个：
-#   「为什么…」→ retrieve_first（CONCEPT_MARKERS）
+#   「为什么…」→ grounded_explanation（CONCEPT_MARKERS）
 #   「…挑**不会**的重点看」→ progressive_hint（STUCK_MARKERS 里有「不会」，很容易误踩）
 # 两条都改了措辞绕开。`gen_no_tool_tasks.py` 每次生成都会重查一遍并打印，
 # 新增种子时看一眼那行输出。

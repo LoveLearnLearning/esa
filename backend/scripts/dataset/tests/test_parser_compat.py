@@ -17,10 +17,9 @@
 和 `backend_parser.py`、后端本体三份各自演化。现在统一从 `backend_parser` 导入：
 一份复刻已经够难维护了，三份必然对不齐。
 
-**二、格式不兼容的实证**（原有结论，仍然成立）
+**二、双格式兼容实证**
 LLaMA-Factory 的 qwen 系模板产出 JSON（`data/tool_utils.py:423-428`），
-后端 parse_output 只认 XML，遇到 JSON **静默返回空 ParsedOutput** ——
-无异常、无日志，前端拿到完全空白的回复。见交接文档 6.1。
+后端同时需要接受 JSON 和既有 XML；任一格式解析失败都会让工具调用丢失。
 """
 
 from __future__ import annotations
@@ -88,8 +87,8 @@ def check_golden(schemas) -> tuple[int, int]:
     return passed, failed
 
 
-def check_format_incompat(schemas, by_name) -> int:
-    """原有结论：qwen JSON 格式喂给后端解析器会静默失败。"""
+def check_format_compat(schemas, by_name) -> int:
+    """Qwen JSON 与既有 XML 都必须被生产解析器接受。"""
     samples = load_samples(ROOT / "dataset/data/ir/calculators.jsonl")
     sample = next(s for s in samples if s.category == "single_tool_call")
     expected_name = sample.called_tool_names()[0]
@@ -104,22 +103,17 @@ def check_format_incompat(schemas, by_name) -> int:
         wire = assistant_wire_segments(sample, by_name, tool_format=fmt)[0]
         print(f"\n   模型实际输出（tool_format={fmt}）:")
         print("     " + wire.strip().replace("\n", "\n     "))
-        for label, fn in (("当前 parse_output", parse_output_current),
-                          ("修复版 parse_output", parse_output_dual)):
+        for label, fn in (("生产 parse_output", parse_output_current),
+                          ("兼容别名 parse_output", parse_output_dual)):
             got = fn(wire, schemas)
             ok = len(got.tool_calls) == 1 and got.tool_calls[0].name == expected_name
             detail = (f"{got.tool_calls[0].name}({got.tool_calls[0].arguments})"
                       if got.tool_calls else f"tool_calls=[] content={got.content[:30]!r}")
             print(f"     {'✅' if ok else '❌'} {label:20s} → {detail}")
-            if not ok and label.startswith("修复版"):
+            if not ok:
                 failures += 1
-            if not ok and fmt == "qwen" and label.startswith("当前"):
-                print("        ↑ 这就是问题：无异常、无日志，前端拿到完全空白的回复")
 
-    print("\n   结论：LLaMA-Factory 的 qwen 系模板产出 JSON（data/tool_utils.py:423-428），")
-    print("        后端只认 XML，遇到 JSON 静默返回空 ParsedOutput。")
-    print("        建议方案 A：给 LLaMA-Factory 写自定义 tool_format 复刻后端 XML")
-    print("        （后端 tests/test_parser.py 有专门覆盖，XML 是刻意设计不是疏忽）。")
+    print("\n   结论：生产解析器同时接受 Qwen JSON 与既有 XML 工具格式。")
     return failures
 
 
@@ -129,7 +123,7 @@ def main() -> int:
     by_name = schemas_by_name(schemas)
 
     _, golden_failed = check_golden(schemas)
-    fmt_failed = check_format_incompat(schemas, by_name)
+    fmt_failed = check_format_compat(schemas, by_name)
 
     print("=" * 74)
     return 1 if (golden_failed or fmt_failed) else 0

@@ -380,6 +380,9 @@ empty_result:
 registry:
   # 完全字面量。web_search 那 5 条是 gen_external.py 早先就在用的，一并登记。
   literal:
+    # BoundToolExecutor 将底层 ValueError/RuntimeError 归一化为结构化错误码；
+    # detail 保留真实异常文本，模型应同时读取 error 与 detail。
+    - { text: "tool_execution_error", src: backend/agent/workspaces/capability_runtime.py:193-199 }
     - { text: "[Error]: 搜索请求超时", src: backend/agent/tools/web_search.py:94 }
     - { text: "[Error]: SearXNG 禁止 JSON 输出，请检查 settings.yml 中是否启用了 search.formats.json",
         src: backend/agent/tools/web_search.py:98-104 }

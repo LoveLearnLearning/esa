@@ -356,7 +356,7 @@ def test_context_composer_order_trust_and_deterministic_clipping():
         conversation_summary="S" * 1000,
         authorized_attachments=({"attachment_id": "a1", "status": "stored"},),
     )
-    composer = ContextComposer(max_tokens=1500)
+    composer = ContextComposer(max_tokens=2000)
     first = composer.compose(turn, LEARNING_PROFILE, capabilities)
     second = composer.compose(turn, LEARNING_PROFILE, capabilities)
     assert first == second
@@ -372,7 +372,7 @@ def test_context_composer_order_trust_and_deterministic_clipping():
     assert first.rendered.index("# User profile data") < first.rendered.index(
         "# Group instructions"
     )
-    assert first.estimated_tokens <= 1500
+    assert first.estimated_tokens <= 2000
 
 
 def test_context_composer_uses_cjk_aware_token_budget():
@@ -424,3 +424,69 @@ def test_workspace_runtime_injects_server_resolved_pending_practice_context():
     assert "pending_practice_kp_id='链表'" in system_prompt
     assert "不得要求用户再次确认" in system_prompt
     assert "当前知识点：链表" in system_prompt
+
+
+def test_concept_explanation_runtime_exposes_rag_and_direct_answer_policy():
+    """概念讲解的生产 Prompt 应要求 RAG，并在同一轮直接回答。"""
+    register_builtin_tools()
+    spec = WorkspaceRuntime(AgentRuntimeDependencies()).prepare(
+        _turn(
+            _route(),
+            current_message="解释一下为什么二叉树遍历会用到递归",
+            learning_context=LearningTurnContext(
+                resolved_kp_ids=("二叉树遍历",),
+            ),
+        )
+    )
+
+    system_prompt = spec.messages[0]["content"]
+    assert "retrieve_knowledge" in spec.run_metadata["tool_names"]
+    assert "先调用 `retrieve_knowledge`" in system_prompt
+    assert "本轮直接回答" in system_prompt
+    assert "正式讲解前，先问" not in system_prompt
+
+
+def test_bound_rag_tool_uses_the_turn_runtime_dependency(monkeypatch):
+    """RAG 查询必须使用当前运行上下文注入的服务实例。"""
+    register_builtin_tools()
+    route = _route()
+    sentinel = object()
+    context = ToolExecutionContext(
+        user_id="u1",
+        conversation_id="c1",
+        workspace_route=route,
+        authorized_resources=route.resource_scope,
+        conversation_mode="normal",
+        runtime_dependencies=AgentRuntimeDependencies(rag_service=sentinel),
+        request_id="r1",
+    )
+    compiled = CapabilityRuntime().compile(
+        skill_scopes=route.skill_scopes,
+        tool_scopes=route.tool_scopes,
+        profile_fingerprint="learning:1",
+        policy_versions=("p1",),
+    )
+    captured = {}
+
+    def fake_retrieve(query, top_k=5, similarity_threshold=None, service=None):
+        captured.update(
+            query=query,
+            top_k=top_k,
+            similarity_threshold=similarity_threshold,
+            service=service,
+        )
+        return {"query": query, "result_count": 0}
+
+    monkeypatch.setattr(
+        "backend.agent.rag.agent_api.retrieve_knowledge_payload",
+        fake_retrieve,
+    )
+    result = asyncio.run(
+        compiled.bind(context).execute(
+            "retrieve_knowledge", {"query": "binary search", "top_k": 3}
+        )
+    )
+
+    assert result == {"query": "binary search", "result_count": 0}
+    assert captured["service"] is sentinel
+    assert captured["top_k"] == 3

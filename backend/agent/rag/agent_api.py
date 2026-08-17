@@ -86,6 +86,7 @@ def retrieve_knowledge_payload(
     query: str,
     top_k: int = 5,
     similarity_threshold: float | None = None,
+    service: RetrievalService | None = None,
 ) -> dict[str, Any]:
     """执行检索并转换成旧 ESA 工具熟悉、同时保留 Evidence 的 JSON 结构。"""
 
@@ -94,7 +95,7 @@ def retrieve_knowledge_payload(
     if similarity_threshold is not None and not 0 <= similarity_threshold <= 1:
         raise ValueError("similarity_threshold must be between 0 and 1")
 
-    response = get_retrieval_service().search(query)
+    response = (service or get_retrieval_service()).search(query)
     hits = _apply_rerank_threshold(response, similarity_threshold)[:top_k]
     return {
         "query": response.query,
@@ -111,10 +112,10 @@ def retrieve_knowledge_payload(
     }
 
 
-def knowledge_base_stats() -> dict[str, Any]:
+def knowledge_base_stats(service: RetrievalService | None = None) -> dict[str, Any]:
     """返回当前注入服务的 Collection、后端和查询配置。"""
 
-    service = get_retrieval_service()
+    service = service or get_retrieval_service()
     return {
         "collection_id": service.collection.manifest.collection_id,
         "document_count": len(service.collection.documents),

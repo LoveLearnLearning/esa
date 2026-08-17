@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Mapping
 
 from backend.agent.tools.context import ToolExecutionContext
@@ -11,12 +13,83 @@ from backend.core.services.learning_insight_service import build_recommendation_
 from backend.core.utils.models import UserRecord
 
 
-def _deps(context: ToolExecutionContext):
-    """处理 `_deps` 相关逻辑。"""
-    deps = context.runtime_dependencies
-    if deps.knowledge_graph_store is None or deps.mastery_store is None:
-        raise RuntimeError("learning stores are not configured")
-    return deps
+def _dependency(context: ToolExecutionContext, name: str):
+    """Resolve one learning dependency so read-only tools fail independently."""
+    value = getattr(context.runtime_dependencies, name, None)
+    if value is None:
+        raise RuntimeError(f"{name} is not configured")
+    return value
+
+
+def _canonical_kp_id(context: ToolExecutionContext, raw_kp_id: Any) -> str:
+    """Resolve aliases before every learning read or write."""
+    value = str(raw_kp_id or "").strip()
+    if not value:
+        raise ValueError("kp_id must not be empty")
+    knowledge_graph = _dependency(context, "knowledge_graph_store")
+    resolved = knowledge_graph.resolve_kp_id(value)
+    if resolved is None:
+        raise ValueError(f"unknown knowledge point {value!r}")
+    return resolved
+
+
+def _idempotency_key(
+    context: ToolExecutionContext,
+    arguments: Mapping[str, Any],
+) -> str:
+    """Make tool retries in one trusted request harmless."""
+    payload = json.dumps(
+        {"arguments": dict(arguments)},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(
+        f"{context.user_id}:{context.request_id}:{payload}".encode("utf-8")
+    ).hexdigest()
+
+
+def _bounded_float(
+    arguments: Mapping[str, Any],
+    key: str,
+    *,
+    default: float,
+    lower: float,
+    upper: float,
+) -> float:
+    value = float(arguments.get(key, default))
+    if not lower <= value <= upper:
+        raise ValueError(f"{key} must be between {lower} and {upper}")
+    return value
+
+
+def _bounded_int(
+    arguments: Mapping[str, Any],
+    key: str,
+    *,
+    default: int,
+    lower: int,
+    upper: int,
+) -> int:
+    value = int(arguments.get(key, default))
+    if not lower <= value <= upper:
+        raise ValueError(f"{key} must be between {lower} and {upper}")
+    return value
+
+
+def _strict_bool(value: Any, key: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"true", "1"}:
+            return True
+        if normalized in {"false", "0"}:
+            return False
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    raise ValueError(f"{key} must be a boolean")
 
 
 def execute_learning_tool(
@@ -32,19 +105,20 @@ def execute_learning_tool(
     Returns:
         dict[str, Any] => 处理结果。
     """
-    deps = _deps(context)
     user_name = context.username
-    if context.conversation_mode == "isolated" and name != "record_answer":
+    if context.conversation_mode == "isolated":
         return {"allowed": False, "action": name, "reason": "isolated mode"}
     if context.conversation_mode != "normal" and name in {
         "record_answer", "record_learning_evidence"
     }:
         return {"saved": False, "reason": "conversation mode forbids writes"}
-    kg, mastery = deps.knowledge_graph_store, deps.mastery_store
-
     if name == "recommend_practice":
+        kg = _dependency(context, "knowledge_graph_store")
+        mastery = _dependency(context, "mastery_store")
         course = str(arguments["course"])
         weeks = int(arguments["weeks_to_exam"])
+        if weeks < 0:
+            raise ValueError("weeks_to_exam must be non-negative")
         total = context.total_weeks or UserRecord.TOTAL_WEEKS_DEFAULT
         ranking = mastery.get_priority_ranking(
             user_name=user_name, course=course, weeks_to_exam=weeks,
@@ -66,12 +140,15 @@ def execute_learning_tool(
             **({"note": f"未找到课程 {course!r} 的知识点"} if not ranking else {}),
         }
     if name == "get_mastery_report":
+        kg = _dependency(context, "knowledge_graph_store")
+        mastery = _dependency(context, "mastery_store")
         course = str(arguments.get("course", "")).strip() or None
         return {"allowed": True, **mastery.get_report(
             user_name=user_name, course=course, kg_store=kg
         )}
     if name == "get_mastery_level":
-        kp_id = str(arguments["kp_id"])
+        mastery = _dependency(context, "mastery_store")
+        kp_id = _canonical_kp_id(context, arguments["kp_id"])
         record = mastery.get(user_name, kp_id)
         return ({"allowed": True, "has_record": True, **record} if record else {
             "allowed": True, "has_record": False, "user_name": user_name,
@@ -80,35 +157,59 @@ def execute_learning_tool(
             "practice_count": 0, "correct_count": 0,
         })
     if name == "get_weak_prerequisites":
+        kg = _dependency(context, "knowledge_graph_store")
+        mastery = _dependency(context, "mastery_store")
+        kp_id = _canonical_kp_id(context, arguments["kp_id"])
         items = mastery.get_weak_prerequisites(
-            user_name=user_name, kp_id=str(arguments["kp_id"]), kg_store=kg,
-            mastery_threshold=float(arguments.get("mastery_threshold", 50)),
-            max_depth=int(arguments.get("max_depth", 5)),
+            user_name=user_name, kp_id=kp_id, kg_store=kg,
+            mastery_threshold=_bounded_float(
+                arguments, "mastery_threshold", default=50, lower=0, upper=100
+            ),
+            max_depth=_bounded_int(
+                arguments, "max_depth", default=5, lower=1, upper=10
+            ),
         )
         return {"allowed": True, "count": len(items), "weak_prerequisites": items}
     if name == "get_review_timing":
+        mastery = _dependency(context, "mastery_store")
+        kp_id = _canonical_kp_id(context, arguments["kp_id"])
         return {"allowed": True, **mastery.get_review_timing(
-            user_name=user_name, kp_id=str(arguments["kp_id"]),
-            threshold=float(arguments.get("threshold", 0.7)),
+            user_name=user_name, kp_id=kp_id,
+            threshold=_bounded_float(
+                arguments, "threshold", default=0.7, lower=0.1, upper=0.99
+            ),
         )}
     if name in {"record_answer", "record_learning_evidence"}:
-        service = deps.learning_state_service
-        if service is None:
-            raise RuntimeError("learning state service is not configured")
+        service = _dependency(context, "learning_state_service")
         values = dict(arguments)
         if name == "record_answer":
             values = {
-                "kp_id": str(arguments["kp_id"]), "activity_type": "practice",
-                "correct": bool(arguments["correct"]),
+                "kp_id": _canonical_kp_id(context, arguments["kp_id"]),
+                "activity_type": "practice",
+                "correct": _strict_bool(arguments["correct"], "correct"),
                 "evidence_reliability": float(arguments.get("confidence", 1.0)),
             }
-        return {"saved": True, **service.record_event(user_name=user_name, **values)}
+        else:
+            values["kp_id"] = _canonical_kp_id(context, values["kp_id"])
+            for key in ("correct", "independent"):
+                if key in values and values[key] is not None:
+                    values[key] = _strict_bool(values[key], key)
+        result = service.record_event(
+            user_name=user_name,
+            idempotency_key=_idempotency_key(context, values),
+            **values,
+        )
+        return {
+            "saved": True,
+            "duplicate": bool(result.get("duplicate")),
+            **result,
+        }
     if name == "get_learning_evidence_summary":
-        store = deps.learning_evidence_store
-        if store is None:
-            raise RuntimeError("learning evidence store is not configured")
+        store = _dependency(context, "learning_evidence_store")
+        raw_kp_id = str(arguments.get("kp_id", "")).strip()
+        kp_id = _canonical_kp_id(context, raw_kp_id) if raw_kp_id else None
         return {"allowed": True, **store.get_summary(
-            user_name, kp_id=str(arguments.get("kp_id", "")).strip() or None,
-            limit=int(arguments.get("limit", 50)),
+            user_name, kp_id=kp_id,
+            limit=_bounded_int(arguments, "limit", default=50, lower=1, upper=200),
         )}
     raise KeyError(name)

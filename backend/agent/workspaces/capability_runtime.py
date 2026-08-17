@@ -114,6 +114,16 @@ class BoundToolExecutor:
                     class_id=self.context.authorized_resources.class_id,
                     assignment_id=self.context.authorized_resources.assignment_id,
                 )
+            if name == "retrieve_knowledge":
+                from backend.agent.rag.agent_api import retrieve_knowledge_payload
+
+                service = self.context.runtime_dependencies.rag_service
+                return retrieve_knowledge_payload(service=service, **normalized)
+            if name == "get_knowledge_base_stats":
+                from backend.agent.rag.agent_api import knowledge_base_stats
+
+                service = self.context.runtime_dependencies.rag_service
+                return knowledge_base_stats(service=service)
             if name == "web_search":
                 from backend.agent.tools.web_search import execute_web_search
 

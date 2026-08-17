@@ -68,6 +68,8 @@ related_skills:
 - `self_confidence`：**只有学生明确说了自己的把握时才能记录，禁止猜测**
 
 同一次作答禁止再调用 `record_answer`，否则会把同一条学习证据重复计入掌握度。
+本 Skill 是批改场景的唯一写入拥有者；调用 `error_diagnosis` 或 `progressive_hint` 时，
+只合并它们的诊断/提示结果，不让子 Skill 再次写入。
 
 ## 5. 前置追溯
 

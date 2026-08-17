@@ -1,7 +1,7 @@
 ---
 name: teach_back
 description: 讲解后让学生用自己的话复述，并评价理解完整度
-version: 1
+version: 2
 category: pedagogy
 priority: 80
 autoload: false
@@ -28,11 +28,14 @@ related_skills:
    - 术语使用
    - 是否出现关键误区
 3. 给出短反馈：先指出正确部分，再指出最关键缺口。
-4. 有可靠 `kp_id` 时记录：
+4. 有可靠 `kp_id` 且学生已经完成复述时，调用一次 `record_learning_evidence` 记录：
    - `activity_type=teach_back`
    - `explanation_score=0-1`
    - `independent`
    - 如存在明确误区，记录 `error_type/misconception`
 5. 如果解释正确但只会原题，可后续再做迁移测试；本 Skill 不把“会复述”直接等同于“会迁移”。
+
+如果用户是在请求讲解而不是主动要求复述，先完整讲解，再把复述作为可选下一步；
+不得用“你先解释一下”替代本轮答案。写入工具失败时仍给出理解反馈，并明确本次没有保存。
 
 不得根据语言表达风格差异武断判断学生“不理解”。

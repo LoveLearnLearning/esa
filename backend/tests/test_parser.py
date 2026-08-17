@@ -105,6 +105,38 @@ class ParseOutputTests(unittest.TestCase):
 
         self.assertEqual(parsed.tool_calls[0].arguments, {"order": "two"})
 
+    def test_qwen_native_json_tool_call_is_parsed(self) -> None:
+        """Qwen 原生 JSON Tool 格式不能被静默丢弃。"""
+        parsed = parse_output(
+            """</think>
+<tool_call>
+{"name":"math_solver","arguments":{"expression":"x ** 2","order":2}}
+</tool_call>""",
+            tool_schemas=[self.MATH_SOLVER_SCHEMA],
+        )
+
+        self.assertEqual(len(parsed.tool_calls), 1)
+        self.assertEqual(parsed.tool_calls[0].name, "math_solver")
+        self.assertEqual(
+            parsed.tool_calls[0].arguments,
+            {"expression": "x ** 2", "order": 2},
+        )
+
+    def test_qwen_json_tool_call_list_is_parsed(self) -> None:
+        """单个 Tool block 中的 JSON 调用列表也应完整保留。"""
+        parsed = parse_output(
+            """</think>
+<tool_call>
+[{"name":"first","arguments":{"value":1}},
+ {"name":"second","arguments":{"value":2}}]
+</tool_call>"""
+        )
+
+        self.assertEqual(
+            [(call.name, call.arguments) for call in parsed.tool_calls],
+            [("first", {"value": 1}), ("second", {"value": 2})],
+        )
+
 
 class StreamOutputParserTests(unittest.TestCase):
     """验证 `stream output parser tests` 相关行为。"""

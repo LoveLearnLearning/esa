@@ -1,7 +1,7 @@
 ---
 name: progressive_hint
 description: 学生卡住、没思路或明确请求提示时，逐级提供最小必要帮助
-version: 1
+version: 2
 category: pedagogy
 priority: 94
 autoload: false
@@ -34,9 +34,14 @@ related_skills:
 4. 学生的新尝试仍卡住时，最多升一级，不跨级倾倒答案。
 5. 如果用户明确说“直接给完整解答”，尊重用户要求，不强行苏格拉底式拖延。
 
+如果当前请求同时属于 `homework_review` 或 `adaptive_practice`，本 Skill 只负责提示层级，
+由负责批改/练习的上层 Skill 统一写入一次证据；不要在同一轮再次调用
+`record_learning_evidence`。工具不可用时仍给出当前最低级提示，并明确暂未保存学习记录。
+
 ## Learning Evidence
 
-当能够确认 `kp_id` 且学生已经实际尝试时，可以记录：
+当本 Skill 独立处理一个已经产生新尝试的请求，且能够确认 `kp_id` 时，可以调用一次
+`record_learning_evidence` 记录：
 
 - `activity_type=hint`
 - `hint_level=实际最高等级`

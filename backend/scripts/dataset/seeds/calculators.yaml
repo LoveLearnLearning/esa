@@ -114,11 +114,8 @@ bitwise_calculator:
 # 这批数据决定模型会不会"手贱乱调工具"。工具滥用是 demo 现场最容易翻车的点。
 # ---------------------------------------------------------------------------
 hard_negatives:
-  # ⚠️ 这句话会被后端确定性路由命中 retrieve_first，Skill 正文直接注入 system prompt
-  # （「讲解前先问一个很短的主动回忆问题」），并写明「按下方正文执行」。
-  # 正文里那条例外（「用户只是问一个事实性短问题：不要增加摩擦」）罩不住这种带
-  # 「为什么」的长讲解，所以开头必须先有一个回忆问题，否则样本在违反自己的 system prompt。
-  # 同样的情况见下面的 memory_hierarchy 那条。
+  # 带「为什么」的知识点讲解会命中 grounded_explanation；此组是计算器负样本，
+  # 不能因此误调 calculator，但独立的 RAG 训练样本仍应教模型先查知识库。
   - query: "快速排序的平均时间复杂度是多少，为什么是这个结果？"
     topic: quicksort_analysis
     trap: "出现「时间」「多少」，像要调 get_time 或 calculator"

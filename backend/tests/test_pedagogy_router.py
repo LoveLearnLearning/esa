@@ -29,10 +29,18 @@ def test_stuck_student_routes_to_progressive_hint():
     assert decision.skill_name == "progressive_hint"
 
 
-def test_concept_question_routes_to_retrieve_first():
-    """验证 `concept_question_routes_to_retrieve_first` 场景。"""
+def test_concept_question_routes_to_grounded_explanation():
+    """概念问题路由到本轮直接回答且使用知识库的 Skill。"""
     decision = PedagogyRouter.route("解释一下为什么二叉树遍历会用到递归")
-    assert decision.skill_name == "retrieve_first"
+    assert decision.skill_name == "grounded_explanation"
+
+
+def test_ambiguous_engineering_term_can_still_be_a_learning_concept():
+    """接口、依赖、异常等歧义词不应压过明确的概念提问。"""
+    decision = PedagogyRouter.route("解释一下 Java 接口的原理")
+
+    assert decision.skill_name == "grounded_explanation"
+    assert decision.task_type == "learning"
 
 
 def test_start_practice_routes_to_adaptive_practice():

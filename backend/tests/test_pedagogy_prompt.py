@@ -38,13 +38,22 @@ def test_core_memory_is_not_eagerly_injected_into_system_prompt():
     """验证 `core_memory_is_not_eagerly_injected_into_system_prompt` 场景。"""
     prompt = build_system_prompt(
         user_name="alice",
-        skills_context="- retrieve_first [pedagogy] test",
+        skills_context="- grounded_explanation [pedagogy] test",
         prompt_ctx=PromptContext(),
     )
 
     assert "# 核心记忆" not in prompt
     assert "暂无核心记忆" not in prompt
     assert "search_core_memories" in prompt
+
+
+def test_system_prompt_defines_when_tools_must_be_used():
+    """工具不能只被暴露；Prompt 必须给出可执行的调用判据。"""
+    prompt = build_system_prompt(prompt_ctx=PromptContext())
+
+    assert "# Tool 使用规则" in prompt
+    assert "不要凭模型记忆猜测" in prompt
+    assert "retrieve_knowledge" in prompt
 
 
 def test_build_prompt_has_no_duplicate_prompt_or_style_rule_tables():

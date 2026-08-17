@@ -388,8 +388,13 @@ class PedagogyRouter:
             for marker in cls._ENGINEERING_MARKERS
             if marker not in cls._AMBIGUOUS_ENGINEERING_MARKERS
         )
-        if has_engineering_marker and (
-            primary_kp_id is None or has_strong_engineering_marker
+        has_concept_marker = any(
+            marker in lowered for marker in cls._CONCEPT_MARKERS
+        )
+        if has_strong_engineering_marker or (
+            has_engineering_marker
+            and primary_kp_id is None
+            and not has_concept_marker
         ):
             return decision(None, "检测到工程/部署/调试语境", 0.95, "engineering")
 
@@ -468,10 +473,10 @@ class PedagogyRouter:
                 "learning",
             )
 
-        if any(marker in lowered for marker in cls._CONCEPT_MARKERS):
+        if has_concept_marker:
             return decision(
                 cls._skill("explanation_request"),
-                "用户正在学习概念/原理，适合先做低成本检索练习",
+                "用户正在询问概念/原理，应先检索知识库并在本轮直接讲解",
                 0.72 if profile is None else 0.8,
                 "learning",
             )

@@ -75,7 +75,7 @@ def main() -> int:
                     warned.append(f"{sid}: 问句里有「{marker}」，确认它不该调工具")
             # 路由命中的话，后端会把某个 Skill 正文注入 system prompt 并要求"按正文执行"，
             # 而这批样本的正确行为是直接把活干掉。两边会起冲突，措辞该绕开。
-            # 实测踩过：「为什么…」→ retrieve_first；「不会」→ progressive_hint。
+            # 实测踩过：「为什么…」→ grounded_explanation；「不会」→ progressive_hint。
             if (hit := routed_skill(q)) is not None:
                 warned.append(f"{sid}: 问句命中路由 {hit}，system prompt 会被注入该 Skill 正文，"
                               "和「直接干活」的回答冲突 —— 换个说法绕开")

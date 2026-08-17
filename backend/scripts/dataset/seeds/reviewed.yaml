@@ -202,21 +202,9 @@ reviewed:
     date: 2026-08-12
     note: 核对拒绝编造占位文献的理由（占位符常忘换、直接变成假引用），与赛题《02》的强制承诺方向一致；所列五点提纲不含任何编造的来源或文献
 
-  # ── 来自 gen_skills_rag（18/18 放行）──────────────────────────
+  # ── 来自 gen_skills_rag（历史已放行项）────────────────────────
   # 这一组的复核标准是「有没有照抄 Skill 正文、有没有编造不存在的流程」，
   # 逐条对照 data/cache/skills_bodies.json 里抓下来的真实正文核过。
-  - id: rag_neg_00
-    by: Claude（授权：chenweihang0160）
-    date: 2026-08-12
-    note: 核对递归的两个要素（基准情形、递推关系）与「缺基准情形会无限递归」；确认属课本概念，不需要检索知识库
-  - id: rag_neg_01
-    by: Claude（授权：chenweihang0160）
-    date: 2026-08-12
-    note: 核对栈/队列的出入顺序与典型用途（函数调用与表达式求值 / 任务调度与 BFS）；确认不需要检索
-  - id: rag_neg_02
-    by: Claude（授权：chenweihang0160）
-    date: 2026-08-12
-    note: 核对时间复杂度定义与「O(n²) 下输入翻倍耗时约变四倍」这个例子；确认不需要检索
   - id: skill_autoloaded_progressive_hint_00
     by: Claude（授权：chenweihang0160）
     date: 2026-08-12
@@ -229,10 +217,6 @@ reviewed:
     by: Claude（授权：chenweihang0160）
     date: 2026-08-12
     note: 同 progressive_hint_00 的等级与停顿判据；未照抄正文
-  - id: skill_autoloaded_retrieve_first_01
-    by: Claude（授权：chenweihang0160）
-    date: 2026-08-12
-    note: 对照 retrieve_first 正文流程 3/4，确认是「一个很短的主动回忆问题」且声明只针对缺口讲；未照抄正文，未编造 kp_id 或掌握度数据
   - id: skill_autoloaded_study_plan_00
     by: Claude（授权：chenweihang0160）
     date: 2026-08-12
@@ -261,10 +245,6 @@ reviewed:
     by: Claude（授权：chenweihang0160）
     date: 2026-08-12
     note: 同上；学生只报了答案 O(n²) 而没给题目，回答坚持先要题干再判断，未凭空认可或否定这个结论
-  - id: skill_retrieve_first_00
-    by: Claude（授权：chenweihang0160）
-    date: 2026-08-12
-    note: 对照 retrieve_first 正文流程 3/4；「红黑树」属系统学习请求而非事实性短问题，不落在正文的三条例外里，套用 Retrieve First 是对的
   - id: skill_study_plan_01
     by: Claude（授权：chenweihang0160）
     date: 2026-08-12
