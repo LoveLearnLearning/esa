@@ -8,43 +8,10 @@ import json
 from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime
 from enum import Enum
-from typing import Protocol
+from backend.core.utils.token_estimation import TOKEN_ENCODING, estimate_tokens
 
-
-class _TokenEncoding(Protocol):
-    """定义 `_TokenEncoding` 组件协议。"""
-    def encode(self, text: str) -> list[int]:
-        """编码 `encode` 相关数据。"""
-        ...
-
-
-_TIKTOKEN_ENCODING: _TokenEncoding | None
-
-try:  # pragma: no cover - 可选依赖
-    from tiktoken import get_encoding as _get_encoding
-
-    _TIKTOKEN_ENCODING = _get_encoding("cl100k_base")
-except Exception:  # noqa: BLE001
-    _TIKTOKEN_ENCODING = None
-
-
-def _estimate_tokens(text: str) -> int:
-    """处理 `_estimate_tokens` 相关逻辑。"""
-    if _TIKTOKEN_ENCODING is not None:
-        return len(_TIKTOKEN_ENCODING.encode(text))
-
-    cjk = 0
-    ascii_count = 0
-    other = 0
-    for ch in text:
-        code = ord(ch)
-        if code <= 0x007F:
-            ascii_count += 1
-        elif 0x4E00 <= code <= 0x9FFF:
-            cjk += 1
-        else:
-            other += 1
-    return int(ascii_count / 4 + cjk * 1.5 + other)
+_TIKTOKEN_ENCODING = TOKEN_ENCODING
+_estimate_tokens = estimate_tokens
 
 
 class ProfileOrigin(str, Enum):

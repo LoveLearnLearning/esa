@@ -18,17 +18,73 @@ from backend.core.message.prompts import WORKSPACE_PROMPTS
 from backend.core.message.renderer import render_sections
 from backend.core.message.style_tone import resolve_style_tone
 from backend.core.message.system import SYSTEM_PROMPT
+from backend.core.utils.token_estimation import estimate_tokens
 
 
 def _tokens(text: str) -> int:
     """处理 `_tokens` 相关逻辑。"""
-    return max(1, (len(text) + 3) // 4)
+    return estimate_tokens(text)
 
 
 def _clip(text: str, token_limit: int) -> str:
     """处理 `_clip` 相关逻辑。"""
-    limit = max(0, token_limit * 4)
-    return text if len(text) <= limit else text[:limit].rstrip() + "..."
+    if token_limit <= 0:
+        return ""
+    if _tokens(text) <= token_limit:
+        return text
+
+    suffix = "..."
+    suffix_tokens = _tokens(suffix)
+    available = max(0, token_limit - suffix_tokens)
+    low, high = 0, len(text)
+    while low < high:
+        middle = (low + high + 1) // 2
+        if _tokens(text[:middle]) <= available:
+            low = middle
+        else:
+            high = middle - 1
+    prefix = text[:low].rstrip()
+    return (prefix + suffix) if prefix else suffix
+
+
+def _with_content(section: ContextSection, content: str) -> ContextSection:
+    """Return the same section metadata with replacement content."""
+    return ContextSection(
+        section.key,
+        section.title,
+        content,
+        section.trust,
+        section.order,
+        section.stable,
+    )
+
+
+def _fit_section(
+    kept: list[ContextSection],
+    section: ContextSection,
+    max_tokens: int,
+) -> ContextSection | None:
+    """Fit a non-stable section against the fully rendered prompt budget."""
+    if _tokens(render_sections((*kept, section))) <= max_tokens:
+        return section
+
+    suffix = "..."
+    minimal = _with_content(section, suffix)
+    if _tokens(render_sections((*kept, minimal))) > max_tokens:
+        return None
+
+    low, high = 0, len(section.content)
+    while low < high:
+        middle = (low + high + 1) // 2
+        prefix = section.content[:middle].rstrip()
+        candidate = _with_content(section, (prefix + suffix) if prefix else suffix)
+        if _tokens(render_sections((*kept, candidate))) <= max_tokens:
+            low = middle
+        else:
+            high = middle - 1
+
+    prefix = section.content[:low].rstrip()
+    return _with_content(section, (prefix + suffix) if prefix else suffix)
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,17 +210,14 @@ class ContextComposer:
             sections.append(ContextSection("strategy", "Learning strategy", strategy.content, "trusted_system", 140))
 
         kept: list[ContextSection] = []
-        remaining = self.max_tokens
         for section in sorted(sections, key=lambda item: (item.order, item.key)):
-            if remaining <= 0 and not section.stable:
-                continue
-            content = section.content if section.stable else _clip(section.content, remaining)
-            if not content:
-                continue
-            clipped = ContextSection(
-                section.key, section.title, content, section.trust, section.order, section.stable
+            selected = (
+                section
+                if section.stable
+                else _fit_section(kept, section, self.max_tokens)
             )
-            kept.append(clipped)
-            remaining -= _tokens(content)
+            if selected is None or not selected.content:
+                continue
+            kept.append(selected)
         rendered = render_sections(kept)
         return ComposedContext(tuple(kept), rendered, _tokens(rendered))

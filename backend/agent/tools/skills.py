@@ -141,6 +141,7 @@ def refresh_skill_cache() -> None:
     """清除 Skill 解析/契约缓存，供热更新或测试使用。"""
     list_skill_definitions.cache_clear()
     _validated_definitions.cache_clear()
+    _trigger_index.cache_clear()
 
 
 def list_skills_detail() -> list[tuple[str, str]]:
@@ -160,6 +161,7 @@ def validate_skill_contracts(
     errors: list[str] = []
 
     names: dict[str, Path] = {}
+    triggers: dict[str, str] = {}
     for skill in definitions:
         previous = names.get(skill.name)
         if previous is not None:
@@ -168,6 +170,15 @@ def validate_skill_contracts(
             )
         else:
             names[skill.name] = skill.path
+        for trigger in skill.triggers:
+            previous_skill = triggers.get(trigger)
+            if previous_skill is not None:
+                errors.append(
+                    f"Skill trigger 重复: {trigger!r} "
+                    f"({previous_skill}, {skill.name})"
+                )
+            else:
+                triggers[trigger] = skill.name
 
     available_skills = set(names)
     available_tools = (
@@ -198,6 +209,32 @@ def _validated_definitions() -> tuple[SkillDefinition, ...]:
         formatted = "\n".join(f"- {error}" for error in errors)
         raise SkillValidationError(f"Skill contract 校验失败:\n{formatted}")
     return list_skill_definitions()
+
+
+@lru_cache(maxsize=1)
+def _trigger_index() -> dict[str, str]:
+    """Build the validated deterministic trigger-to-Skill mapping."""
+    index: dict[str, str] = {}
+    for skill in list_skill_definitions():
+        for trigger in skill.triggers:
+            previous = index.get(trigger)
+            if previous is not None:
+                raise SkillValidationError(
+                    f"Skill trigger 重复: {trigger!r} ({previous}, {skill.name})"
+                )
+            index[trigger] = skill.name
+    return index
+
+
+def skill_name_for_trigger(trigger: str) -> str:
+    """Resolve one declared semantic trigger to its Skill name."""
+    normalized = trigger.strip()
+    try:
+        return _trigger_index()[normalized]
+    except KeyError as error:
+        raise SkillValidationError(
+            f"没有 Skill 声明 trigger={normalized!r}"
+        ) from error
 
 
 def build_skills_context(*, categories: set[str] | None = None) -> str:

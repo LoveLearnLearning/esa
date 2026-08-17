@@ -1,6 +1,6 @@
 # backend/core/message/build_prompt.py
 
-"""提供 `build_prompt` 相关功能。"""
+"""兼容旧测试的 Prompt builder；生产请求由 WorkspaceRuntime 组装。"""
 
 from __future__ import annotations
 

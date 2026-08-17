@@ -92,9 +92,15 @@ class ScopedSkillView:
                 declaration.name,
                 declaration.version,
                 declaration.scope,
+                skill.category,
+                skill.description,
+                skill.priority,
                 skill.autoload,
+                skill.triggers,
+                skill.related_skills,
                 declaration.required_tools,
                 tuple(sorted(declaration.required_resource_capabilities)),
+                hashlib.sha256(skill.body.encode("utf-8")).hexdigest(),
             )
             for skill, declaration in zip(selected, declarations)
         ]

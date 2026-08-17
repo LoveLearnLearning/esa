@@ -13,16 +13,9 @@
 
 跑的是什么
 ----------
-逐条复刻 `backend/agent/agent.py:148-174` 里 `_prepare_run` 的那几行：
-
-    decision = PedagogyRouter.route(input)                 确定性路由
-    body     = load_skill(decision.skill_name)             命中才加载正文
-    prompt_ctx = replace(..., pedagogy_context=decision.to_prompt_context(body),
-                              autoload_skills_context=build_autoload_skills_context())
-    build_system_prompt(user_name, skills_context=build_skills_context(), prompt_ctx=...)
-
-"复刻那几行"和"复刻提示词正文"是两回事：这里每一个真正决定内容的函数都是后端的，
-后端改了正文、改了路由规则、加了 Skill，重跑一次就跟上了。
+逐条调用生产使用的 `WorkspaceRuntime.prepare_evaluation()`。路由、能力裁剪、Skill
+autoload、上下文信任分层和最终渲染全部由生产编译器完成；本脚本只构造一个无画像、
+无历史、无附件的 learning turn，并读取生成结果的第一条 system message。
 
 消息从哪来
 ----------
@@ -47,14 +40,15 @@ import subprocess
 import sys
 import tempfile
 from collections import Counter
-from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import backend_repo  # noqa: E402
-
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT / "dataset"))
+import backend_repo  # noqa: E402
+from esa.cache_contract import prompt_source_fingerprint  # noqa: E402
+
 OUT = ROOT / "dataset/data/cache/system_prompts.json"
 GENERATORS = ROOT / "dataset/generators"
 
@@ -82,34 +76,38 @@ def generator_scripts() -> list[Path]:
 
 def collect_keys() -> list[tuple[str, str, str]]:
     """空跑七个生成器，收集它们需要的 (消息, 风格, 语调)。"""
-    tmp = Path(tempfile.mkdtemp(prefix="esa_sp_collect_")) / "keys.json"
-    env = {
-        **os.environ,
-        "ESA_SYSTEM_PROMPT_MODE": "collect",
-        "ESA_SYSTEM_PROMPT_COLLECT_OUT": str(tmp),
-        "PYTHONPATH": str(ROOT / "dataset"),
-    }
-    scripts = generator_scripts()
-    print(f"空跑 {len(scripts)} 个生成器收集消息（collect 模式，不落盘）：")
-    for script in scripts:
-        proc = subprocess.run(
-            [sys.executable, str(script)], env=env, cwd=ROOT,
-            capture_output=True, text=True,
-        )
-        if proc.returncode != 0:
-            # 空跑失败要吵。静默跳过等于少收一批消息，
-            # 到正式生成时才炸，而且看不出少的是哪一批。
-            raise SystemExit(
-                f"{script.name} 空跑失败（退出码 {proc.returncode}）：\n"
-                f"{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}"
+    with tempfile.TemporaryDirectory(prefix="esa_sp_collect_") as tmp_dir:
+        tmp = Path(tmp_dir) / "keys.json"
+        env = {
+            **os.environ,
+            "ESA_SYSTEM_PROMPT_MODE": "collect",
+            "ESA_SYSTEM_PROMPT_COLLECT_OUT": str(tmp),
+            "PYTHONPATH": str(ROOT / "dataset"),
+            "PYTHONIOENCODING": "utf-8",
+        }
+        scripts = generator_scripts()
+        print(f"空跑 {len(scripts)} 个生成器收集消息（collect 模式，不落盘）：")
+        for script in scripts:
+            proc = subprocess.run(
+                [sys.executable, str(script)], env=env, cwd=ROOT,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
             )
-        print(f"  {script.name} ✓")
+            if proc.returncode != 0:
+                # 空跑失败要吵。静默跳过等于少收一批消息，
+                # 到正式生成时才炸，而且看不出少的是哪一批。
+                raise SystemExit(
+                    f"{script.name} 空跑失败（退出码 {proc.returncode}）：\n"
+                    f"{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}"
+                )
+            print(f"  {script.name} OK")
 
-    if not tmp.exists():
-        raise SystemExit("没有收集到任何消息 —— 生成器可能没再调 build_system_prompt")
-    keys = [tuple(k) for k in json.loads(tmp.read_text(encoding="utf-8"))]
-    print(f"收集到 {len(keys)} 组键、{len({k[0] for k in keys})} 条不同的消息")
-    return keys
+        if not tmp.exists():
+            raise SystemExit(
+                "没有收集到任何消息 —— 生成器可能没再调 build_system_prompt"
+            )
+        keys = [tuple(k) for k in json.loads(tmp.read_text(encoding="utf-8"))]
+        print(f"收集到 {len(keys)} 组键、{len({k[0] for k in keys})} 条不同的消息")
+        return keys
 
 
 def load_backend(repo: Path):
@@ -117,52 +115,80 @@ def load_backend(repo: Path):
     sys.path.insert(0, str(repo))
     try:
         from backend.agent.learning.pedagogy_router import PedagogyRouter  # noqa: PLC0415
-        from backend.agent.tools.skills import (  # noqa: PLC0415
-            build_autoload_skills_context, build_skills_context, list_skills_detail, load_skill,
-        )
-        from backend.core.message.build_prompt import build_system_prompt  # noqa: PLC0415
-        from backend.core.utils.models import PromptContext  # noqa: PLC0415
+        from backend.agent.tools.bootstrap import register_builtin_tools  # noqa: PLC0415
+        from backend.agent.tools.context import AgentRuntimeDependencies  # noqa: PLC0415
+        from backend.agent.workspaces.models import AgentTurnInput  # noqa: PLC0415
+        from backend.agent.workspaces.runtime import WorkspaceRuntime  # noqa: PLC0415
+        from backend.core.router.basic_router import route_workspace  # noqa: PLC0415
+        from backend.core.router.context import ConversationContext, RoutingContext  # noqa: PLC0415
+        from backend.core.router.models import TrustedIdentity  # noqa: PLC0415
     except ImportError as exc:
         raise SystemExit(
             f"无法 import 后端 prompt 组装链：{exc}\n"
             "先 pip install 后端依赖再重试。"
             "注意不要改用本地手写版顶替 —— 那正是这个脚本要修掉的问题。"
         ) from exc
+
+    register_builtin_tools()
+    identity = TrustedIdentity("dataset-user", USER_NAME, "student")
+    conversation_id = "dataset-learning-conversation"
+    route = route_workspace(
+        identity,
+        RoutingContext(
+            ConversationContext(
+                conversation_id,
+                identity.user_id,
+                "learning",
+            )
+        ),
+    )
+    runtime = WorkspaceRuntime(AgentRuntimeDependencies())
+    profile = runtime.profiles.resolve(route.agent_profile_id, route.workspace_type)
+    capabilities = runtime.capabilities.compile(
+        skill_scopes=route.skill_scopes,
+        tool_scopes=route.tool_scopes,
+        profile_fingerprint=f"{profile.profile_id}:{profile.version}",
+        policy_versions=(
+            profile.profile_policy,
+            profile.memory_policy_id,
+            profile.action_policy,
+        ),
+        resource_capabilities=route.resource_scope.capabilities,
+        conversation_mode="normal",
+        has_research_project=False,
+        has_attachments=False,
+    )
     return {
         "router": PedagogyRouter,
-        "load_skill": load_skill,
-        "skills_context": build_skills_context(),
-        "autoload_context": build_autoload_skills_context(),
-        "build": build_system_prompt,
-        "PromptContext": PromptContext,
-        "skills_detail": list_skills_detail(),
+        "runtime": runtime,
+        "route": route,
+        "identity": identity,
+        "conversation_id": conversation_id,
+        "AgentTurnInput": AgentTurnInput,
+        "skills_context": capabilities.capabilities.skill_index,
+        "skills_detail": [
+            (skill.name, skill.description)
+            for skill in capabilities.skills.definitions
+        ],
     }
 
 
 def render(be, message: str, style: str, tone: str) -> tuple[str, object]:
-    """跑一次后端真实组装，返回 (提示词正文, 路由决策)。"""
+    """跑一次生产 Workspace 编译链，返回 (提示词正文, 路由决策)。"""
     decision = be["router"].route(message)
-    body = be["load_skill"](decision.skill_name) if decision.skill_name else None
-    ctx = replace(
-        be["PromptContext"](),
-        pedagogy_context=decision.to_prompt_context(loaded_skill_body=body),
-        autoload_skills_context=be["autoload_context"],
-        preferred_style=style,
-        preferred_tone=tone,
+    turn = be["AgentTurnInput"](
+        route=be["route"],
+        identity=be["identity"],
+        conversation_id=be["conversation_id"],
+        current_message=message,
+        user_preferences={
+            "preferred_style": style,
+            "preferred_tone": tone,
+        },
+        request_metadata={"request_id": "dataset-prompt-capture"},
     )
-    # 2026-08-12 后端新增 `# Current workspace` 段，内容取自 PromptContext.workspace_type。
-    # 我们用它的默认值 "learning"（正好是本项目的场景：面向学生的学习空间）。
-    # 哪天默认值变了、或者我们开始按 workspace 分数据，提示词会整片变而这里不会报错 ——
-    # 所以在这儿钉住，让它先炸给人看，别等数据训完才发现分布不一致。
-    assert ctx.workspace_type == "learning", (
-        f"workspace_type 不再是 learning（{ctx.workspace_type!r}），"
-        "system prompt 里的 `# Current workspace` 段会整片变，缓存键要跟着加维度"
-    )
-    assert not ctx.attachment_context, (
-        "attachment_context 非空：会多出「# 当前附件内容（DocIR）」一段。"
-        "我们不传附件，出现这种情况说明渲染参数变了"
-    )
-    text = be["build"](user_name=USER_NAME, skills_context=be["skills_context"], prompt_ctx=ctx)
+    spec = be["runtime"].prepare_evaluation(turn)
+    text = str(spec.messages[0]["content"])
     return text, decision
 
 
@@ -222,9 +248,12 @@ def main() -> int:
                 "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "source": "github.com/LoveLearnLearning/esa",
                 "source_repo": backend.describe(),
+                "prompt_source_fingerprint": prompt_source_fingerprint(
+                    backend.path
+                ),
                 "note": (
-                    "由 dataset/tools/capture_system_prompts.py 跑后端真实路由 + "
-                    "build_system_prompt 产出，禁止手改"
+                    "由 dataset/tools/capture_system_prompts.py 调用生产 "
+                    "WorkspaceRuntime.prepare_evaluation 产出，禁止手改"
                 ),
                 "render_params": {
                     "user_name": USER_NAME,
@@ -246,7 +275,7 @@ def main() -> int:
         out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
     size_kb = out_path.stat().st_size / 1024
-    print(f"\n{len(messages)} 条消息 × {len(STYLES)} 风格 × {len(tones)} 语调 "
+    print(f"\n{len(messages)} 条消息 x {len(STYLES)} 风格 x {len(tones)} 语调 "
           f"= {len(index)} 次渲染 → 只有 {len(prompts)} 种不同的提示词")
     print(f"缓存 {size_kb:.0f}KB → {out_path.relative_to(ROOT)}")
     print(f"  来源：{backend.describe()}")

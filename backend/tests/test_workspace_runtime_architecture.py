@@ -14,7 +14,7 @@ from backend.agent.tools.context import AgentRuntimeDependencies, ToolExecutionC
 from backend.agent.tools.tool_register import ToolRegistry
 from backend.agent.tools.tools import tr
 from backend.agent.workspaces.capability_runtime import CapabilityRuntime
-from backend.agent.workspaces.context_composer import ContextComposer
+from backend.agent.workspaces.context_composer import ContextComposer, _clip, _tokens
 from backend.agent.workspaces.models import (
     AgentTurnInput,
     LearningTurnContext,
@@ -356,7 +356,7 @@ def test_context_composer_order_trust_and_deterministic_clipping():
         conversation_summary="S" * 1000,
         authorized_attachments=({"attachment_id": "a1", "status": "stored"},),
     )
-    composer = ContextComposer(max_tokens=500)
+    composer = ContextComposer(max_tokens=1500)
     first = composer.compose(turn, LEARNING_PROFILE, capabilities)
     second = composer.compose(turn, LEARNING_PROFILE, capabilities)
     assert first == second
@@ -372,7 +372,17 @@ def test_context_composer_order_trust_and_deterministic_clipping():
     assert first.rendered.index("# User profile data") < first.rendered.index(
         "# Group instructions"
     )
-    assert first.estimated_tokens <= 900
+    assert first.estimated_tokens <= 1500
+
+
+def test_context_composer_uses_cjk_aware_token_budget():
+    """Chinese content must not be estimated with the ASCII chars/4 rule."""
+    text = "你" * 10_000
+    assert _tokens(text) >= 10_000
+
+    clipped = _clip(text, 100)
+    assert clipped.endswith("...")
+    assert _tokens(clipped) <= 100
 
 
 def test_workspace_runtime_builds_trusted_runspec_without_model_owned_identity():

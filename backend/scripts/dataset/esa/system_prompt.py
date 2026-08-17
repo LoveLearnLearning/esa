@@ -15,7 +15,7 @@
 
 所以现在的分工是：
 
-    dataset/tools/capture_system_prompts.py   import 后端、跑真实路由 + build_system_prompt
+    dataset/tools/capture_system_prompts.py   import 后端、跑生产 WorkspaceRuntime
               ↓  产出
     dataset/data/cache/system_prompts.json    {prompts, index, routes}
               ↓  查表
@@ -57,8 +57,11 @@ import json
 import os
 from pathlib import Path
 
+from .cache_contract import prompt_source_fingerprint, skill_source_hashes
+
 ROOT = Path(__file__).resolve().parents[2]
 CACHE = ROOT / "dataset/data/cache/system_prompts.json"
+REPO_ROOT = ROOT.parents[1]
 
 # 渲染时固定住的参数。它们进缓存的 _meta，改了就得重抓。
 USER_NAME = "同学"
@@ -113,7 +116,16 @@ def load_cache() -> dict:
                 f"找不到 {CACHE.relative_to(ROOT)}。\n"
                 "先跑：python3 dataset/tools/capture_system_prompts.py"
             )
-        _cache = json.loads(CACHE.read_text(encoding="utf-8"))
+        payload = json.loads(CACHE.read_text(encoding="utf-8"))
+        expected = payload.get("_meta", {}).get("prompt_source_fingerprint")
+        actual = prompt_source_fingerprint(REPO_ROOT)
+        if not expected or expected != actual:
+            raise SystemPromptCacheMiss(
+                "system prompt 缓存对应的生产源码已经变化。跑：\n"
+                "  python3 dataset/tools/capture_system_prompts.py\n"
+                "不要继续使用旧缓存。"
+            )
+        _cache = payload
     return _cache
 
 
@@ -191,7 +203,16 @@ def skill_names() -> list[str]:
             f"找不到 {path.relative_to(ROOT)}。\n"
             "先跑：python3 dataset/tools/capture_skill_bodies.py"
         )
-    return list(json.loads(path.read_text(encoding="utf-8"))["_meta"]["skill_names"])
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    expected = payload.get("_meta", {}).get("source_sha256")
+    actual = skill_source_hashes(REPO_ROOT)
+    if not expected or expected != actual:
+        raise SystemPromptCacheMiss(
+            "Skill 正文缓存对应的源码已经变化。跑：\n"
+            "  python3 dataset/tools/capture_skill_bodies.py\n"
+            "不要继续使用旧缓存。"
+        )
+    return list(payload["_meta"]["skill_names"])
 
 
 def system_for(turns, *, tone: str = DEFAULT_TONE) -> str:

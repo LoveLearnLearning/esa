@@ -29,16 +29,17 @@ homework_review / profile_personalization 两份正文 —— 手工抓的东西
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import backend_repo  # noqa: E402
-
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT / "dataset"))
+import backend_repo  # noqa: E402
+from esa.cache_contract import skill_source_hashes  # noqa: E402
+
 OUT = ROOT / "dataset/data/cache/skills_bodies.json"
 
 
@@ -46,6 +47,7 @@ def capture(repo: Path) -> dict:
     """跑真实 load_skill()，返回落盘用的全部字段。"""
     sys.path.insert(0, str(repo))
     try:
+        from backend.agent.tools.bootstrap import register_builtin_tools  # noqa: PLC0415
         from backend.agent.tools.skills import (  # noqa: PLC0415
             build_skills_context, list_skills, list_skills_detail, load_skill,
         )
@@ -56,6 +58,7 @@ def capture(repo: Path) -> dict:
             "注意不要改用本地复刻顶替 —— 那正是这个脚本要修掉的问题。"
         ) from exc
 
+    register_builtin_tools()
     files = list_skills()  # 已排除 SKILLS.md（skills.py:120-126）
     print(f"后端 skills 目录下 {len(files)} 个 Skill（SKILLS.md 不算）：")
 
@@ -99,18 +102,12 @@ def main() -> int:
         bodies = captured["bodies"]
         not_found_template = captured["not_found_template"]
 
-        skills_dir = backend.path / "backend/agent/skills"
-        fingerprint = {
-            p.name: hashlib.sha256(p.read_bytes()).hexdigest()[:16]
-            for p in sorted(skills_dir.glob("*.md"))
-        }
-
         payload = {
             "_meta": {
                 "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "source": "github.com/LoveLearnLearning/esa",
                 "source_repo": backend.describe(),
-                "source_sha256": fingerprint,
+                "source_sha256": skill_source_hashes(backend.path),
                 "note": (
                     "由 dataset/tools/capture_skill_bodies.py 调用后端真实 load_skill() 产出，"
                     "存的就是模型线上看到的观测值（不含 frontmatter），禁止手改"

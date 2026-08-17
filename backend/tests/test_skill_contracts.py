@@ -3,13 +3,18 @@
 """验证 `skill_contracts` 相关行为与回归场景。"""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
+import backend.agent.skills.catalog as skill_catalog
+from backend.agent.skills.catalog import ScopedSkillView
 from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.skills import (
+    SkillDefinition,
     build_autoload_skills_context,
     load_skill,
     refresh_skill_cache,
+    skill_name_for_trigger,
     validate_skill_contracts,
 )
 from backend.agent.tools.tools import tr
@@ -61,3 +66,33 @@ def test_profile_policy_is_actually_autoloaded():
     context = build_autoload_skills_context()
     assert "profile_personalization" in context
     assert "工程任务" in context
+
+
+def test_semantic_triggers_resolve_through_the_skill_catalog():
+    assert skill_name_for_trigger("request_hint") == "progressive_hint"
+    assert skill_name_for_trigger("submitted_attempt") == "homework_review"
+
+
+def test_skill_fingerprint_changes_when_body_changes(monkeypatch):
+    """Skill behavior changes must invalidate the capability fingerprint."""
+    definition = SkillDefinition(
+        name="example_skill",
+        description="example",
+        body="first body",
+        path=Path("backend/agent/skills/common/example_skill.md"),
+    )
+    monkeypatch.setattr(
+        skill_catalog,
+        "list_skill_definitions",
+        lambda: (definition,),
+    )
+    first = ScopedSkillView.compile(frozenset({"common"})).fingerprint
+
+    monkeypatch.setattr(
+        skill_catalog,
+        "list_skill_definitions",
+        lambda: (replace(definition, body="second body"),),
+    )
+    second = ScopedSkillView.compile(frozenset({"common"})).fingerprint
+
+    assert first != second

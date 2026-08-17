@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from backend.agent.learning.practice_context import pending_practice_kp_label
+from backend.agent.tools.skills import skill_name_for_trigger
 
 if TYPE_CHECKING:
     from backend.agent.memories.memory_models import ProfileSnapshot
@@ -198,6 +199,11 @@ class PedagogyRouter:
         "log2(",
     )
 
+    @staticmethod
+    def _skill(trigger: str) -> str:
+        """Resolve a semantic route trigger through the Skill catalog."""
+        return skill_name_for_trigger(trigger)
+
     @classmethod
     def _pending_practice_kp_id(
         cls,
@@ -346,13 +352,13 @@ class PedagogyRouter:
             ("任务模式：学习情况报告", "mastery_report"),
             ("任务模式：练习推荐", "practice_recommendation"),
             ("任务模式：生成复习计划", "study_plan"),
-            ("任务模式：知识点与概念讲解", "retrieve_first"),
-            ("任务模式：讲解题目", "progressive_hint"),
+            ("任务模式：知识点与概念讲解", "concept_learning"),
+            ("任务模式：讲解题目", "request_hint"),
         )
-        for marker, skill_name in task_mode_mapping:
+        for marker, trigger in task_mode_mapping:
             if marker in text:
                 return decision(
-                    skill_name,
+                    cls._skill(trigger),
                     "前端 TaskMode 已明确声明用户意图",
                     1.0,
                     "learning",
@@ -366,7 +372,7 @@ class PedagogyRouter:
         )
         if pending_practice_kp_id is not None and not cancelled_practice:
             return decision(
-                "adaptive_practice",
+                cls._skill("submitted_practice_answer"),
                 "用户正在回答上一轮由 Agent 发出的练习题",
                 1.0,
                 "learning",
@@ -389,12 +395,15 @@ class PedagogyRouter:
 
         if any(marker in lowered for marker in cls._TEACH_BACK_MARKERS):
             return decision(
-                "teach_back", "用户明确要求复述/理解验证", 0.98, "learning"
+                cls._skill("teach_back"),
+                "用户明确要求复述/理解验证",
+                0.98,
+                "learning",
             )
 
         if any(marker in text for marker in cls._PRACTICE_MARKERS):
             return decision(
-                "adaptive_practice",
+                cls._skill("start_practice"),
                 "用户请求开始或继续一次自适应练习",
                 0.96,
                 "learning",
@@ -402,12 +411,18 @@ class PedagogyRouter:
 
         if any(marker in lowered for marker in cls._REVIEW_MARKERS):
             return decision(
-                "homework_review", "用户提交了自己的作答并要求检查", 0.92, "learning"
+                cls._skill("submitted_attempt"),
+                "用户提交了自己的作答并要求检查",
+                0.92,
+                "learning",
             )
 
         if any(marker in lowered for marker in cls._STUCK_MARKERS):
             return decision(
-                "progressive_hint", "用户明确表示卡住或请求提示", 0.92, "learning"
+                cls._skill("student_stuck"),
+                "用户明确表示卡住或请求提示",
+                0.92,
+                "learning",
             )
 
         if (
@@ -416,7 +431,10 @@ class PedagogyRouter:
             or "学情" in text
         ):
             return decision(
-                "mastery_report", "用户询问掌握度或学情", 0.9, "learning"
+                cls._skill("mastery_report"),
+                "用户询问掌握度或学情",
+                0.9,
+                "learning",
             )
 
         if (
@@ -425,7 +443,10 @@ class PedagogyRouter:
             or "刷题计划" in text
         ):
             return decision(
-                "practice_recommendation", "用户请求练习推荐", 0.9, "learning"
+                cls._skill("practice_recommendation"),
+                "用户请求练习推荐",
+                0.9,
+                "learning",
             )
 
         if (
@@ -433,12 +454,15 @@ class PedagogyRouter:
             and ("帮我" in text or "制定" in text or "生成" in text)
         ):
             return decision(
-                "study_plan", "用户请求制定学习/复习计划", 0.88, "learning"
+                cls._skill("study_plan"),
+                "用户请求制定学习/复习计划",
+                0.88,
+                "learning",
             )
 
         if any(marker in lowered for marker in cls._MATH_TASK_MARKERS):
             return decision(
-                "math_problem_solving",
+                cls._skill("numeric_calculation"),
                 "用户请求数值、符号或位运算任务",
                 0.94,
                 "learning",
@@ -446,7 +470,7 @@ class PedagogyRouter:
 
         if any(marker in lowered for marker in cls._CONCEPT_MARKERS):
             return decision(
-                "retrieve_first",
+                cls._skill("explanation_request"),
                 "用户正在学习概念/原理，适合先做低成本检索练习",
                 0.72 if profile is None else 0.8,
                 "learning",

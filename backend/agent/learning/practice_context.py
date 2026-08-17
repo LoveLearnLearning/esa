@@ -14,8 +14,9 @@ _PRACTICE_HEADER_RE = re.compile(
 def pending_practice_kp_label(
     history: Sequence[Mapping[str, object]] | None,
 ) -> str | None:
-    """Return the label from the latest unanswered practice prompt, if any."""
-    for message in reversed(history or ()):
+    """Return the latest practice label that has not received assistant feedback."""
+    pending: str | None = None
+    for message in history or ():
         if message.get("role") != "assistant":
             continue
         content = message.get("content")
@@ -23,5 +24,9 @@ def pending_practice_kp_label(
             continue
         match = _PRACTICE_HEADER_RE.search(content)
         if match:
-            return match.group("kp_id").strip()
-    return None
+            pending = match.group("kp_id").strip()
+        else:
+            # Any later assistant response (normally grading or feedback)
+            # closes the previous practice question.
+            pending = None
+    return pending
