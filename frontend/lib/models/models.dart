@@ -283,10 +283,17 @@ class ScheduleSnapshot {
 
 /// POST /me/schedule/import 的结果：成功导入的课程 + 因时间冲突被跳过的条数
 class ScheduleImportResult {
-  const ScheduleImportResult({required this.courses, required this.skippedCount});
+  const ScheduleImportResult({
+    required this.courses,
+    required this.skippedCount,
+    this.importedCount,
+    this.warnings = const [],
+  });
 
   final List<ScheduleCourse> courses;
   final int skippedCount;
+  final int? importedCount;
+  final List<String> warnings;
 }
 
 String formatClockMinutes(int totalMinutes) {

@@ -31,6 +31,7 @@ from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_store import UserStore
 from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.stores.user_presence_store import UserPresenceStore
+from backend.core.timetable.hust import HustImporter
 from backend.core.utils.config import (
     AGENT_LOOP_TIME,
     AUXILIARY_MODEL_BASE_URL,
@@ -63,6 +64,7 @@ from backend.core.web.routers import (
     memories,
     preferences,
     schedule,
+    schedule_hust,
 )
 from backend.core.web.concurrency import ConversationTurnCoordinator
 
@@ -85,6 +87,7 @@ async def lifespan(app: FastAPI):
     run_migrations(DB_PATH)
     app.state.user_course_store = UserCourseStore(DB_PATH)
     app.state.schedule_store = ScheduleStore(DB_PATH)
+    app.state.hust_importer = HustImporter()
     app.state.user_presence_store = UserPresenceStore(DB_PATH)
     app.state.conversation_summary_store = ConversationSummaryStore(DB_PATH)
     app.state.conversation_turn_coordinator = ConversationTurnCoordinator(DB_PATH)
@@ -153,6 +156,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await app.state.hust_importer.close()
         if app.state.mm_sessions is not None:
             await app.state.mm_sessions.close()
         app.state.rag_lifecycle.close()
@@ -178,6 +182,7 @@ app.include_router(preferences.profile_router)
 app.include_router(preferences.memory_settings_router)
 app.include_router(learning.router)
 app.include_router(schedule.router)
+app.include_router(schedule_hust.router)
 app.include_router(memories.router)
 
 
