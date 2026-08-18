@@ -88,12 +88,24 @@ class ChatPage extends StatefulWidget {
     this.embedded = false,
     this.embeddedTitle,
     this.onExitEmbedded,
+    this.homeMode = false,
+    this.composerKey,
+    this.onSelectedAttachmentsChanged,
+    this.onContinueLearning,
+    this.onViewAssignments,
+    this.onOpenConversation,
   });
 
   /// The home shell owns global navigation and page chrome in embedded mode.
   final bool embedded;
   final String? embeddedTitle;
   final VoidCallback? onExitEmbedded;
+  final bool homeMode;
+  final GlobalKey<ComposerState>? composerKey;
+  final ValueChanged<List<DocumentAttachment>>? onSelectedAttachmentsChanged;
+  final VoidCallback? onContinueLearning;
+  final VoidCallback? onViewAssignments;
+  final ValueChanged<String>? onOpenConversation;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -103,7 +115,7 @@ class _ChatPageState extends State<ChatPage> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _scrollController = ScrollController();
   final _streamRenderingPaused = ValueNotifier(false);
-  final _composerKey = GlobalKey<ComposerState>();
+  final _internalComposerKey = GlobalKey<ComposerState>();
   final _codeDrafts = <String, _CodeSession>{};
   int _codeDraftVersion = 0;
   bool _followOutput = true;
@@ -118,6 +130,9 @@ class _ChatPageState extends State<ChatPage> {
   _AttachmentSession? _attachmentSession;
   int _attachmentLoadRequest = 0;
   double _editorWidth = 0.46;
+
+  GlobalKey<ComposerState> get _composerKey =>
+      widget.composerKey ?? _internalComposerKey;
 
   @override
   void dispose() {
@@ -459,6 +474,13 @@ class _ChatPageState extends State<ChatPage> {
         source: _CodeSource.composer,
       ),
       onCodeBlockChanged: _syncComposerCodeBlock,
+      onSelectedAttachmentsChanged: widget.onSelectedAttachmentsChanged,
+      courseNames: <String>{
+        ...app.learningCourses.map((item) => item.name),
+        ...app.scheduleCourseNames,
+      }.toList(),
+      toolsOn: app.toolsOn,
+      onToolsOnChanged: app.setToolsOn,
       onUploadAttachment: (filename, stream, length) =>
           app.uploadConversationAttachment(
             filename: filename,
@@ -496,7 +518,14 @@ class _ChatPageState extends State<ChatPage> {
           FocusManager.instance.primaryFocus?.unfocus();
         }
       },
-      child: app.loadingMessages && app.messages.isEmpty
+      child: widget.homeMode && app.activeWorkspace == WorkspaceType.learning
+          ? _LearningHome(
+              mobileComposer: mobileLanding ? composer : null,
+              onContinue: widget.onContinueLearning,
+              onViewAssignments: widget.onViewAssignments,
+              onOpenConversation: widget.onOpenConversation,
+            )
+          : app.loadingMessages && app.messages.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : app.messages.isEmpty
           ? _EmptyState(
@@ -957,6 +986,407 @@ class _OutlineIconButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _LearningHome extends StatelessWidget {
+  const _LearningHome({
+    this.mobileComposer,
+    this.onContinue,
+    this.onViewAssignments,
+    this.onOpenConversation,
+  });
+
+  final Widget? mobileComposer;
+  final VoidCallback? onContinue;
+  final VoidCallback? onViewAssignments;
+  final ValueChanged<String>? onOpenConversation;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final now = DateTime.now();
+    final courses = app.learningCourses;
+    final courseName = courses.isNotEmpty
+        ? courses.first.name
+        : app.scheduleCourseNames.firstOrNull ?? '尚未选择课程';
+    final focusPoint =
+        app.masteryReport?.stalePoints.firstOrNull ??
+        app.masteryReport?.weakPoints.firstOrNull;
+    final progress = courses.firstOrNull?.averageMastery;
+    final assignments = [...app.studentAssignments]
+      ..sort((a, b) {
+        final left = a.dueAt ?? DateTime(9999);
+        final right = b.dueAt ?? DateTime(9999);
+        return left.compareTo(right);
+      });
+    final recent = _recentItems(app);
+
+    return SingleChildScrollView(
+      key: const ValueKey('learning-home'),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 900),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('今天', style: context.texts.headlineSmall),
+              const SizedBox(height: 4),
+              Text(
+                '${now.month} 月 ${now.day} 日  ${_weekdayLabel(now.weekday)}',
+                style: context.texts.bodySmall,
+              ),
+              const SizedBox(height: 22),
+              _ContinueLearningSection(
+                courseName: courseName,
+                focusName: focusPoint?.name,
+                progress: progress,
+                lastStudiedAt: app.conversations.firstOrNull?.updatedAt,
+                onContinue: onContinue,
+              ),
+              const SizedBox(height: 12),
+              _HomeSection(
+                title: '待办',
+                count: assignments.length,
+                actionLabel: '查看全部',
+                onAction: onViewAssignments,
+                child: assignments.isEmpty
+                    ? const _HomeEmptyRow(label: '暂无待完成作业')
+                    : Column(
+                        children: [
+                          for (
+                            var index = 0;
+                            index < assignments.take(4).length;
+                            index++
+                          ) ...[
+                            if (index > 0) const Divider(height: 1),
+                            _AssignmentHomeRow(
+                              assignment: assignments[index],
+                              onTap: onViewAssignments,
+                            ),
+                          ],
+                        ],
+                      ),
+              ),
+              const SizedBox(height: 12),
+              _HomeSection(
+                title: '最近',
+                actionLabel: '查看全部',
+                onAction: recent.isEmpty ? null : onContinue,
+                child: recent.isEmpty
+                    ? const _HomeEmptyRow(label: '暂无最近学习记录')
+                    : Column(
+                        children: [
+                          for (
+                            var index = 0;
+                            index < recent.length;
+                            index++
+                          ) ...[
+                            if (index > 0) const Divider(height: 1),
+                            _RecentHomeRow(
+                              item: recent[index],
+                              onTap: recent[index].conversationId == null
+                                  ? null
+                                  : () => onOpenConversation?.call(
+                                      recent[index].conversationId!,
+                                    ),
+                            ),
+                          ],
+                        ],
+                      ),
+              ),
+              if (mobileComposer != null) ...[
+                const SizedBox(height: 12),
+                mobileComposer!,
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<_HomeRecentItem> _recentItems(AppState app) {
+    final items = <_HomeRecentItem>[];
+    for (final attachment in app.recentAttachments.take(2)) {
+      items.add(
+        _HomeRecentItem(
+          icon: LucideIcons.fileText,
+          title: attachment.filename,
+          meta: '资料 · ${_formatFileSize(attachment.sizeBytes)}',
+          time: '最近使用',
+        ),
+      );
+    }
+    for (final conversation in app.conversations.take(4 - items.length)) {
+      items.add(
+        _HomeRecentItem(
+          icon: LucideIcons.messageSquare,
+          title: conversation.title,
+          meta: '对话 · 学习空间',
+          time: _relativeTime(conversation.updatedAt),
+          conversationId: conversation.id,
+        ),
+      );
+    }
+    if (items.length < 4 && app.learningCourses.isNotEmpty) {
+      items.add(
+        _HomeRecentItem(
+          icon: LucideIcons.bookOpen,
+          title: app.learningCourses.first.name,
+          meta: '课程内容',
+          time: '继续学习',
+        ),
+      );
+    }
+    return items.take(4).toList();
+  }
+}
+
+class _ContinueLearningSection extends StatelessWidget {
+  const _ContinueLearningSection({
+    required this.courseName,
+    required this.focusName,
+    required this.progress,
+    required this.lastStudiedAt,
+    required this.onContinue,
+  });
+
+  final String courseName;
+  final String? focusName;
+  final double? progress;
+  final DateTime? lastStudiedAt;
+  final VoidCallback? onContinue;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+    decoration: BoxDecoration(
+      color: context.n.n100,
+      border: Border.all(color: context.n.divider),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      children: [
+        Icon(
+          LucideIcons.bookOpenCheck,
+          size: 19,
+          color: context.scheme.primary,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('继续学习', style: context.texts.titleMedium),
+              const SizedBox(height: 8),
+              Text(
+                focusName == null ? courseName : '$courseName / $focusName',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.texts.bodyLarge?.copyWith(height: 1.25),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '上次学习：${lastStudiedAt == null ? '暂无记录' : _relativeTime(lastStudiedAt!)}'
+                '${progress == null ? '' : ' · 学习进度：${progress!.round()}%'}',
+                style: context.texts.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        FilledButton.icon(
+          onPressed: onContinue,
+          icon: const Icon(LucideIcons.play, size: 15),
+          label: const Text('继续'),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _HomeSection extends StatelessWidget {
+  const _HomeSection({
+    required this.title,
+    required this.child,
+    this.count,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final String title;
+  final int? count;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(
+      color: context.n.n100,
+      border: Border.all(color: context.n.divider),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+          child: Row(
+            children: [
+              Text(title, style: context.texts.titleMedium),
+              if (count != null) ...[
+                const SizedBox(width: 7),
+                Text('$count', style: context.texts.bodySmall),
+              ],
+              const Spacer(),
+              if (actionLabel != null)
+                TextButton(onPressed: onAction, child: Text(actionLabel!)),
+            ],
+          ),
+        ),
+        Divider(height: 1, color: context.n.divider),
+        child,
+      ],
+    ),
+  );
+}
+
+class _AssignmentHomeRow extends StatelessWidget {
+  const _AssignmentHomeRow({required this.assignment, this.onTap});
+
+  final TeachingAssignment assignment;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = assignment.submissionId != null;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(
+          children: [
+            Checkbox(value: completed, onChanged: (_) => onTap?.call()),
+            Expanded(
+              child: Text(
+                assignment.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  decoration: completed ? TextDecoration.lineThrough : null,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              _deadlineLabel(assignment.dueAt),
+              style: context.texts.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentHomeRow extends StatelessWidget {
+  const _RecentHomeRow({required this.item, this.onTap});
+
+  final _HomeRecentItem item;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+      child: Row(
+        children: [
+          Icon(item.icon, size: 16, color: context.n.n600),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(item.meta, style: context.texts.bodySmall),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(item.time, style: context.texts.bodySmall),
+        ],
+      ),
+    ),
+  );
+}
+
+class _HomeEmptyRow extends StatelessWidget {
+  const _HomeEmptyRow({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(16),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Text(label, style: context.texts.bodySmall),
+    ),
+  );
+}
+
+class _HomeRecentItem {
+  const _HomeRecentItem({
+    required this.icon,
+    required this.title,
+    required this.meta,
+    required this.time,
+    this.conversationId,
+  });
+
+  final IconData icon;
+  final String title;
+  final String meta;
+  final String time;
+  final String? conversationId;
+}
+
+String _weekdayLabel(int weekday) => const [
+  '星期一',
+  '星期二',
+  '星期三',
+  '星期四',
+  '星期五',
+  '星期六',
+  '星期日',
+][weekday.clamp(1, 7) - 1];
+
+String _deadlineLabel(DateTime? value) =>
+    value == null ? '无截止时间' : '${value.month} 月 ${value.day} 日';
+
+String _relativeTime(DateTime value) {
+  final now = DateTime.now();
+  final local = value.toLocal();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(local.year, local.month, local.day);
+  final days = today.difference(day).inDays;
+  final time =
+      '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  if (days == 0) return '今天 $time';
+  if (days == 1) return '昨天 $time';
+  return '${local.month} 月 ${local.day} 日';
+}
+
+String _formatFileSize(int bytes) {
+  if (bytes <= 0) return '文件';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }
 
 class _EmptyState extends StatelessWidget {

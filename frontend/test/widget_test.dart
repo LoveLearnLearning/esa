@@ -139,7 +139,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(state.username, '游客');
-    expect(find.textContaining('你好，我是'), findsOneWidget);
+    expect(find.byKey(const ValueKey('learning-home')), findsOneWidget);
+    expect(find.text('今天'), findsOneWidget);
+    expect(find.textContaining('你好，我是'), findsNothing);
   });
 
   testWidgets('submits login form from password keyboard action', (

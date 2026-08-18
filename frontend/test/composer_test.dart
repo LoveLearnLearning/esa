@@ -35,7 +35,7 @@ void main() {
 
     expect(
       tester.widget<TextField>(find.byType(TextField)).decoration?.hintText,
-      '向 ESA 提问任何学习问题…',
+      '向 ESA 提问，或输入学习任务……',
     );
 
     await tester.tap(find.byType(TextField));
@@ -98,7 +98,10 @@ void main() {
       ),
     );
 
-    expect(find.text('Enter 发送 · Shift + Enter 换行'), findsNothing);
+    expect(find.text('Shift + Enter 换行 · Enter 发送'), findsNothing);
+    expect(find.text('附件'), findsOneWidget);
+    expect(find.text('Markdown'), findsOneWidget);
+    expect(find.text('LaTeX'), findsOneWidget);
     expect(find.bySemanticsLabel('发送'), findsOneWidget);
   });
 

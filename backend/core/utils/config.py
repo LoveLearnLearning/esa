@@ -56,6 +56,7 @@ AUXILIARY_MODEL_REQUEST_TIMEOUT: float = 180.0
 # agent runtime
 AGENT_LOOP_TIME: int = 10
 AGENT_TOOL_TIMEOUT_SECONDS: float = 30.0
+AGENT_STREAM_HEARTBEAT_SECONDS: float = 15.0
 
 # Offline conversation context compression. Original messages are retained;
 # the summary only replaces old messages in the next model prompt.

@@ -30,6 +30,10 @@ class Composer extends StatefulWidget {
     this.onSendWithAttachment,
     this.onOpenCodeEditor,
     this.onCodeBlockChanged,
+    this.onSelectedAttachmentsChanged,
+    this.courseNames = const [],
+    this.toolsOn = true,
+    this.onToolsOnChanged,
   });
 
   final bool busy;
@@ -58,6 +62,10 @@ class Composer extends StatefulWidget {
   onOpenCodeEditor;
   final void Function(String blockId, String code, String language)?
   onCodeBlockChanged;
+  final ValueChanged<List<DocumentAttachment>>? onSelectedAttachmentsChanged;
+  final List<String> courseNames;
+  final bool toolsOn;
+  final ValueChanged<bool>? onToolsOnChanged;
 
   @override
   State<Composer> createState() => ComposerState();
@@ -73,6 +81,9 @@ class ComposerState extends State<Composer> {
   String? _attachmentConversationId;
   bool _uploadingAttachment = false;
   bool _markdownMode = false;
+  bool _memoryEnabled = true;
+  String _resourceScope = '课程资料';
+  String? _selectedCourse;
   AttachmentPasteListener? _pasteListener;
 
   List<_ComposerCodeBlock> get _codeBlocks =>
@@ -158,6 +169,7 @@ class ComposerState extends State<Composer> {
     );
     _markdownMode = nextDraft.markdownMode;
     if (_attachment != null) _removeAttachment();
+    widget.onSelectedAttachmentsChanged?.call(const []);
   }
 
   String _draftKey(String? conversationId) =>
@@ -206,6 +218,7 @@ class ComposerState extends State<Composer> {
       _attachment = null;
       _attachmentConversationId = null;
     });
+    widget.onSelectedAttachmentsChanged?.call(const []);
     if (_mobileBrowser) {
       // 收起键盘，把屏幕留给流式回答
       _focus.unfocus();
@@ -272,6 +285,11 @@ class ComposerState extends State<Composer> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    _contextControls(context),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 10),
+                      child: Divider(height: 1, color: context.n.divider),
+                    ),
                     if (showMarkdownPreview) ...[
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxHeight: 180),
@@ -313,7 +331,7 @@ class ComposerState extends State<Composer> {
                             // x 坐标开始绘制，光标会盖住首字形成“重影”。
                             hintText: _focus.hasFocus
                                 ? null
-                                : widget.taskMode?.hint ?? '向 ESA 提问任何学习问题…',
+                                : widget.taskMode?.hint ?? '向 ESA 提问，或输入学习任务……',
                             hintStyle: inputStyle.copyWith(
                               color: context.n.n600,
                             ),
@@ -322,28 +340,43 @@ class ComposerState extends State<Composer> {
                       ),
                     ),
                     const SizedBox(height: EsaSpace.sm),
-                    Row(
-                      children: [
-                        _attachButton(context),
-                        const SizedBox(width: EsaSpace.sm),
-                        _markdownButton(context),
-                        const SizedBox(width: EsaSpace.sm),
-                        _formulaButton(context),
-                        const SizedBox(width: EsaSpace.sm),
-                        _imageButton(context),
-                        if (!narrow) ...[
-                          const SizedBox(width: EsaSpace.md),
-                          Text(
-                            'Enter 发送 · Shift + Enter 换行',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: context.n.n600,
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final compactActions =
+                            narrow || constraints.maxWidth < 710;
+                        if (compactActions) {
+                          return Row(
+                            children: [
+                              Expanded(child: _attachButton(context)),
+                              const SizedBox(width: 4),
+                              Expanded(child: _markdownButton(context)),
+                              const SizedBox(width: 4),
+                              Expanded(child: _formulaButton(context)),
+                              const SizedBox(width: 8),
+                              _sendButton(context),
+                            ],
+                          );
+                        }
+                        return Row(
+                          children: [
+                            _attachButton(context),
+                            const SizedBox(width: EsaSpace.sm),
+                            _markdownButton(context),
+                            const SizedBox(width: EsaSpace.sm),
+                            _formulaButton(context),
+                            const SizedBox(width: EsaSpace.md),
+                            Text(
+                              'Shift + Enter 换行 · Enter 发送',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: context.n.n600,
+                              ),
                             ),
-                          ),
-                        ],
-                        const Spacer(),
-                        _sendButton(context),
-                      ],
+                            const Spacer(),
+                            _sendButton(context),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -448,19 +481,11 @@ class ComposerState extends State<Composer> {
   }
 
   Widget _attachButton(BuildContext context) {
-    return InkWell(
-      onTap: widget.busy || _uploadingAttachment ? null : _pickAttachment,
-      customBorder: const CircleBorder(),
-      child: Container(
-        width: 32,
-        height: 32,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: context.n.divider),
-        ),
-        child: Icon(LucideIcons.paperclip, size: 16, color: context.n.n600),
-      ),
+    return _composerActionButton(
+      context,
+      onPressed: widget.busy || _uploadingAttachment ? null : _pickAttachment,
+      icon: const Icon(LucideIcons.paperclip, size: 15),
+      label: const Text('附件'),
     );
   }
 
@@ -539,6 +564,7 @@ class ComposerState extends State<Composer> {
         _attachment = attachment;
         _attachmentConversationId = widget.conversationId;
       });
+      widget.onSelectedAttachmentsChanged?.call([attachment]);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -556,6 +582,7 @@ class ComposerState extends State<Composer> {
       _attachment = null;
       _attachmentConversationId = null;
     });
+    widget.onSelectedAttachmentsChanged?.call(const []);
     if (attachment != null &&
         conversationId != null &&
         widget.onRemoveAttachment != null) {
@@ -567,33 +594,43 @@ class ComposerState extends State<Composer> {
     final active = _markdownMode;
     return Tooltip(
       message: active ? '退出 Markdown 输入' : 'Markdown 输入',
-      child: InkWell(
-        onTap: () => setState(() {
+      child: _composerActionButton(
+        context,
+        onPressed: () => setState(() {
           _markdownMode = !_markdownMode;
           _saveCurrentDraft();
         }),
-        customBorder: const CircleBorder(),
-        child: AnimatedContainer(
-          duration: EsaMotion.fade,
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: active ? EsaColors.accent : Colors.transparent,
-            border: Border.all(
-              color: active ? EsaColors.accent : context.n.divider,
-            ),
-          ),
-          child: Icon(
-            LucideIcons.fileCode2,
-            size: 16,
-            color: active ? EsaColors.onAccent : context.n.n600,
-          ),
-        ),
+        icon: const Icon(LucideIcons.fileCode2, size: 15),
+        label: const Text('Markdown'),
+        active: active,
       ),
     );
   }
+
+  Widget _composerActionButton(
+    BuildContext context, {
+    required VoidCallback? onPressed,
+    required Widget icon,
+    required Widget label,
+    bool active = false,
+  }) => OutlinedButton(
+    onPressed: onPressed,
+    style: OutlinedButton.styleFrom(
+      minimumSize: const Size(0, 32),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 7),
+      foregroundColor: active ? EsaColors.accent : context.n.n700,
+      side: BorderSide(color: active ? EsaColors.accent : context.n.divider),
+      textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    ),
+    child: FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [icon, const SizedBox(width: 4), label],
+      ),
+    ),
+  );
 
   Widget _sendButton(BuildContext context) {
     final enabled = _canSend;
@@ -630,19 +667,11 @@ class ComposerState extends State<Composer> {
 
   Widget _formulaButton(BuildContext context) => Tooltip(
     message: '插入公式',
-    child: InkWell(
-      onTap: widget.busy ? null : _openFormulaPicker,
-      customBorder: const CircleBorder(),
-      child: SizedBox(
-        width: 32,
-        height: 32,
-        child: Center(
-          child: Text(
-            'ƒ₍ₓ₎',
-            style: TextStyle(fontSize: 17, color: context.n.n600),
-          ),
-        ),
-      ),
+    child: _composerActionButton(
+      context,
+      onPressed: widget.busy ? null : _openFormulaPicker,
+      icon: const Icon(LucideIcons.sigma, size: 15),
+      label: const Text('LaTeX'),
     ),
   );
 
@@ -671,14 +700,81 @@ class ComposerState extends State<Composer> {
     _focus.requestFocus();
   }
 
-  Widget _imageButton(BuildContext context) => Tooltip(
-    message: '添加图片',
-    child: SizedBox(
-      width: 32,
-      height: 32,
-      child: Icon(LucideIcons.imagePlus, size: 18, color: context.n.n600),
+  Widget _contextControls(BuildContext context) {
+    final courses = widget.courseNames.map((item) => item.trim()).toSet()
+      ..removeWhere((item) => item.isEmpty);
+    final course =
+        _selectedCourse ?? (courses.isEmpty ? '未选择课程' : courses.first);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _contextMenu(
+            context,
+            label: '当前课程：$course',
+            values: courses.isEmpty ? const ['未选择课程'] : courses.toList(),
+            onSelected: (value) => setState(() => _selectedCourse = value),
+          ),
+          const SizedBox(width: 6),
+          _contextMenu(
+            context,
+            label: '资料库：$_resourceScope',
+            values: const ['课程资料', '全部资料'],
+            onSelected: (value) => setState(() => _resourceScope = value),
+          ),
+          const SizedBox(width: 6),
+          _contextMenu(
+            context,
+            label: '长期记忆：${_memoryEnabled ? '开启' : '关闭'}',
+            values: const ['开启', '关闭'],
+            onSelected: (value) =>
+                setState(() => _memoryEnabled = value == '开启'),
+          ),
+          const SizedBox(width: 6),
+          _contextMenu(
+            context,
+            label: '工具：${widget.toolsOn ? '自动' : '关闭'}',
+            values: const ['自动', '关闭'],
+            onSelected: (value) => widget.onToolsOnChanged?.call(value == '自动'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _contextMenu(
+    BuildContext context, {
+    required String label,
+    required List<String> values,
+    required ValueChanged<String> onSelected,
+  }) => PopupMenuButton<String>(
+    onSelected: onSelected,
+    itemBuilder: (context) => [
+      for (final value in values)
+        PopupMenuItem<String>(value: value, child: Text(value)),
+    ],
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: context.n.divider),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: TextStyle(fontSize: 11.5, color: context.n.n700)),
+          const SizedBox(width: 4),
+          Icon(LucideIcons.chevronDown, size: 13, color: context.n.n600),
+        ],
+      ),
     ),
   );
+
+  Future<void> pickAttachment() => _pickAttachment();
+
+  Future<void> removeSelectedAttachment() async {
+    if (_attachment != null) _removeAttachment();
+  }
 }
 
 class _ComposerDraft {

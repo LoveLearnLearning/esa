@@ -8,11 +8,11 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
-import '../widgets/conversation_move_dialog.dart';
 import '../widgets/profile_sheet.dart';
 import '../widgets/memory_sheet.dart';
 import '../widgets/history_drawer.dart';
 import '../widgets/agent_action_sheet.dart';
+import '../widgets/composer.dart';
 import 'chat_page.dart';
 import 'knowledge_map_page.dart';
 import 'planner_page.dart';
@@ -21,7 +21,14 @@ import 'research_workspace_page.dart';
 import 'student_assignments_page.dart';
 import 'teaching_workspace_page.dart';
 
-enum StudentSection { assistant, assignments, planner, knowledge, research }
+enum StudentSection {
+  home,
+  assistant,
+  assignments,
+  schedule,
+  knowledge,
+  research,
+}
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -32,14 +39,14 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   final _mobileScaffoldKey = GlobalKey<ScaffoldState>();
-  StudentSection _section = StudentSection.assistant;
+  final _composerKey = GlobalKey<ComposerState>();
+  StudentSection _section = StudentSection.home;
   bool _sidebarCollapsed = false;
-  bool _sidebarRequested = false;
   bool _scheduleRequested = false;
-  PlannerTab _plannerInitialTab = PlannerTab.schedule;
+  String _sidebarQuery = '';
+  List<DocumentAttachment> _selectedAttachments = const [];
   ResearchProject? _activeResearchProject;
   bool _researchProjectChatOpen = false;
-  bool _researchProjectsVisible = false;
 
   bool get _inResearch => _section == StudentSection.research;
 
@@ -52,46 +59,40 @@ class _HomeShellState extends State<HomeShell> {
     if (app.isLoggedIn) unawaited(app.loadSchedule());
   }
 
-  Future<void> _select(StudentSection section, {PlannerTab? plannerTab}) async {
+  Future<void> _select(StudentSection section) async {
     FocusManager.instance.primaryFocus?.unfocus();
     final app = AppScope.of(context);
-    final WorkspaceType? target;
-    if (section == StudentSection.research) {
-      target = WorkspaceType.research;
-    } else if (section == StudentSection.assignments &&
-        app.accountRole == 'teacher') {
-      target = WorkspaceType.teaching;
-    } else if (section == StudentSection.assistant ||
-        section == StudentSection.assignments) {
-      target = WorkspaceType.learning;
-    } else {
-      target = null;
+    final target = section == StudentSection.research
+        ? WorkspaceType.research
+        : section == StudentSection.assignments && app.accountRole == 'teacher'
+        ? WorkspaceType.teaching
+        : WorkspaceType.learning;
+    if (app.activeWorkspace != target) await app.switchWorkspace(target);
+    if (section == StudentSection.home && app.activeId != null) {
+      await app.newConversation();
     }
+    if (!mounted) return;
     setState(() {
       _section = section;
-      if (section == StudentSection.planner && plannerTab != null) {
-        _plannerInitialTab = plannerTab;
-      }
-      if (section == StudentSection.research) {
-        _activeResearchProject = null;
-        _researchProjectChatOpen = false;
-        _researchProjectsVisible = false;
-        _sidebarCollapsed = false;
-        _sidebarRequested = true;
-      }
       if (section != StudentSection.research) _researchProjectChatOpen = false;
     });
-    if (target != null && app.activeWorkspace != target) {
-      try {
-        await app.switchWorkspace(target);
-      } catch (_) {
-        // 后端未就绪时保留当前界面，工作区数据后续可重试。
-      }
-    }
   }
 
   Widget _page() => switch (_section) {
-    StudentSection.assistant => const ChatPage(embedded: true),
+    StudentSection.home => ChatPage(
+      embedded: true,
+      homeMode: true,
+      composerKey: _composerKey,
+      onSelectedAttachmentsChanged: _setSelectedAttachments,
+      onContinueLearning: _continueLearning,
+      onViewAssignments: () => unawaited(_select(StudentSection.assignments)),
+      onOpenConversation: _openConversation,
+    ),
+    StudentSection.assistant => ChatPage(
+      embedded: true,
+      composerKey: _composerKey,
+      onSelectedAttachmentsChanged: _setSelectedAttachments,
+    ),
     StudentSection.assignments =>
       AppScope.of(context).accountRole == 'teacher'
           ? TeachingWorkspacePage(
@@ -100,29 +101,24 @@ class _HomeShellState extends State<HomeShell> {
           : StudentAssignmentsPage(
               onOpenChat: () => unawaited(_select(StudentSection.assistant)),
             ),
-    StudentSection.planner => PlannerPage(
-      initialTab: _plannerInitialTab,
+    StudentSection.schedule => PlannerPage(
+      initialTab: PlannerTab.schedule,
       onOpenAssignments: () => unawaited(_select(StudentSection.assignments)),
     ),
     StudentSection.knowledge => KnowledgeMapPage(
       embedded: true,
       onOpenChat: () => unawaited(_select(StudentSection.assistant)),
-      onOpenSchedule: () => unawaited(
-        _select(StudentSection.planner, plannerTab: PlannerTab.schedule),
-      ),
+      onOpenSchedule: () => unawaited(_select(StudentSection.schedule)),
     ),
     StudentSection.research =>
       _activeResearchProject == null
-          ? MediaQuery.sizeOf(context).width < 1040
-                ? ResearchWorkspacePage(
-                    onOpenChat: () =>
-                        unawaited(_select(StudentSection.research)),
-                    onOpenProject: (project) => setState(() {
-                      _activeResearchProject = project;
-                      _researchProjectChatOpen = false;
-                    }),
-                  )
-                : ChatPage(embedded: true, embeddedTitle: '研究空间')
+          ? ResearchWorkspacePage(
+              onOpenChat: () => unawaited(_select(StudentSection.research)),
+              onOpenProject: (project) => setState(() {
+                _activeResearchProject = project;
+                _researchProjectChatOpen = false;
+              }),
+            )
           : _researchProjectChatOpen
           ? ChatPage(
               embedded: true,
@@ -143,6 +139,34 @@ class _HomeShellState extends State<HomeShell> {
             ),
   };
 
+  void _setSelectedAttachments(List<DocumentAttachment> attachments) {
+    if (!mounted) return;
+    setState(() => _selectedAttachments = List.of(attachments));
+  }
+
+  Future<void> _continueLearning() async {
+    final app = AppScope.of(context);
+    if (app.activeId == null && app.conversations.isNotEmpty) {
+      await app.setActive(app.conversations.first.id);
+    }
+    if (mounted) await _select(StudentSection.assistant);
+  }
+
+  Future<void> _openConversation(String id) async {
+    await AppScope.of(context).setActive(id);
+    if (mounted) await _select(StudentSection.assistant);
+  }
+
+  Future<void> _startNewConversation() async {
+    final app = AppScope.of(context);
+    await app.newConversation();
+    if (!mounted) return;
+    setState(() {
+      _section = StudentSection.assistant;
+      _selectedAttachments = const [];
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
@@ -150,126 +174,61 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Widget _desktop() {
-    final app = AppScope.of(context);
     final width = MediaQuery.sizeOf(context).width;
-    final showSidebar =
-        _section != StudentSection.assistant ||
-        app.messages.isNotEmpty ||
-        _sidebarRequested;
-    final showContext = width >= 1180;
+    final showContext = width >= 1320;
     return Scaffold(
       body: SafeArea(
-        child: Column(
+        child: Row(
           children: [
-            SizedBox(
-              height: 26,
-              child: Center(
-                child: Text(
-                  'ESA 星知智链',
-                  style: TextStyle(fontSize: 11, color: context.n.n600),
-                ),
-              ),
+            _GlobalRail(
+              key: const ValueKey('student-global-rail'),
+              section: _section,
+              onSelect: (section) => unawaited(_select(section)),
+              onProfile: () => showProfileSheet(context),
+              onActions: () => showAgentActionSheet(context),
             ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                child: Row(
-                  children: [
-                    _GlobalRail(
-                      key: const ValueKey('student-global-rail'),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: _sidebarCollapsed ? 0 : 276,
+              child: _sidebarCollapsed
+                  ? const SizedBox.shrink()
+                  : _WorkspaceSidebar(
                       section: _section,
-                      onSelect: (section) {
-                        if (section == StudentSection.assistant &&
-                            _section == StudentSection.assistant) {
-                          setState(() {
-                            _sidebarRequested = true;
-                            _sidebarCollapsed = false;
-                          });
-                        }
-                        unawaited(_select(section));
-                      },
-                      onProfile: () => showProfileSheet(context),
-                      onMemory: () => showMemorySheet(context),
-                      onActions: () => showAgentActionSheet(context),
+                      query: _sidebarQuery,
+                      onQueryChanged: (value) =>
+                          setState(() => _sidebarQuery = value),
+                      onSelect: (section) => unawaited(_select(section)),
+                      onNewConversation: () =>
+                          unawaited(_startNewConversation()),
+                      onOpenProject: (project) => setState(() {
+                        _activeResearchProject = project;
+                        _researchProjectChatOpen = false;
+                      }),
+                      onCollapse: () =>
+                          setState(() => _sidebarCollapsed = true),
                     ),
-                    if (showSidebar) ...[
-                      const SizedBox(width: 8),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        width: _sidebarCollapsed ? 0 : 258,
-                        child: _sidebarCollapsed
-                            ? const SizedBox.shrink()
-                            : _WorkspaceSidebar(
-                                section: _section,
-                                onSelect: (section) =>
-                                    unawaited(_select(section)),
-                                onOpenProject: (project) => setState(() {
-                                  _activeResearchProject = project;
-                                  _researchProjectChatOpen = false;
-                                }),
-                                activeResearchProject: _activeResearchProject,
-                                researchProjectsVisible:
-                                    _researchProjectsVisible,
-                                onShowResearchProjects: () => setState(
-                                  () => _researchProjectsVisible = true,
-                                ),
-                                onOpenResearchChat: () => setState(() {
-                                  _activeResearchProject = null;
-                                  _researchProjectChatOpen = false;
-                                }),
-                                onOpenResearchConversation: (conversation) {
-                                  final app = AppScope.of(context);
-                                  ResearchProject? project;
-                                  for (final item in app.researchProjects) {
-                                    if (item.id ==
-                                        conversation.researchProjectId) {
-                                      project = item;
-                                      break;
-                                    }
-                                  }
-                                  setState(() {
-                                    _activeResearchProject = project;
-                                    _researchProjectChatOpen = true;
-                                  });
-                                },
-                                onOpenSchedule: () => unawaited(
-                                  _select(
-                                    StudentSection.planner,
-                                    plannerTab: PlannerTab.schedule,
-                                  ),
-                                ),
-                                onCollapse: () =>
-                                    setState(() => _sidebarCollapsed = true),
-                              ),
-                      ),
-                      if (_sidebarCollapsed)
-                        _RevealSidebarButton(
-                          onTap: () =>
-                              setState(() => _sidebarCollapsed = false),
-                        ),
-                    ],
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _SurfaceFrame(
-                        key: ValueKey(_section),
-                        child: _page(),
-                      ),
-                    ),
-                    if (showContext) ...[
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        width: 268,
-                        child: _StudentContextRail(
-                          section: _section,
-                          conversationActive: app.messages.isNotEmpty,
-                          researchProject: _activeResearchProject,
-                        ),
-                      ),
-                    ],
-                  ],
+            ),
+            if (_sidebarCollapsed)
+              _RevealSidebarButton(
+                onTap: () => setState(() => _sidebarCollapsed = false),
+              ),
+            Expanded(
+              child: _SurfaceFrame(key: ValueKey(_section), child: _page()),
+            ),
+            if (showContext)
+              SizedBox(
+                width: 292,
+                child: _StudentContextRail(
+                  section: _section,
+                  researchProject: _activeResearchProject,
+                  selectedAttachments: _selectedAttachments,
+                  onAddAttachment: () =>
+                      unawaited(_composerKey.currentState?.pickAttachment()),
+                  onRemoveAttachment: () => unawaited(
+                    _composerKey.currentState?.removeSelectedAttachment(),
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -283,7 +242,9 @@ class _HomeShellState extends State<HomeShell> {
         (_section == StudentSection.assistant && app.messages.isNotEmpty) ||
         _researchProjectChatOpen;
     final historyAvailable =
-        _section == StudentSection.assistant || _researchProjectChatOpen;
+        _section == StudentSection.home ||
+        _section == StudentSection.assistant ||
+        _researchProjectChatOpen;
     final researchProjectActive =
         _section == StudentSection.research && _activeResearchProject != null;
     return Scaffold(
@@ -302,7 +263,7 @@ class _HomeShellState extends State<HomeShell> {
                     : app.activeConversation?.title ?? '新对话',
                 onBack: _researchProjectChatOpen
                     ? () => setState(() => _researchProjectChatOpen = false)
-                    : app.newConversation,
+                    : () => unawaited(_select(StudentSection.home)),
                 onHistory: () => _mobileScaffoldKey.currentState?.openDrawer(),
               )
             else if (!researchProjectActive)
@@ -312,7 +273,9 @@ class _HomeShellState extends State<HomeShell> {
                 onProfile: () => showProfileSheet(context),
                 onMemory: () => showMemorySheet(context),
                 onActions: () => showAgentActionSheet(context),
-                onHistory: _section == StudentSection.assistant
+                onHistory:
+                    _section == StudentSection.home ||
+                        _section == StudentSection.assistant
                     ? () => _mobileScaffoldKey.currentState?.openDrawer()
                     : null,
               ),
@@ -329,7 +292,7 @@ class _HomeShellState extends State<HomeShell> {
           ? null
           : _MobileBottomBar(
               research: _inResearch,
-              onLearning: () => unawaited(_select(StudentSection.assistant)),
+              onLearning: () => unawaited(_select(StudentSection.home)),
               onResearch: () => unawaited(_select(StudentSection.research)),
               onProfile: () => showProfileSheet(context),
             ),
@@ -342,14 +305,8 @@ class _SurfaceFrame extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: context.scheme.surface,
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: context.n.divider),
-    ),
-    child: ClipRRect(borderRadius: BorderRadius.circular(10), child: child),
-  );
+  Widget build(BuildContext context) =>
+      ColoredBox(color: context.scheme.surface, child: child);
 }
 
 class _GlobalRail extends StatelessWidget {
@@ -358,23 +315,20 @@ class _GlobalRail extends StatelessWidget {
     required this.section,
     required this.onSelect,
     required this.onProfile,
-    required this.onMemory,
     required this.onActions,
   });
 
   final StudentSection section;
   final ValueChanged<StudentSection> onSelect;
   final VoidCallback onProfile;
-  final VoidCallback onMemory;
   final VoidCallback onActions;
 
   @override
   Widget build(BuildContext context) => Container(
-    width: 68,
+    width: 72,
     decoration: BoxDecoration(
-      color: context.n.n100,
-      border: Border.all(color: context.n.divider),
-      borderRadius: BorderRadius.circular(10),
+      color: context.scheme.surface,
+      border: Border(right: BorderSide(color: context.n.divider)),
     ),
     child: Column(
       children: [
@@ -382,36 +336,43 @@ class _GlobalRail extends StatelessWidget {
         const _EsaWordmark(compact: true),
         const SizedBox(height: 24),
         _RailButton(
+          icon: LucideIcons.house,
+          tooltip: '首页',
+          active: section == StudentSection.home,
+          onTap: () => onSelect(StudentSection.home),
+        ),
+        _RailButton(
           icon: LucideIcons.messageCircle,
-          tooltip: '学习空间',
+          tooltip: '对话',
           active: section == StudentSection.assistant,
           onTap: () => onSelect(StudentSection.assistant),
         ),
         _RailButton(
-          icon: LucideIcons.mapPinned,
+          icon: LucideIcons.clipboardCheck,
+          tooltip: '作业与任务',
+          active: section == StudentSection.assignments,
+          onTap: () => onSelect(StudentSection.assignments),
+        ),
+        _RailButton(
+          icon: LucideIcons.calendarDays,
+          tooltip: '日程',
+          active: section == StudentSection.schedule,
+          onTap: () => onSelect(StudentSection.schedule),
+        ),
+        _RailButton(
+          icon: LucideIcons.bookOpen,
           tooltip: '知识地图',
           active: section == StudentSection.knowledge,
           onTap: () => onSelect(StudentSection.knowledge),
         ),
         _RailButton(
-          icon: LucideIcons.graduationCap,
+          key: const ValueKey('student-research-destination'),
+          icon: LucideIcons.microscope,
           tooltip: '研究空间',
           active: section == StudentSection.research,
           onTap: () => onSelect(StudentSection.research),
         ),
-        _RailButton(
-          icon: LucideIcons.calendarDays,
-          tooltip: '日程',
-          active: section == StudentSection.planner,
-          onTap: () => onSelect(StudentSection.planner),
-        ),
         const Spacer(),
-        _RailButton(
-          icon: LucideIcons.brain,
-          tooltip: '长期记忆',
-          active: false,
-          onTap: onMemory,
-        ),
         _RailButton(
           icon: LucideIcons.shieldCheck,
           tooltip: '待确认动作',
@@ -434,6 +395,7 @@ class _GlobalRail extends StatelessWidget {
 
 class _RailButton extends StatelessWidget {
   const _RailButton({
+    super.key,
     required this.icon,
     required this.tooltip,
     required this.active,
@@ -470,42 +432,31 @@ class _RailButton extends StatelessWidget {
 class _WorkspaceSidebar extends StatelessWidget {
   const _WorkspaceSidebar({
     required this.section,
+    required this.query,
+    required this.onQueryChanged,
     required this.onSelect,
+    required this.onNewConversation,
     required this.onCollapse,
     required this.onOpenProject,
-    required this.activeResearchProject,
-    required this.researchProjectsVisible,
-    required this.onShowResearchProjects,
-    required this.onOpenResearchChat,
-    required this.onOpenResearchConversation,
-    required this.onOpenSchedule,
   });
   final StudentSection section;
+  final String query;
+  final ValueChanged<String> onQueryChanged;
   final ValueChanged<StudentSection> onSelect;
+  final VoidCallback onNewConversation;
   final VoidCallback onCollapse;
   final ValueChanged<ResearchProject> onOpenProject;
-  final ResearchProject? activeResearchProject;
-  final bool researchProjectsVisible;
-  final VoidCallback onShowResearchProjects;
-  final VoidCallback onOpenResearchChat;
-  final ValueChanged<ChatConversation> onOpenResearchConversation;
-  final VoidCallback onOpenSchedule;
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final research = section == StudentSection.research;
-    if (section == StudentSection.knowledge ||
-        section == StudentSection.planner) {
-      return _standaloneSidebar(context, app);
-    }
     return Container(
       decoration: BoxDecoration(
-        color: context.n.n100,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: context.n.divider),
+        color: context.scheme.surface,
+        border: Border(right: BorderSide(color: context.n.divider)),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      padding: const EdgeInsets.fromLTRB(14, 18, 14, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -513,7 +464,7 @@ class _WorkspaceSidebar extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  research ? '研究空间' : '学习空间',
+                  research ? '科研空间' : '学习空间',
                   style: context.texts.titleLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -527,440 +478,87 @@ class _WorkspaceSidebar extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          FilledButton.icon(
-            key: research ? const ValueKey('new-research-chat') : null,
+          OutlinedButton.icon(
+            key: research
+                ? const ValueKey('new-research-chat')
+                : const ValueKey('new-conversation'),
             onPressed: research
-                ? () {
-                    unawaited(app.startResearchChat());
-                    onOpenResearchChat();
-                  }
-                : () {
-                    unawaited(app.newConversation());
-                    onSelect(StudentSection.assistant);
-                  },
+                ? () => unawaited(app.newConversation())
+                : onNewConversation,
             icon: const Icon(LucideIcons.plus, size: 17),
             label: Text(research ? '新建对话' : '新对话'),
           ),
           const SizedBox(height: 12),
           TextField(
-            readOnly: true,
-            onTap: () {
-              if (research) {
-                onOpenResearchChat();
-              } else {
-                onSelect(StudentSection.assistant);
-              }
-            },
+            onChanged: onQueryChanged,
             decoration: InputDecoration(
               hintText: research ? '搜索项目' : '搜索学习内容',
               prefixIcon: const Icon(LucideIcons.search, size: 17),
               isDense: true,
             ),
           ),
-          if (research) ...[
-            const SizedBox(height: 14),
-            Text('菜单', style: context.texts.labelSmall),
-            const SizedBox(height: 6),
-            _SideEntry(
-              icon: LucideIcons.bot,
-              label: '智能体对话',
-              selected: activeResearchProject == null,
-              onTap: onOpenResearchChat,
-            ),
-            _SideEntry(
-              icon: LucideIcons.folderKanban,
-              label: '科研项目',
-              selected:
-                  activeResearchProject != null || researchProjectsVisible,
-              onTap: onShowResearchProjects,
-            ),
-          ],
-          if (!research) ...[
-            const SizedBox(height: 14),
-            Text('功能', style: context.texts.labelSmall),
-            const SizedBox(height: 6),
-            _SideEntry(
-              icon: LucideIcons.bot,
-              label: '学习空间',
-              selected: section == StudentSection.assistant,
-              onTap: () => onSelect(StudentSection.assistant),
-            ),
-            _SideEntry(
-              icon: LucideIcons.clipboardCheck,
-              label: app.accountRole == 'teacher' ? '教学工作台' : '作业',
-              selected: section == StudentSection.assignments,
-              onTap: () => onSelect(StudentSection.assignments),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: research
-                  ? _researchEntries(context, app)
-                  : _learningEntries(context, app),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _standaloneSidebar(BuildContext context, AppState app) {
-    final sectionTitle = section == StudentSection.knowledge ? '知识地图' : '日程';
-    return Container(
-      decoration: BoxDecoration(
-        color: context.n.n100,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: context.n.divider),
-      ),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
                 child: Text(
-                  sectionTitle,
-                  style: context.texts.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  research ? '科研项目' : '对话分组',
+                  style: context.texts.labelSmall,
                 ),
               ),
               IconButton(
-                tooltip: '收起侧栏',
-                onPressed: onCollapse,
-                icon: const Icon(LucideIcons.chevronsLeft, size: 17),
+                tooltip: research ? '新建项目' : '新建分组',
+                onPressed: research
+                    ? () => _createResearchProject(context, app)
+                    : () => _showCreateGroup(context, app),
+                icon: const Icon(LucideIcons.plus, size: 16),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Text('课程', style: context.texts.labelSmall),
-          const SizedBox(height: 6),
-          if (!app.scheduleLoaded)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              child: LinearProgressIndicator(minHeight: 2),
-            )
-          else if (app.scheduleCourseNames.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              child: Text('暂无课程', style: context.texts.bodySmall),
-            )
-          else
-            for (final courseName in app.scheduleCourseNames)
-              _SideEntry(
-                icon: LucideIcons.bookOpen,
-                label: courseName,
-                selected: false,
-                onTap: onOpenSchedule,
-              ),
-          const Spacer(),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: research
+                  ? _projectEntries(context, app, query)
+                  : _learningEntries(context, app, query),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _sectionHeader(
-    BuildContext context, {
-    required String title,
-    required String tooltip,
-    required VoidCallback onAdd,
-  }) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Row(
-      children: [
-        Expanded(child: Text(title, style: context.texts.labelSmall)),
-        IconButton(
-          tooltip: tooltip,
-          onPressed: onAdd,
-          icon: const Icon(LucideIcons.plus, size: 16),
-        ),
-      ],
-    ),
-  );
-
-  List<Widget> _researchEntries(BuildContext context, AppState app) => [
-    if (researchProjectsVisible) ...[
-      _sectionHeader(
-        context,
-        title: '科研空间',
-        tooltip: '新建项目',
-        onAdd: () => _createResearchProject(context, app),
-      ),
-      ..._projectEntries(context, app),
-      const SizedBox(height: 12),
-    ],
-    ..._researchHistoryEntries(context, app),
-  ];
-
-  List<Widget> _researchHistoryEntries(BuildContext context, AppState app) {
-    final generic = app.conversations
-        .where(
-          (conversation) =>
-              conversation.workspaceType == WorkspaceType.research &&
-              conversation.researchProjectId == null,
-        )
-        .toList();
-    return [
-      Text(
-        '历史对话',
-        key: const ValueKey('research-history-heading'),
-        style: context.texts.labelSmall,
-      ),
-      const SizedBox(height: 6),
-      if (generic.isEmpty)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Text('暂无历史对话', style: context.texts.bodySmall),
-        )
-      else
-        for (final conversation in generic)
-          _ConversationEntry(
-            conversation: conversation,
-            allowGrouping: false,
-            onPin: () => app.togglePin(conversation.id),
-            onRename: () => _renameConversation(context, app, conversation),
-            onDelete: () => app.deleteConversation(conversation.id),
-            onTap: () => _openConversation(
-              context,
-              app,
-              conversation,
-              research: true,
-            ),
-          ),
-    ];
-  }
-
-  List<Widget> _conversationEntries(BuildContext context, AppState app) => [
-    _sectionHeader(
-      context,
-      title: '对话分组',
-      tooltip: '新建分组',
-      onAdd: () => _showCreateGroup(context, app),
-    ),
-    if (app.groups.isEmpty)
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Text('暂无对话分组', style: context.texts.bodySmall),
-      )
-    else
-      ReorderableListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        buildDefaultDragHandles: false,
-        itemCount: app.groups.length,
-        onReorder: (oldIndex, newIndex) =>
-            app.reorderGroups(oldIndex, newIndex),
-        itemBuilder: (context, index) {
-          final group = app.groups[index];
-          return Padding(
-            key: ValueKey(group.id),
-            padding: const EdgeInsets.only(bottom: 4),
-            child: ReorderableDelayedDragStartListener(
-              index: index,
-              child: _ExpandableSidebarRow(
-                icon: LucideIcons.folder,
-                label: group.name,
-                pinned: app.isGroupPinned(group.id),
-                onPin: () => app.toggleGroupPin(group.id),
-                onAddConversation: () {
-                  unawaited(app.newConversationInGroup(group.id));
-                  onSelect(StudentSection.assistant);
-                },
-                onRename: () => _renameGroup(context, app, group),
-                onDelete: () => _deleteGroup(context, app, group),
-                children: app
-                    .conversationsInGroup(group.id)
-                    .map(
-                      (conversation) => _ConversationEntry(
-                        conversation: conversation,
-                        onPin: () => app.togglePin(conversation.id),
-                        onMove: () =>
-                            _moveConversation(context, app, conversation),
-                        onRename: () =>
-                            _renameConversation(context, app, conversation),
-                        onDelete: () =>
-                            app.deleteConversation(conversation.id),
-                        onTap: () => _openConversation(
-                          context,
-                          app,
-                          conversation,
-                          research: false,
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
-          );
-        },
-      ),
-    const SizedBox(height: 12),
-    Text(
-      '历史对话',
-      key: const ValueKey('workspace-history-heading'),
-      style: context.texts.labelSmall,
-    ),
-    const SizedBox(height: 6),
-    for (final conversation in app.ungroupedConversations)
-      _ConversationEntry(
-        conversation: conversation,
-        onPin: () => app.togglePin(conversation.id),
-        onMove: () => _moveConversation(context, app, conversation),
-        onRename: () => _renameConversation(context, app, conversation),
-        onDelete: () => app.deleteConversation(conversation.id),
-        onTap: () =>
-            _openConversation(context, app, conversation, research: false),
-      ),
-  ];
-
-  Future<void> _moveConversation(
+  List<Widget> _projectEntries(
     BuildContext context,
     AppState app,
-    ChatConversation conversation,
-  ) async {
-    final target = await showMoveConversationDialog(
-      context,
-      app,
-      conversation,
-    );
-    if (target == null || !context.mounted) return;
-    try {
-      await app.moveConversationToGroup(conversation.id, target.groupId);
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('移动失败：$error')),
-      );
-    }
-  }
-
-  Future<void> _moveConversationInProject(
-    BuildContext context,
-    AppState app,
-    ChatConversation conversation,
-    ResearchProject project,
-  ) async {
-    final target = await showMoveConversationDialog(
-      context,
-      app,
-      conversation,
-      groups: app.groupsForProject(project.id),
-    );
-    if (target == null || !context.mounted) return;
-    try {
-      await app.moveConversationToGroup(conversation.id, target.groupId);
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('移动失败：$error')),
-      );
-    }
-  }
-
-  Future<void> _renameConversation(
-    BuildContext context,
-    AppState app,
-    ChatConversation conversation,
-  ) async {
-    final controller = TextEditingController(text: conversation.title);
-    final accepted = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('重命名对话'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: '对话名称'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-    final name = accepted?.trim();
-    if (name != null && name.isNotEmpty) {
-      await app.renameConversation(conversation.id, name);
-    }
-    controller.dispose();
-  }
-
-  void _openConversation(
-    BuildContext context,
-    AppState app,
-    ChatConversation conversation, {
-    required bool research,
-  }) {
-    unawaited(app.setActive(conversation.id));
-    if (research) {
-      onOpenResearchConversation(conversation);
-    } else {
-      onSelect(StudentSection.assistant);
-    }
-  }
-
-  List<Widget> _projectEntries(BuildContext context, AppState app) {
-    if (app.researchProjects.isEmpty) {
+    String query,
+  ) {
+    final normalized = query.trim().toLowerCase();
+    final projects = normalized.isEmpty
+        ? app.researchProjects
+        : app.researchProjects
+              .where(
+                (project) => project.name.toLowerCase().contains(normalized),
+              )
+              .toList();
+    if (projects.isEmpty) {
       return [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Text('暂无科研项目', style: context.texts.bodySmall),
+          child: Text(
+            normalized.isEmpty ? '暂无科研项目' : '没有匹配的项目',
+            style: context.texts.bodySmall,
+          ),
         ),
       ];
     }
     return [
-      for (final project in app.researchProjects)
-        _ResearchProjectRow(
-          project: project,
-          groups: app.groupsForProject(project.id),
-          selected: activeResearchProject?.id == project.id,
-          isGroupPinned: app.isGroupPinned,
-          onOpen: () => onOpenProject(project),
-          onAddGroup: () =>
-              _showCreateGroupInProject(context, app, project),
-          onAddGroupConversation: (group) {
-            unawaited(
-              app.newConversationInGroup(
-                group.id,
-                researchProjectId: project.id,
-              ),
-            );
-            onOpenResearchChat();
-          },
-          onPinGroup: (group) => app.toggleGroupPin(group.id),
-          onRenameGroup: (group) => _renameGroup(context, app, group),
-          onDeleteGroup: (group) => _deleteGroup(context, app, group),
-          conversationsInGroup: (group) =>
-              app.conversationsInGroupForProject(group.id, project.id),
-          ungroupedConversations:
-              app.ungroupedConversationsInProject(project.id),
-          onOpenConversation: (conversation) => _openConversation(
-            context,
-            app,
-            conversation,
-            research: true,
-          ),
-          onPinConversation: (conversation) =>
-              app.togglePin(conversation.id),
-          onMoveConversation: (conversation) => _moveConversationInProject(
-            context,
-            app,
-            conversation,
-            project,
-          ),
-          onRenameConversation: (conversation) =>
-              _renameConversation(context, app, conversation),
-          onDeleteConversation: (conversation) =>
-              app.deleteConversation(conversation.id),
+      for (final project in projects)
+        _SideEntry(
+          icon: LucideIcons.brainCircuit,
+          label: project.name,
+          selected: false,
+          onTap: () => onOpenProject(project),
         ),
     ];
   }
@@ -1019,34 +617,118 @@ class _WorkspaceSidebar extends StatelessWidget {
     description.dispose();
   }
 
-  List<Widget> _learningEntries(BuildContext context, AppState app) => [
-    ..._conversationEntries(context, app),
-    const SizedBox(height: 12),
-    Text(
-      '课程',
-      key: const ValueKey('workspace-courses-heading'),
-      style: context.texts.labelSmall,
-    ),
-    const SizedBox(height: 6),
-    if (!app.scheduleLoaded)
-      const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        child: LinearProgressIndicator(minHeight: 2),
-      )
-    else if (app.scheduleCourseNames.isEmpty)
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        child: Text('暂无课程', style: context.texts.bodySmall),
-      )
-    else
-      for (final courseName in app.scheduleCourseNames)
-        _SideEntry(
-          icon: LucideIcons.bookOpen,
-          label: courseName,
-          selected: false,
-          onTap: onOpenSchedule,
-        ),
-  ];
+  List<Widget> _learningEntries(
+    BuildContext context,
+    AppState app,
+    String query,
+  ) {
+    final normalized = query.trim().toLowerCase();
+    bool matches(String value) =>
+        normalized.isEmpty || value.toLowerCase().contains(normalized);
+    final groups = app.groups.where((group) {
+      if (matches(group.name)) return true;
+      return app
+          .conversationsInGroup(group.id)
+          .any((conversation) => matches(conversation.title));
+    }).toList();
+    final ungrouped = app.ungroupedConversations
+        .where((conversation) => matches(conversation.title))
+        .toList();
+
+    Widget groupList() {
+      Widget entry(ChatGroup group, int index, {required bool reorderable}) {
+        final conversations = app
+            .conversationsInGroup(group.id)
+            .where(
+              (conversation) =>
+                  normalized.isEmpty ||
+                  matches(group.name) ||
+                  matches(conversation.title),
+            )
+            .toList();
+        final row = _ExpandableSidebarRow(
+          icon: LucideIcons.folder,
+          label: group.name,
+          onRename: () => _renameGroup(context, app, group),
+          onDelete: () => _deleteGroup(context, app, group),
+          children: conversations
+              .map(
+                (conversation) => _ConversationEntry(
+                  conversation: conversation,
+                  onTap: () {
+                    unawaited(app.setActive(conversation.id));
+                    onSelect(StudentSection.assistant);
+                  },
+                ),
+              )
+              .toList(),
+        );
+        return Padding(
+          key: ValueKey(group.id),
+          padding: const EdgeInsets.only(bottom: 4),
+          child: reorderable
+              ? ReorderableDelayedDragStartListener(index: index, child: row)
+              : row,
+        );
+      }
+
+      if (normalized.isNotEmpty) {
+        return Column(
+          children: [
+            for (var index = 0; index < groups.length; index++)
+              entry(groups[index], index, reorderable: false),
+          ],
+        );
+      }
+      return ReorderableListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        buildDefaultDragHandles: false,
+        itemCount: groups.length,
+        onReorder: (oldIndex, newIndex) =>
+            app.reorderGroups(oldIndex, newIndex),
+        itemBuilder: (context, index) =>
+            entry(groups[index], index, reorderable: true),
+      );
+    }
+
+    return [
+      if (groups.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Text(
+            normalized.isEmpty ? '暂无对话分组' : '没有匹配的对话组',
+            style: context.texts.bodySmall,
+          ),
+        )
+      else
+        groupList(),
+      const SizedBox(height: 12),
+      Text(
+        '历史对话',
+        key: const ValueKey('workspace-history-heading'),
+        style: context.texts.labelSmall,
+      ),
+      const SizedBox(height: 6),
+      if (ungrouped.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Text(
+            normalized.isEmpty ? '暂无历史对话' : '没有匹配的历史对话',
+            style: context.texts.bodySmall,
+          ),
+        )
+      else
+        for (final conversation in ungrouped)
+          _ConversationEntry(
+            conversation: conversation,
+            onTap: () {
+              unawaited(app.setActive(conversation.id));
+              onSelect(StudentSection.assistant);
+            },
+          ),
+    ];
+  }
 
   Future<void> _renameGroup(
     BuildContext context,
@@ -1140,42 +822,6 @@ class _WorkspaceSidebar extends StatelessWidget {
     }
     controller.dispose();
   }
-
-  Future<void> _showCreateGroupInProject(
-    BuildContext context,
-    AppState app,
-    ResearchProject project,
-  ) async {
-    final controller = TextEditingController();
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('在「${project.name}」新建分组'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: '分组名称'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('创建'),
-          ),
-        ],
-      ),
-    );
-    if (accepted == true && controller.text.trim().isNotEmpty) {
-      await app.createGroup(
-        name: controller.text.trim(),
-        projectId: project.id,
-      );
-    }
-    controller.dispose();
-  }
 }
 
 class _RevealSidebarButton extends StatelessWidget {
@@ -1245,221 +891,17 @@ class _SideEntry extends StatelessWidget {
   );
 }
 
-class _ResearchProjectRow extends StatefulWidget {
-  const _ResearchProjectRow({
-    required this.project,
-    required this.groups,
-    required this.selected,
-    required this.isGroupPinned,
-    required this.onOpen,
-    required this.onAddGroup,
-    required this.onAddGroupConversation,
-    required this.onPinGroup,
-    required this.onRenameGroup,
-    required this.onDeleteGroup,
-    required this.conversationsInGroup,
-    required this.ungroupedConversations,
-    required this.onOpenConversation,
-    required this.onPinConversation,
-    required this.onMoveConversation,
-    required this.onRenameConversation,
-    required this.onDeleteConversation,
-  });
-
-  final ResearchProject project;
-  final List<ChatGroup> groups;
-  final bool selected;
-  final bool Function(String groupId) isGroupPinned;
-  final VoidCallback onOpen;
-  final VoidCallback onAddGroup;
-  final ValueChanged<ChatGroup> onAddGroupConversation;
-  final ValueChanged<ChatGroup> onPinGroup;
-  final ValueChanged<ChatGroup> onRenameGroup;
-  final ValueChanged<ChatGroup> onDeleteGroup;
-  final List<ChatConversation> Function(ChatGroup group) conversationsInGroup;
-  final List<ChatConversation> ungroupedConversations;
-  final ValueChanged<ChatConversation> onOpenConversation;
-  final ValueChanged<ChatConversation> onPinConversation;
-  final ValueChanged<ChatConversation> onMoveConversation;
-  final ValueChanged<ChatConversation> onRenameConversation;
-  final ValueChanged<ChatConversation> onDeleteConversation;
-
-  @override
-  State<_ResearchProjectRow> createState() => _ResearchProjectRowState();
-}
-
-class _ResearchProjectRowState extends State<_ResearchProjectRow> {
-  bool expanded = true;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Material(
-          color: widget.selected
-              ? EsaColors.accent.withValues(alpha: 0.15)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(7),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(7),
-            onTap: () => setState(() => expanded = !expanded),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-              child: Row(
-                children: [
-                  Icon(
-                    LucideIcons.brainCircuit,
-                    size: 16,
-                    color: widget.selected
-                        ? const Color(0xFF5D98FF)
-                        : context.n.n600,
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      widget.project.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '打开项目',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 26,
-                      minHeight: 26,
-                    ),
-                    iconSize: 14,
-                    icon: Icon(
-                      LucideIcons.arrowUpRight,
-                      size: 14,
-                      color: context.n.n600,
-                    ),
-                    onPressed: widget.onOpen,
-                  ),
-                  Icon(
-                    expanded
-                        ? LucideIcons.chevronDown
-                        : LucideIcons.chevronRight,
-                    size: 14,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        if (expanded)
-          Padding(
-            padding: const EdgeInsets.only(left: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 2, bottom: 2),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '对话分组',
-                          style: context.texts.labelSmall,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: '新建分组',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 26,
-                          minHeight: 26,
-                        ),
-                        iconSize: 14,
-                        icon: const Icon(LucideIcons.plus, size: 14),
-                        onPressed: widget.onAddGroup,
-                      ),
-                    ],
-                  ),
-                ),
-                if (widget.groups.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text('暂无分组', style: context.texts.bodySmall),
-                  )
-                else
-                  for (final group in widget.groups)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: _ExpandableSidebarRow(
-                        icon: LucideIcons.folder,
-                        label: group.name,
-                        pinned: widget.isGroupPinned(group.id),
-                        onPin: () => widget.onPinGroup(group),
-                        onAddConversation: () =>
-                            widget.onAddGroupConversation(group),
-                        onRename: () => widget.onRenameGroup(group),
-                        onDelete: () => widget.onDeleteGroup(group),
-                        children: widget
-                            .conversationsInGroup(group)
-                            .map(
-                              (conversation) => _ConversationEntry(
-                                conversation: conversation,
-                                onPin: () =>
-                                    widget.onPinConversation(conversation),
-                                onMove: () =>
-                                    widget.onMoveConversation(conversation),
-                                onRename: () =>
-                                    widget.onRenameConversation(conversation),
-                                onDelete: () =>
-                                    widget.onDeleteConversation(conversation),
-                                onTap: () =>
-                                    widget.onOpenConversation(conversation),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    ),
-                if (widget.ungroupedConversations.isNotEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6, bottom: 2),
-                    child: Text('未分组', style: context.texts.labelSmall),
-                  ),
-                  for (final conversation in widget.ungroupedConversations)
-                    _ConversationEntry(
-                      conversation: conversation,
-                      onPin: () => widget.onPinConversation(conversation),
-                      onMove: () => widget.onMoveConversation(conversation),
-                      onRename: () =>
-                          widget.onRenameConversation(conversation),
-                      onDelete: () =>
-                          widget.onDeleteConversation(conversation),
-                      onTap: () => widget.onOpenConversation(conversation),
-                    ),
-                ],
-              ],
-            ),
-          ),
-      ],
-    ),
-  );
-}
-
 class _ExpandableSidebarRow extends StatefulWidget {
   const _ExpandableSidebarRow({
     required this.icon,
     required this.label,
     required this.children,
-    this.pinned = false,
-    this.onPin,
-    this.onAddConversation,
     this.onRename,
     this.onDelete,
   });
   final IconData icon;
   final String label;
   final List<Widget> children;
-  final bool pinned;
-  final VoidCallback? onPin;
-  final VoidCallback? onAddConversation;
   final VoidCallback? onRename;
   final VoidCallback? onDelete;
 
@@ -1489,80 +931,29 @@ class _ExpandableSidebarRowState extends State<_ExpandableSidebarRow> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (widget.onPin != null)
+              if (widget.onRename != null)
                 IconButton(
-                  tooltip: widget.pinned ? '取消置顶分组' : '置顶分组',
+                  tooltip: '重命名分组',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(
                     minWidth: 26,
                     minHeight: 26,
                   ),
                   iconSize: 14,
-                  icon: Icon(
-                    LucideIcons.star,
-                    color: widget.pinned ? EsaColors.accent : context.n.n600,
-                  ),
-                  onPressed: widget.onPin,
+                  icon: const Icon(LucideIcons.pencil),
+                  onPressed: widget.onRename,
                 ),
-              if (widget.onAddConversation != null)
+              if (widget.onDelete != null)
                 IconButton(
-                  tooltip: '在分组中新建对话',
+                  tooltip: '删除分组',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(
                     minWidth: 26,
                     minHeight: 26,
                   ),
                   iconSize: 14,
-                  icon: Icon(LucideIcons.plus, color: context.n.n600),
-                  onPressed: widget.onAddConversation,
-                ),
-              if (widget.onRename != null || widget.onDelete != null)
-                SizedBox(
-                  width: 26,
-                  height: 26,
-                  child: PopupMenuButton<_SidebarGroupAction>(
-                    tooltip: '更多分组操作',
-                    padding: EdgeInsets.zero,
-                    icon: Icon(
-                      LucideIcons.moreHorizontal,
-                      size: 15,
-                      color: context.n.n600,
-                    ),
-                    onSelected: (action) {
-                      switch (action) {
-                        case _SidebarGroupAction.rename:
-                          widget.onRename?.call();
-                          break;
-                        case _SidebarGroupAction.delete:
-                          widget.onDelete?.call();
-                          break;
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      if (widget.onRename != null)
-                        const PopupMenuItem(
-                          value: _SidebarGroupAction.rename,
-                          child: Row(
-                            children: [
-                              Icon(LucideIcons.pencil, size: 15),
-                              SizedBox(width: 8),
-                              Text('重命名分组'),
-                            ],
-                          ),
-                        ),
-                      if (widget.onDelete != null)
-                        const PopupMenuItem(
-                          value: _SidebarGroupAction.delete,
-                          child: Row(
-                            children: [
-                              Icon(LucideIcons.trash2, size: 15),
-                              SizedBox(width: 8),
-                              Text('删除分组'),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
+                  icon: const Icon(LucideIcons.trash2),
+                  onPressed: widget.onDelete,
                 ),
               Icon(
                 expanded ? LucideIcons.chevronDown : LucideIcons.chevronRight,
@@ -1582,271 +973,371 @@ class _ExpandableSidebarRowState extends State<_ExpandableSidebarRow> {
 }
 
 class _ConversationEntry extends StatelessWidget {
-  const _ConversationEntry({
-    required this.conversation,
-    required this.onTap,
-    required this.onPin,
-    this.onMove,
-    required this.onRename,
-    required this.onDelete,
-    this.allowGrouping = true,
-  });
+  const _ConversationEntry({required this.conversation, required this.onTap});
   final ChatConversation conversation;
   final VoidCallback onTap;
-  final VoidCallback onPin;
-  final VoidCallback? onMove;
-  final VoidCallback onRename;
-  final VoidCallback onDelete;
-  final bool allowGrouping;
 
   @override
   Widget build(BuildContext context) => ListTile(
     dense: true,
     minLeadingWidth: 18,
-    contentPadding: const EdgeInsets.only(left: 8, right: 2),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
     leading: const Icon(LucideIcons.messageSquare, size: 15),
-    title: Row(
-      children: [
-        Expanded(
-          child: Text(
-            conversation.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12.5),
-          ),
-        ),
-        if (conversation.pinned)
-          const Padding(
-            padding: EdgeInsets.only(left: 4),
-            child: Icon(
-              LucideIcons.star,
-              size: 12,
-              color: EsaColors.accent,
-            ),
-          ),
-      ],
-    ),
-    trailing: PopupMenuButton<_ConversationEntryAction>(
-      tooltip: '对话操作',
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-      icon: Icon(LucideIcons.moreHorizontal, size: 16, color: context.n.n600),
-      onSelected: (action) {
-        switch (action) {
-          case _ConversationEntryAction.pin:
-            onPin();
-            break;
-          case _ConversationEntryAction.move:
-            onMove?.call();
-            break;
-          case _ConversationEntryAction.rename:
-            onRename();
-            break;
-          case _ConversationEntryAction.delete:
-            onDelete();
-            break;
-        }
-      },
-      itemBuilder: (context) => [
-        PopupMenuItem(
-          value: _ConversationEntryAction.pin,
-          child: Row(
-            children: [
-              Icon(
-                LucideIcons.star,
-                size: 15,
-                color: conversation.pinned ? EsaColors.accent : null,
-              ),
-              const SizedBox(width: 8),
-              Text(conversation.pinned ? '取消置顶' : '置顶'),
-            ],
-          ),
-        ),
-        if (allowGrouping && onMove != null)
-          const PopupMenuItem(
-            value: _ConversationEntryAction.move,
-            child: Row(
-              children: [
-                Icon(LucideIcons.folderInput, size: 15),
-                SizedBox(width: 8),
-                Text('移动到分组'),
-              ],
-            ),
-          ),
-        const PopupMenuItem(
-          value: _ConversationEntryAction.rename,
-          child: Row(
-            children: [
-              Icon(LucideIcons.pencil, size: 15),
-              SizedBox(width: 8),
-              Text('重命名'),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: _ConversationEntryAction.delete,
-          child: Row(
-            children: [
-              Icon(LucideIcons.trash2, size: 15),
-              SizedBox(width: 8),
-              Text('删除'),
-            ],
-          ),
-        ),
-      ],
+    title: Text(
+      conversation.title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(fontSize: 12.5),
     ),
     onTap: onTap,
   );
 }
 
-enum _SidebarGroupAction { rename, delete }
-
-enum _ConversationEntryAction { pin, move, rename, delete }
-
-class _StudentContextRail extends StatelessWidget {
+class _StudentContextRail extends StatefulWidget {
   const _StudentContextRail({
     required this.section,
-    required this.conversationActive,
     required this.researchProject,
+    required this.selectedAttachments,
+    required this.onAddAttachment,
+    required this.onRemoveAttachment,
   });
   final StudentSection section;
-  final bool conversationActive;
   final ResearchProject? researchProject;
+  final List<DocumentAttachment> selectedAttachments;
+  final VoidCallback onAddAttachment;
+  final VoidCallback onRemoveAttachment;
+
+  @override
+  State<_StudentContextRail> createState() => _StudentContextRailState();
+}
+
+class _StudentContextRailState extends State<_StudentContextRail> {
+  bool _citeCourseMaterials = true;
+  bool _rememberLearning = true;
+  bool _webSearch = false;
+
+  void _reset() {
+    setState(() {
+      _citeCourseMaterials = true;
+      _rememberLearning = true;
+      _webSearch = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final research = section == StudentSection.research;
+    final research = widget.section == StudentSection.research;
     final recent = app.conversations.take(3).map((item) => item.title).toList();
-    final courses = app.learningCourses.take(3).toList();
     final projects = app.researchProjects
         .take(3)
         .map((item) => item.name)
         .toList();
-    final weakLines = app.masteryReport?.weakPoints
-        .take(3)
-        .map((point) => '${point.name}  ${_masteryLabel(point.masteryLevel)}')
-        .toList();
-    if (section == StudentSection.knowledge) {
-      return _knowledgeContextRail(context, app, weakLines);
+    if (research && widget.researchProject != null) {
+      return _ContextRailFrame(
+        child: _ResearchProjectContextRail(project: widget.researchProject!),
+      );
     }
-    if (section == StudentSection.planner) {
-      return _plannerContextRail(context, app);
-    }
-    if (!research && !conversationActive) {
-      return const _LearningOverviewRail();
-    }
-    if (research && researchProject != null) {
-      return _ResearchProjectContextRail(project: researchProject!);
-    }
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      children: research
-          ? [
-              _ContextCard(
-                icon: LucideIcons.clipboardList,
-                title: '研究项目',
-                lines: projects.isEmpty ? const ['还没有研究项目'] : projects,
-              ),
-              _ContextCard(
-                icon: LucideIcons.messageSquare,
-                title: '最近研究对话',
-                lines: recent.isEmpty ? const ['暂无研究对话'] : recent,
-              ),
-            ]
-          : [
-              _ContextCard(
-                icon: LucideIcons.bookOpen,
-                title: '学习上下文',
-                lines: [
-                  courses.isEmpty
-                      ? '当前课程  暂未添加'
-                      : '当前课程  ${courses.first.name}',
-                  if (app.masteryReport?.weakPoints.firstOrNull
-                      case final point?)
-                    '优先复习  ${point.name}',
-                ],
-              ),
-              _ProgressContextCard(
-                report: app.masteryReport,
-                loading: app.loadingLearningOverview,
-              ),
-              _ContextCard(
-                icon: LucideIcons.circleAlert,
-                title: '薄弱知识点',
-                lines: weakLines == null || weakLines.isEmpty
-                    ? const ['暂无薄弱知识点记录']
-                    : weakLines,
-              ),
-              _ContextCard(
-                icon: LucideIcons.messageSquare,
-                title: '最近对话',
-                lines: recent.isEmpty ? const ['暂无最近对话'] : recent,
-              ),
-            ],
-    );
-  }
-
-  Widget _knowledgeContextRail(
-    BuildContext context,
-    AppState app,
-    List<String>? weakLines,
-  ) {
-    final courseNames = app.scheduleCourseNames;
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      children: [
-        _ContextCard(
-          icon: LucideIcons.mapPinned,
-          title: '知识地图',
-          lines: [
-            courseNames.isEmpty ? '暂无课程' : '已加入 ${courseNames.length} 门课程',
-            if (app.masteryReport case final report?)
-              '已评估 ${report.totalPoints} 个知识点',
+    if (research) {
+      return _ContextRailFrame(
+        child: ListView(
+          padding: const EdgeInsets.all(12),
+          children: [
+            _ContextCard(
+              icon: LucideIcons.clipboardList,
+              title: '研究项目',
+              lines: projects.isEmpty ? const ['还没有研究项目'] : projects,
+            ),
+            _ContextCard(
+              icon: LucideIcons.messageSquare,
+              title: '最近研究对话',
+              lines: recent.isEmpty ? const ['暂无研究对话'] : recent,
+            ),
           ],
         ),
-        _ContextCard(
-          icon: LucideIcons.circleAlert,
-          title: '薄弱知识点',
-          lines: weakLines == null || weakLines.isEmpty
-              ? const ['暂无薄弱知识点记录']
-              : weakLines,
-        ),
-        _ContextCard(
-          icon: LucideIcons.bookOpen,
-          title: '课程',
-          lines: courseNames.isEmpty
-              ? const ['去日程添加课程']
-              : courseNames.take(4).toList(),
-        ),
-      ],
-    );
-  }
+      );
+    }
 
-  Widget _plannerContextRail(BuildContext context, AppState app) {
-    final courseNames = app.scheduleCourseNames;
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      children: [
-        _ContextCard(
-          icon: LucideIcons.calendarDays,
-          title: '日程',
-          lines: ['课表 ${courseNames.length} 门课程', '待办、截止时间与目标集中管理'],
-        ),
-        _ContextCard(
-          icon: LucideIcons.bookOpen,
-          title: '本周课程',
-          lines: courseNames.isEmpty
-              ? const ['暂无课程']
-              : courseNames.take(4).toList(),
-        ),
-      ],
+    final courseName =
+        app.learningCourses.firstOrNull?.name ??
+        app.scheduleCourseNames.firstOrNull ??
+        '尚未选择课程';
+    final related = <String>{
+      ...?app.masteryReport?.stalePoints.map((item) => item.name),
+      ...?app.masteryReport?.weakPoints.map((item) => item.name),
+    }.take(5).toList();
+    final chapter = related.firstOrNull;
+
+    return _ContextRailFrame(
+      child: ListView(
+        key: const ValueKey('learning-context-panel'),
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+        children: [
+          Text(
+            '当前上下文',
+            style: context.texts.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 18),
+          _ContextSection(
+            title: '当前课程',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(courseName, style: context.texts.bodyMedium),
+                const SizedBox(height: 4),
+                Text(
+                  chapter == null ? '尚未选择章节' : '重点：$chapter',
+                  style: context.texts.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          _ContextSection(
+            title: '已选资料 ${widget.selectedAttachments.length}',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.selectedAttachments.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text('暂未选择资料', style: context.texts.bodySmall),
+                  )
+                else
+                  for (final attachment in widget.selectedAttachments)
+                    _SelectedAttachmentRow(
+                      attachment: attachment,
+                      onRemove: widget.onRemoveAttachment,
+                    ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: widget.onAddAttachment,
+                    icon: const Icon(LucideIcons.plus, size: 15),
+                    label: const Text('添加资料'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _ContextSection(
+            title: '相关知识点',
+            child: related.isEmpty
+                ? Text('暂无相关知识点', style: context.texts.bodySmall)
+                : Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final item in related) _KnowledgeTag(label: item),
+                    ],
+                  ),
+          ),
+          _ContextSection(
+            title: '本次对话设置',
+            child: Column(
+              children: [
+                _ContextToggle(
+                  title: '引用课程资料',
+                  subtitle: '优先引用已选择的课程资料',
+                  value: _citeCourseMaterials,
+                  onChanged: (value) =>
+                      setState(() => _citeCourseMaterials = value),
+                ),
+                _ContextToggle(
+                  title: '长期记忆',
+                  subtitle: '记住本次学习中的关键信息',
+                  value: _rememberLearning,
+                  onChanged: (value) =>
+                      setState(() => _rememberLearning = value),
+                ),
+                _ContextToggle(
+                  title: '联网搜索',
+                  subtitle: '需要时联网补充信息',
+                  value: _webSearch,
+                  onChanged: (value) => setState(() => _webSearch = value),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text('回答风格', style: context.texts.bodyMedium),
+                    ),
+                    Text(
+                      _answerStyleLabel(app.preferences.preferredStyle),
+                      style: context.texts.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: _reset,
+                    child: const Text('重置设置'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-String _masteryLabel(double? value) =>
-    value == null ? '未评估' : '${value.round()}%';
+class _ContextRailFrame extends StatelessWidget {
+  const _ContextRailFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(
+      color: context.scheme.surface,
+      border: Border(left: BorderSide(color: context.n.divider)),
+    ),
+    child: child,
+  );
+}
+
+class _ContextSection extends StatelessWidget {
+  const _ContextSection({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.only(bottom: 16),
+    margin: const EdgeInsets.only(bottom: 16),
+    decoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: context.n.divider)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: context.texts.labelMedium),
+        const SizedBox(height: 10),
+        child,
+      ],
+    ),
+  );
+}
+
+class _SelectedAttachmentRow extends StatelessWidget {
+  const _SelectedAttachmentRow({
+    required this.attachment,
+    required this.onRemove,
+  });
+
+  final DocumentAttachment attachment;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      children: [
+        Icon(LucideIcons.fileText, size: 16, color: context.n.n600),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                attachment.filename,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.texts.bodySmall,
+              ),
+              Text(
+                '${attachment.extension.isEmpty ? '文件' : attachment.extension.toUpperCase()} · ${_contextFileSize(attachment.sizeBytes)}',
+                style: context.texts.labelSmall,
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: '移除资料',
+          onPressed: onRemove,
+          icon: const Icon(LucideIcons.x, size: 15),
+          constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+          padding: EdgeInsets.zero,
+        ),
+      ],
+    ),
+  );
+}
+
+class _KnowledgeTag extends StatelessWidget {
+  const _KnowledgeTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+    decoration: BoxDecoration(
+      color: context.n.n100,
+      border: Border.all(color: context.n.divider),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(label, style: context.texts.labelSmall),
+  );
+}
+
+class _ContextToggle extends StatelessWidget {
+  const _ContextToggle({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: context.texts.bodySmall),
+              const SizedBox(height: 2),
+              Text(subtitle, style: context.texts.labelSmall),
+            ],
+          ),
+        ),
+        Transform.scale(
+          scale: 0.72,
+          alignment: Alignment.topRight,
+          child: Switch(value: value, onChanged: onChanged),
+        ),
+      ],
+    ),
+  );
+}
+
+String _contextFileSize(int bytes) {
+  if (bytes <= 0) return '大小未知';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+}
+
+String _answerStyleLabel(String value) => switch (value) {
+  'detailed' => '详细',
+  'socratic' => '苏格拉底',
+  'concise' => '默认',
+  _ => '默认',
+};
 
 String _projectStatusLabel(String status) => switch (status) {
   'active' => '进行中',
@@ -2012,105 +1503,6 @@ class _ContextCard extends StatelessWidget {
   );
 }
 
-class _ProgressContextCard extends StatelessWidget {
-  const _ProgressContextCard({required this.report, required this.loading});
-
-  final MasteryReport? report;
-  final bool loading;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 10),
-    padding: const EdgeInsets.all(15),
-    decoration: BoxDecoration(
-      color: context.n.n100,
-      border: Border.all(color: context.n.divider),
-      borderRadius: BorderRadius.circular(11),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('掌握度', style: context.texts.titleMedium),
-        const SizedBox(height: 12),
-        Text(
-          loading ? '加载中' : _masteryLabel(report?.averageMastery),
-          style: const TextStyle(
-            fontSize: 28,
-            color: Color(0xFF4387FF),
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        LinearProgressIndicator(
-          value: report == null
-              ? 0
-              : (report!.averageMastery / 100).clamp(0.0, 1.0),
-          minHeight: 5,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          report == null ? '暂无学习证据' : '已评估 ${report!.totalPoints} 个知识点',
-          style: context.texts.bodySmall,
-        ),
-      ],
-    ),
-  );
-}
-
-class _LearningOverviewRail extends StatelessWidget {
-  const _LearningOverviewRail();
-
-  @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final report = app.masteryReport;
-    final courses = app.learningCourses;
-    final suggestions = report?.weakPoints.isNotEmpty == true
-        ? [
-            '优先复习 ${report!.weakPoints.first.name}',
-            '当前有 ${report.weakPoints.length} 个薄弱知识点',
-          ]
-        : const ['暂无针对性建议，完成练习后会生成'];
-    final courseLines = courses.isEmpty
-        ? const ['还没有添加学习课程']
-        : courses
-              .take(3)
-              .map(
-                (course) =>
-                    '${course.name}  ${_masteryLabel(course.averageMastery)}',
-              )
-              .toList();
-    final stateLines = report == null
-        ? [app.learningOverviewError ?? '暂无学习状态记录']
-        : [
-            '已评估知识点  ${report.totalPoints}',
-            '平均掌握度  ${_masteryLabel(report.averageMastery)}',
-            '待加强知识点  ${report.weakPoints.length}',
-            '待复习知识点  ${report.stalePoints.length}',
-          ];
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      children: [
-        _ContextCard(
-          icon: LucideIcons.lightbulb,
-          title: '今日学习建议',
-          lines: suggestions,
-        ),
-        _ContextCard(
-          icon: LucideIcons.notebookTabs,
-          title: '最近课程',
-          lines: courseLines,
-        ),
-        _ContextCard(
-          icon: LucideIcons.chartNoAxesColumnIncreasing,
-          title: '学习状态',
-          lines: stateLines,
-        ),
-      ],
-    );
-  }
-}
-
 class _MobileHeader extends StatelessWidget {
   const _MobileHeader({
     required this.section,
@@ -2136,10 +1528,11 @@ class _MobileHeader extends StatelessWidget {
         const SizedBox(width: 14),
         Expanded(
           child: Text(switch (section) {
+            StudentSection.home => '首页',
             StudentSection.research => '研究空间',
             StudentSection.knowledge => '知识地图',
             StudentSection.assignments => '作业',
-            StudentSection.planner => '日程',
+            StudentSection.schedule => '日程',
             StudentSection.assistant => '学习空间',
           }, style: context.texts.headlineSmall),
         ),
@@ -2220,10 +1613,11 @@ class _MobileLearningTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const entries = [
-      (StudentSection.assistant, '学习空间'),
+      (StudentSection.home, '首页'),
+      (StudentSection.assistant, '对话'),
       (StudentSection.assignments, '作业'),
-      (StudentSection.planner, '日程'),
-      (StudentSection.knowledge, '知识地图'),
+      (StudentSection.schedule, '日程'),
+      (StudentSection.knowledge, '知识'),
     ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
