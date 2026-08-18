@@ -65,7 +65,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('首页'), findsWidgets);
-    expect(find.text('对话'), findsOneWidget);
+    expect(find.text('对话'), findsNothing);
     expect(find.text('日程'), findsOneWidget);
 
     await tester.tap(find.text('日程'));
@@ -163,8 +163,6 @@ void main() {
     expect(tester.getRect(rail).center.dx, lessThan(1280 / 2));
     expect(find.text('教学'), findsNothing);
 
-    await tester.tap(find.byTooltip('对话').first);
-    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('日程'));
     await tester.pumpAndSettle();
     expect(find.text('添加课程'), findsOneWidget);
@@ -217,8 +215,6 @@ void main() {
     addTearDown(state.dispose);
 
     await tester.pumpWidget(app(state));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('对话').first);
     await tester.pumpAndSettle();
 
     expect(find.text('最近对话'), findsNothing);

@@ -23,7 +23,6 @@ import 'teaching_workspace_page.dart';
 
 enum StudentSection {
   home,
-  assistant,
   assignments,
   schedule,
   knowledge,
@@ -47,6 +46,7 @@ class _HomeShellState extends State<HomeShell> {
   List<DocumentAttachment> _selectedAttachments = const [];
   ResearchProject? _activeResearchProject;
   bool _researchProjectChatOpen = false;
+  bool _learningChatOpen = false;
 
   bool get _inResearch => _section == StudentSection.research;
 
@@ -74,40 +74,46 @@ class _HomeShellState extends State<HomeShell> {
     if (!mounted) return;
     setState(() {
       _section = section;
+      _learningChatOpen = false;
       if (section != StudentSection.research) _researchProjectChatOpen = false;
+    });
+  }
+
+  void _showHome() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (!mounted) return;
+    setState(() {
+      _section = StudentSection.home;
+      _learningChatOpen = false;
+      _researchProjectChatOpen = false;
     });
   }
 
   Widget _page() => switch (_section) {
     StudentSection.home => ChatPage(
+      key: ValueKey(_learningChatOpen ? 'learning-chat' : 'learning-home'),
       embedded: true,
-      homeMode: true,
+      homeMode: !_learningChatOpen,
       composerKey: _composerKey,
       onSelectedAttachmentsChanged: _setSelectedAttachments,
-      onContinueLearning: _continueLearning,
-      onViewAssignments: () => unawaited(_select(StudentSection.assignments)),
-      onOpenConversation: _openConversation,
-    ),
-    StudentSection.assistant => ChatPage(
-      embedded: true,
-      composerKey: _composerKey,
-      onSelectedAttachmentsChanged: _setSelectedAttachments,
+      onExitEmbedded: _learningChatOpen
+          ? () => setState(() => _learningChatOpen = false)
+          : null,
+      onViewAssignments: _learningChatOpen
+          ? null
+          : () => unawaited(_select(StudentSection.assignments)),
     ),
     StudentSection.assignments =>
       AppScope.of(context).accountRole == 'teacher'
-          ? TeachingWorkspacePage(
-              onOpenChat: () => unawaited(_select(StudentSection.assistant)),
-            )
-          : StudentAssignmentsPage(
-              onOpenChat: () => unawaited(_select(StudentSection.assistant)),
-            ),
+          ? TeachingWorkspacePage(onOpenChat: _showHome)
+          : StudentAssignmentsPage(onOpenChat: _showHome),
     StudentSection.schedule => PlannerPage(
       initialTab: PlannerTab.schedule,
       onOpenAssignments: () => unawaited(_select(StudentSection.assignments)),
     ),
     StudentSection.knowledge => KnowledgeMapPage(
       embedded: true,
-      onOpenChat: () => unawaited(_select(StudentSection.assistant)),
+      onOpenChat: _showHome,
       onOpenSchedule: () => unawaited(_select(StudentSection.schedule)),
     ),
     StudentSection.research =>
@@ -144,17 +150,36 @@ class _HomeShellState extends State<HomeShell> {
     setState(() => _selectedAttachments = List.of(attachments));
   }
 
-  Future<void> _continueLearning() async {
+  Future<void> _openLearningConversation(String id) async {
     final app = AppScope.of(context);
-    if (app.activeId == null && app.conversations.isNotEmpty) {
-      await app.setActive(app.conversations.first.id);
-    }
-    if (mounted) await _select(StudentSection.assistant);
+    await app.setActive(id);
+    if (!mounted) return;
+    setState(() {
+      _section = StudentSection.home;
+      _learningChatOpen = true;
+      _researchProjectChatOpen = false;
+    });
   }
 
-  Future<void> _openConversation(String id) async {
-    await AppScope.of(context).setActive(id);
-    if (mounted) await _select(StudentSection.assistant);
+  Future<void> _startGroupConversation(ChatGroup group) async {
+    final app = AppScope.of(context);
+    final projectId = app.groupProjectId(group.id);
+    await app.newConversationInGroup(
+      group.id,
+      researchProjectId: projectId,
+    );
+    if (!mounted) return;
+    if (projectId != null) {
+      _activeResearchProject = app.researchProjects
+          .where((project) => project.id == projectId)
+          .firstOrNull;
+    }
+    setState(() {
+      _section = projectId != null ? StudentSection.research : StudentSection.home;
+      _learningChatOpen = projectId == null;
+      _researchProjectChatOpen = projectId != null;
+      _selectedAttachments = const [];
+    });
   }
 
   Future<void> _startNewConversation() async {
@@ -162,7 +187,9 @@ class _HomeShellState extends State<HomeShell> {
     await app.newConversation();
     if (!mounted) return;
     setState(() {
-      _section = StudentSection.assistant;
+      _section = StudentSection.home;
+      _learningChatOpen = true;
+      _researchProjectChatOpen = false;
       _selectedAttachments = const [];
     });
   }
@@ -197,9 +224,12 @@ class _HomeShellState extends State<HomeShell> {
                       query: _sidebarQuery,
                       onQueryChanged: (value) =>
                           setState(() => _sidebarQuery = value),
-                      onSelect: (section) => unawaited(_select(section)),
                       onNewConversation: () =>
                           unawaited(_startNewConversation()),
+                      onNewConversationInGroup: (group) =>
+                          unawaited(_startGroupConversation(group)),
+                      onOpenConversation: (conversation) =>
+                          unawaited(_openLearningConversation(conversation.id)),
                       onOpenProject: (project) => setState(() {
                         _activeResearchProject = project;
                         _researchProjectChatOpen = false;
@@ -238,19 +268,22 @@ class _HomeShellState extends State<HomeShell> {
   Widget _mobile() {
     final app = AppScope.of(context);
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
-    final conversationActive =
-        (_section == StudentSection.assistant && app.messages.isNotEmpty) ||
-        _researchProjectChatOpen;
-    final historyAvailable =
-        _section == StudentSection.home ||
-        _section == StudentSection.assistant ||
-        _researchProjectChatOpen;
+    final conversationActive = _learningChatOpen || _researchProjectChatOpen;
+    final historyAvailable = conversationActive || _section == StudentSection.home;
     final researchProjectActive =
         _section == StudentSection.research && _activeResearchProject != null;
     return Scaffold(
       key: _mobileScaffoldKey,
       resizeToAvoidBottomInset: false,
-      drawer: historyAvailable ? const HistoryDrawer() : null,
+      drawer: historyAvailable
+          ? HistoryDrawer(
+              onNewConversation: () => unawaited(_startNewConversation()),
+              onNewConversationInGroup: (group) =>
+                  unawaited(_startGroupConversation(group)),
+              onOpenConversation: (conversation) =>
+                  unawaited(_openLearningConversation(conversation.id)),
+            )
+          : null,
       drawerEnableOpenDragGesture: historyAvailable,
       body: SafeArea(
         bottom: false,
@@ -258,12 +291,16 @@ class _HomeShellState extends State<HomeShell> {
           children: [
             if (conversationActive)
               _MobileConversationHeader(
-                title: _researchProjectChatOpen
+                title: _learningChatOpen
+                    ? app.activeConversation?.title ?? '新对话'
+                    : _researchProjectChatOpen
                     ? _activeResearchProject?.name ?? '项目对话'
-                    : app.activeConversation?.title ?? '新对话',
-                onBack: _researchProjectChatOpen
+                    : '项目对话',
+                onBack: _learningChatOpen
+                    ? () => setState(() => _learningChatOpen = false)
+                    : _researchProjectChatOpen
                     ? () => setState(() => _researchProjectChatOpen = false)
-                    : () => unawaited(_select(StudentSection.home)),
+                    : () => _showHome(),
                 onHistory: () => _mobileScaffoldKey.currentState?.openDrawer(),
               )
             else if (!researchProjectActive)
@@ -273,9 +310,7 @@ class _HomeShellState extends State<HomeShell> {
                 onProfile: () => showProfileSheet(context),
                 onMemory: () => showMemorySheet(context),
                 onActions: () => showAgentActionSheet(context),
-                onHistory:
-                    _section == StudentSection.home ||
-                        _section == StudentSection.assistant
+                onHistory: _section == StudentSection.home
                     ? () => _mobileScaffoldKey.currentState?.openDrawer()
                     : null,
               ),
@@ -340,12 +375,6 @@ class _GlobalRail extends StatelessWidget {
           tooltip: '首页',
           active: section == StudentSection.home,
           onTap: () => onSelect(StudentSection.home),
-        ),
-        _RailButton(
-          icon: LucideIcons.messageCircle,
-          tooltip: '对话',
-          active: section == StudentSection.assistant,
-          onTap: () => onSelect(StudentSection.assistant),
         ),
         _RailButton(
           icon: LucideIcons.clipboardCheck,
@@ -434,16 +463,18 @@ class _WorkspaceSidebar extends StatelessWidget {
     required this.section,
     required this.query,
     required this.onQueryChanged,
-    required this.onSelect,
     required this.onNewConversation,
+    required this.onNewConversationInGroup,
+    required this.onOpenConversation,
     required this.onCollapse,
     required this.onOpenProject,
   });
   final StudentSection section;
   final String query;
   final ValueChanged<String> onQueryChanged;
-  final ValueChanged<StudentSection> onSelect;
   final VoidCallback onNewConversation;
+  final ValueChanged<ChatGroup> onNewConversationInGroup;
+  final ValueChanged<ChatConversation> onOpenConversation;
   final VoidCallback onCollapse;
   final ValueChanged<ResearchProject> onOpenProject;
 
@@ -649,16 +680,14 @@ class _WorkspaceSidebar extends StatelessWidget {
         final row = _ExpandableSidebarRow(
           icon: LucideIcons.folder,
           label: group.name,
+          onNewConversation: () => onNewConversationInGroup(group),
           onRename: () => _renameGroup(context, app, group),
           onDelete: () => _deleteGroup(context, app, group),
           children: conversations
               .map(
                 (conversation) => _ConversationEntry(
                   conversation: conversation,
-                  onTap: () {
-                    unawaited(app.setActive(conversation.id));
-                    onSelect(StudentSection.assistant);
-                  },
+                  onTap: () => onOpenConversation(conversation),
                 ),
               )
               .toList(),
@@ -722,10 +751,7 @@ class _WorkspaceSidebar extends StatelessWidget {
         for (final conversation in ungrouped)
           _ConversationEntry(
             conversation: conversation,
-            onTap: () {
-              unawaited(app.setActive(conversation.id));
-              onSelect(StudentSection.assistant);
-            },
+            onTap: () => onOpenConversation(conversation),
           ),
     ];
   }
@@ -896,12 +922,14 @@ class _ExpandableSidebarRow extends StatefulWidget {
     required this.icon,
     required this.label,
     required this.children,
+    this.onNewConversation,
     this.onRename,
     this.onDelete,
   });
   final IconData icon;
   final String label;
   final List<Widget> children;
+  final VoidCallback? onNewConversation;
   final VoidCallback? onRename;
   final VoidCallback? onDelete;
 
@@ -931,6 +959,18 @@ class _ExpandableSidebarRowState extends State<_ExpandableSidebarRow> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (widget.onNewConversation != null)
+                IconButton(
+                  tooltip: '在分组中新建对话',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 26,
+                    minHeight: 26,
+                  ),
+                  iconSize: 14,
+                  icon: const Icon(LucideIcons.plus),
+                  onPressed: widget.onNewConversation,
+                ),
               if (widget.onRename != null)
                 IconButton(
                   tooltip: '重命名分组',
@@ -1533,7 +1573,6 @@ class _MobileHeader extends StatelessWidget {
             StudentSection.knowledge => '知识地图',
             StudentSection.assignments => '作业',
             StudentSection.schedule => '日程',
-            StudentSection.assistant => '学习空间',
           }, style: context.texts.headlineSmall),
         ),
         IconButton(
@@ -1614,7 +1653,6 @@ class _MobileLearningTabs extends StatelessWidget {
   Widget build(BuildContext context) {
     const entries = [
       (StudentSection.home, '首页'),
-      (StudentSection.assistant, '对话'),
       (StudentSection.assignments, '作业'),
       (StudentSection.schedule, '日程'),
       (StudentSection.knowledge, '知识'),
