@@ -222,7 +222,7 @@ def main() -> int:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-        print(f"\n抓到 {len(entries)} 条真实返回（其中 {n_err} 条是失败返回）→ {out_path.relative_to(ROOT)}")
+        print(f"\n抓到 {len(entries)} 条真实返回（其中 {n_err} 条是失败返回）→ {backend_repo.display_path(out_path, ROOT)}")
         print(f"  来源：{backend.describe()}")
         for rel, h in fingerprint.items():
             print(f"  {h}  {rel}")

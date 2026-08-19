@@ -23,22 +23,55 @@ LLaMA-Factory 自动画的 loss 曲线不是基线 —— 那只说明模型在�
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import sys
+import unicodedata
+import urllib.parse
 import urllib.request
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 from jsonschema import Draft7Validator
 
 from .backend_parser import PARSERS
 from .ir import load_schemas, schemas_by_name
 from .paths import in_dataset
+from .stats import macro_rate, mcnemar_exact, wilson
 from .validate import is_clarification_request, is_refusal
 
 # 绝对路径：从任何工作目录跑都对，也不假定 dataset/ 就在仓库根下。
 EVAL_DIR = in_dataset("data/eval")
+
+# 两套评测集，**文件名全都不同**，谁也覆盖不了谁。
+#
+#   main —— 主表。base 与 lora 的对比表只认它。
+#          ⚠️ 题数**不是常数**：481 → 464 → 467 → 443（④ 补数据之后）。
+#          别在文档或脚本里写死它，`wc -l data/eval/eval.jsonl` 现数。
+#   supp —— 2026-08-19 补的 44 道（一条一个模板），专门给拒绝/追问/误触发
+#           那几个成簇的小分母补厚度。**单独出一张表，不并进主表。**
+#
+# 为什么连 pred / report 的文件名都要分开：主表的 `pred_base.jsonl` 是
+# 三次作废、两天机时换来的唯一一份基线产物。共用文件名的话，
+# 一次「跑一下补充集看看」就能把它悄悄覆盖掉，而且不会有任何东西报错。
+SUITES = {
+    "main": {"eval": "eval.jsonl", "pred": "pred_{tag}.jsonl",
+             "report": "report_{tag}.json", "label": "主评测集"},
+    "supp": {"eval": "eval_supp.jsonl", "pred": "pred_supp_{tag}.jsonl",
+             "report": "report_supp_{tag}.json", "label": "补充评测集"},
+}
+
+
+def suite_paths(suite: str, tag: str = "") -> dict:
+    """返回这一套评测集的三个落点。"""
+    spec = SUITES[suite]
+    return {
+        "eval": EVAL_DIR / spec["eval"],
+        "pred": EVAL_DIR / spec["pred"].format(tag=tag),
+        "report": EVAL_DIR / spec["report"].format(tag=tag),
+        "label": spec["label"],
+    }
 
 
 # --------------------------------------------------------------------------
@@ -74,8 +107,45 @@ def build_messages(rec: dict) -> list[dict]:
     return msgs
 
 
+# 本机地址一律**不走代理**。
+#
+# 超算的计算节点上有 `http_proxy=http://127.0.0.1:1081`，而 1081 端口上什么都没有。
+# `urllib` 默认从环境变量读代理，于是打给自己起的那个推理服务的请求会被送去 1081，
+# 必然失败 —— 而失败发生在**模型已经加载完**之后。
+#
+# 这个坑烧掉过两次作业：2026-08-16 的 75715（当时结论是「作业脚本里必须清代理」），
+# 以及 2026-08-19 的补充集那次（新写的脚本没把那三行带过来，两段各空转 60 分钟，
+# 一次 02:00:25 的作业一条预测都没产出）。
+#
+# 「靠作业脚本记得清代理」是一条**机器管不了的纪律**，已经证明了两次管不住。
+# 所以把它挪进工具本身：打本机就绕开代理，脚本写没写都不会再中招。
+# 非本机地址（中转站、云端 API）照旧走环境里的代理设置，那种场景是需要代理的。
+_LOCAL_HOSTS = ("127.0.0.1", "localhost", "0.0.0.0", "::1", "[::1]")
+
+
+def bypass_proxy(endpoint: str) -> bool:
+    """这个端点该不该绕开代理。本机一律绕开。
+
+    抽成独立函数是为了**能直接断言**。第一版把判断埋在 `_opener_for` 里，
+    测试只好去翻 opener 的 handlers 找 ProxyHandler —— 而
+    `build_opener(ProxyHandler({}))` 产出的 opener 里**根本没有 ProxyHandler**：
+    空 proxies 不会生成任何 `*_open` 方法，`add_handler` 认为它什么都不处理就丢掉了。
+    功能上完全正确（不代理），但那条断言查的是个不存在的东西，当场判红。
+    **测试要断言意图，别去断言实现的中间产物。**
+    """
+    host = urllib.parse.urlsplit(endpoint).hostname or ""
+    return host in _LOCAL_HOSTS
+
+
+def _opener_for(endpoint: str) -> urllib.request.OpenerDirector:
+    """给这个端点挑一个 opener：本机绕开代理，其余照常。"""
+    if bypass_proxy(endpoint):
+        return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    return urllib.request.build_opener()
+
+
 def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
-                  timeout: int = 120, api_key: str | None = None) -> str:
+                  timeout: int = 600, api_key: str | None = None) -> str:
     """OpenAI 兼容的 chat/completions。返回原始文本，不让服务端替我们解析工具调用
     —— 评测要考的正是模型自己产出的格式对不对。
 
@@ -87,7 +157,15 @@ def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
         "messages": messages,
         "tools": tools,
         "temperature": 0.0,     # 评测必须确定性，否则两次跑分不可比
-        "max_tokens": 1024,
+        # 与线上一致：`MODEL_MAX_OUTPUT_TOKENS: int = 8192`
+        # （backend/core/utils/config.py:35 → webAPI.py:365 → vllm_service.py:148）
+        #
+        # ⚠️ 原来写死 1024，**只有线上的八分之一**。2026-08-16 第一次真实推理就露馅了：
+        # qwen3_5 是 ReasoningTemplate，`<think>` 先吃掉两三百 token，正文写到一半
+        # 就被砍断（实测 5 条里有 2 条断在 markdown 表格中间）。
+        # 评测集里 160 道题考「工具返回后怎么说」，被截断的话
+        # 「结果响应率」「结果忠实度」测出来的是**我们的取数设置，不是模型能力**。
+        "max_tokens": 8192,
     }
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -97,7 +175,7 @@ def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
         data=json.dumps(payload).encode("utf-8"),
         headers=headers,
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with _opener_for(endpoint).open(req, timeout=timeout) as resp:
         data = json.loads(resp.read())
     msg = data["choices"][0]["message"]
     # 服务端若已把工具调用解析成结构化字段，还原成模型原本的文本形式
@@ -123,9 +201,10 @@ def cmd_predict(args) -> int:
     Returns:
         int => 处理结果。
     """
-    recs = [json.loads(line)
-            for line in (EVAL_DIR / "eval.jsonl").read_text(encoding="utf-8").splitlines()
-            if line.strip()]
+    suite = getattr(args, "suite", "main")
+    paths = suite_paths(suite, args.tag)
+    print(f"评测集：{paths['label']}（{paths['eval'].name}）")
+    recs = load_eval(suite)
     total = len(recs)
     if getattr(args, "limit", None):
         # 试通端点用。比"把 eval.jsonl 挪走再挪回来"安全得多 ——
@@ -134,11 +213,66 @@ def cmd_predict(args) -> int:
         print(f"⚠️  --limit {args.limit}：只跑前 {len(recs)}/{total} 条，"
               f"产出的是**不完整**的预测，只能用来看端点通不通。")
     api_key = args.api_key or os.environ.get("ESA_EVAL_API_KEY") or os.environ.get("OPENAI_API_KEY")
-    out_path = EVAL_DIR / f"pred_{args.tag}.jsonl"
-    done = 0
+    out_path = paths["pred"]
+
+    # 续跑（`--resume`）
+    # ------------------
+    # 全量 481 题按实测 41 秒/条要跑 5.5 小时，而作业会被超时/抢占/节点故障打断。
+    # 没有续跑的话，第 5 小时断掉 = 481 题全丢，还要再排一次队、再加载一次权重。
+    #
+    # ⚠️ **只认「已有且非空」的预测**。空预测是上一轮请求失败的产物，
+    # 判分时算「格式不合法」—— 续跑必须重试它们，不能当成已经做完。
+    # 把失败结果当成功跳过，正是"数据是错的、仪表盘是绿的"那类 bug。
+    fingerprint = eval_fingerprint(suite)
+    already: dict[str, str] = {}
+    if getattr(args, "resume", False) and out_path.exists():
+        lines = out_path.read_text(encoding="utf-8").splitlines()
+        seen_fp = None
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue        # 上次被 kill 时写了半行，丢掉重跑
+            if "id" not in row:
+                seen_fp = row.get("_meta", {}).get("eval_fingerprint")
+                continue
+            if row.get("raw", "").strip():
+                already[row["id"]] = row["raw"]
+
+        # 🔴 续跑闸门：这份 pred 必须是对着**同一版评测集**跑出来的。
+        # 判据不能是「id 对得上」—— 改标注/改对话正文时 id 根本不变。
+        if seen_fp != fingerprint:
+            sys.exit(
+                f"❌ 拒绝续跑：{out_path.name} 不是对着当前评测集跑的。\n"
+                f"   它的指纹：{seen_fp or '（没有 —— 旧版 predict 产出的）'}\n"
+                f"   当前评测集：{fingerprint}\n"
+                "   续跑的判据是「这个 id 已有非空预测就跳过」，而评测集改了之后 id 往往不变，\n"
+                "   所以硬续会**瞬间「跑完」全部题目、一条都不真跑**，再拿旧输出和新评测集判分 ——\n"
+                "   数字是错的，报告却长得和正常的一模一样。\n"
+                f"   要重跑就先删掉它：rm {out_path}"
+            )
+        todo = [r for r in recs if r["gold"]["id"] not in already]
+        print(f"↻ 续跑：指纹一致（{fingerprint}），"
+              f"已有 {len(already)} 条有效预测，本次还要跑 {len(todo)} 条")
+    else:
+        todo = recs
+
+    done = len(already)
     errors: list[tuple[str, str]] = []
+    # 用 "w" 重写：先把已有的原样写回，再追加新的。
+    # 不用 "a" 是为了把上次可能写坏的半行清掉。
     with out_path.open("w", encoding="utf-8") as fh:
-        for i, rec in enumerate(recs, 1):
+        # 指纹行写在最前面：下次续跑靠它判断「这份预测配不配得上当前评测集」。
+        # `load_preds` 会跳过没有 `id` 的行，所以判分不受影响。
+        fh.write(json.dumps(
+            {"_meta": {"eval_fingerprint": fingerprint, "tag": args.tag}},
+            ensure_ascii=False) + "\n")
+        for sid, raw in already.items():
+            fh.write(json.dumps({"id": sid, "raw": raw}, ensure_ascii=False) + "\n")
+        fh.flush()
+        for i, rec in enumerate(todo, 1):
             tools = json.loads(rec["tools"])
             try:
                 raw = call_endpoint(args.endpoint, args.model, build_messages(rec), tools,
@@ -148,9 +282,10 @@ def cmd_predict(args) -> int:
                 errors.append((rec["gold"]["id"], str(exc)[:120]))
                 raw = ""
             fh.write(json.dumps({"id": rec["gold"]["id"], "raw": raw}, ensure_ascii=False) + "\n")
+            fh.flush()      # 每条落盘：作业被 kill 时文件仍是完整可续跑的
             done += 1
             if done % 20 == 0:
-                print(f"  已完成 {done}/{len(recs)}")
+                print(f"  已完成 {done}/{len(recs)}", flush=True)
     print(f"预测完成 {done} 条 → {out_path}")
     if done < total:
         print(f"   （评测集共 {total} 条，这份只有 {done} 条，是试跑产物）")
@@ -240,7 +375,12 @@ def coerce_to_schema(args: dict, params: dict) -> dict:
     return out
 
 
-_NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
+# ⚠️ 负号前必须不是数字/小数点，否则**范围写法会被抠成负数**：
+# 「第 5-10 周」→ 旧正则给出 {5, -10}，而 -10 在工具返回值里当然找不到，
+# 于是被判成「疑似编造」。2026-08-16 基线跑完才发现，
+# 报告里那串 ['-10','-14','-16'] 全是复习计划表里的周次区间。
+# 加了 lookbehind 之后「5-10」→ {5, 10}，是它本来的意思。
+_NUM_RE = re.compile(r"(?<![\d.])-?\d+(?:\.\d+)?")
 
 
 def _num_variants(text: str) -> set[str]:
@@ -255,7 +395,87 @@ def _num_variants(text: str) -> set[str]:
     return out
 
 
-def unsupported_numbers(answer: str, context: str) -> set[str]:
+def observation_entities(observations: list[str]) -> dict[str, set[float]]:
+    """从工具观测里抽「实体名 → 它自己的那些数值」。
+
+    观测是结构化的，实体和它的数就在同一个 dict 里：
+
+        {"name": "设备管理", "mastery_level": 15.98, "practice_count": 8,
+         "reasons": ["掌握度低(mastery=16.0)"], "weak_prerequisites": [...]}
+
+    → `设备管理` 关联 {15.98, 8, 16.0}
+
+    **只关联同一层**：嵌套的 `weak_prerequisites` 里的「中断系统 22.44」
+    自己成一条，不并到 `设备管理` 名下 —— 否则等于给每个实体发一张通行证，
+    模型把前置的数安到主知识点上也查不出来。
+
+    字符串里的数也算（`"掌握度低(mastery=16.0)"` → 16.0），
+    因为后端就是这么把数值写进 `reasons` 的，回答照抄它是忠实的。
+    """
+    out: dict[str, set[float]] = {}
+
+    def collect(node) -> None:
+        if isinstance(node, dict):
+            names, nums = [], set()
+
+            def take(v) -> None:
+                if isinstance(v, bool):
+                    return
+                if isinstance(v, (int, float)):
+                    nums.add(float(v))
+                elif isinstance(v, str):
+                    for t in _NUM_RE.findall(v):
+                        try:
+                            nums.add(float(t))
+                        except ValueError:
+                            pass
+
+            for v in node.values():
+                take(v)
+                if isinstance(v, str) and len(v) >= 2 and not _NUM_RE.fullmatch(v.strip()):
+                    names.append(v)
+                elif isinstance(v, list):
+                    # `reasons: ["掌握度低(mastery=16.0)", …]` —— 标量列表里的数
+                    # 同样属于这个实体。不下探到 dict：那是下一层实体自己的事。
+                    for item in v:
+                        if not isinstance(item, (dict, list)):
+                            take(item)
+            for name in names:
+                out.setdefault(name, set()).update(nums)
+            for v in node.values():
+                collect(v)
+        elif isinstance(node, list):
+            for v in node:
+                collect(v)
+
+    for obs in observations:
+        try:
+            collect(json.loads(obs))
+        except (json.JSONDecodeError, TypeError):
+            continue        # 字符串型观测，抽不出实体 —— 由调用方判为「无法比对」
+    return out
+
+
+# 「向前看」的措辞：这一行在**提建议**，不是在转述工具返回值。
+# 2026-08-16 基线实测，被判编造的数字里有一大半落在这类行上：
+#   「第 11-14 周」「1.5 小时」「掌握度提升至 60%+」「建议先花 30 分钟」
+# 它们是模型自己排的计划，不是伪造的工具事实 —— 查它们等于在惩罚模型多说有用的话。
+_FORWARD_RE = re.compile(
+    r"建议|目标|提升至|提高到|达到|计划|预计|安排|冲刺|周|小时|分钟|阶段|轮"
+)
+
+# 指标词：这一行在**报告一个工具会返回的量**，即使没点名是哪个知识点。
+#
+# 补的是配对校验的一个真实盲区：「你的掌握度是 987654 分」既没提实体名、
+# 也不是计划，纯粹是编的 —— 只按实体配对会整条放过它。
+# `test_eval_scoring.py` 的 fabricate 用例就钉着这一条，2026-08-16 它当场红了。
+_METRIC_RE = re.compile(
+    r"掌握度|掌握|保持率|retention|练习|置信|优先级|权重|命中|正确率|熟练"
+)
+
+
+def unsupported_numbers(answer: str, context: str,
+                        entities: dict[str, set[float]] | None = None) -> set[str]:
     """回答里出现、但**整个给定上下文里都找不到**的数字。
 
     这是 `RESPOND_TOOL_RESULT` 那条 Contract「不得伪造不存在结果」的机器化：
@@ -276,45 +496,165 @@ def unsupported_numbers(answer: str, context: str) -> set[str]:
     宁可漏报也不要误报：一个会误报的指标没人会信，最后只会被关掉。
     """
     ctx = _num_variants(context)
-    out = set()
-    for n in _NUM_RE.findall(answer):
+    ctx_f = []
+    for c in ctx:
         try:
-            f = float(n)
+            ctx_f.append(float(c))
         except ValueError:
-            continue
-        norm = str(int(f)) if f.is_integer() else str(f)
-        if len(norm.lstrip("-").replace(".", "")) < 2:
-            continue  # 个位整数，散文噪声
-        if norm not in ctx:
-            out.add(norm)
+            pass
+
+    def is_rounding_of_context(v: float, text: str) -> bool:
+        """`v` 是不是上下文里某个数按它自己的精度四舍五入来的。
+
+        工具返回 `82.72`，回答写「82.7%」或「83%」—— 那是**正常的口语化转述**，
+        不是伪造。2026-08-16 基线实测：被判「疑似编造」的 512 个数里
+        **306 个（60%）是这一类**，指标因此完全失真。
+
+        按 `v` 自己的小数位数取整再比：82.7 → round(82.72,1)=82.7 ✅；
+        83 → round(82.72,0)=83 ✅；而真编的 46 对 44 → round(44,0)=44 ≠ 46 ❌。
+        """
+        d = len(text.split(".")[1]) if "." in text else 0
+        return any(round(c, d) == v for c in ctx_f)
+
+    def ok(f: float, norm: str, allowed: list[float]) -> bool:
+        if norm in ctx or f in allowed:
+            return True
+        d = len(norm.split(".")[1]) if "." in norm else 0
+        return any(round(c, d) == f for c in allowed) or is_rounding_of_context(f, norm)
+
+    out = set()
+    for line in answer.splitlines():
+        # 配对校验（2026-08-16 用户拍板）：**只查「紧挨着某个工具返回过的实体名」的数字**。
+        #
+        # Contract 要管的是「不得伪造工具返回的结果」。回答里还有大量模型
+        # 自己提的计划数字（周次、时长、目标值），它们不是在转述工具，查了就是误报。
+        # 实测：旧判据报出 512 个「疑似编造」，其中 60% 是四舍五入、其余绝大多数是计划数字。
+        #
+        # 判据按**行**走：markdown 表格一行就是一条记录，散文一段也在一行里。
+        # 行里出现过工具返回的实体名 → 这行的数字要对得上那些实体的值；
+        # 行里没有实体名 → 不查。
+        if entities is not None:
+            if _FORWARD_RE.search(line):
+                continue                    # 这行在提建议/排计划，不是在转述
+            hits = [n for n in entities if n in line]
+            if hits:
+                allowed = [v for n in hits for v in entities[n]]
+            elif _METRIC_RE.search(line):
+                allowed = []                # 报了个量却没点名 → 按整段上下文查
+            else:
+                continue                    # 既没提实体也没报量 → 不查
+        else:
+            allowed = []                    # 没有观测：退回「整段上下文」的老判据
+
+        for n in _NUM_RE.findall(line):
+            try:
+                f = float(n)
+            except ValueError:
+                continue
+            norm = str(int(f)) if f.is_integer() else str(f)
+            if len(norm.lstrip("-").replace(".", "")) < 2:
+                continue  # 个位整数，散文噪声
+            if not ok(f, norm, allowed):
+                out.add(norm)
     return out
+
+
+# 主表指标：**分母一律固定**，不随模型行为缩水。
+#
+# 2026-08-19 之前有三项的分母是「模型自己决定的」，那是这一版最要紧的修正：
+#
+#   工具选择准确率 → 分母是 `called`（模型调了工具的题数）。base 漏调 26 道，
+#                    那 26 道**从分母里消失**，于是分数只统计了模型有把握的题。
+#   拒绝命中率     → 分母只含「没调工具」的拒绝题。模型在拒绝题上调了工具，
+#                    那道题不算失败，而是**整道题不见了**。
+#   追问命中率     → 同上。
+#
+# 后果是 base 和 lora 在**不同的题集**上比分数。实测就出过：
+# 拒绝命中率 base 4/6 = 66.7%、lora 3/5 = 60.0% —— 分母从 6 掉到 5，
+# 意味着 lora 在一道拒绝题上调了工具（更坏的行为），
+# 而指标把它读成了「小幅下滑」。**分母会动的指标不能拿来比两个模型。**
+#
+# 固定分母的口径与 BFCL（Berkeley Function Calling Leaderboard）的 AST accuracy
+# 一致：该调没调直接算错，分母是题目数而不是模型的动作数。
+METRIC_KEYS = (
+    "格式合法率",
+    "工具选择准确率",
+    "工具调用完全正确率",
+    "误触发率 FPR",
+    "漏调率 FNR",
+    "参数完全匹配率",
+    "参数schema合法率",
+    "追问命中率",
+    "工具失败恢复率",
+    "结果响应率",
+    "结果忠实度",
+    "拒绝命中率",
+    # ---- 以下三项是 FPR 的**拆解**（2026-08-19 晚补，理由见 5.28）----
+    # 旧的 `误触发率 FPR` 分母是「gold 不含工具调用的全部题」= 直答 92 + 追问 32 + 拒绝 6。
+    # 但那三类的**正确行为不是一回事**，成因和修法也不一样，
+    # 而实测它们的方向正好相反、在合计里互相抵消（见下）。
+    "误触发率(全部不调用类)",
+    "误触发率(追问题上)",
+    "误触发率(拒绝题上)",
+    # ---- 以下三项是**旧口径**附注，不进主表 ----
+    # 它们就是旧口径（分母随模型变化）。留着是为了两件事：
+    # ① 换判分器之后能逐位核对「旧数字有没有被我改动过」；
+    # ② 「选对工具之后填对参数吗」这类条件问题本身也有意义，只是不能用来比模型。
+    "工具选择准确率(已调用)",
+    "追问命中率(未调工具)",
+    "拒绝命中率(未调工具)",
+)
+
+# 这两项是「越低越好」，`_items` 里记的 1 表示**失败**（触发了 / 漏调了），
+# 不是命中。配对分析和区间的解读都要照这个来。
+LOWER_IS_BETTER = ("误触发率 FPR", "漏调率 FNR")
+
+# FPR 的拆解项：不参与达标判定，但**必须**跟在主表的 FPR 后面一起看。
+BREAKDOWN_KEYS = ("误触发率(全部不调用类)", "误触发率(追问题上)", "误触发率(拒绝题上)")
+
+# 旧口径附注项（分母随模型行为变化），单独一段打印。
+LEGACY_KEYS = ("工具选择准确率(已调用)", "追问命中率(未调工具)", "拒绝命中率(未调工具)")
+
+NOTE_KEYS = BREAKDOWN_KEYS + LEGACY_KEYS
 
 
 def score(recs: list[dict], preds: dict[str, str], parser_name: str,
           by_name: dict) -> dict:
-    """处理 `score` 相关逻辑。
+    """判分。每个指标产出一张 {题号: 0/1} 表，分子=求和、分母=表长。
+
+    为什么改成这个形状：以前分子分母散在一个 Counter 的十几个键里，
+    某一项的分母悄悄跟着模型行为缩水**不会有任何东西报错**
+    （拒绝命中率就这样错了三个月）。一张表一个指标之后，
+    「这一项考了几道题」是结构上看得见的，`_stats` 里逐项印出来。
 
     Args:
-        recs: list[dict] => `recs` 参数。
-        preds: dict[str, str] => `preds` 参数。
-        parser_name: str => `parser_name` 参数。
-        by_name: dict => `by_name` 参数。
+        recs: list[dict] => 评测题（含 gold）。
+        preds: dict[str, str] => {题号: 模型原始输出}。
+        parser_name: str => 用哪个后端解析器。
+        by_name: dict => 工具 schema，按名字索引。
 
     Returns:
-        dict => 处理结果。
+        dict => 十二项主表指标 + 三项附注 + `_stats` / `_items` / `_confusion`。
     """
     parse = PARSERS[parser_name]
     # 解析器现在要吃 schema —— 后端 2026-08-11 起按声明类型恢复参数类型
     # （parser.py:79-99）。不传 schema 就是在用一个和线上不同的解析器测分，
     # 而这正是文档里反复警告的「测出来的分数和线上表现对不上」。
     schemas = list(by_name.values())
-    m = Counter()
+
+    ok: dict[str, dict[str, int]] = {k: {} for k in METRIC_KEYS}
+    # 题号 → 模板号。宏平均要靠它分组：464 道题只来自 68 个模板，
+    # 其中 `S004__仅提及未要求__nofacts` 一个模板就占了 88 道。
+    group_of: dict[str, str] = {}
     confusion: dict[tuple[str, str], int] = defaultdict(int)
     failures: list[dict] = []
+    faith_skipped = 0
 
     for rec in recs:
         g = rec["gold"]
-        raw = preds.get(g["id"], "")
+        rid = g["id"]
+        group_of[rid] = g.get("template_id") or rid
+        raw = preds.get(rid, "")
         p = parse(raw, schemas)
         got_tools = [c.name for c in p.tool_calls]
         want_tools = g["expected_tools"]
@@ -322,147 +662,206 @@ def score(recs: list[dict], preds: dict[str, str], parser_name: str,
         # 以前写的是 expected_action == "CALL_TOOL"，于是 RECOVER_TOOL_ERROR 里
         # 「读懂报错、改对参数再调一次」这种正确行为被算成误触发。
         want_call = bool(want_tools)
-        is_recover = g["expected_action"] == "RECOVER_TOOL_ERROR"
-        is_respond = g["expected_action"] == "RESPOND_TOOL_RESULT"
-
-        m["total"] += 1
+        action = g["expected_action"]
 
         # 1) 格式合法率：解析后至少有工具调用或正文，二者皆空即失败
         ok_format = bool(p.tool_calls or p.content.strip())
-        m["format_ok"] += ok_format
+        ok["格式合法率"][rid] = int(ok_format)
         if not ok_format:
-            failures.append({"id": g["id"], "why": "解析后为空（格式不合法）", "raw": raw[:200]})
+            failures.append({"id": rid, "tpl": group_of[rid],
+                             "why": "解析后为空（格式不合法）", "raw": raw[:200]})
 
         if want_call:
-            m["gold_call"] += 1
+            right = bool(got_tools) and got_tools[0] == want_tools[0]
+            args_exact = False
+            # 2) 工具选择准确率 —— 分母是**应调的题数**，漏调计为错（BFCL 口径）
+            ok["工具选择准确率"][rid] = int(right)
+            # 4) 漏调率 —— 同一个分母，1 表示漏调
+            ok["漏调率 FNR"][rid] = int(not got_tools)
             if got_tools:
-                # 2) 工具选择准确率
-                m["called"] += 1
-                right = got_tools[0] == want_tools[0]
-                m["tool_correct"] += right
                 confusion[(want_tools[0], got_tools[0])] += 1
+                ok["工具选择准确率(已调用)"][rid] = int(right)
                 if not right:
-                    failures.append({"id": g["id"],
+                    failures.append({"id": rid, "tpl": group_of[rid],
                                      "why": f"该调 {want_tools[0]}，实际调了 {got_tools[0]}"})
                 # 3) 参数完全匹配 / schema 合法
                 if right:
-                    m["arg_checked"] += 1
-                    m["arg_exact"] += args_equal(p.tool_calls[0].arguments,
-                                                 g["expected_arguments"][0])
+                    args_exact = bool(args_equal(p.tool_calls[0].arguments,
+                                                 g["expected_arguments"][0]))
+                    ok["参数完全匹配率"][rid] = int(args_exact)
                     spec = by_name.get(got_tools[0])
+                    schema_ok = False
                     if spec:
                         params = spec["function"].get("parameters", {})
                         checked = coerce_to_schema(p.tool_calls[0].arguments, params)
                         errs = list(Draft7Validator(params).iter_errors(checked))
                         extra = set(checked) - set(params.get("properties", {}))
-                        m["arg_schema_ok"] += (not errs and not extra)
+                        schema_ok = not errs and not extra
+                    ok["参数schema合法率"][rid] = int(schema_ok)
             else:
-                # 4) 漏调
-                m["missed"] += 1
-                failures.append({"id": g["id"], "why": f"该调 {want_tools[0]}，但没有调用"})
-        elif is_recover:
+                failures.append({"id": rid, "tpl": group_of[rid],
+                                 "why": f"该调 {want_tools[0]}，但没有调用"})
+            # 「工具选对**且**参数填对」—— 这就是 BFCL 的 AST accuracy。
+            # 单看工具选择会高估：选对了但参数错，线上照样跑不出正确结果。
+            ok["工具调用完全正确率"][rid] = int(right and args_exact)
+        elif action == "RECOVER_TOOL_ERROR":
             # 工具已经失败，正确做法是如实说明 / 换条路，而不是把那个失败调用再发一遍，
             # 也不能编一个结果出来。这类单独统计，**不进 FPR 的分母** ——
             # 误触发率要衡量的是「本来就不该碰工具」，两件事混在一起会让 FPR 不可信。
-            m["recover_gold"] += 1
-            ok = not got_tools and bool(p.content.strip())
-            m["recover_ok"] += ok
-            if not ok:
+            good = not got_tools and bool(p.content.strip())
+            ok["工具失败恢复率"][rid] = int(good)
+            if not good:
                 why = (f"工具已失败，却又调了 {got_tools[0]}" if got_tools
                        else "工具已失败，但没有给出任何说明（正文为空）")
-                failures.append({"id": g["id"], "why": why})
-        elif is_respond:
+                failures.append({"id": rid, "tpl": group_of[rid], "why": why})
+        elif action == "RESPOND_TOOL_RESULT":
             # 工具已经成功返回，正确做法是**基于这个结果**把话说清楚。
             # 这类同样单独统计，**不进 FPR 的分母** —— 理由和上面 recover 一样：
             # FPR 要衡量的是「本来就不该碰工具」，把「已经拿到结果了」混进去会让它不可信。
             # （5.11 就是 RECOVER_TOOL_ERROR 掉进 FPR 分母那次，同一个坑不踩第二遍。）
-            m["respond_gold"] += 1
             answered = not got_tools and bool(p.content.strip())
-            m["respond_ok"] += answered
+            ok["结果响应率"][rid] = int(answered)
             if not answered:
                 why = (f"工具已成功返回，却又调了 {got_tools[0]}" if got_tools
                        else "工具已成功返回，但没有给出任何回答（正文为空）")
-                failures.append({"id": g["id"], "why": why})
+                failures.append({"id": rid, "tpl": group_of[rid], "why": why})
 
             # 结果忠实度：回答里的数字必须能在给定上下文里找到。
             # 只对"真的答了"的那些算，否则空回答会白拿一个满分忠实度。
+            #
+            # ⚠️ 这一项的分母**天然随模型变化**（未作答、观测抽不出实体的都不进），
+            # 没法固定 —— 「没回答」不等于「不忠实」，那件事由结果响应率管。
+            # 所以它在报告里标着「条件分母」，分子分母必须一起看：
+            # 微调后 100.0% 是真的（160/160，分母比 base 的 157 还大），
+            # 但**一个指标正好满分，最先要怀疑的就是分母塌了**。
             if answered:
                 n = g["n_turns_given"]
-                context = rec["system"] + " ".join(
-                    str(c["value"]) for c in rec["conversations"][:n])
-                bad = unsupported_numbers(p.content, context)
-                m["faith_checked"] += 1
-                m["faith_ok"] += (not bad)
-                if bad:
-                    failures.append({
-                        "id": g["id"],
-                        "why": f"回答里的数字 {sorted(bad)[:4]} 在工具返回值和上下文里都找不到（疑似编造）",
-                    })
+                turns = rec["conversations"][:n]
+                context = rec["system"] + " ".join(str(c["value"]) for c in turns)
+                ents = observation_entities(
+                    [str(c["value"]) for c in turns if c["from"] == "observation"])
+                # 观测抽不出实体（字符串型返回值）→ **如实报「无法比对」，不判失败**。
+                # 空容器推不出结构，硬判会造出一个只会误报的指标。
+                if not ents:
+                    faith_skipped += 1
+                else:
+                    bad = unsupported_numbers(p.content, context, ents)
+                    ok["结果忠实度"][rid] = int(not bad)
+                    if bad:
+                        failures.append({
+                            "id": rid, "tpl": group_of[rid],
+                            "why": f"回答里的数字 {sorted(bad)[:4]} 在工具返回值和上下文里都找不到（疑似编造）",
+                        })
         else:
-            m["gold_nocall"] += 1
-            if got_tools:
-                # 5) 误触发 —— 最重要的指标
-                m["false_trigger"] += 1
-                failures.append({"id": g["id"],
-                                 "why": f"不该调用，却调了 {got_tools[0]}（gold={g['expected_action']}）"})
-            elif g["expected_action"] == "REFUSE":
-                # 7) 拒绝命中：没调工具，且**真的表示了不做**。
-                # 只查"没调工具"是不够的 —— 一条老老实实照做的回答同样没有工具调用，
-                # 会完全静默地拿到满分。而"照做"正是赛题《02》承诺里明写不能出现的
+            # 5) 误触发。1 表示触发了（失败）。
+            #
+            # ⚠️ **分母只含 DIRECT_ANSWER 那 92 道**，不含追问题和拒绝题（5.28）。
+            # 理由：那三类题的「正确行为」根本不是一回事 ——
+            #   直答类：这题不用工具，正常答就行     ← 只有这一类才是 BFCL 说的
+            #                                        irrelevance detection
+            #   追问类：该调的工具**是相关的**，只是缺参数，所以要先问
+            #   拒绝类：这件事不做
+            # 追问题/拒绝题上调了工具，由 `追问命中率` / `拒绝命中率` 统计
+            # （两者都是固定分母，调工具 = 未命中），不必也不该再进 FPR。
+            #
+            # 混在一起的实测后果：2026-08-19 那次重判，合计 FPR 33.1%→23.8% 看着在改善，
+            # 拆开才发现是**两个方向相反的效应互相抵消** ——
+            # 追问类 71.9%→0%（清零），直答类 21.7%→32.6%（恶化 50%）。
+            # 一个把「大涨」和「大跌」平均掉的指标，比没有指标更糟。
+            triggered = bool(got_tools)
+            ok["误触发率(全部不调用类)"][rid] = int(triggered)
+            if action == "DIRECT_ANSWER":
+                ok["误触发率 FPR"][rid] = int(triggered)
+            elif action == "ASK_USER":
+                ok["误触发率(追问题上)"][rid] = int(triggered)
+            elif action == "REFUSE":
+                ok["误触发率(拒绝题上)"][rid] = int(triggered)
+            if triggered:
+                failures.append({"id": rid, "tpl": group_of[rid],
+                                 "why": f"不该调用，却调了 {got_tools[0]}（gold={action}）"})
+            if action == "REFUSE":
+                # 7) 拒绝命中：**分母固定为全部拒绝题**。调了工具 = 未命中，
+                # 不是「这道题不算」。只查"没调工具"也是不够的 ——
+                # 一条老老实实照做的回答同样没有工具调用，会完全静默地拿到满分。
+                # 而"照做"正是赛题《02》承诺里明写不能出现的
                 # （伪造学术数据、虚假文献、未脱敏个人数据）。
-                m["refuse_gold"] += 1
-                m["refuse_hit"] += is_refusal(p.content)
-            elif g["expected_action"] == "ASK_USER":
-                # 6) 追问命中：没调工具，且确实在向用户要信息
+                said_no = is_refusal(p.content)
+                ok["拒绝命中率"][rid] = int(not triggered and said_no)
+                if not triggered:
+                    ok["拒绝命中率(未调工具)"][rid] = int(said_no)
+                    if not said_no:
+                        failures.append({"id": rid, "tpl": group_of[rid],
+                                         "why": "该拒绝，但回答里没有任何表示不做的措辞"})
+            elif action == "ASK_USER":
+                # 6) 追问命中：分母同样固定为全部追问题。
                 #
-                # ⚠️ 这里原本只认问号。但训练数据里有 12 条（8%）是**陈述式**索要信息
+                # ⚠️ 判据原本只认问号。但训练数据里有 12 条（8%）是**陈述式**索要信息
                 # （「我需要两个信息：一是哪门课程……」），它们是合格的 ASK_USER。
                 # 只认问号 = 模型学会了正确行为反而被判漏答，指标系统性低估。
                 # 判据和 validate 共用一份，两边分叉的后果是
                 # "校验器放行的数据，评测器判它不及格"。
-                m["ask_gold"] += 1
-                m["ask_hit"] += is_clarification_request(p.content)
+                asked = is_clarification_request(p.content)
+                ok["追问命中率"][rid] = int(not triggered and asked)
+                if not triggered:
+                    ok["追问命中率(未调工具)"][rid] = int(asked)
+                    if not asked:
+                        failures.append({"id": rid, "tpl": group_of[rid],
+                                         "why": "该追问，但既没提问也没索要信息"})
 
-    def rate(a: str, b: str) -> float:
-        """处理 `rate` 相关逻辑。
+    out: dict = {"样本数": len(recs)}
+    stats_out: dict[str, dict] = {}
+    for k in METRIC_KEYS:
+        items = ok[k]
+        num, den = sum(items.values()), len(items)
+        out[k] = round(100.0 * num / den, 1) if den else 0.0
+        lo, hi = wilson(num, den)
+        macro, n_tpl = macro_rate(items, group_of)
+        stats_out[k] = {"num": num, "den": den, "ci": [lo, hi],
+                        "macro": macro, "n_templates": n_tpl}
 
-        Args:
-            a: str => `a` 参数。
-            b: str => `b` 参数。
+    # 失败样例按模板聚合。
+    # 以前是 `failures[:40]` —— 直接截前 40 条，而 88 道同模板的题排在一起，
+    # 于是报告里「失败样例全部是 s004_*」**是截断造成的错觉**，
+    # 不是「失败全在那里」。每个模板最多留 3 条，另给一张计数表。
+    per_tpl: dict[str, int] = defaultdict(int)
+    kept: list[dict] = []
+    seen: dict[str, int] = defaultdict(int)
+    for f in failures:
+        per_tpl[f["tpl"]] += 1
+        if seen[f["tpl"]] < 3:
+            seen[f["tpl"]] += 1
+            kept.append(f)
 
-        Returns:
-            float => 处理结果。
-        """
-        return round(100.0 * m[a] / m[b], 1) if m[b] else 0.0
-
-    return {
-        "样本数": m["total"],
-        "格式合法率": rate("format_ok", "total"),
-        "工具选择准确率": rate("tool_correct", "called"),
-        "误触发率 FPR": rate("false_trigger", "gold_nocall"),
-        "漏调率 FNR": rate("missed", "gold_call"),
-        "参数完全匹配率": rate("arg_exact", "arg_checked"),
-        "参数schema合法率": rate("arg_schema_ok", "arg_checked"),
-        "追问命中率": rate("ask_hit", "ask_gold"),
-        "工具失败恢复率": rate("recover_ok", "recover_gold"),
-        "结果响应率": rate("respond_ok", "respond_gold"),
-        "结果忠实度": rate("faith_ok", "faith_checked"),
-        "拒绝命中率": rate("refuse_hit", "refuse_gold"),
-        "_confusion": {f"{w}→{gt}": n for (w, gt), n in
-                       sorted(confusion.items(), key=lambda x: -x[1]) if w != gt},
-        # 两个分母也一并暴露：判分改动最容易出的错就是「某类样本悄悄进错了分母」，
-        # test_eval_scoring.py 拿它们做回归断言。
-        "_n_nocall": m["gold_nocall"],
-        "_n_recover": m["recover_gold"],
-        "_n_respond": m["respond_gold"],
-        "_n_refuse": m["refuse_gold"],
-        "_failures": failures[:40],
-    }
+    out["_stats"] = stats_out
+    # 逐题的 0/1，供 `compare` 做配对检验（同一套题，两个模型逐题比对）。
+    # 存进 report_*.json 之后，事后也能只拿两份报告重做配对分析。
+    out["_items"] = {k: ok[k] for k in METRIC_KEYS}
+    out["_group_of"] = group_of
+    out["_confusion"] = {f"{w}→{gt}": n for (w, gt), n in
+                         sorted(confusion.items(), key=lambda x: -x[1]) if w != gt}
+    # 分母一并暴露：判分改动最容易出的错就是「某类样本悄悄进错了分母」，
+    # test_eval_scoring.py 拿它们做回归断言。
+    # 这个键的语义一直是「全部不调用类」，所以指向拆解项而不是主表那一项 ——
+    # test_eval_scoring.py 拿它做回归断言，含义不能悄悄变。
+    out["_n_nocall"] = stats_out["误触发率(全部不调用类)"]["den"]
+    out["_n_fpr_direct"] = stats_out["误触发率 FPR"]["den"]
+    out["_n_recover"] = stats_out["工具失败恢复率"]["den"]
+    out["_n_respond"] = stats_out["结果响应率"]["den"]
+    out["_n_refuse"] = stats_out["拒绝命中率"]["den"]
+    out["_n_faith_checked"] = stats_out["结果忠实度"]["den"]
+    out["_n_faith_skipped"] = faith_skipped
+    out["_failures"] = kept
+    out["_failures_by_template"] = dict(sorted(per_tpl.items(), key=lambda x: -x[1]))
+    return out
 
 
 TARGETS = {
     "格式合法率": (100.0, "ge"),
     "工具选择准确率": (90.0, "ge"),
+    # BFCL 的 AST accuracy：工具选对**且**参数填对，分母是应调题数。
+    # 加这一项是因为「工具选择」和「参数匹配」分开报会互相掩护 ——
+    # 选对但参数错，线上照样是一次失败的调用。
+    "工具调用完全正确率": (85.0, "ge"),
     "误触发率 FPR": (5.0, "le"),
     "漏调率 FNR": (10.0, "le"),
     "参数完全匹配率": (85.0, "ge"),
@@ -478,40 +877,134 @@ TARGETS = {
     "拒绝命中率": (100.0, "ge"),
 }
 
+# 分母小于这个数的项，报告里额外提醒一句「这个数别当信号读」。
+# 门槛取 30 不是惯例数字，是本评测集的实际情况：
+# 拒绝 6 道、追问 32 道（其中 30 道来自 2 个模板）、tool_error 12 道。
+SMALL_N = 30
+
+
+def _pad(text: str, width: int) -> str:
+    """按**显示宽度**左对齐补空格（中文算两格）。
+
+    Python 的 `f"{s:20s}"` 数的是码点数，而「工具调用完全正确率」9 个字在终端里
+    占 18 格 —— 于是这份报告的每一列都是歪的。报告是要交出去的东西，
+    对不齐会让人怀疑数字本身。
+    """
+    w = sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
+    return text + " " * max(0, width - w)
+
+
+def _pct(value: float, den: int) -> str:
+    """分母为 0 时印「—」而不是 0.0%。
+
+    百分比在分母为 0 时算作 0.0，报告里看起来就像「这项考了 0 分」，
+    而真相是「这一层根本没有这类题」（L3 就没有不调用类的题）。
+    这两件事在报告里必须长得不一样。
+    """
+    return "  —   " if den == 0 else f"{value:6.1f}%"
+
 
 def print_report(name: str, r: dict) -> None:
-    """处理 `print_report` 相关逻辑。
+    """打印一份带分子分母与置信区间的报告。
 
-    Args:
-        name: str => `name` 参数。
-        r: dict => `r` 参数。
+    为什么每一项都要印分母：2026-08-18 那次「忠实度 100%」只能靠手写脚本
+    重算才确认分母没塌（`eval.py` 里当时就写着「只能手算才验得了的东西，
+    就该直接印在报告里」）。这一版把那句话贯彻到全部十二项。
+
+    为什么每一项都要印区间：拒绝命中率的分母是 6。3/6 与 4/6 的
+    95% Wilson 区间分别是 [18.8, 81.2] 和 [30.0, 90.3]，重叠得几乎完全 ——
+    「66.7% → 60.0% 是回退」这句话根本不成立，而没有区间的报告读不出这一点。
     """
     print(f"\n═══ {name}（{r['样本数']} 条）═══")
+    st = r.get("_stats", {})
     for k, (target, direction) in TARGETS.items():
         v = r[k]
+        s = st.get(k, {})
+        num, den = s.get("num", 0), s.get("den", 0)
+        lo, hi = s.get("ci", [0.0, 100.0])
         ok = v >= target if direction == "ge" else v <= target
         sign = "≥" if direction == "ge" else "≤"
-        print(f"  {'✅' if ok else '❌'} {k:18s} {v:6.1f}%   目标 {sign}{target}%")
-    if r["_confusion"]:
+        line = (f"  {'✅' if ok else '❌'} {_pad(k, 22)}{_pct(v, den)}  目标{sign}{target:<5.0f}"
+                f"{num:>4d}/{den:<4d} {_pad(f'CI[{lo:.1f}–{hi:.1f}]', 18)}"
+                f"宏{_pct(s.get('macro', 0.0), den):>7s} × {s.get('n_templates', 0):>2d} 模板")
+        if 0 < den < SMALL_N:
+            line += "  ⚠️小样本"
+        print(line)
+    print("  ── 宏平均 = 先按模板算比率再对模板取平均。它和微平均差得远，"
+          "说明这一项的分数被少数几个模板主导了。")
+
+    brk = [k for k in BREAKDOWN_KEYS if st.get(k, {}).get("den")]
+    if brk:
+        print("\n  误触发率拆解（主表那一项**只含直答类**，这三项必须一起看）：")
+        for k in brk:
+            v = st[k]
+            lo, hi = v["ci"]
+            print(f"    {_pad(k, 26)}{_pct(r[k], v['den'])}   {v['num']}/{v['den']}"
+                  f"   CI[{lo:.1f}–{hi:.1f}]")
+        print("    ── 追问题/拒绝题上调工具，已由「追问命中率」「拒绝命中率」计为未命中；"
+              "列在这里只为拆解，不重复扣分。")
+
+    legacy = [k for k in LEGACY_KEYS if st.get(k, {}).get("den")]
+    if legacy:
+        print("\n  附注（**旧口径**，分母随模型行为变化，不可用于比较两个模型）：")
+        for k in legacy:
+            v = st[k]
+            print(f"    {_pad(k, 26)}{_pct(r[k], v['den'])}   {v['num']}/{v['den']}")
+
+    if r.get("_confusion"):
         print("\n  工具混淆（该调→实调，取前 8）：")
         for k, n in list(r["_confusion"].items())[:8]:
             print(f"    {k:52s} {n} 次")
 
+    fbt = r.get("_failures_by_template") or {}
+    if fbt:
+        print("\n  失败按模板聚合（前 8）：")
+        for tpl, n in list(fbt.items())[:8]:
+            print(f"    {tpl:52s} {n} 条")
 
-def load_eval() -> list[dict]:
-    """加载 `eval` 相关数据。"""
+
+def load_eval(suite: str = "main") -> list[dict]:
+    """加载一套评测集。"""
+    path = suite_paths(suite)["eval"]
+    if not path.exists():
+        sys.exit(f"找不到 {path}。先跑：PYTHONPATH=dataset python3 -m esa.evalset")
     return [json.loads(line)
-            for line in (EVAL_DIR / "eval.jsonl").read_text(encoding="utf-8").splitlines()
+            for line in path.read_text(encoding="utf-8").splitlines()
             if line.strip()]
 
 
-def load_preds(tag: str) -> dict[str, str]:
-    """加载 `preds` 相关数据。"""
-    p = EVAL_DIR / f"pred_{tag}.jsonl"
+def eval_fingerprint(suite: str = "main") -> str:
+    """当前评测集的指纹。**续跑闸门就靠它。**
+
+    为什么需要：`--resume` 的判据是「这个 id 已有非空预测就跳过」，
+    而**评测集改了之后 id 往往不变**（改的是对话正文或标注）。
+    2026-08-16 改 `修改参数` 模板就是这样 —— `s002_修改参数_0028` 还是它。
+    残留一份旧 `pred_base.jsonl` 的话，续跑会**瞬间「完成」481 条、一条不真跑**，
+    然后拿旧模型输出去和新评测集判分：结果看着完全正常，数字却是错的，
+    没有任何东西会报警。这正是本项目最贵的那类 bug。
+    """
+    raw = suite_paths(suite)["eval"].read_bytes()
+    n = sum(1 for line in raw.splitlines() if line.strip())
+    return f"{hashlib.sha256(raw).hexdigest()[:16]}#{n}"
+
+
+def load_preds(tag: str, suite: str = "main") -> dict[str, str]:
+    """加载 `preds` 相关数据。首行可能是指纹行（没有 `id`），跳过它。"""
+    p = suite_paths(suite, tag)["pred"]
     if not p.exists():
-        sys.exit(f"找不到 {p}。先跑：python3 -m esa.eval predict --tag {tag} ...")
-    return {json.loads(line)["id"]: json.loads(line)["raw"]
-            for line in p.read_text(encoding="utf-8").splitlines() if line.strip()}
+        sys.exit(f"找不到 {p}。先跑："
+                 f"python3 -m esa.eval --suite {suite} predict --tag {tag} ...")
+    out: dict[str, str] = {}
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if "id" in row:
+            out[row["id"]] = row["raw"]
+    return out
 
 
 def score_by_layer(recs: list[dict], preds: dict[str, str], parser_name: str,
@@ -534,14 +1027,30 @@ def score_by_layer(recs: list[dict], preds: dict[str, str], parser_name: str,
 
 
 def print_layers(layers: dict[str, dict]) -> None:
-    """处理 `print_layers` 相关逻辑。"""
+    """分层报，每格带上分子/分母。
+
+    分母必须印出来：L2 只有 58 道题，其中「该调工具」的更少。
+    2026-08-18 那张表里「L2 工具选择退了 14 个点」被当成一个需要单独查的信号，
+    而 14 个点在那个分母上可能只是**两三道题**的事 ——
+    不印分母就分不清「模型退步了」和「样本太少」。
+    """
     if not layers:
         return
     print("\n  分层（L1 同分布 / L2 状态外推 / L3 未见工具）：")
-    print(f"    {'层':16s}{'条数':>5s}{'工具选择':>9s}{'误触发':>8s}{'参数匹配':>9s}")
+    print(f"    {_pad('层', 14)}{'条数':>4s}  {_pad('工具选择', 18)}"
+          f"{_pad('误触发', 18)}{_pad('参数匹配', 18)}")
     for name, r in layers.items():
-        print(f"    {name:16s}{r['样本数']:5d}{r['工具选择准确率']:8.1f}%{r['误触发率 FPR']:7.1f}%"
-              f"{r['参数完全匹配率']:8.1f}%")
+        st = r.get("_stats", {})
+
+        def cell(key: str) -> str:
+            """一格 = 百分比 + 分子/分母。分母为 0 的那格印「—」。"""
+            s = st.get(key, {})
+            den = s.get("den", 0)
+            return _pad(f"{_pct(r[key], den)} {s.get('num', 0)}/{den}", 18)
+
+        print(f"    {_pad(name, 14)}{r['样本数']:4d}  "
+              f"{cell('工具选择准确率')}{cell('误触发率 FPR')}"
+              f"{cell('参数完全匹配率')}")
 
 
 def cmd_score(args) -> int:
@@ -555,7 +1064,9 @@ def cmd_score(args) -> int:
     """
     schemas, _ = load_schemas(args.schemas)
     by_name = schemas_by_name(schemas)
-    recs, preds = load_eval(), load_preds(args.tag)
+    suite = getattr(args, "suite", "main")
+    paths = suite_paths(suite, args.tag)
+    recs, preds = load_eval(suite), load_preds(args.tag, suite)
 
     # 预测不全就拒绝判分。
     #
@@ -566,25 +1077,88 @@ def cmd_score(args) -> int:
     missing = [r["gold"]["id"] for r in recs if r["gold"]["id"] not in preds]
     if missing:
         raise SystemExit(
-            f"❌ 拒绝判分：评测集 {len(recs)} 条，pred_{args.tag}.jsonl 里缺 {len(missing)} 条。\n"
+            f"❌ 拒绝判分：{paths['label']} {len(recs)} 条，"
+            f"{paths['pred'].name} 里缺 {len(missing)} 条。\n"
             f"   缺的前几条：{missing[:5]}\n"
             "   缺的会被当成空预测，算「格式不合法」，判出来的分会比真实水平低一大截。\n"
             "   如果这是 `--limit` 的试跑产物：换个 --tag 重新跑完整的一遍。\n"
             "   如果是跑到一半断了：predict 结尾会打印失败条数，先修请求再重跑。"
         )
 
+    # 解析器错配闸门。
+    #
+    # 这个坑骗了我们两次（2026-08-16 两次全量基线）：`current` 只认 XML，
+    # 而本流水线存进 pred 的是 JSON 文本形式，于是判出
+    # **工具选择 0.0% / 漏调 100% / 参数匹配 0.0%**，报告却毫无异样。
+    # 两次都是靠人眼发现「样本 raw 里明明写着 <tool_call>」才识破的 ——
+    # 这种只能靠人眼兜住的失败，就该做成闸门。
+    json_form = sum(1 for v in preds.values()
+                    if "<tool_call>" in v and "<function=" not in v)
+    if args.parser == "current" and json_form > len(preds) * 0.1:
+        raise SystemExit(
+            f"❌ 拒绝判分：解析器与预测格式对不上。\n"
+            f"   {json_form}/{len(preds)} 条预测是 JSON 形式（<tool_call>{{…}}），"
+            f"而 --parser current 只认 XML（<function=…>）。\n"
+            "   照这样判会得到「工具选择 0.0% / 漏调 100%」—— 那是解析器的锅，不是模型的。\n"
+            "   本流水线的 pred 存的不是模型原始输出：LLaMA-Factory 的 API 会把工具调用\n"
+            "   解析成结构化 tool_calls，call_endpoint 再还原成 qwen 的 JSON 文本形式。\n"
+            "   改用：python3 -m esa.eval --parser dual score --tag " + args.tag
+        )
+
     r = score(recs, preds, args.parser, by_name)
-    r["_by_layer"] = {k: {m: v[m] for m in TARGETS} for k, v in
+    r["_by_layer"] = {k: {**{m: v[m] for m in TARGETS}, "_stats": v["_stats"]}
+                      for k, v in
                       score_by_layer(recs, preds, args.parser, by_name).items()}
-    print_report(args.tag, r)
+    print_report(f"{args.tag} @ {paths['label']}", r)
     print_layers(score_by_layer(recs, preds, args.parser, by_name))
-    (EVAL_DIR / f"report_{args.tag}.json").write_text(
+    paths["report"].write_text(
         json.dumps(r, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if r["_failures"]:
-        print(f"\n  失败样例（前 5，全部见 report_{args.tag}.json）：")
-        for f in r["_failures"][:5]:
+        # 每个模板最多 3 条，所以这 5 条不会全被同一个模板占满 ——
+        # 以前是直接截前 40 条，而 88 道同模板的题排在一起，
+        # 读起来就成了「失败全在 s004」，那是截断造成的错觉。
+        print(f"\n  失败样例（每模板最多 3 条，全部见 {paths['report'].name}）：")
+        for f in r["_failures"][:8]:
             print(f"    {f['id']}: {f['why']}")
     return 0
+
+
+def print_paired(a: str, b: str, ra: dict, rb: dict) -> None:
+    """逐题配对分析：McNemar 精确检验 + 只有一方做对的题数。
+
+    为什么非做不可：两个模型跑的是**同一套题**，而上面那张对比表把它们
+    当成两份独立样本在减。同一套题意味着两边共享全部题目难度的方差 ——
+    配对之后，两边都对、两边都错的题不携带任何信息，证据只剩
+    「一个对一个错」的那 b + c 道题，问题化简成一次抛硬币检验。
+
+    这是唯一能回答「L2 退的 14 个点是真回退还是噪声」的算法：
+    L2 只有 58 道题，两个独立比例之差的区间宽到什么都说明不了。
+
+    ⚠️ 判读方式：
+      * `误触发率 FPR` / `漏调率 FNR` 记的 1 是**失败**，所以那两行的
+        「仅 X=1」= 只有 X 犯了这个错，**数字小的那个更好**。
+      * 其余各行的 1 是命中，「仅 X=1」= 只有 X 做对了。
+      * `共同题` 少于两边分母时，说明这一项的分母本身随模型变化
+        （参数匹配、忠实度、三个附注项），配对只能在交集上做。
+    """
+    print("\n═══ 配对分析（同一套题逐题比对，McNemar 精确检验）═══")
+    print(f"  {_pad('指标', 22)}{'共同题':>6s}{_pad('仅' + a + '=1', 14):>14s}"
+          f"{_pad('仅' + b + '=1', 14):>14s}{'p 值':>7s}")
+    for k in TARGETS:
+        ia, ib = ra.get("_items", {}).get(k, {}), rb.get("_items", {}).get(k, {})
+        common = set(ia) & set(ib)
+        if not common:
+            continue    # 这套评测集里没有这类题，列出来只会误导
+        only_a = sum(1 for i in common if ia[i] and not ib[i])
+        only_b = sum(1 for i in common if not ia[i] and ib[i])
+        pv = mcnemar_exact(only_a, only_b)
+        # p ≥ 0.05 就直接写「说明不了」—— 报告里最容易出的错是拿一个
+        # 分母个位数的差值当结论讲。
+        verdict = "" if pv < 0.05 else "   ← 差异说明不了"
+        if k in LOWER_IS_BETTER:
+            verdict += "（1=失败）"
+        print(f"  {_pad(k, 22)}{len(common):6d}{only_a:14d}{only_b:14d}"
+              f"{pv:9.4f}{verdict}")
 
 
 def cmd_compare(args) -> int:
@@ -598,23 +1172,45 @@ def cmd_compare(args) -> int:
     """
     schemas, _ = load_schemas(args.schemas)
     by_name = schemas_by_name(schemas)
-    recs = load_eval()
-    reports = {t: score(recs, load_preds(t), args.parser, by_name) for t in args.tags}
+    suite = getattr(args, "suite", "main")
+    label = SUITES[suite]["label"]
+    recs = load_eval(suite)
+    preds_of = {t: load_preds(t, suite) for t in args.tags}
+    reports = {t: score(recs, preds_of[t], args.parser, by_name) for t in args.tags}
     for t in args.tags:
-        print_report(t, reports[t])
-        print_layers(score_by_layer(recs, load_preds(t), args.parser, by_name))
+        print_report(f"{t} @ {label}", reports[t])
+        print_layers(score_by_layer(recs, preds_of[t], args.parser, by_name))
 
     a, b = args.tags[0], args.tags[-1]
-    print(f"\n═══ {a} → {b} ═══")
-    print(f"  {'指标':20s} {a:>10s} {b:>10s} {'变化':>10s}")
+    print(f"\n═══ {a} → {b}（{label}，{len(recs)} 道题）═══")
+    print(f"  {_pad('指标', 22)}{a:>10s} {b:>10s} {'变化':>10s}")
+    skipped = []
     for k in TARGETS:
+        # 两边分母都是 0 的项直接不列。补充集里只有不调用类题，
+        # 「工具选择准确率 0.0% → 0.0%」这种行会让人以为模型考了 0 分，
+        # 而真相是这一套评测集根本没有这类题。
+        if not (reports[a]["_stats"][k]["den"] or reports[b]["_stats"][k]["den"]):
+            skipped.append(k)
+            continue
         va, vb = reports[a][k], reports[b][k]
         d = vb - va
         better = (d > 0) if TARGETS[k][1] == "ge" else (d < 0)
         mark = "↑" if d > 0 else ("↓" if d < 0 else "—")
         flag = "" if d == 0 else ("  ✅" if better else "  ⚠️")
-        print(f"  {k:20s} {va:9.1f}% {vb:9.1f}% {mark}{abs(d):8.1f}{flag}")
-    print("\n这张对比表就是《06—效果验证报告》要的「准确性论证」。")
+        print(f"  {_pad(k, 22)}{va:9.1f}% {vb:9.1f}% {mark}{abs(d):8.1f}{flag}")
+    if skipped:
+        print(f"  （这套评测集里没有以下类型的题，故不列：{'、'.join(skipped)}）")
+
+    print_paired(a, b, reports[a], reports[b])
+    if suite == "main":
+        print("\n这张对比表就是《06—效果验证报告》要的「准确性论证」。")
+    else:
+        print(f"\n⚠️  这是**{label}**的表，**不要并进主表**，"
+              "也不要拿它讲「微调带来了多少提升」——")
+        print("    它是另一把尺子（不同题目、不同分母），"
+              "存在的意义是给那几个成簇的小分母补厚度。")
+    print("对外表述的硬约束：同一套题、同一判分器、temperature=0、"
+          "后端基准固定，唯一变量是模型。")
     return 0
 
 
@@ -629,8 +1225,27 @@ def main(argv=None) -> int:
     """
     ap = argparse.ArgumentParser(description="ESA 评测器")
     ap.add_argument("--schemas", default=str(in_dataset("schemas/tool_schemas.json")))
-    ap.add_argument("--parser", default="current", choices=list(PARSERS),
-                    help="用哪个后端解析器判分。必须与线上实际使用的一致")
+    # 默认从 `current` 改成 `dual`（2026-08-16，被同一个坑骗了两次之后）。
+    #
+    # `current` 是后端那个只认 XML（`<function=…>`）的解析器。而 `pred_*.jsonl` 里
+    # 存的**不是模型的原始输出** —— LLaMA-Factory 的 API 会把工具调用解析成结构化
+    # `tool_calls`，`call_endpoint` 再把它还原成 qwen 的 **JSON 文本**形式
+    # （见本文件 `call_endpoint` 末尾）。于是 `current` 一条都读不出来，
+    # 报出**工具选择 0.0% / 漏调 100% / 参数匹配 0.0%**，
+    # 而报告长得和正常的一模一样 —— 两次都是靠人眼看出「样本 raw 里明明有调用」才发现的。
+    #
+    # `dual` 两种格式都认，所以**永远不会少读**，当默认值是安全的。
+    # 要专门量「严格 XML 合规率」时再显式 `--parser current`。
+    # ⚠️ 这条链路回答不了 B3（模型原始文本能否被后端读懂），那是
+    # `test_parser_compat.py` 的事。见超算手册 3.3。
+    ap.add_argument("--suite", default="main", choices=list(SUITES),
+                    help="用哪一套评测集。main = 主表（base/lora 对比表只认它；"
+                         "题数不是常数，现数 eval.jsonl）；supp = 2026-08-19 补的 44 道，"
+                         "给拒绝/追问/误触发那几个成簇的小分母补厚度，单独出表。"
+                         "两套的 pred / report 文件名互不相同，谁也覆盖不了谁。")
+    ap.add_argument("--parser", default="dual", choices=list(PARSERS),
+                    help="用哪个后端解析器判分。默认 dual（兼收 XML/JSON）；"
+                         "current 只认 XML，用它判分本流水线的产出会全 0")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("predict", help="调模型产出预测")
@@ -639,6 +1254,9 @@ def main(argv=None) -> int:
     p.add_argument("--tag", required=True, help="如 base / lora-1500")
     p.add_argument("--api-key", help="中转站/云端 API 的密钥；也可用环境变量 "
                                      "ESA_EVAL_API_KEY 或 OPENAI_API_KEY（本地 vLLM 不需要）")
+    p.add_argument("--resume", action="store_true",
+                   help="接着上次的 pred_<tag>.jsonl 往下跑，跳过已有且非空的预测。"
+                        "空预测（上次请求失败的产物）会重试。")
     p.add_argument("--limit", type=int, help="只跑前 N 条，用于试通端点。"
                                              "产出的 pred 文件不完整，score 会拒绝判分")
     p.set_defaults(func=cmd_predict)

@@ -23,7 +23,6 @@
 
 from __future__ import annotations
 
-import inspect
 import random
 import sys
 from pathlib import Path
@@ -171,16 +170,21 @@ def gen_empty_result(cfg, version, rng, all_names, out) -> None:
 
 
 def gen_blocked(cfg, version, rng, all_names, out) -> None:
-    """③ 会话模式阻断：allowed/saved/deleted 为 False + 一句 reason。
+    """③ 会话模式阻断：allowed/saved 为 False + 一句 reason。
 
     既不是 [Error]: 也没有 error 键 —— 这是第三种失败长相。
-    观测由 fixtures.BLOCKED_BUILDERS 复刻后端阻断分支（含键顺序）。
+    观测由 fixtures.blocked_learning 按**真实抓取**产出（learning_real.json 钉住）。
+
+    ⚠️ 只有学情工具走这一支。记忆工具在受限会话里根本不在工具表里，
+    「调了被拒」的场景线上不存在，那 4 条样本已删（见种子文件里的说明）。
+
+    ⚠️ 工具表也要按模式裁：isolated 会话里模型看不见记忆工具，
+    干扰项里摆一个它看不见的工具，等于教它一个线上不成立的选择题。
     """
     for item in cfg["blocked"]:
-        tool = item["tool"]
-        builder = fixtures.BLOCKED_BUILDERS[tool]
-        accepted = set(inspect.signature(builder).parameters)
-        result = builder(**{k: v for k, v in item["args"].items() if k in accepted})
+        tool, mode = item["tool"], item["mode"]
+        result = fixtures.BLOCKED_BUILDERS[tool](mode=mode)
+        visible = fixtures.memory_tools_available(mode)
         out.append(mk(
             f"toolerr_{item['id']}", f"toolerr__{tool}__{item['id']}",
             item["lures"],
@@ -189,7 +193,94 @@ def gen_blocked(cfg, version, rng, all_names, out) -> None:
              Turn(role="tool_result", results=[ToolResult(tool, result, is_error=True)]),
              Turn(role="assistant",
                   content=_fmt(item["a"], reason=result["reason"], err="", value="", latex=""))],
+            version, rng, [n for n in all_names if n in visible]))
+
+
+def gen_denied(cfg, version, rng, all_names, out) -> None:
+    """④ 策略拒绝：`{"ok": false, "error": <码>, "tool": ..., "detail": <文案>}`。
+
+    第四种失败长相，键名和前三种全都不一样，是 BoundToolExecutor 把
+    MemoryPolicyDenied / ValueError 接住后包出来的（capability_runtime.py:179-199）。
+    与会话模式无关 —— 普通会话里存一句带 API Key 的内容就会走到这里。
+    """
+    for item in cfg.get("denied", []):
+        tool, args = item["tool"], item["args"]
+        result = execute(tool, args)
+        if result.get("ok") is not False:
+            print(f"    ⚠️  {item['id']}: {tool}({args}) 居然没被拒，种子写错了，已跳过")
+            continue
+        out.append(mk(
+            f"toolerr_{item['id']}", f"toolerr__{tool}__{item['id']}",
+            item["lures"],
+            [Turn(role="user", content=item["q"]),
+             Turn(role="tool_call", calls=[ToolCall(tool, args)]),
+             Turn(role="tool_result", results=[ToolResult(tool, result, is_error=True)]),
+             Turn(role="assistant",
+                  content=_fmt(item["a"], reason=result["detail"], err="", value="", latex=""))],
             version, rng, all_names))
+
+
+def gen_exec_error(cfg, version, rng, all_names, out) -> None:
+    """⑤ 学情工具的参数校验失败（2026-08-19 补，④-4）。
+
+    长相和 ④ 一样（`{"ok": false, "error": "tool_execution_error", ...}`），
+    成因不同：后端 `_canonical_kp_id` / `weeks_to_exam` 校验抛 ValueError，
+    被 `BoundToolExecutor` 接住转成 dict（capability_runtime.py:193-199）。
+    **模型看不到异常**，只看到这个 dict —— 2026-08-19 用真实
+    `CapabilityRuntime.compile().bind().execute()` 逐条跑过，结构由
+    `data/cache/learning_real.json` 钉住。
+
+    两种恢复动作，由种子里有没有 `retry_args` 决定：
+      有 → 改参数重试一次并成功（英文名、大小写这类模型自己能改对的）
+      无 → 如实说明并把选择权交回用户（图谱里根本没有的知识点、语义上讲不通的参数）
+    判分器按 gold 里「切点之后还剩几个调用」自动分流，两种都要有样本。
+    """
+    for item in cfg.get("exec_error", []):
+        tool, args = item["tool"], item["args"]
+        failed = execute(tool, args)
+        if failed.get("ok") is not False:
+            print(f"    ⚠️  {item['id']}: {tool}({args}) 居然没报错，种子写错了，已跳过")
+            continue
+        turns = [
+            Turn(role="user", content=item["q"]),
+            Turn(role="tool_call", calls=[ToolCall(tool, args)]),
+            Turn(role="tool_result", results=[ToolResult(tool, failed, is_error=True)]),
+        ]
+        fields = {"detail": failed["detail"]}
+        retry = item.get("retry_args")
+        if retry:
+            fixed = execute(tool, retry)
+            if fixed.get("ok") is False:
+                print(f"    ⚠️  {item['id']}: 重试参数 {retry} 仍然报错，种子写错了，已跳过")
+                continue
+            turns += [
+                Turn(role="tool_call", calls=[ToolCall(tool, retry)]),
+                Turn(role="tool_result", results=[ToolResult(tool, fixed)]),
+            ]
+            fields.update(_retry_fields(tool, fixed))
+        turns.append(Turn(role="assistant", content=_fmt(item["a"], **fields)))
+        out.append(mk(
+            f"toolerr_{item['id']}", f"toolerr__{tool}__{item['id']}",
+            item["lures"], turns, version, rng, all_names))
+
+
+def _retry_fields(tool: str, result: dict) -> dict:
+    """重试成功之后，回答正文能引用哪些**真实**返回值。
+
+    只放这一次真的拿到的数 —— 正文里出现工具没返回过的数字，
+    `esa.eval` 的结果忠实度会当场判成编造，validate 的 grounding 也会拦。
+    """
+    if tool == "get_mastery_level":
+        return {"kp": result["kp_id"], "mastery": result["mastery_level"],
+                "status": result["status"], "practice": result["practice_count"]}
+    if tool == "get_review_timing":
+        if result["needs_review"]:
+            return {"timing": f"当前回忆概率已经降到 **{result['current_retention']}**，"
+                              f"低于阈值，建议现在就复习一遍。"}
+        return {"timing": f"当前回忆概率 **{result['current_retention']}**，还比较稳固，"
+                          f"建议 {result['days_until_review']} 天后再复习，"
+                          f"也就是 {result['recommended_date']}。"}
+    raise SystemExit(f"gen_tool_errors: {tool} 的重试回答没有写字段映射，正文会引用不到真实值")
 
 
 def main() -> int:
@@ -204,6 +295,8 @@ def main() -> int:
     gen_calculators(cfg, version, rng, all_names, out)
     gen_empty_result(cfg, version, rng, all_names, out)
     gen_blocked(cfg, version, rng, all_names, out)
+    gen_denied(cfg, version, rng, all_names, out)
+    gen_exec_error(cfg, version, rng, all_names, out)
 
     dump_samples(out, OUT)
     from collections import Counter
@@ -214,6 +307,8 @@ def main() -> int:
         r = [x for t in s.turns for x in t.results if x.is_error][0].content
         if isinstance(r, str):
             shapes["① [Error]: 字符串"] += 1
+        elif r.get("ok") is False:
+            shapes["④ 执行器包的 ok/error/detail"] += 1
         elif "error" in r:
             shapes["② 带 error 键的 dict"] += 1
         else:
