@@ -97,5 +97,18 @@
     "weather__缺参数__002": "L2_状态外推",
     "web__error__001": "L2_状态外推",
     "web__error__002": "L2_状态外推"
-  }
+  },
+  "supp_total": 42,
+  "supp_templates": 42,
+  "supp_by_category": {
+    "clarify": 12,
+    "hard_negative": 16,
+    "refusal": 14
+  },
+  "supp_by_action": {
+    "ASK_USER": 12,
+    "DIRECT_ANSWER": 16,
+    "REFUSE": 14
+  },
+  "supp_questions": 42
 }

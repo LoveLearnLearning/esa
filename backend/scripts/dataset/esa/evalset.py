@@ -67,6 +67,27 @@ GROUNDING_EXEMPT = {"load_skill"}
 # —— 正好能测"模型有没有真正理解两者区别"，而不是背下了见过的问法。
 L3_HOLDOUT_PREFIXES = ("get_review_timing__",)
 
+# 补充评测集：这些 template **既不进训练集，也不进主评测集**，单独出一份
+# `eval_supp.jsonl`。约定见 `generators/gen_supplement.py`（改一边必须改两边）。
+#
+# 为什么必须在建 pool **之前**摘出去，而不是在后面过滤
+# --------------------------------------------------
+# 下面挑评测模板的方式是「按类别配额 + rng.shuffle(pool)」，而
+# `random.shuffle` 消耗的随机数与 `len(pool)` 成正比 —— **任何一个类别多几个
+# 模板，后面所有类别抽到的模板都会跟着变**。那 464 道题的题面就不是原来那套了，
+# 而「这张表只能和作业 77999 那版基线比」是对外表述的硬约束
+# （超算手册三之七）。摘在最前面，主评测集才逐字节不变。
+#
+# 补充集为什么不能并进主表：它是**另一把尺子**（不同题目、不同分母）。
+# 它要回答的是「拒绝 6 道、追问 4 个模板」这种分母下测不出来的东西，
+# 单独一张表报，不拿它讲「微调带来了多少提升」。
+SUPPLEMENT_PREFIXES = ("supp__",)
+
+
+def is_supplement(template_id: str) -> bool:
+    """这个 template 属于补充评测集吗。"""
+    return template_id.startswith(SUPPLEMENT_PREFIXES)
+
 
 def expected_action(s: Sample) -> str:
     """从样本反推**第一道题**的标准动作，作为评测的 gold label。
@@ -280,12 +301,19 @@ def gold_of(s: Sample, layer: str | None = None) -> dict:
 def build(
     samples: list[Sample],
     seed: int = 20260810,
-) -> tuple[list[Sample], list[Sample], dict]:
-    """返回 (评测集, 训练集, 统计)。两者的 template_id 保证不相交。"""
+) -> tuple[list[Sample], list[Sample], dict, list[Sample]]:
+    """返回 (评测集, 训练集, 统计, 补充评测集)。三者的 template_id 互不相交。"""
     rng = random.Random(seed)
 
+    # ⚠️ 补充集必须在**这里**摘掉 —— 早于 by_tpl，也就早于下面的 rng.shuffle。
+    # 理由见 SUPPLEMENT_PREFIXES 的注释：shuffle 消耗的随机数与 pool 长度成正比，
+    # 晚一步摘就会把主评测集的抽样整个重排。
+    supp_set = sorted((s for s in samples if is_supplement(s.template_id)),
+                      key=lambda x: (x.template_id, x.id))
+    main_samples = [s for s in samples if not is_supplement(s.template_id)]
+
     by_tpl: dict[str, list[Sample]] = defaultdict(list)
-    for s in samples:
+    for s in main_samples:
         by_tpl[s.template_id].append(s)
 
     eval_tpls: set[str] = set()
@@ -341,14 +369,19 @@ def build(
     # needs_review，那样会把同组没审的一起放行。
     # 存在性检查要对**整个语料**做：待复核样本有一部分落在评测集里，
     # 只拿 train_pool 去查会把"审完的那条正好在评测集"误报成"这个 id 不存在"。
+    # 存在性检查对**整个语料**做（含补充集）—— 只拿一部分去查会把
+    # 「审完的那条正好在另一部分」误报成「这个 id 不存在」。
     review.assert_no_stale(samples)
     held = review.pending(train_pool)
     held_ids = {s.id for s in held}
     train_set = [s for s in train_pool if s.id not in held_ids]
 
-    # 防泄题：两边的 template_id 必须完全不相交
+    # 防泄题：三份的 template_id 必须两两不相交
     overlap = {s.template_id for s in eval_set} & {s.template_id for s in train_set}
     assert not overlap, f"评测集与训练集共享 template_id，存在泄题：{sorted(overlap)[:5]}"
+    supp_tpls = {s.template_id for s in supp_set}
+    bad = supp_tpls & ({s.template_id for s in eval_set} | {s.template_id for s in train_set})
+    assert not bad, f"补充集的 template 漏进了主评测集或训练集：{sorted(bad)[:5]}"
 
     def no_call_ratio(items: list[Sample]) -> float:
         """「不调用类」占比 —— 整条样本一次工具都没调。
@@ -383,28 +416,35 @@ def build(
         )),
         # 判分要按层分开报，所以这张映射必须带出去
         "layer_by_template": {s.template_id: layer[s.template_id] for s in eval_set},
+        # 补充集：一条一个模板，所以模板数应当等于条数。
+        # 这个等式是它存在的理由 —— 一旦小于条数，说明有人往里加改写了，
+        # 而补改写只会让簇更大，一点也不会让指标更可信。
+        "supp_total": len(supp_set),
+        "supp_templates": len(supp_tpls),
+        "supp_by_category": dict(Counter(s.category for s in supp_set)),
+        "supp_by_action": dict(Counter(expected_action(s) for s in supp_set)),
     }
-    return eval_set, train_set, stats
+    return eval_set, train_set, stats, supp_set
 
 
-def write(eval_set, train_set, stats, by_name, out_dir: Path) -> None:
-    """写入 `write` 相关数据。
+# 补充集在分层里的标签。它不是 L1/L2/L3 中的任何一层 ——
+# 那三层是按「与训练分布的距离」分的，而补充集整体不进训练集，
+# 混进任何一层都会让那一层的含义变味。
+SUPP_LAYER = "SUPP_补充集"
 
-    Args:
-        eval_set: object => `eval_set` 参数。
-        train_set: object => `train_set` 参数。
-        stats: object => `stats` 参数。
-        by_name: object => `by_name` 参数。
-        out_dir: Path => `out_dir` 参数。
+
+def to_questions(samples, by_name, layer: dict[str, str],
+                 fixed_layer: str | None = None) -> list[dict]:
+    """把样本渲染成评测题。一条样本可能出两道题。
+
+    抽出来是为了让主评测集和补充集**走同一条渲染路径** ——
+    两边各写一份迟早会分叉，而分叉的后果是「主表能判的题补充表判不了」。
     """
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # 评测题：ShareGPT 形式（供渲染 prompt）+ gold（供判分）
-    layer = stats.get("layer_by_template", {})
-    records = []
-    for s in eval_set:
+    records: list[dict] = []
+    for s in samples:
+        lay = fixed_layer or layer.get(s.template_id)
         rec = to_sharegpt(s, by_name)
-        rec["gold"] = gold_of(s, layer.get(s.template_id))
+        rec["gold"] = gold_of(s, lay)
         records.append(rec)
 
         # 第二道题：工具成功返回之后该怎么说。
@@ -423,9 +463,29 @@ def write(eval_set, train_set, stats, by_name, out_dir: Path) -> None:
                 "expected_tools": [],
                 "expected_arguments": [],
                 "n_turns_given": n,
-                "layer": layer.get(s.template_id),
+                "layer": lay,
             }
             records.append(rec2)
+    return records
+
+
+def write(eval_set, train_set, stats, by_name, out_dir: Path,
+          supp_set=()) -> None:
+    """写入评测集、补充评测集与训练集 IR。
+
+    Args:
+        eval_set: object => 主评测集样本。
+        train_set: object => 训练集样本。
+        stats: object => `build()` 的统计。
+        by_name: object => 工具 schema，按名字索引。
+        out_dir: Path => 落盘目录。
+        supp_set: object => 补充评测集样本，单独落 `eval_supp.jsonl`。
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 评测题：ShareGPT 形式（供渲染 prompt）+ gold（供判分）
+    layer = stats.get("layer_by_template", {})
+    records = to_questions(eval_set, by_name, layer)
 
     # 两条断言都在落盘**之前**跑：宁可不产出，也不要产出一份坏评测集。
     assert_answerable(records)
@@ -434,6 +494,16 @@ def write(eval_set, train_set, stats, by_name, out_dir: Path) -> None:
     with (out_dir / "eval.jsonl").open("w", encoding="utf-8") as fh:
         for rec in records:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+    # 补充评测集：同样的断言、同样的渲染，只是另一个文件。
+    supp_records = to_questions(supp_set, by_name, layer, fixed_layer=SUPP_LAYER)
+    if supp_records:
+        assert_answerable(supp_records)
+        assert_no_train_overlap(supp_records, train_set)
+        with (out_dir / "eval_supp.jsonl").open("w", encoding="utf-8") as fh:
+            for rec in supp_records:
+                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        stats["supp_questions"] = len(supp_records)
 
     # 训练集的 IR，供 split.py 继续切 train/validation
     with (out_dir / "train_ir.jsonl").open("w", encoding="utf-8") as fh:
@@ -465,8 +535,8 @@ def main(argv: list[str] | None = None) -> int:
     by_name = schemas_by_name(schemas)
     samples = [s for f in iter_ir_files(args.ir_dir) for s in load_samples(f)]
 
-    eval_set, train_set, stats = build(samples, seed=args.seed)
-    write(eval_set, train_set, stats, by_name, Path(args.out))
+    eval_set, train_set, stats, supp_set = build(samples, seed=args.seed)
+    write(eval_set, train_set, stats, by_name, Path(args.out), supp_set)
 
     print(f"评测集 {stats['eval_total']} 条样本 → {stats['eval_questions']} 道题"
           f"（其中 {stats['respond_questions']} 道考「工具返回后怎么说」）"
@@ -491,6 +561,16 @@ def main(argv: list[str] | None = None) -> int:
     print("\n按标准动作：")
     for k, n in sorted(stats["eval_by_action"].items()):
         print(f"  {k:22s} {n:4d}")
+
+    if stats.get("supp_total"):
+        print(f"\n补充评测集（**不进主表**，单独一份 eval_supp.jsonl）："
+              f"{stats['supp_total']} 条 / {stats.get('supp_questions', 0)} 道题 / "
+              f"{stats['supp_templates']} 个模板")
+        if stats["supp_templates"] != stats["supp_total"]:
+            print("  ⚠️  模板数 ≠ 条数：有人往补充集里加了同模板改写。"
+                  "补改写只会让簇更大，不会让指标更可信。")
+        for k, n in sorted(stats["supp_by_action"].items()):
+            print(f"    {k:22s} {n:4d}")
 
     missing = [c for c in QUOTA if c not in stats["eval_by_category"]]
     if missing:

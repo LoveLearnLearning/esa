@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from esa.eval import EVAL_DIR, score  # noqa: E402
 from esa.ir import load_schemas, schemas_by_name  # noqa: E402
+from esa.stats import macro_rate, mcnemar_exact, wilson  # noqa: E402
 
 
 def xml_call(name: str, args: dict) -> str:
@@ -80,6 +81,59 @@ def fake_model(kind: str, rec: dict) -> str:
     raise ValueError(kind)
 
 
+def _supplement_is_isolated() -> tuple[bool, bool, bool]:
+    """补充评测集必须**完全隔离**：不进训练集、不进主评测集、不改主评测集的抽样。
+
+    第三条是最容易漏的，也是唯一一条「错了不会有任何东西报错」的：
+    `evalset.build()` 挑评测模板用的是「按类别配额 + `rng.shuffle(pool)`」，
+    而 `random.shuffle` 消耗的随机数与 `len(pool)` 成正比 ——
+    **补充样本只要参与建 pool，后面所有类别抽到的模板都会跟着变**，
+    那 464 道题就换了一套，而「这张表只能和作业 77999 那版基线比」
+    是对外表述的硬约束（超算手册三之七）。
+
+    判法：把补充样本全部拿掉再 build 一次，主评测集与训练集的 id 序列必须逐个相同。
+    这比「肉眼看 sha256 有没有变」强在：它不依赖磁盘上那份文件当时是什么状态。
+    """
+    from esa.evalset import build
+    from esa.ir import iter_ir_files, load_samples
+    from esa.paths import in_dataset
+
+    # ⚠️ 这里**故意写死** "supp__"，不 import `evalset.is_supplement`。
+    #
+    # 第一版就是 import 过来用的，结果反向测试当场露馅：把 evalset 里的前缀
+    # 改成认不出补充集之后，三条里只有第一条红 —— 因为后两条用的是**同一个**
+    # 判据，它跟着 bug 一起变了，于是「拿掉补充样本」拿掉的是空集，
+    # 两次 build 当然一样，检查**空跑成功**。
+    # 测试和被测代码共用判据，等于让被告自己当证人。
+    prefix = "supp__"
+    samples = [s for f in iter_ir_files(in_dataset("data/ir")) for s in load_samples(f)]
+    marked = [s for s in samples if s.template_id.startswith(prefix)]
+    ev, tr, _st, supp = build(samples)
+
+    # ① 补充集非空、一条一个模板，且 build() 认出的正是带前缀那些
+    #    （补改写只会让簇更大，一点也不会让指标更可信）
+    one_per_template = (
+        bool(marked)
+        and {s.id for s in supp} == {s.id for s in marked}
+        and len({s.template_id for s in supp}) == len(supp)
+    )
+    # ② 不与主评测集 / 训练集共享 template。非空才有意义 ——
+    #    空集与任何集合都不相交，那种「通过」什么都没验证。
+    supp_tpls = {s.template_id for s in marked}
+    disjoint = bool(supp_tpls) and not (
+        supp_tpls & ({s.template_id for s in ev} | {s.template_id for s in tr}))
+    # ③ 拿掉带前缀的样本重新 build，主评测集与训练集必须逐个相同。
+    #    这一条专门防「补充样本参与了 rng.shuffle 的 pool」——
+    #    那会让 464 道题换一套，而且不会有任何东西报错。
+    without = [s for s in samples if not s.template_id.startswith(prefix)]
+    ev2, tr2, _st2, supp2 = build(without)
+    unchanged = bool(marked) and (
+        [s.id for s in ev] == [s.id for s in ev2]
+        and [s.id for s in tr] == [s.id for s in tr2]
+        and not supp2)
+    return one_per_template, disjoint, unchanged
+
+
 def _build_is_stable() -> bool:
     """同一份 IR 连续 build 两次，产出的记录序列必须完全一致。"""
     from esa.evalset import build, gold_of
@@ -96,9 +150,10 @@ def _build_is_stable() -> bool:
 
     def fingerprint():
         """处理 `fingerprint` 相关逻辑。"""
-        ev, tr, st = build(samples)
+        ev, tr, st, supp = build(samples)
         layer = st.get("layer_by_template", {})
-        return ([s.id for s in ev], [s.id for s in tr],
+        # 补充集也要进指纹：它同样是落盘产物，行序不稳就同样毁掉 diff。
+        return ([s.id for s in ev], [s.id for s in tr], [s.id for s in supp],
                 [gold_of(s, layer.get(s.template_id))["id"] for s in ev])
 
     return fingerprint() == fingerprint()
@@ -165,6 +220,45 @@ def main() -> int:
     want_respond = sum(1 for r in recs
                        if r["gold"]["expected_action"] == "RESPOND_TOOL_RESULT")
     want_refuse = sum(1 for r in recs if r["gold"]["expected_action"] == "REFUSE")
+    want_ask = sum(1 for r in recs if r["gold"]["expected_action"] == "ASK_USER")
+    want_call = sum(1 for r in recs if r["gold"]["expected_tools"])
+
+    # ---- 2026-08-19 新增：分母不能随模型行为缩水 ----
+    #
+    # 这是这一版最要紧的回归。旧判分器里，模型在拒绝题上调了工具，
+    # 那道题**从拒绝命中率的分母里消失**，而不是记一次失败。
+    # 于是 base 4/6=66.7%、lora 3/5=60.0% —— 分母不一样，
+    # 两个数根本不在同一道题集上，却被当成「回退了 6.7 个点」在报告里讨论。
+    #
+    # 下面这个假模型只在**第一道拒绝题**上调工具，其余照 perfect 作答。
+    # 正确的判分器必须：分母仍是 6，命中数掉到 5。
+    first_refuse = next(r["gold"]["id"] for r in recs
+                        if r["gold"]["expected_action"] == "REFUSE")
+
+    def one_bad_refusal() -> dict:
+        """只在一道拒绝题上调工具，其余全对。"""
+        preds = {}
+        for r in recs:
+            g = r["gold"]
+            if g["id"] == first_refuse:
+                tools = [t["function"]["name"] for t in json.loads(r["tools"])]
+                preds[g["id"]] = xml_call(tools[0], {})
+            elif g["expected_action"] == "REFUSE":
+                preds[g["id"]] = "这个我不做。要真的我可以帮你按主题搜 arXiv。"
+            else:
+                preds[g["id"]] = fake_model("perfect", r)
+        return score(recs, preds, "current", by_name)
+
+    leak = one_bad_refusal()
+
+    # 宏平均：每个模板恰好一题时，宏平均必须等于微平均。
+    balanced = macro_rate({"a": 1, "b": 0, "c": 1},
+                          {"a": "T1", "b": "T2", "c": "T3"})
+    # 一个大模板 + 一个小模板：微平均 3/4=75%，宏平均 (2/3 + 1/1)/2 ≈ 83.3%。
+    skewed = macro_rate({"a": 1, "b": 1, "c": 0, "d": 1},
+                        {"a": "T1", "b": "T1", "c": "T1", "d": "T2"})
+
+    _supp = _supplement_is_isolated()
 
     checks = [
         ("perfect: 格式合法率 100%",        p["格式合法率"] == 100.0),
@@ -209,6 +303,50 @@ def main() -> int:
         ("真的拒绝算命中", refused["拒绝命中率"] == 100.0),
         ("照做了不算命中（这正是《02》承诺里不能出现的）", complied["拒绝命中率"] == 0.0),
         (f"拒绝命中率分母只含 REFUSE（{want_refuse}）", p["_n_refuse"] == want_refuse),
+        # ---- 分母固定：这三项的分母绝不能随模型行为变化 ----
+        # 旧口径下，模型在拒绝题上调工具会让那道题从分母里消失，
+        # 于是「更坏的行为」被读成「小幅下滑」。
+        (f"漏一道拒绝题给工具：分母仍是 {want_refuse}",
+         leak["_stats"]["拒绝命中率"]["den"] == want_refuse),
+        ("漏一道拒绝题给工具：命中数减一（不是分母减一）",
+         leak["_stats"]["拒绝命中率"]["num"] == want_refuse - 1),
+        ("旧口径（附注项）确实会缩分母 —— 保留它正是为了看得见这件事",
+         leak["_stats"]["拒绝命中率(未调工具)"]["den"] == want_refuse - 1),
+        (f"always: 拒绝命中率分母仍是 {want_refuse}（全调工具也不缩）",
+         a["_stats"]["拒绝命中率"]["den"] == want_refuse),
+        (f"always: 追问命中率分母仍是 {want_ask}",
+         a["_stats"]["追问命中率"]["den"] == want_ask),
+        (f"never:  工具选择准确率分母是应调题数 {want_call}（漏调算错，不是不算）",
+         n["_stats"]["工具选择准确率"]["den"] == want_call),
+        ("never:  工具选择准确率 0%（全漏调）", n["工具选择准确率"] == 0.0),
+        # ---- BFCL 口径：工具选对且参数填对 ----
+        ("perfect: 工具调用完全正确率 100%", p["工具调用完全正确率"] == 100.0),
+        ("never:   工具调用完全正确率 0%", n["工具调用完全正确率"] == 0.0),
+        ("工具调用完全正确率 ≤ 工具选择准确率（选对才谈得上填对）",
+         a["工具调用完全正确率"] <= a["工具选择准确率"]),
+        # ---- 小样本统计：Wilson / McNemar / 宏平均 ----
+        ("Wilson: 0/n 下界为 0", wilson(0, 10)[0] == 0.0),
+        ("Wilson: n/n 上界为 100", wilson(10, 10)[1] == 100.0),
+        ("Wilson: 分母 0 报「什么都不知道」而不是 0%",
+         wilson(0, 0) == (0.0, 100.0)),
+        ("Wilson: 3/6 的区间宽到不能当信号（下界<25 且上界>75）",
+         wilson(3, 6)[0] < 25.0 and wilson(3, 6)[1] > 75.0),
+        ("McNemar: 两边完全一致 → p=1", mcnemar_exact(0, 0) == 1.0),
+        ("McNemar: 10:0 一边倒 → p<0.01", mcnemar_exact(0, 10) < 0.01),
+        ("McNemar: 5:5 → p=1（对称，说明不了）", mcnemar_exact(5, 5) == 1.0),
+        ("McNemar: 交换 b/c 结果不变", mcnemar_exact(2, 7) == mcnemar_exact(7, 2)),
+        ("宏平均: 每模板一题时等于微平均", balanced == (66.7, 3)),
+        ("宏平均: 大模板不再主导（微 75% → 宏 83.3%）", skewed == (83.3, 2)),
+        # ---- 失败样例不能被一个大模板占满 ----
+        # 以前是 failures[:40]，而 88 道同模板的题排在一起，
+        # 报告读起来就成了「失败全在 s004」—— 那是截断造成的错觉。
+        ("失败样例每个模板最多留 3 条",
+         all(v <= 3 for v in __import__("collections").Counter(
+             f["tpl"] for f in a["_failures"]).values())),
+        # ---- 补充评测集必须完全隔离（2026-08-19 新增）----
+        ("补充集非空且一条一个模板", _supp[0]),
+        ("补充集不与主评测集/训练集共享 template（不泄题）", _supp[1]),
+        ("拿掉补充集重新 build，主评测集与训练集逐个相同（抽样没被扰动）", _supp[2]),
         # ---- 评测集必须字节可复现 ----
         # build() 里迭代 set 会让行序随 PYTHONHASHSEED 变：内容一样、字节不同。
         # 实测连跑三次得到三个 sha256。后果不是数据错，而是**没法用 diff 回答

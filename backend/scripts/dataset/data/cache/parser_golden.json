@@ -1,6 +1,6 @@
 {
  "_meta": {
-  "captured_at": "2026-08-17T17:38:12+00:00",
+  "captured_at": "2026-08-19T07:20:43+00:00",
   "source": "github.com/LoveLearnLearning/esa",
   "source_repo": "local-clone@ce37198",
   "source_sha256": {
@@ -8983,6 +8983,342 @@
    "expected": {
     "reasoning": "",
     "content": "阈值参数依赖 Reranker，当前未确认是否启用。我可以先把返回条数调小来达到类似效果——这样可以吗？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n改名换序交上去还是抄袭，这个我不做。你把题目要求发我，我陪你从思路开始写一版自己的，卡住的地方我讲。",
+   "expected": {
+    "reasoning": "",
+    "content": "改名换序交上去还是抄袭，这个我不做。你把题目要求发我，我陪你从思路开始写一版自己的，卡住的地方我讲。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n编作者和年份我不做，那是虚假文献。要真的我可以帮你按主题去 arXiv 找几篇，标题和编号给你，你自己核对后再引。",
+   "expected": {
+    "reasoning": "",
+    "content": "编作者和年份我不做，那是虚假文献。要真的我可以帮你按主题去 arXiv 找几篇，标题和编号给你，你自己核对后再引。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n补没跑过的实验结果我不做，那是伪造数据。可行的是把没跑完的部分如实标成待补，或者我帮你把实验设置理一遍，看能不能缩短跑的时间。",
+   "expected": {
+    "reasoning": "",
+    "content": "补没跑过的实验结果我不做，那是伪造数据。可行的是把没跑完的部分如实标成待补，或者我帮你把实验设置理一遍，看能不能缩短跑的时间。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n以他人名义署名我不做。你可以先写一版自述材料，我帮你把经历和成果理清楚，再由老师本人决定怎么写。",
+   "expected": {
+    "reasoning": "",
+    "content": "以他人名义署名我不做。你可以先写一版自述材料，我帮你把经历和成果理清楚，再由老师本人决定怎么写。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n把未公开的考卷做成答案我不做。要备考我可以按考纲帮你排复习顺序，或者出同类题让你练。",
+   "expected": {
+    "reasoning": "",
+    "content": "把未公开的考卷做成答案我不做。要备考我可以按考纲帮你排复习顺序，或者出同类题让你练。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n带学号和手机号的名单我不处理，那是未脱敏的个人信息。如果只是要排序，把姓名和手机号去掉、换成编号再给我，我照样能排。",
+   "expected": {
+    "reasoning": "",
+    "content": "带学号和手机号的名单我不处理，那是未脱敏的个人信息。如果只是要排序，把姓名和手机号去掉、换成编号再给我，我照样能排。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n查别人的学情我不做，那是他本人的数据。你自己的我随时可以调出来看。",
+   "expected": {
+    "reasoning": "",
+    "content": "查别人的学情我不做，那是他本人的数据。你自己的我随时可以调出来看。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n整理私人联系方式和住址我不做。公开的办公邮箱可以自己从学院主页找，那个不涉及隐私。",
+   "expected": {
+    "reasoning": "",
+    "content": "整理私人联系方式和住址我不做。公开的办公邮箱可以自己从学院主页找，那个不涉及隐私。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n带姓名和身份证号的数据我不处理。正确的顺序是先由数据持有方脱敏，再拿脱敏后的版本来，那一版我可以帮你清洗。",
+   "expected": {
+    "reasoning": "",
+    "content": "带姓名和身份证号的数据我不处理。正确的顺序是先由数据持有方脱敏，再拿脱敏后的版本来，那一版我可以帮你清洗。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n登录教务系统替你操作我做不了，也不该做。选课策略可以聊：你把候选课程发我，我帮你按培养方案和你的掌握情况排个优先级。",
+   "expected": {
+    "reasoning": "",
+    "content": "登录教务系统替你操作我做不了，也不该做。选课策略可以聊：你把候选课程发我，我帮你按培养方案和你的掌握情况排个优先级。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n内部记忆结构我不外泄。你想知道自己存了哪些内容的话，我可以把记录本身列给你看。",
+   "expected": {
+    "reasoning": "",
+    "content": "内部记忆结构我不外泄。你想知道自己存了哪些内容的话，我可以把记录本身列给你看。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n隔离会话里绕过边界去读长期状态我不做。这一轮你直接把偏好说一遍，我按你说的来。",
+   "expected": {
+    "reasoning": "",
+    "content": "隔离会话里绕过边界去读长期状态我不做。这一轮你直接把偏好说一遍，我按你说的来。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n编数据那部分我不做。报告的其余部分可以：实验目的、方法描述、结果该怎么呈现、讨论要回答什么问题，我都可以帮你搭出来，等你跑完把真实数字填进去就行。要现在开始搭吗？",
+   "expected": {
+    "reasoning": "",
+    "content": "编数据那部分我不做。报告的其余部分可以：实验目的、方法描述、结果该怎么呈现、讨论要回答什么问题，我都可以帮你搭出来，等你跑完把真实数字填进去就行。要现在开始搭吗？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n整份代写我不做。讲原理没问题，而且更划算：我先把这题的思路和关键结构讲清楚，你写，卡住的地方我们一起看。从哪一部分开始？",
+   "expected": {
+    "reasoning": "",
+    "content": "整份代写我不做。讲原理没问题，而且更划算：我先把这题的思路和关键结构讲清楚，你写，卡住的地方我们一起看。从哪一部分开始？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n帮你查之前先确认一下，你在哪个城市？",
+   "expected": {
+    "reasoning": "",
+    "content": "帮你查之前先确认一下，你在哪个城市？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n可以。请告诉我具体是哪个知识点？",
+   "expected": {
+    "reasoning": "",
+    "content": "可以。请告诉我具体是哪个知识点？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n我需要一个起点知识点，从它往前追前置。你想从哪个知识点查？",
+   "expected": {
+    "reasoning": "",
+    "content": "我需要一个起点知识点，从它往前追前置。你想从哪个知识点查？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n好。请问是哪一门课？",
+   "expected": {
+    "reasoning": "",
+    "content": "好。请问是哪一门课？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n可以。编译原理的考试还有几周？我按剩余时间安排强度。",
+   "expected": {
+    "reasoning": "",
+    "content": "可以。编译原理的考试还有几周？我按剩余时间安排强度。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n没问题。我需要两个信息：一是哪一门课，二是距离考试还有几周。",
+   "expected": {
+    "reasoning": "",
+    "content": "没问题。我需要两个信息：一是哪一门课，二是距离考试还有几周。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n式子没跟过来，请告诉我要算的表达式是什么。",
+   "expected": {
+    "reasoning": "",
+    "content": "式子没跟过来，请告诉我要算的表达式是什么。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n这个式子你是要因式分解、求根、求导，还是别的？告诉我做哪一种我就动手。",
+   "expected": {
+    "reasoning": "",
+    "content": "这个式子你是要因式分解、求根、求导，还是别的？告诉我做哪一种我就动手。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n搜什么方向？请给我一个主题或关键词。",
+   "expected": {
+    "reasoning": "",
+    "content": "搜什么方向？请给我一个主题或关键词。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n查哪方面的？请告诉我具体问题或关键词。",
+   "expected": {
+    "reasoning": "",
+    "content": "查哪方面的？请告诉我具体问题或关键词。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n你要转的是哪个数？发给我我就算。",
+   "expected": {
+    "reasoning": "",
+    "content": "你要转的是哪个数？发给我我就算。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n查哪件事的最新情况？给我一个具体的问题我再去查。",
+   "expected": {
+    "reasoning": "",
+    "content": "查哪件事的最新情况？给我一个具体的问题我再去查。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n可以，之后我先给结论，再补理由。",
+   "expected": {
+    "reasoning": "",
+    "content": "可以，之后我先给结论，再补理由。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n讲解和规划在本地就能做；查论文、查天气这类要走外部接口。你现在想用哪个？",
+   "expected": {
+    "reasoning": "",
+    "content": "讲解和规划在本地就能做；查论文、查天气这类要走外部接口。你现在想用哪个？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n我换个说法。你说下是哪一句卡住了，我从那儿重讲。",
+   "expected": {
+    "reasoning": "",
+    "content": "我换个说法。你说下是哪一句卡住了，我从那儿重讲。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n好，我尽量用大白话，专有名词第一次出现时先解释。",
+   "expected": {
+    "reasoning": "",
+    "content": "好，我尽量用大白话，专有名词第一次出现时先解释。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n这个我说了不算，得看你们学校怎么部署。功能上你想用哪一块？",
+   "expected": {
+    "reasoning": "",
+    "content": "这个我说了不算，得看你们学校怎么部署。功能上你想用哪一块？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n计划挺好。等你真做完，我可以把结果记进学情，再据此调后面的强度。要不要我先按并查集给你排个顺序？",
+   "expected": {
+    "reasoning": "",
+    "content": "计划挺好。等你真做完，我可以把结果记进学情，再据此调后面的强度。要不要我先按并查集给你排个顺序？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n明白。要我先把已存的列出来你看一眼，还是你直接说哪一条、我把它删掉？",
+   "expected": {
+    "reasoning": "",
+    "content": "明白。要我先把已存的列出来你看一眼，还是你直接说哪一条、我把它删掉？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n那后面选内容时我往新方向偏一点。等你定下来，要不要把方向记成长期设定？",
+   "expected": {
+    "reasoning": "",
+    "content": "那后面选内容时我往新方向偏一点。等你定下来，要不要把方向记成长期设定？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n那是他的节奏。你自己什么时段状态最好？我们按你的来排。",
+   "expected": {
+    "reasoning": "",
+    "content": "那是他的节奏。你自己什么时段状态最好？我们按你的来排。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n常见做法是把每次练习的对错、用了多少提示、隔了多久折算成一个估计值，答对往上走，久不复习会衰减。你是想了解原理，还是想看自己的？",
+   "expected": {
+    "reasoning": "",
+    "content": "常见做法是把每次练习的对错、用了多少提示、隔了多久折算成一个估计值，答对往上走，久不复习会衰减。你是想了解原理，还是想看自己的？",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n补码把「取负」定义成按位取反再加一，于是减一个数等于加它的补码，硬件留一套加法器就够用了。",
+   "expected": {
+    "reasoning": "",
+    "content": "补码把「取负」定义成按位取反再加一，于是减一个数等于加它的补码，硬件留一套加法器就够用了。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\narXiv 是预印本平台，不做同行评审，作者随时可以先放上去；期刊那条线另走。两者不冲突，很多论文两边都有。",
+   "expected": {
+    "reasoning": "",
+    "content": "arXiv 是预印本平台，不做同行评审，作者随时可以先放上去；期刊那条线另走。两者不冲突，很多论文两边都有。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n先拿问题去检索一批相关片段，再把片段和问题一起交给模型作答，让回答有出处可依，而不是全凭记忆。",
+   "expected": {
+    "reasoning": "",
+    "content": "先拿问题去检索一批相关片段，再把片段和问题一起交给模型作答，让回答有出处可依，而不是全凭记忆。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n常见是先补没打牢的前置，再上当前知识点，最后放综合题；同一层内按历史正确率从低到高。",
+   "expected": {
+    "reasoning": "",
+    "content": "常见是先补没打牢的前置，再上当前知识点，最后放综合题；同一层内按历史正确率从低到高。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n看它多久更新一次。整点更新的缓存到下个整点就够，再久就会把过期数据当成最新的发出去。",
+   "expected": {
+    "reasoning": "",
+    "content": "看它多久更新一次。整点更新的缓存到下个整点就够，再久就会把过期数据当成最新的发出去。",
+    "tool_calls": []
+   }
+  },
+  {
+   "input": "<think>\n\n</think>\n\n不是。上下文窗口是这一轮模型能看到的文本长度，会话结束就没了；长期记忆是跨会话存下来、需要时再取回的内容。",
+   "expected": {
+    "reasoning": "",
+    "content": "不是。上下文窗口是这一轮模型能看到的文本长度，会话结束就没了；长期记忆是跨会话存下来、需要时再取回的内容。",
     "tool_calls": []
    }
   },
