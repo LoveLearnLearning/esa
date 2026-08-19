@@ -26,6 +26,9 @@ MAX_PDF_PAGES = AUXILIARY_MODEL_MAX_IMAGES_PER_PROMPT
 MAX_SOURCE_IMAGE_PIXELS = 40_000_000
 MAX_IMAGE_SIDE = 3072
 VISION_IMAGE_QUALITY = 92
+VISUAL_SCHEDULE_SUFFIXES = frozenset(
+    {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".heic", ".heif"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +63,16 @@ class ExtractedScheduleDocument:
 def supports_docir_schedule(filename: str) -> bool:
     """处理 `supports_docir_schedule` 相关逻辑。"""
     return Path(filename).suffix.lower() in SUPPORTED_SOURCE_SUFFIXES
+
+
+def prefers_visual_schedule(filename: str, content_type: str) -> bool:
+    """Return whether a schedule should preserve its original two-dimensional layout."""
+
+    return (
+        content_type == "application/pdf"
+        or content_type.startswith("image/")
+        or Path(filename).suffix.lower() in VISUAL_SCHEDULE_SUFFIXES
+    )
 
 
 async def extract_schedule_document_via_docir(

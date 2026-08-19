@@ -24,6 +24,7 @@ from backend.core.services.schedule_import_service import (
     extract_schedule_document,
     extract_schedule_document_via_docir,
     extract_schedule_courses,
+    prefers_visual_schedule,
     supports_docir_schedule,
 )
 from backend.core.stores.schedule_store import ScheduleStore
@@ -372,7 +373,13 @@ async def import_schedule(
     content_type = file.content_type or "application/octet-stream"
     try:
         mm_sessions = getattr(request.app.state, "mm_sessions", None)
-        if mm_sessions is not None and supports_docir_schedule(filename):
+        if prefers_visual_schedule(filename, content_type):
+            document = await extract_schedule_document(
+                filename=filename,
+                content_type=content_type,
+                data=data,
+            )
+        elif mm_sessions is not None and supports_docir_schedule(filename):
             document = await extract_schedule_document_via_docir(
                 mm_sessions=mm_sessions,
                 session_key=f"schedule:{user.id}:{uuid4()}",

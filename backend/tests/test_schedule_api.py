@@ -150,6 +150,43 @@ def test_schedule_image_import_uses_multimodal_auxiliary_model(
     assert imported.json()["courses"][0]["name"] == "数据结构"
 
 
+def test_schedule_pdf_import_uses_visual_path_when_mm_is_enabled(
+    tmp_path, monkeypatch
+):
+    """PDF timetables must keep their visual grid even when DocIR is available."""
+
+    app = _app(tmp_path, monkeypatch)
+    app.state.mm_sessions = object()
+    calls = []
+
+    async def _visual(**kwargs):
+        calls.append(kwargs)
+        return ExtractedScheduleDocument(
+            image_data_urls=("data:image/jpeg;base64,c2NoZWR1bGU=",)
+        )
+
+    async def _docir(**_kwargs):
+        raise AssertionError("PDF schedule must not use DocIR")
+
+    monkeypatch.setattr(schedule, "extract_schedule_document", _visual)
+    monkeypatch.setattr(schedule, "extract_schedule_document_via_docir", _docir)
+
+    response = TestClient(app).post(
+        "/me/schedule/import",
+        files={"file": ("schedule.pdf", b"pdf", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["document"]["pipeline"] == "legacy"
+    assert calls == [
+        {
+            "filename": "schedule.pdf",
+            "content_type": "application/pdf",
+            "data": b"pdf",
+        }
+    ]
+
+
 def test_schedule_table_management_and_import_to_new_table(tmp_path, monkeypatch):
     """验证 `schedule_table_management_and_import_to_new_table` 场景。"""
     app = _app(tmp_path, monkeypatch)

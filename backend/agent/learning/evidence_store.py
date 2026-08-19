@@ -179,9 +179,7 @@ class LearningEvidenceStore:
             normalized_error_type is not None
             and normalized_error_type not in self.ERROR_TYPES
         ):
-            raise ValueError(
-                f"不支持的 error_type={normalized_error_type!r}"
-            )
+            raise ValueError(f"不支持的 error_type={normalized_error_type!r}")
 
         normalized_misconception = (misconception or "").strip() or None
         evidence_id = uuid4().hex
@@ -357,9 +355,7 @@ class LearningEvidenceStore:
             return round(sum(values) / len(values), 3)
 
         correct_values = [
-            1.0 if row["correct"] else 0.0
-            for row in rows
-            if row["correct"] is not None
+            1.0 if row["correct"] else 0.0 for row in rows if row["correct"] is not None
         ]
         self_confidences = [
             float(row["self_confidence"])
@@ -387,11 +383,7 @@ class LearningEvidenceStore:
             if row["transfer_score"] is not None
         ]
 
-        error_counts = Counter(
-            row["error_type"]
-            for row in rows
-            if row["error_type"]
-        )
+        error_counts = Counter(row["error_type"] for row in rows if row["error_type"])
 
         misconceptions: list[str] = []
         for row in rows:
@@ -407,9 +399,7 @@ class LearningEvidenceStore:
             "evidence_count": len(rows),
             "correct_rate": avg(correct_values),
             "avg_self_confidence": avg(self_confidences),
-            "avg_hint_level": avg(
-                [float(row["hint_level"]) for row in rows]
-            ),
+            "avg_hint_level": avg([float(row["hint_level"]) for row in rows]),
             "independent_rate": avg(independent_values),
             "avg_recall_score": avg(recall_scores),
             "avg_explanation_score": avg(explanation_scores),

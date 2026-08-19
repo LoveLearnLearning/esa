@@ -5,10 +5,21 @@ set -Eeuo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
-if [[ -f .env ]]; then
+esa_env_override="${ESA_ENV_FILE:-}"
+if [[ -f "$PROJECT_ROOT/.env" ]]; then
     set -a
     # shellcheck disable=SC1091
-    source .env
+    source "$PROJECT_ROOT/.env"
+    set +a
+fi
+if [[ -n "$esa_env_override" ]]; then
+    if [[ ! -f "$esa_env_override" ]]; then
+        echo "ERROR: ESA_ENV_FILE 不存在：$esa_env_override" >&2
+        exit 1
+    fi
+    set -a
+    # shellcheck disable=SC1090
+    source "$esa_env_override"
     set +a
 fi
 
@@ -262,14 +273,30 @@ if [[ "$rag_enabled" == "1" ]]; then
         if [[ -n "$qdrant_pid" ]]; then
             mkdir -p "$qdrant_snapshots/$rag_qdrant_collection"
         fi
+        qdrant_restore_helper="$PROJECT_ROOT/bin/restore-qdrant-snapshot"
+        if [[ ! -x "$qdrant_restore_helper" ]]; then
+            echo "ERROR: Qdrant 恢复脚本不存在或不可执行：$qdrant_restore_helper" >&2
+            exit 1
+        fi
+        if ! "$qdrant_restore_helper" --help 2>&1 | \
+            grep -q -- '--snapshot PATH'; then
+            echo "ERROR: Qdrant 恢复脚本版本不兼容，请同步 bin/restore-qdrant-snapshot" >&2
+            exit 1
+        fi
         echo "===== Restoring and verifying Qdrant snapshot ====="
         PYTHON_BIN="${PYTHON_BIN:-python}" \
-        "$PROJECT_ROOT/bin/restore-qdrant-snapshot" \
+        "$qdrant_restore_helper" \
             --snapshot "$qdrant_snapshot" \
             --collection "$rag_qdrant_collection" \
             --qdrant-url "$rag_qdrant_url" \
             --timeout "${ESA_QDRANT_RESTORE_TIMEOUT:-1800}" \
             --wait-seconds "${ESA_QDRANT_RESTORE_WAIT_SECONDS:-300}"
+        if ! curl -q --noproxy '*' --silent --show-error --fail \
+            --max-time 10 "${rag_qdrant_url%/}/collections/${rag_qdrant_collection}" \
+            >/dev/null 2>&1; then
+            echo "ERROR: 恢复脚本返回成功，但目标 Collection 仍不存在：$rag_qdrant_collection" >&2
+            exit 1
+        fi
     fi
 fi
 
