@@ -102,6 +102,7 @@ class _HomeShellState extends State<HomeShell> {
       onViewAssignments: _learningChatOpen
           ? null
           : () => unawaited(_select(StudentSection.assignments)),
+      onStartChat: _openChatInput,
     ),
     StudentSection.assignments =>
       AppScope.of(context).accountRole == 'teacher'
@@ -188,10 +189,16 @@ class _HomeShellState extends State<HomeShell> {
     if (!mounted) return;
     setState(() {
       _section = StudentSection.home;
-      _learningChatOpen = true;
+      _learningChatOpen = false;
       _researchProjectChatOpen = false;
       _selectedAttachments = const [];
     });
+  }
+
+  /// 首页（学习仪表盘）上开始输入/发送时切回对话视图。
+  void _openChatInput() {
+    if (!mounted || _learningChatOpen) return;
+    setState(() => _learningChatOpen = true);
   }
 
   @override
