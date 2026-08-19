@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 @dataclass
 class ToolCall:
     """封装 `ToolCall` 的状态与行为。"""
+
     name: str
     arguments: dict
 
@@ -22,6 +23,7 @@ class ToolCall:
 @dataclass
 class ParsedOutput:
     """表示 `parsed output` 数据结构。"""
+
     reasoning: str | None = None
     content: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
@@ -30,6 +32,7 @@ class ParsedOutput:
 @dataclass
 class AgentStreamEvent:
     """封装 `AgentStreamEvent` 的状态与行为。"""
+
     event: str
     data: dict
 
