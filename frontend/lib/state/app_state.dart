@@ -65,6 +65,7 @@ class AppState extends ChangeNotifier {
   UserProfile userProfile = const UserProfile();
   bool loadingProfile = false;
   List<LearningCourseSummary> learningCourses = const [];
+  List<TeachingAssignment> studentAssignments = const [];
   MasteryReport? masteryReport;
   bool loadingLearningOverview = false;
   String? learningOverviewError;
@@ -134,16 +135,12 @@ class AppState extends ChangeNotifier {
     String groupId,
     String projectId,
   ) => conversations
-      .where(
-        (c) => c.groupId == groupId && c.researchProjectId == projectId,
-      )
+      .where((c) => c.groupId == groupId && c.researchProjectId == projectId)
       .toList();
 
   List<ChatConversation> ungroupedConversationsInProject(String projectId) =>
       conversations
-          .where(
-            (c) => c.groupId == null && c.researchProjectId == projectId,
-          )
+          .where((c) => c.groupId == null && c.researchProjectId == projectId)
           .toList();
 
   List<String> get scheduleCourseNames {
@@ -151,6 +148,17 @@ class AppState extends ChangeNotifier {
     return scheduleCourses
         .map((course) => course.name.trim())
         .where((name) => name.isNotEmpty && seen.add(name))
+        .toList();
+  }
+
+  List<DocumentAttachment> get recentAttachments {
+    final seen = <String>{};
+    return _messages.values
+        .expand((items) => items)
+        .expand((message) => message.attachments)
+        .where(
+          (attachment) => attachment.id.isNotEmpty && seen.add(attachment.id),
+        )
         .toList();
   }
 
@@ -233,18 +241,17 @@ class AppState extends ChangeNotifier {
     if (!availableWorkspaces.any((item) => item.type == activeWorkspace)) {
       activeWorkspace = manifest.defaultWorkspace;
     }
-    await Future.wait([
+    final startupTasks = <Future<void>>[
       loadConversations(),
       loadGroups(),
       _loadGroupProjectBindings(),
       loadPreferencesAndProfile(),
       loadLearningOverview(),
-    ]);
-    if (conversations.isNotEmpty) {
-      await setActive(conversations.first.id);
-    } else {
-      activeId = null;
-    }
+    ];
+    if (accountRole == 'student') startupTasks.add(loadStudentAssignments());
+    await Future.wait(startupTasks);
+    // 登录后先进入学习首页，不自动打开最近一条对话；历史对话仍由侧栏选择。
+    activeId = null;
     notifyListeners();
   }
 
@@ -438,6 +445,7 @@ class AppState extends ChangeNotifier {
     preferences = const UserPreferences();
     userProfile = const UserProfile();
     learningCourses = const [];
+    studentAssignments = const [];
     masteryReport = null;
     loadingLearningOverview = false;
     learningOverviewError = null;
@@ -1360,6 +1368,16 @@ class AppState extends ChangeNotifier {
       ensureTypewriter();
     }
 
+    void finishRunningTools(String fallbackText) {
+      for (final message in list.where(
+        (message) => message.isTool && message.toolRunning,
+      )) {
+        message.toolRunning = false;
+        if (message.text.isEmpty) message.text = fallbackText;
+        message.notifyListeners();
+      }
+    }
+
     Future<void> finishTypewriter() async {
       streamEnded = true;
       if (reasoningQueue.isEmpty && contentQueue.isEmpty) {
@@ -1434,11 +1452,14 @@ class AppState extends ChangeNotifier {
           case 'tool_progress':
             // 后端长任务心跳；保留调用中卡片并刷新 Web 的 SSE 超时计时。
             break;
+          case 'heartbeat':
+            // 模型排队或生成隐藏工具参数时的保活事件，不改变界面内容。
+            break;
           case 'tool':
             final toolId = event.data['id']?.toString();
             final toolIndex = toolId == null
                 ? -1
-                : list.indexWhere(
+                : list.lastIndexWhere(
                     (message) => message.isTool && message.id == toolId,
                   );
             if (toolIndex >= 0) {
@@ -1463,6 +1484,7 @@ class AppState extends ChangeNotifier {
             }
             notifyListeners();
           case 'done':
+            finishRunningTools('工具调用已结束，未返回可展示结果');
             await finishTypewriter();
             completed = true;
             assistant.typing = false;
@@ -1487,15 +1509,7 @@ class AppState extends ChangeNotifier {
         reasoningQueue.clear();
         contentQueue.clear();
         assistant.notifyListeners();
-        for (final message in list.where(
-          (message) => message.isTool && message.toolRunning,
-        )) {
-          message.toolRunning = false;
-          if (message.text.isEmpty) {
-            message.text = '工具调用未完成：连接已中断';
-          }
-          message.notifyListeners();
-        }
+        finishRunningTools('工具调用未完成：连接已中断');
         notifyListeners();
       }
     }
@@ -1688,6 +1702,17 @@ class AppState extends ChangeNotifier {
       loadingLearningOverview = false;
       notifyListeners();
     }
+  }
+
+  Future<void> loadStudentAssignments() async {
+    try {
+      studentAssignments = await api.listStudentAssignments();
+    } on ApiException catch (error) {
+      if (!_handled401(error)) studentAssignments = const [];
+    } catch (_) {
+      studentAssignments = const [];
+    }
+    notifyListeners();
   }
 
   Future<String?> savePreferencesAndProfile({

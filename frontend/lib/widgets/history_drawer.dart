@@ -14,7 +14,16 @@ import '../widgets/esa_buttons.dart';
 import 'profile_sheet.dart';
 
 class HistoryDrawer extends StatefulWidget {
-  const HistoryDrawer({super.key});
+  const HistoryDrawer({
+    super.key,
+    this.onNewConversation,
+    this.onNewConversationInGroup,
+    this.onOpenConversation,
+  });
+
+  final VoidCallback? onNewConversation;
+  final ValueChanged<ChatGroup>? onNewConversationInGroup;
+  final ValueChanged<ChatConversation>? onOpenConversation;
 
   @override
   State<HistoryDrawer> createState() => _HistoryDrawerState();
@@ -45,6 +54,105 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
       app.renameConversation(_renameId!, _rename.text);
     }
     setState(() => _renameId = null);
+  }
+
+  Future<void> _startInGroup(AppState app) async {
+    final group = await _pickGroup(context, app);
+    if (group == null || !mounted) return;
+    if (widget.onNewConversationInGroup != null) {
+      widget.onNewConversationInGroup!(group);
+    } else {
+      await app.newConversationInGroup(group.id);
+    }
+    Navigator.of(context).pop();
+  }
+
+  Future<ChatGroup?> _pickGroup(BuildContext context, AppState app) async {
+    final candidates = app.groups
+        .where((group) => app.groupProjectId(group.id) == null)
+        .toList();
+
+    Widget option(ChatGroup group) => Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(EsaRadii.field),
+        onTap: () => Navigator.of(context).pop(group),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(
+            children: [
+              Icon(LucideIcons.folder, size: 17, color: context.n.n600),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  group.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final empty = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      child: Text(
+        '暂无分组，请先创建一个分组。',
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 12.5, color: context.n.n600),
+      ),
+    );
+
+    Widget groupList() => ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 320),
+      child: ListView.separated(
+        shrinkWrap: true,
+        itemCount: candidates.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (_, index) => option(candidates[index]),
+      ),
+    );
+
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return showModalBottomSheet<ChatGroup>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('分组中新建对话', style: context.texts.titleMedium),
+                const SizedBox(height: 12),
+                if (candidates.isEmpty) empty else groupList(),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return showDialog<ChatGroup>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('分组中新建对话'),
+        content: SizedBox(
+          width: 340,
+          child: candidates.isEmpty ? empty : groupList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -83,9 +191,27 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                     height: 42,
                     radius: EsaRadii.button,
                     onPressed: () {
-                      app.newConversation();
+                      if (widget.onNewConversation != null) {
+                        widget.onNewConversation!();
+                      } else {
+                        app.newConversation();
+                      }
                       Navigator.of(context).pop();
                     },
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: const ValueKey('new-group-conversation'),
+                    onPressed: () => _startInGroup(app),
+                    icon: const Icon(LucideIcons.folderPlus, size: 16),
+                    label: const Text('分组中新建对话'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(42),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(EsaRadii.button),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: EsaSpace.md),
                   _searchBox(context),
@@ -282,7 +408,11 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
           onTap: editing
               ? null
               : () {
-                  app.setActive(c.id);
+                  if (widget.onOpenConversation != null) {
+                    widget.onOpenConversation!(c);
+                  } else {
+                    app.setActive(c.id);
+                  }
                   Navigator.of(context).pop();
                 },
           child: Padding(

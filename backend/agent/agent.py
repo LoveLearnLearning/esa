@@ -9,8 +9,10 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from vllm.config.cache import CacheDType
@@ -21,7 +23,7 @@ from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.skills import validate_skill_contracts
 from backend.agent.workspaces.models import ExecutableAgentRun
 from backend.agent.workspaces.history import sanitize_qwen_history as sanitize_qwen_history
-from backend.core.utils.config import DEBUG_MODE
+from backend.core.utils.config import AGENT_STREAM_HEARTBEAT_SECONDS, DEBUG_MODE
 from backend.core.utils.models import (
     AgentStreamEvent,
     ParsedOutput,
@@ -111,8 +113,12 @@ class Agent:
         max_output_tokens: int = 8192,
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
+        stream_heartbeat_seconds: float = AGENT_STREAM_HEARTBEAT_SECONDS,
     ) -> None:
         """初始化 `Agent` 实例。"""
+        if stream_heartbeat_seconds <= 0:
+            raise ValueError("stream_heartbeat_seconds 必须大于 0")
+        self.stream_heartbeat_seconds = stream_heartbeat_seconds
         register_builtin_tools()
         # 在加载昂贵的 vLLM 模型之前 fail-fast，避免 Skill/Tool 漂移带病启动。
         skill_errors = validate_skill_contracts()
@@ -299,16 +305,74 @@ class Agent:
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
         for _ in range(run_spec.loop_policy.max_iterations):
             stream_parser = self.llm_provider.create_stream_parser()
-
-            async for chunk in self.llm_provider.generate_stream(
+            generation = self.llm_provider.generate_stream(
                 messages,
                 tool_schemas,
-            ):
-                for event, delta in stream_parser.feed(chunk):
-                    yield AgentStreamEvent(
-                        event=event,
-                        data={"delta": delta},
+            ).__aiter__()
+            pending_chunk: asyncio.Task[str] | None = None
+            heartbeat_seconds = getattr(
+                self,
+                "stream_heartbeat_seconds",
+                AGENT_STREAM_HEARTBEAT_SECONDS,
+            )
+            last_event_at = time.monotonic()
+
+            try:
+                while True:
+                    if pending_chunk is None:
+                        pending_chunk = asyncio.create_task(anext(generation))
+
+                    wait_seconds = max(
+                        0.0,
+                        heartbeat_seconds - (time.monotonic() - last_event_at),
                     )
+                    done, _ = await asyncio.wait(
+                        {pending_chunk},
+                        timeout=wait_seconds,
+                    )
+                    if not done:
+                        yield AgentStreamEvent(
+                            event="heartbeat",
+                            data={"stage": "inference"},
+                        )
+                        last_event_at = time.monotonic()
+                        continue
+
+                    try:
+                        chunk = pending_chunk.result()
+                    except StopAsyncIteration:
+                        pending_chunk = None
+                        break
+                    pending_chunk = None
+
+                    visible_events = stream_parser.feed(chunk)
+                    for event, delta in visible_events:
+                        yield AgentStreamEvent(
+                            event=event,
+                            data={"delta": delta},
+                        )
+                        last_event_at = time.monotonic()
+
+                    # 工具调用 XML 不对用户展示，但模型可能持续生成很久。
+                    # 即使 vLLM 一直有隐藏 token，也按 SSE 空闲时间发送心跳。
+                    if (
+                        not visible_events
+                        and time.monotonic() - last_event_at >= heartbeat_seconds
+                    ):
+                        yield AgentStreamEvent(
+                            event="heartbeat",
+                            data={"stage": "inference"},
+                        )
+                        last_event_at = time.monotonic()
+            finally:
+                if pending_chunk is not None:
+                    if not pending_chunk.done():
+                        pending_chunk.cancel()
+                    with suppress(asyncio.CancelledError, StopAsyncIteration):
+                        await pending_chunk
+                close_generation = getattr(generation, "aclose", None)
+                if close_generation is not None:
+                    await close_generation()
 
             for event, delta in stream_parser.finish():
                 yield AgentStreamEvent(
@@ -357,8 +421,8 @@ class Agent:
                 }
             )
 
-            for tool_index, tool_call in enumerate(tool_calls):
-                tool_call_id = f"tool-{len(new_messages)}-{tool_index}"
+            for tool_call in tool_calls:
+                tool_call_id = f"tool-{uuid4().hex}"
                 yield AgentStreamEvent(
                     event="tool_start",
                     data={
