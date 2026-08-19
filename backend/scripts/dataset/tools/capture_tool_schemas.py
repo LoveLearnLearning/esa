@@ -89,6 +89,15 @@ def main() -> int:
     with backend_repo.resolve(args.repo, download=args.download) as backend:
         kept, dropped = capture(backend.path, args.with_attachments)
         out_path = Path(args.out) if args.out else OUT
+        # ⚠️ 元信息必须跟着 `--out` 走。
+        # 2026-08-18 之前它写死成 META，于是**任何带 --out 的调用都会污染工作副本**：
+        # `check_backend_updates.py` 每次都用 --out 指到临时目录跑这个脚本
+        # （它的文档字符串还写着「不覆盖 data/cache/」），结果每查一次后端更新，
+        # 就把 tool_schemas_meta.json 的 schema_version / source_repo
+        # 盖成"被检查的那个 commit"的值 —— 而 tool_schemas.json 本身没动。
+        # 后果是 meta 说 abc60289、数据里却是 289b35e2，两边对不上而没人报错。
+        meta_path = (out_path.parent / "tool_schemas_meta.json"
+                     if args.out else META)
         body = json.dumps(kept, ensure_ascii=False, indent=2) + "\n"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(body, encoding="utf-8")
@@ -99,7 +108,7 @@ def main() -> int:
         from esa.ir import compute_schema_version  # noqa: PLC0415
 
         version = compute_schema_version(kept)
-        META.write_text(
+        meta_path.write_text(
             json.dumps(
                 {
                     "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -129,7 +138,7 @@ def main() -> int:
         print(f"  来源：{backend.describe()}　workspace={WORKSPACE}")
         for reason, names in sorted(dropped.items()):
             print(f"  排除（{reason}）：{len(names)} 个 {sorted(names)}")
-        print(f"  元信息 → {backend_repo.display_path(META, ROOT)}")
+        print(f"  元信息 → {backend_repo.display_path(meta_path, ROOT)}")
     return 0
 
 

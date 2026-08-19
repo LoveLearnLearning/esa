@@ -657,12 +657,20 @@ def score(recs: list[dict], preds: dict[str, str], parser_name: str,
         "拒绝命中率": rate("refuse_hit", "refuse_gold"),
         "_confusion": {f"{w}→{gt}": n for (w, gt), n in
                        sorted(confusion.items(), key=lambda x: -x[1]) if w != gt},
-        # 两个分母也一并暴露：判分改动最容易出的错就是「某类样本悄悄进错了分母」，
+        # 分母一并暴露：判分改动最容易出的错就是「某类样本悄悄进错了分母」，
         # test_eval_scoring.py 拿它们做回归断言。
         "_n_nocall": m["gold_nocall"],
         "_n_recover": m["recover_gold"],
         "_n_respond": m["respond_gold"],
         "_n_refuse": m["refuse_gold"],
+        # ⚠️ 忠实度这两个是 2026-08-18 补的。微调后它一跃到 100.0%，
+        # 而**一个指标正好满分，最先要怀疑的是分母塌了**：
+        # 配对校验只查「紧挨着工具返回实体名的数字」，模型要是干脆不写数字，
+        # 分子分母一起归零，rate() 会返回 0.0 而不是 100 —— 但只要还剩一两道
+        # 就能凑出好看的百分比。当时靠手写脚本重算才确认分母没塌（148 道）。
+        # 那种"只能手算才验得了"的东西，就该直接印在报告里。
+        "_n_faith_checked": m["faith_checked"],
+        "_n_faith_skipped": m.get("faith_skipped", 0),
         "_failures": failures[:40],
     }
 
