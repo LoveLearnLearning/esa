@@ -282,12 +282,16 @@ class ScheduleImportResult {
   const ScheduleImportResult({
     required this.courses,
     required this.skippedCount,
+    this.importedCount,
+    this.warnings = const [],
     this.documentPipeline = 'legacy',
     this.documentId,
   });
 
   final List<ScheduleCourse> courses;
   final int skippedCount;
+  final int? importedCount;
+  final List<String> warnings;
   final String documentPipeline;
   final String? documentId;
 }
@@ -338,8 +342,7 @@ class DocumentAttachment {
         pageCount: (json['page_count'] as num?)?.toInt() ?? 0,
         validationStatus: json['validation_status']?.toString() ?? '',
         qualityIssueCount: (json['quality_issue_count'] as num?)?.toInt() ?? 0,
-        mediaType:
-            json['media_type']?.toString() ?? 'application/octet-stream',
+        mediaType: json['media_type']?.toString() ?? 'application/octet-stream',
         sizeBytes: (json['size_bytes'] as num?)?.toInt() ?? 0,
       );
 }
@@ -804,9 +807,8 @@ class ChatMessage extends ChangeNotifier {
       attachments: (j['attachments'] as List? ?? const [])
           .whereType<Map>()
           .map(
-            (item) => DocumentAttachment.fromJson(
-              Map<String, dynamic>.from(item),
-            ),
+            (item) =>
+                DocumentAttachment.fromJson(Map<String, dynamic>.from(item)),
           )
           .toList(),
     );

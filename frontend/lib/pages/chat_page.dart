@@ -1022,7 +1022,7 @@ class _LearningHome extends StatelessWidget {
     final recent = _recentItems(app);
 
     return SingleChildScrollView(
-      key: const ValueKey('learning-home'),
+      key: const ValueKey('learning-home-scroll'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
       child: Center(
         child: ConstrainedBox(

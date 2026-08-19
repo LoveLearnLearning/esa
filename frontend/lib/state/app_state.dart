@@ -669,6 +669,36 @@ class AppState extends ChangeNotifier {
     return result;
   }
 
+  Future<ScheduleImportResult> completeHustImport({
+    required String challengeId,
+    required String username,
+    required String password,
+    required String captcha,
+    required String semesterName,
+    required DateTime startDate,
+    required DateTime endDate,
+    bool toNewTable = false,
+    String? newTableName,
+  }) async {
+    final result = await api.completeHustImport(
+      challengeId: challengeId,
+      username: username,
+      password: password,
+      captcha: captcha,
+      semesterName: semesterName,
+      startDate: startDate,
+      endDate: endDate,
+      toNewTable: toNewTable,
+      newTableName: newTableName,
+    );
+    // 教务导入可能新建并切换课程表，直接以服务端快照为准。
+    await loadSchedule(force: true);
+    if (!scheduleLoaded) {
+      throw ApiException(0, '课程已导入，但刷新课表失败，请稍后重试');
+    }
+    return result;
+  }
+
   void _sortSchedule() {
     scheduleCourses.sort((a, b) {
       final day = a.weekday.compareTo(b.weekday);

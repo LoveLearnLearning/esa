@@ -81,6 +81,7 @@ from backend.core.stores.teaching_store import TeachingStore
 from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.stores.user_store import UserStore
+from backend.core.timetable.hust import HustImporter
 from backend.core.utils.config import (
     API_PREFIX,
     AUXILIARY_MODEL_BASE_URL,
@@ -154,6 +155,7 @@ from backend.core.web.routers import (
     research,
     research_capabilities,
     schedule,
+    schedule_hust,
     student_teaching,
     teaching,
     workspaces,
@@ -270,6 +272,7 @@ async def lifespan(app: FastAPI):
         )
     app.state.user_course_store = UserCourseStore(DB_PATH)
     app.state.schedule_store = ScheduleStore(DB_PATH)
+    app.state.hust_importer = HustImporter()
     app.state.user_presence_store = UserPresenceStore(DB_PATH)
     app.state.lsp_service = LspService(
         commands=LSP_SERVER_COMMANDS,
@@ -441,6 +444,7 @@ async def lifespan(app: FastAPI):
             await app.state.mcp_client_manager.start()
         yield
     finally:
+        await app.state.hust_importer.close()
         if app.state.mcp_client_manager is not None:
             await app.state.mcp_client_manager.close()
         await app.state.frontier_tracking_service.stop()
@@ -467,6 +471,7 @@ business_router.include_router(preferences.memory_settings_router)
 business_router.include_router(learning.router)
 business_router.include_router(lsp.router)
 business_router.include_router(schedule.router)
+business_router.include_router(schedule_hust.router)
 business_router.include_router(memories.router)
 business_router.include_router(workspaces.router)
 business_router.include_router(research.router)

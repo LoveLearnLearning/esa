@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../api/api_client.dart';
+import '../models/hust_import_models.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
@@ -282,11 +283,39 @@ class _SchedulePageState extends State<SchedulePage> {
                 : () => _changeWeek(_week + 1, totalWeeks),
             icon: const Icon(LucideIcons.chevronRight, size: 18),
           ),
-          IconButton(
+          PopupMenuButton<String>(
             key: const ValueKey('schedule-import-button'),
-            tooltip: '从文件导入课表',
-            visualDensity: VisualDensity.compact,
-            onPressed: _importing ? null : () => _importSchedule(app),
+            tooltip: '导入课表',
+            enabled: !_importing,
+            onSelected: (source) {
+              if (source == 'file') {
+                _importSchedule(app);
+              } else if (source == 'hust') {
+                _importHustSchedule(app);
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'file',
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.fileUp, size: 17),
+                    SizedBox(width: 9),
+                    Text('从文件导入'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'hust',
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.graduationCap, size: 17),
+                    SizedBox(width: 9),
+                    Text('从华科教务导入'),
+                  ],
+                ),
+              ),
+            ],
             icon: _importing
                 ? const SizedBox.square(
                     dimension: 18,
@@ -799,9 +828,9 @@ class _SchedulePageState extends State<SchedulePage> {
       if (file == null) return;
       if (file.size > _maxImportBytes) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('文件不能超过 15 MB')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('文件不能超过 15 MB')));
         return;
       }
       final target = await _askImportTarget(app);
@@ -811,9 +840,9 @@ class _SchedulePageState extends State<SchedulePage> {
       // withData: true 时字节已在内存，直接用，避免整份文件的多余复制
       final bytes = file.bytes ?? await file.xFile.readAsBytes();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('正在识别课表，大约需要半分钟…')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('正在识别课表，大约需要半分钟…')));
       final importResult = await app.importScheduleFile(
         filename: file.name,
         bytes: bytes,
@@ -859,6 +888,31 @@ class _SchedulePageState extends State<SchedulePage> {
     } finally {
       if (mounted) setState(() => _importing = false);
     }
+  }
+
+  Future<void> _importHustSchedule(AppState app) async {
+    final target = await _askImportTarget(app);
+    if (target == null || !mounted) return;
+    final (toNewTable, newTableName) = target;
+    final result = await showDialog<ScheduleImportResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _HustImportDialog(
+        app: app,
+        toNewTable: toNewTable,
+        newTableName: newTableName,
+      ),
+    );
+    if (result == null || !mounted) return;
+    final count = result.importedCount ?? result.courses.length;
+    final skipped = result.skippedCount;
+    final warnings = result.warnings.where((item) => item.trim().isNotEmpty);
+    final message = StringBuffer('已从华科教务导入 $count 条课程安排');
+    if (skipped > 0) message.write('，跳过 $skipped 条');
+    if (warnings.isNotEmpty) message.write('；${warnings.join('；')}');
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message.toString())));
   }
 
   Future<void> _openEditor(
@@ -917,6 +971,377 @@ class _SchedulePageState extends State<SchedulePage> {
       }
     }
   }
+}
+
+class _HustImportDialog extends StatefulWidget {
+  const _HustImportDialog({
+    required this.app,
+    required this.toNewTable,
+    required this.newTableName,
+  });
+
+  final AppState app;
+  final bool toNewTable;
+  final String? newTableName;
+
+  @override
+  State<_HustImportDialog> createState() => _HustImportDialogState();
+}
+
+class _HustImportDialogState extends State<_HustImportDialog> {
+  final _username = TextEditingController();
+  final _password = TextEditingController();
+  final _captcha = TextEditingController();
+  final _semesterName = TextEditingController();
+  HustImportChallenge? _challenge;
+  DateTime? _startDate;
+  DateTime? _endDate;
+  bool _loadingCaptcha = false;
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshChallenge();
+  }
+
+  @override
+  void dispose() {
+    _username.dispose();
+    _password.dispose();
+    _captcha.dispose();
+    _semesterName.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshChallenge() async {
+    setState(() {
+      _loadingCaptcha = true;
+      _error = null;
+      _challenge = null;
+      _captcha.clear();
+    });
+    try {
+      final challenge = await widget.app.api.startHustImport();
+      if (!mounted) return;
+      setState(() {
+        _challenge = challenge;
+        if (_semesterName.text.isEmpty) {
+          _semesterName.text = challenge.recommendedSemesterName;
+        }
+        _startDate ??= challenge.recommendedStartDate;
+        _endDate ??= challenge.recommendedEndDate;
+      });
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.detail);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = '无法连接华科统一身份认证，请检查网络或稍后重试。');
+      }
+    } finally {
+      if (mounted) setState(() => _loadingCaptcha = false);
+    }
+  }
+
+  Future<void> _pickDate({required bool start}) async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: (start ? _startDate : _endDate) ?? DateTime.now(),
+      firstDate: DateTime(2018),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      if (start) {
+        _startDate = selected;
+      } else {
+        _endDate = selected;
+      }
+    });
+  }
+
+  Future<void> _submit() async {
+    final challenge = _challenge;
+    final start = _startDate;
+    final end = _endDate;
+    String? validationError;
+    if (challenge == null) {
+      validationError = '请先获取验证码。';
+    } else if (_username.text.trim().isEmpty || _password.text.isEmpty) {
+      validationError = '请输入统一身份认证账号和密码。';
+    } else if (_captcha.text.trim().isEmpty) {
+      validationError = '请输入图形验证码。';
+    } else if (_semesterName.text.trim().isEmpty ||
+        start == null ||
+        end == null) {
+      validationError = '请补全学期名称和日期。';
+    } else if (end.isBefore(start)) {
+      validationError = '学期结束日期不能早于开始日期。';
+    } else if (end.difference(start).inDays > 210) {
+      validationError = '单次导入范围不能超过 30 周。';
+    }
+    if (validationError != null) {
+      setState(() => _error = validationError);
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final result = await widget.app.completeHustImport(
+        challengeId: challenge!.challengeId,
+        username: _username.text.trim(),
+        password: _password.text,
+        captcha: _captcha.text.trim(),
+        semesterName: _semesterName.text.trim(),
+        startDate: start!,
+        endDate: end!,
+        toNewTable: widget.toNewTable,
+        newTableName: widget.newTableName,
+      );
+      _password.clear();
+      if (mounted) Navigator.of(context).pop(result);
+    } on ApiException catch (error) {
+      _password.clear();
+      if (!mounted) return;
+      await _refreshChallenge();
+      if (mounted) setState(() => _error = error.detail);
+    } catch (_) {
+      _password.clear();
+      if (!mounted) return;
+      await _refreshChallenge();
+      if (mounted) setState(() => _error = '导入失败，请检查网络后重试。');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final destination = widget.toNewTable
+        ? '新课程表「${widget.newTableName ?? '自动命名'}」'
+        : '当前课程表';
+    return AlertDialog(
+      titlePadding: const EdgeInsets.fromLTRB(24, 22, 16, 0),
+      contentPadding: const EdgeInsets.fromLTRB(24, 18, 24, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      title: Row(
+        children: [
+          const Icon(
+            LucideIcons.graduationCap,
+            color: EsaColors.accent,
+            size: 21,
+          ),
+          const SizedBox(width: 10),
+          const Expanded(child: Text('从华科教务导入')),
+          IconButton(
+            tooltip: '关闭',
+            onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+            icon: const Icon(LucideIcons.x, size: 19),
+          ),
+        ],
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: SingleChildScrollView(
+          child: AutofillGroup(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: EsaColors.accent.withValues(alpha: 0.09),
+                    borderRadius: BorderRadius.circular(EsaRadii.field),
+                  ),
+                  child: Text(
+                    '将导入到$destination。账号、密码和 CAS Cookie 只用于本次导入，'
+                    '不会写入 ESA 数据库。华科 HUB 可能要求校园网或学校 VPN。',
+                    style: context.texts.bodySmall?.copyWith(
+                      color: context.scheme.onSurface,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _semesterName,
+                  decoration: const InputDecoration(
+                    labelText: '学期名称',
+                    prefixIcon: Icon(LucideIcons.bookOpen, size: 17),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _HustDateField(
+                        label: '第一教学周周一',
+                        value: _startDate,
+                        onTap: () => _pickDate(start: true),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _HustDateField(
+                        label: '查询截止日期',
+                        value: _endDate,
+                        onTap: () => _pickDate(start: false),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: _username,
+                  autofillHints: const [AutofillHints.username],
+                  decoration: const InputDecoration(
+                    labelText: '统一身份认证账号',
+                    prefixIcon: Icon(LucideIcons.user, size: 17),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _password,
+                  obscureText: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  autofillHints: const [AutofillHints.password],
+                  decoration: const InputDecoration(
+                    labelText: '统一身份认证密码',
+                    prefixIcon: Icon(LucideIcons.lock, size: 17),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _captcha,
+                        maxLength: 8,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) {
+                          if (!_submitting) _submit();
+                        },
+                        decoration: const InputDecoration(
+                          labelText: '图形验证码',
+                          counterText: '',
+                          prefixIcon: Icon(LucideIcons.shieldCheck, size: 17),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: 132,
+                      height: 52,
+                      child: _captchaBox(context),
+                    ),
+                  ],
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _error!,
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton.icon(
+          onPressed: _submitting || _loadingCaptcha || _challenge == null
+              ? null
+              : _submit,
+          icon: _submitting
+              ? const SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(LucideIcons.download, size: 16),
+          label: Text(_submitting ? '正在导入' : '登录并导入'),
+        ),
+      ],
+    );
+  }
+
+  Widget _captchaBox(BuildContext context) {
+    if (_loadingCaptcha) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+    final bytes = _challenge?.captchaBytes;
+    if (bytes == null || bytes.isEmpty) {
+      return OutlinedButton(
+        onPressed: _refreshChallenge,
+        child: const Text('重试'),
+      );
+    }
+    return InkWell(
+      onTap: _refreshChallenge,
+      borderRadius: BorderRadius.circular(EsaRadii.field),
+      child: Tooltip(
+        message: '看不清？点击刷新',
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: context.n.divider),
+            borderRadius: BorderRadius.circular(EsaRadii.field),
+          ),
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HustDateField extends StatelessWidget {
+  const _HustDateField({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final String label;
+  final DateTime? value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(EsaRadii.field),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: const Icon(LucideIcons.calendar, size: 17),
+        ),
+        child: Text(value == null ? '请选择' : _formatDate(value!)),
+      ),
+    );
+  }
+}
+
+String _formatDate(DateTime date) {
+  String two(int value) => value.toString().padLeft(2, '0');
+  return '${date.year}-${two(date.month)}-${two(date.day)}';
 }
 
 class _ScheduleSettingsSheet extends StatefulWidget {

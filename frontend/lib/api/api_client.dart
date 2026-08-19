@@ -13,6 +13,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../config.dart';
+import '../models/hust_import_models.dart';
 import '../models/models.dart';
 
 /// 后端返回的错误 statusCode + detail(取自 {"detail": ...})
@@ -74,6 +75,33 @@ class ApiClient {
   DateTime? sessionExpiresAt;
 
   bool get isLoggedIn => sessionId != null;
+
+  /// 教务密码只能发往 HTTPS，或明确的本机开发地址。
+  /// 临时联调可用 --dart-define=ESA_ALLOW_INSECURE_CREDENTIALS=true 覆盖。
+  bool get allowsCredentialSubmission {
+    const allowInsecure = bool.fromEnvironment(
+      'ESA_ALLOW_INSECURE_CREDENTIALS',
+      defaultValue: false,
+    );
+    if (allowInsecure) return true;
+    final configuredUri = Uri.tryParse(baseUrl);
+    if (configuredUri == null) return false;
+    // Flutter Web 默认使用同源相对地址 `/api`。它的实际传输协议由当前
+    // 页面决定，因此必须先解析到页面来源，不能把生产 HTTPS 误判为明文。
+    final uri = configuredUri.hasScheme
+        ? configuredUri
+        : kIsWeb
+        ? Uri.base.resolveUri(configuredUri)
+        : configuredUri;
+    if (uri.scheme.toLowerCase() == 'https') return true;
+    return const {
+      'localhost',
+      '127.0.0.1',
+      '::1',
+      '10.0.2.2',
+      'host.docker.internal',
+    }.contains(uri.host.toLowerCase());
+  }
 
   Map<String, String> _headers({bool auth = false}) => {
     'Content-Type': 'application/json',
@@ -514,6 +542,10 @@ class ApiClient {
             )
             .toList(),
         skippedCount: (data['skipped_count'] as num?)?.toInt() ?? 0,
+        importedCount: (data['imported_count'] as num?)?.toInt(),
+        warnings: (data['warnings'] as List? ?? const [])
+            .map((item) => item.toString())
+            .toList(),
         documentPipeline:
             (data['document'] as Map?)?['pipeline']?.toString() ?? 'legacy',
         documentId: (data['document'] as Map?)?['document_id']?.toString(),
@@ -523,6 +555,76 @@ class ApiClient {
     } on http.ClientException {
       throw ApiException(0, '网络异常，请检查网络后重试');
     }
+  }
+
+  Future<HustImportChallenge> startHustImport() async {
+    if (!allowsCredentialSubmission) {
+      throw ApiException(400, '当前后端不是 HTTPS，已阻止发送教务密码。请改用 HTTPS 或本机后端。');
+    }
+    final r = await http.post(
+      _uri('/me/schedule/import/hust/challenge'),
+      headers: _headers(auth: true),
+      body: '{}',
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) _fail(r);
+    return HustImportChallenge.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<ScheduleImportResult> completeHustImport({
+    required String challengeId,
+    required String username,
+    required String password,
+    required String captcha,
+    required String semesterName,
+    required DateTime startDate,
+    required DateTime endDate,
+    bool toNewTable = false,
+    String? newTableName,
+  }) async {
+    if (!allowsCredentialSubmission) {
+      throw ApiException(400, '当前后端不是 HTTPS，已阻止发送教务密码。请改用 HTTPS 或本机后端。');
+    }
+    final r = await http.post(
+      _uri('/me/schedule/import/hust/complete'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'challenge_id': challengeId,
+        'username': username,
+        'password': password,
+        'captcha': captcha,
+        'semester_name': semesterName,
+        'start_date': _dateOnly(startDate),
+        'end_date': _dateOnly(endDate),
+        'target': toNewTable ? 'new' : 'current',
+        if (toNewTable && newTableName?.trim().isNotEmpty == true)
+          'table_name': newTableName!.trim(),
+      }),
+    );
+    if (r.statusCode != 200) _fail(r);
+    final data = _decode(r) as Map<String, dynamic>;
+    final courses = (data['courses'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => ScheduleCourse.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+    return ScheduleImportResult(
+      courses: courses,
+      skippedCount:
+          (data['skipped_count'] as num?)?.toInt() ??
+          (data['skipped_entries'] as num?)?.toInt() ??
+          0,
+      importedCount:
+          (data['imported_count'] as num?)?.toInt() ??
+          (data['imported_entries'] as num?)?.toInt() ??
+          courses.length,
+      warnings: (data['warnings'] as List? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+    );
+  }
+
+  String _dateOnly(DateTime date) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${date.year}-${two(date.month)}-${two(date.day)}';
   }
 
   Future<ScheduleTable> createScheduleTable(String name) async {

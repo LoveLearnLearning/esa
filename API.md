@@ -615,6 +615,52 @@ PDF、DOCX、PPTX、XLSX 与常见图片先经过 `MinerU → DocIR → Markdown
 `document.pipeline: legacy`。模型输出经过严格 Schema 校验后才会去重写入用户课表；
 辅助模型不可用时返回 `502`，不会回退占用主模型。
 
+### POST /me/schedule/import/hust/challenge
+
+开始华中科技大学教务导入。请求体可省略，也可提供 `semester_name`、`start_date` 和
+`end_date`；两个日期必须同时提供。服务端与华科 CAS 建立一个短期、当前用户绑定且
+一次性消费的内存会话，返回：
+
+```json
+{
+  "challenge_id": "...",
+  "captcha_image_base64": "...",
+  "captcha_mime_type": "image/jpeg",
+  "expires_at": "2026-08-18T10:05:00+00:00",
+  "recommended_semester_name": "2026-2027 学年第一学期",
+  "recommended_start_date": "2026-08-31",
+  "recommended_end_date": "2027-01-17"
+}
+```
+
+该接口不接收教务账号或密码。challenge 默认 5 分钟过期；同一用户重新开始时，旧
+challenge 会被关闭。
+
+### POST /me/schedule/import/hust/complete
+
+提交验证码并完成 CAS 登录、课表查询和导入：
+
+```json
+{
+  "challenge_id": "...",
+  "username": "U202600001",
+  "password": "...",
+  "captcha": "abcd",
+  "semester_name": "2026-2027 学年第一学期",
+  "start_date": "2026-08-31",
+  "end_date": "2027-01-17",
+  "target": "new",
+  "table_name": "大二上"
+}
+```
+
+`target` 为 `current` 或 `new`。成功响应沿用课表导入结构，包含 `courses`、
+`imported_count`、`skipped_count`、`warnings`、`tables` 和 `active_table_id`，并同步
+第一教学周日期、总周数及 `user_courses`。账号、密码、CAS Cookie 和 ticket 不落库；
+客户端仅允许向 HTTPS 或本机后端提交凭据。HUB 对部署 IP 返回 403 时，需要校园网、
+学校 VPN 或校内代理。详细配置和真实账号验收清单见
+[documents/HUST_TIMETABLE_IMPORT.md](documents/HUST_TIMETABLE_IMPORT.md)。
+
 ---
 
 ## 长期记忆接口

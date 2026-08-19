@@ -64,6 +64,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
     } else {
       await app.newConversationInGroup(group.id);
     }
+    if (!mounted) return;
     Navigator.of(context).pop();
   }
 
@@ -111,7 +112,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
       child: ListView.separated(
         shrinkWrap: true,
         itemCount: candidates.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
+        separatorBuilder: (_, _) => const Divider(height: 1),
         itemBuilder: (_, index) => option(candidates[index]),
       ),
     );
@@ -489,19 +490,15 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
     AppState app,
     ChatConversation conversation,
   ) async {
-    final target = await showMoveConversationDialog(
-      context,
-      app,
-      conversation,
-    );
+    final target = await showMoveConversationDialog(context, app, conversation);
     if (target == null || !context.mounted) return;
     try {
       await app.moveConversationToGroup(conversation.id, target.groupId);
     } catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('移动失败：$error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('移动失败：$error')));
     }
   }
 
