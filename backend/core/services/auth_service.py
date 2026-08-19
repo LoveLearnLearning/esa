@@ -1,11 +1,17 @@
 # backend/core/services/auth_service.py
 
+"""提供领域服务实现。"""
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from backend.core.services.password_service import PasswordService
+from backend.core.services.email_verification_service import (
+    InvalidEmail,
+    normalize_email,
+)
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
@@ -22,6 +28,7 @@ class AuthService:
         session_store: SessionStore,
     ) -> None:
 
+        """初始化 `AuthService` 实例。"""
         self.user_store = user_store
         self.session_store = session_store
 
@@ -41,7 +48,17 @@ class AuthService:
                 None             => 登陆失败 用户不存在或密码错误
         """
 
-        user: UserRecord | None = self.user_store.get_by_username(username)
+        user: UserRecord | None
+        if "@" in username:
+            try:
+                user = self.user_store.get_by_email(normalize_email(username))
+            except InvalidEmail:
+                user = None
+            if user is None:
+                # Legacy usernames were not restricted from containing '@'.
+                user = self.user_store.get_by_username(username)
+        else:
+            user = self.user_store.get_by_username(username)
         if not user:
             return
         login_state: bool = PasswordService.verify_password(
@@ -68,6 +85,10 @@ class AuthService:
         self,
         username: str,
         password: str,
+        account_role: str = "student",
+        *,
+        email: str | None = None,
+        email_verified_at: str | None = None,
     ) -> UserRecord | None:
         """给新用户提供注册服务 user_id 由服务端生成
         Args:
@@ -82,6 +103,8 @@ class AuthService:
 
         if self.user_store.get_by_username(username) is not None:
             return None
+        if email is not None and self.user_store.get_by_email(email) is not None:
+            return None
 
         pwd_hash = PasswordService.hash_password(password)
         new_user = UserRecord(
@@ -89,6 +112,9 @@ class AuthService:
             username=username,
             password_hash=pwd_hash,
             status="active",
+            account_role=account_role,
+            email=email,
+            email_verified_at=email_verified_at,
         )
 
         if not self.user_store.create(new_user):

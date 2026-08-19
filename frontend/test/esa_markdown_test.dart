@@ -133,4 +133,55 @@ print("hello world")
     expect(find.text('print("hel")', findRichText: true), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('external code draft is reflected in the original code block', (
+    tester,
+  ) async {
+    final drafts = <String, String>{};
+    String? openedId;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(
+          body: EsaMarkdown(
+            data: '''```python
+print("hello")
+```''',
+            codeBlockPrefix: 'message-1',
+            codeOverrideFor: (id) => drafts[id],
+            codeOverrideVersion: 1,
+            onOpenCodeEditorWithId: (id, code, language) {
+              openedId = id;
+              drafts[id] = 'print("edited")';
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('在编辑器中打开'));
+    expect(openedId, 'message-1:0');
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(
+          body: EsaMarkdown(
+            data: '''```python
+print("hello")
+```''',
+            codeBlockPrefix: 'message-1',
+            codeOverrideFor: (id) => drafts[id],
+            codeOverrideVersion: 2,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final richText = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .map((widget) => widget.text.toPlainText())
+        .toList();
+    expect(richText, contains('print("edited")'));
+    expect(richText, isNot(contains('print("hello")')));
+  });
 }

@@ -1,3 +1,5 @@
+# backend/agent/memories/profile_projection.py
+
 """CoreMemory -> ProfileStore 的受控结构化投影层。
 
 设计原则：
@@ -13,6 +15,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from backend.agent.memories.core_memory_models import CoreMemoryRecord
 from backend.agent.memories.memory_models import ProfileOrigin
 
 _SAFE_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{1,63}$")
@@ -58,12 +61,14 @@ _PROFILE_SAFE_SUFFIXES = (
 
 @dataclass(frozen=True, slots=True)
 class ProjectionResult:
+    """封装 `ProjectionResult` 的状态与行为。"""
     projected: bool
     field_key: str | None = None
     reason: str = ""
     status: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """将当前对象转换为字典。"""
         return {
             "projected": self.projected,
             "field_key": self.field_key,
@@ -78,16 +83,21 @@ class ProfileProjection:
     MAX_PROJECTABLE_CONTENT_CHARS = 240
 
     def __init__(self, user_store, profile_store) -> None:
+        """初始化 `ProfileProjection` 实例。"""
         self._user_store = user_store
         self._profile_store = profile_store
 
     @staticmethod
     def _is_sensitive_key(memory_key: str) -> bool:
+        """判断 `sensitive key` 相关数据。"""
         lowered = memory_key.lower()
         return any(part in lowered for part in _SENSITIVE_KEY_PARTS)
 
     @classmethod
-    def _is_projectable(cls, memory_key: str, content: str, category: str) -> tuple[bool, str]:
+    def _is_projectable(
+        cls, memory_key: str, content: str, category: str
+    ) -> tuple[bool, str]:
+        """判断 `projectable` 相关数据。"""
         memory_key = memory_key.strip()
         content = content.strip()
         category = category.strip().lower()
@@ -116,7 +126,9 @@ class ProfileProjection:
 
         return True, ""
 
-    def project_memory(self, user_name: str, memory: dict[str, Any]) -> ProjectionResult:
+    def project_memory(
+        self, user_name: str, memory: dict[str, Any]
+    ) -> ProjectionResult:
         """把一条已经持久化的 CoreMemory 投影到 ProfileStore；失败时不影响原记忆。"""
         user_name = user_name.strip()
         if not user_name:
@@ -126,24 +138,65 @@ class ProfileProjection:
         if user is None:
             return ProjectionResult(False, reason="user_not_found")
 
-        memory_key = str(memory.get("memory_key") or "").strip()
-        content = str(memory.get("content") or "").strip()
-        category = str(memory.get("category") or "general").strip().lower()
+        return self._project(
+            user.id,
+            memory_key=str(memory.get("memory_key") or "").strip(),
+            content=str(memory.get("content") or "").strip(),
+            category=str(memory.get("category") or "general").strip().lower(),
+            memory_id=str(memory.get("id") or "").strip(),
+            active=True,
+        )
+
+    def project_core_memory(self, memory: CoreMemoryRecord) -> ProjectionResult:
+        """Project an active V2 record using stable user and memory identifiers."""
+        return self._project(
+            memory.user_id,
+            memory_key=memory.memory_key,
+            content=memory.content,
+            category=memory.category,
+            memory_id=memory.memory_id,
+            active=memory.status == "active",
+        )
+
+    def _project(
+        self,
+        user_id: str,
+        *,
+        memory_key: str,
+        content: str,
+        category: str,
+        memory_id: str,
+        active: bool,
+    ) -> ProjectionResult:
+        """处理 `_project` 相关逻辑。"""
+        if not active:
+            return self._remove(user_id, memory_key, memory_id)
 
         allowed, reason = self._is_projectable(memory_key, content, category)
         if not allowed:
-            return ProjectionResult(False, field_key=memory_key or None, reason=reason)
-
-        memory_id = str(memory.get("id") or "").strip()
+            removed = self._remove(user_id, memory_key, memory_id)
+            return (
+                removed
+                if removed.reason == "projection_removed"
+                else ProjectionResult(
+                    False,
+                    field_key=memory_key or None,
+                    reason=reason,
+                )
+            )
         source_ids = [memory_id] if memory_id else []
 
         # 用户手动 suppress 过的字段不能因为同名记忆再次保存而被静默激活。
         existing = self._profile_store.get_dimension(
-            user.id,
+            user_id,
             memory_key,
             include_expired=True,
         )
-        status = "suppressed" if existing and existing.get("status") == "suppressed" else "active"
+        status = (
+            "suppressed"
+            if existing and existing.get("status") == "suppressed"
+            else "active"
+        )
 
         # 显式设置属于更高优先级来源，绝不由记忆覆盖。
         if existing and existing.get("origin") == ProfileOrigin.EXPLICIT_SETTING.value:
@@ -155,7 +208,7 @@ class ProfileProjection:
             )
 
         saved = self._profile_store.upsert_dimension(
-            user_id=user.id,
+            user_id=user_id,
             field_key=memory_key,
             value=content,
             origin=ProfileOrigin.EXPLICIT_MEMORY.value,
@@ -170,6 +223,13 @@ class ProfileProjection:
             status=status,
         )
 
+    def remove_core_memory_projection(
+        self,
+        memory: CoreMemoryRecord,
+    ) -> ProjectionResult:
+        """移除 `core memory projection` 相关数据。"""
+        return self._remove(memory.user_id, memory.memory_key, memory.memory_id)
+
     def remove_memory_projection(
         self,
         user_name: str,
@@ -180,27 +240,44 @@ class ProfileProjection:
         if user is None:
             return ProjectionResult(False, reason="user_not_found")
 
-        field_key = str(memory.get("memory_key") or "").strip()
-        memory_id = str(memory.get("id") or "").strip()
+        return self._remove(
+            user.id,
+            str(memory.get("memory_key") or "").strip(),
+            str(memory.get("id") or "").strip(),
+        )
+
+    def _remove(
+        self,
+        user_id: str,
+        field_key: str,
+        memory_id: str,
+    ) -> ProjectionResult:
+        """移除 `remove` 相关数据。"""
         if not field_key:
             return ProjectionResult(False, reason="missing_memory_key")
 
         existing = self._profile_store.get_dimension(
-            user.id,
+            user_id,
             field_key,
             include_expired=True,
         )
         if existing is None:
-            return ProjectionResult(False, field_key=field_key, reason="projection_not_found")
+            return ProjectionResult(
+                False, field_key=field_key, reason="projection_not_found"
+            )
         if existing.get("origin") != ProfileOrigin.EXPLICIT_MEMORY.value:
-            return ProjectionResult(False, field_key=field_key, reason="projection_owned_by_other_origin")
+            return ProjectionResult(
+                False, field_key=field_key, reason="projection_owned_by_other_origin"
+            )
 
         source_ids = {str(item) for item in (existing.get("source_memory_ids") or [])}
         if memory_id and memory_id not in source_ids:
-            return ProjectionResult(False, field_key=field_key, reason="projection_owned_by_other_memory")
+            return ProjectionResult(
+                False, field_key=field_key, reason="projection_owned_by_other_memory"
+            )
 
         deleted = self._profile_store.delete_dimension(
-            user.id,
+            user_id,
             field_key,
             actor="agent",
         )

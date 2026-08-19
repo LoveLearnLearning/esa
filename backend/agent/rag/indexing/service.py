@@ -33,6 +33,7 @@ class IndexGeneration:
     chunk_count: int
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if self.schema_version != "rag-index-generation-0.1":
             raise ValueError("unsupported index generation schema")
         for name in (

@@ -1,5 +1,7 @@
 # backend/agent/learning/evidence_store.py
 
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
 import sqlite3
@@ -29,19 +31,31 @@ class LearningEvidenceStore:
         "careless",
         "unknown",
     }
+    ACTIVITY_TYPES = {
+        "practice",
+        "homework",
+        "retrieval",
+        "hint",
+        "teach_back",
+        "transfer",
+        "review",
+    }
 
     def __init__(
         self,
         database_path: str | Path = "data/learning_evidence.db",
     ) -> None:
+        """初始化 `LearningEvidenceStore` 实例。"""
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
+        """处理 `_connect` 相关逻辑。"""
         return connect_sqlite(self.database_path)
 
     def _initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         with self._connect() as connection:
             connection.execute(
                 """
@@ -61,10 +75,21 @@ class LearningEvidenceStore:
                     transfer_score REAL,
                     error_type TEXT,
                     misconception TEXT,
+                    idempotency_key TEXT,
                     created_at TEXT NOT NULL
                 )
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(learning_evidence)"
+                ).fetchall()
+            }
+            if "idempotency_key" not in columns:
+                connection.execute(
+                    "ALTER TABLE learning_evidence ADD COLUMN idempotency_key TEXT"
+                )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_learning_evidence_user_kp_time
@@ -77,9 +102,17 @@ class LearningEvidenceStore:
                 ON learning_evidence(user_name, created_at DESC)
                 """
             )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_learning_evidence_idempotency
+                ON learning_evidence(user_name, idempotency_key)
+                WHERE idempotency_key IS NOT NULL
+                """
+            )
 
     @staticmethod
     def _clamp_optional(value: float | None) -> float | None:
+        """处理 `_clamp_optional` 相关逻辑。"""
         if value is None:
             return None
         return max(0.0, min(1.0, float(value)))
@@ -101,15 +134,41 @@ class LearningEvidenceStore:
         transfer_score: float | None = None,
         error_type: str | None = None,
         misconception: str | None = None,
+        idempotency_key: str | None = None,
     ) -> dict:
+        """处理 `record` 相关逻辑。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str => kp ID。
+            activity_type: str => `activity_type` 参数。
+            correct: bool | None => `correct` 参数。
+            self_confidence: float | None => `self_confidence` 参数。
+            evidence_reliability: float => `evidence_reliability` 参数。
+            hint_level: int => `hint_level` 参数。
+            attempts: int => `attempts` 参数。
+            independent: bool | None => `independent` 参数。
+            recall_score: float | None => `recall_score` 参数。
+            explanation_score: float | None => `explanation_score` 参数。
+            transfer_score: float | None => `transfer_score` 参数。
+            error_type: str | None => `error_type` 参数。
+            misconception: str | None => `misconception` 参数。
+            idempotency_key: 同一可信请求内重试时使用的幂等键。
+
+        Returns:
+            dict => 处理结果。
+        """
         user_name = user_name.strip()
         kp_id = kp_id.strip()
         activity_type = activity_type.strip() or "practice"
+        idempotency_key = (idempotency_key or "").strip() or None
 
         if not user_name:
             raise ValueError("user_name 不能为空")
         if not kp_id:
             raise ValueError("kp_id 不能为空")
+        if activity_type not in self.ACTIVITY_TYPES:
+            raise ValueError(f"不支持的 activity_type={activity_type!r}")
 
         hint_level = max(0, min(5, int(hint_level)))
         attempts = max(1, int(attempts))
@@ -129,6 +188,23 @@ class LearningEvidenceStore:
         created_at = datetime.now().isoformat()
 
         with self._connect() as connection:
+            if idempotency_key is not None:
+                existing = connection.execute(
+                    """
+                    SELECT * FROM learning_evidence
+                    WHERE user_name = ? AND idempotency_key = ?
+                    """,
+                    (user_name, idempotency_key),
+                ).fetchone()
+                if existing is not None:
+                    item = dict(existing)
+                    if item["correct"] is not None:
+                        item["correct"] = bool(item["correct"])
+                    if item["independent"] is not None:
+                        item["independent"] = bool(item["independent"])
+                    item.pop("idempotency_key", None)
+                    item["duplicate"] = True
+                    return item
             connection.execute(
                 """
                 INSERT INTO learning_evidence (
@@ -136,9 +212,9 @@ class LearningEvidenceStore:
                     self_confidence, evidence_reliability,
                     hint_level, attempts, independent,
                     recall_score, explanation_score, transfer_score,
-                    error_type, misconception, created_at
+                    error_type, misconception, idempotency_key, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     evidence_id,
@@ -156,6 +232,7 @@ class LearningEvidenceStore:
                     self._clamp_optional(transfer_score),
                     normalized_error_type,
                     normalized_misconception,
+                    idempotency_key,
                     created_at,
                 ),
             )
@@ -176,6 +253,7 @@ class LearningEvidenceStore:
             "transfer_score": self._clamp_optional(transfer_score),
             "error_type": normalized_error_type,
             "misconception": normalized_misconception,
+            "duplicate": False,
             "created_at": created_at,
         }
 
@@ -186,6 +264,16 @@ class LearningEvidenceStore:
         kp_id: str | None = None,
         limit: int = 20,
     ) -> list[dict]:
+        """获取 `recent` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str | None => kp ID。
+            limit: int => 返回数量上限。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         user_name = user_name.strip()
         kp_id = (kp_id or "").strip() or None
         limit = max(1, min(200, int(limit)))
@@ -234,6 +322,16 @@ class LearningEvidenceStore:
         kp_id: str | None = None,
         limit: int = 50,
     ) -> dict:
+        """获取 `summary` 相关数据。
+
+        Args:
+            user_name: str => `user_name` 参数。
+            kp_id: str | None => kp ID。
+            limit: int => 返回数量上限。
+
+        Returns:
+            dict => 处理结果。
+        """
         rows = self.get_recent(user_name, kp_id=kp_id, limit=limit)
 
         if not rows:
@@ -253,6 +351,7 @@ class LearningEvidenceStore:
             }
 
         def avg(values: list[float]) -> float | None:
+            """处理 `avg` 相关逻辑。"""
             if not values:
                 return None
             return round(sum(values) / len(values), 3)

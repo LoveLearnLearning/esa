@@ -64,10 +64,11 @@ void main() {
     await tester.pumpWidget(app(state));
     await tester.pumpAndSettle();
 
-    expect(find.text('学习助手'), findsOneWidget);
-    expect(find.text('课表'), findsOneWidget);
+    expect(find.text('首页'), findsWidgets);
+    expect(find.text('对话'), findsNothing);
+    expect(find.text('日程'), findsOneWidget);
 
-    await tester.tap(find.text('课表'));
+    await tester.tap(find.text('日程'));
     await tester.pumpAndSettle();
     expect(find.text('添加课程'), findsOneWidget);
     final gridRect = tester.getRect(
@@ -144,7 +145,7 @@ void main() {
     expect(restored.scheduleSettings.totalPeriods, 10);
   });
 
-  testWidgets('wide layout moves page navigation to a right-side rail', (
+  testWidgets('wide layout uses the student workspace rail on the left', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1280, 800);
@@ -157,16 +158,162 @@ void main() {
     await tester.pumpWidget(app(state));
     await tester.pumpAndSettle();
 
-    expect(find.byType(NavigationRail), findsOneWidget);
-    expect(find.byType(NavigationBar), findsNothing);
-    // 导航栏在屏幕右侧
-    final railRect = tester.getRect(find.byType(NavigationRail));
-    expect(railRect.center.dx, greaterThan(1280 / 2));
+    final rail = find.byKey(const ValueKey('student-global-rail'));
+    expect(rail, findsOneWidget);
+    expect(tester.getRect(rail).center.dx, lessThan(1280 / 2));
+    expect(find.text('教学'), findsNothing);
 
-    await tester.tap(find.text('课表'));
+    await tester.tap(find.byTooltip('日程'));
     await tester.pumpAndSettle();
     expect(find.text('添加课程'), findsOneWidget);
   });
+
+  testWidgets('workspace sidebar keeps history and omits primary navigation', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = _ScheduleApi()
+      ..courses.add(
+        const ScheduleCourse(
+          id: 'data-structures-1',
+          name: '数据结构',
+          weekday: 1,
+          startPeriod: 1,
+          endPeriod: 2,
+          startWeek: 1,
+          endWeek: 18,
+          colorValue: 0xFF2563EB,
+        ),
+      )
+      ..courses.add(
+        const ScheduleCourse(
+          id: 'data-structures-2',
+          name: '数据结构',
+          weekday: 3,
+          startPeriod: 3,
+          endPeriod: 4,
+          startWeek: 1,
+          endWeek: 18,
+          colorValue: 0xFF2563EB,
+        ),
+      );
+    final state = createState(api)
+      ..conversations.addAll(
+        List.generate(
+          8,
+          (index) => ChatConversation(
+            id: 'history-$index',
+            title: '历史对话 ${index + 1}',
+            updatedAt: DateTime(2026, 8, 14, 12, 0, index),
+          ),
+        ),
+      );
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('最近对话'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('workspace-history-heading')),
+      findsOneWidget,
+    );
+    expect(find.text('历史对话 7'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('workspace-courses-heading')),
+      findsNothing,
+    );
+    expect(find.text('作业'), findsNothing);
+    expect(find.text('日程'), findsNothing);
+    expect(find.text('知识地图'), findsNothing);
+  });
+
+  testWidgets(
+    'desktop home uses the practical four-column information layout',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final state = createState()
+        ..learningCourses = const [
+          LearningCourseSummary(
+            name: '数据结构与算法',
+            totalPoints: 12,
+            evaluatedPoints: 8,
+            weakPoints: 2,
+            reviewPoints: 1,
+            averageMastery: 62,
+          ),
+        ]
+        ..masteryReport = const MasteryReport(
+          totalPoints: 12,
+          averageMastery: 62,
+          weakPoints: [MasteryPoint(name: 'Dijkstra', masteryLevel: 45)],
+          strongPoints: [],
+          stalePoints: [MasteryPoint(name: '最短路径', masteryLevel: 58)],
+        );
+      addTearDown(state.dispose);
+      await tester.pumpWidget(app(state));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('learning-home')), findsOneWidget);
+      expect(find.text('继续学习'), findsWidgets);
+      expect(find.text('待办'), findsOneWidget);
+      expect(find.text('最近'), findsOneWidget);
+      expect(find.textContaining('你好，我是'), findsNothing);
+      expect(find.text('生成复习计划'), findsNothing);
+      expect(find.text('附件'), findsOneWidget);
+      expect(find.text('Markdown'), findsOneWidget);
+      expect(find.text('LaTeX'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('learning-context-panel')),
+        findsOneWidget,
+      );
+      expect(find.text('当前上下文'), findsOneWidget);
+      expect(find.text('已选资料 0'), findsOneWidget);
+      expect(find.text('引用课程资料'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'medium desktop hides context first and keeps sidebar collapsible',
+    (tester) async {
+      tester.view.physicalSize = const Size(1100, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final state = createState();
+      addTearDown(state.dispose);
+      await tester.pumpWidget(app(state));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('learning-home')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('learning-context-panel')),
+        findsNothing,
+      );
+      expect(find.text('学习空间'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('收起侧栏'));
+      await tester.pumpAndSettle();
+      expect(find.text('学习空间'), findsNothing);
+      expect(find.byTooltip('展开侧栏'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byTooltip('展开侧栏'));
+      await tester.pumpAndSettle();
+      expect(find.text('学习空间'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('narrow timetable keeps the complete seven-day grid visible', (
     tester,
@@ -205,7 +352,7 @@ void main() {
 
     await tester.pumpWidget(app(state));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('课表'));
+    await tester.tap(find.text('日程'));
     await tester.pumpAndSettle();
     expect(find.text('高等数学'), findsOneWidget);
     expect(find.text('操作系统'), findsOneWidget);
@@ -240,5 +387,49 @@ void main() {
     expect(find.text('上午'), findsOneWidget);
     expect(find.text('下午'), findsOneWidget);
     expect(find.text('晚上'), findsOneWidget);
+  });
+
+  testWidgets('student mobile navigation only exposes learning and research', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final state = createState();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('student-learning-destination')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('student-research-destination')),
+      findsOneWidget,
+    );
+    expect(find.text('教学'), findsNothing);
+  });
+
+  testWidgets('student mobile assistant can open the history drawer', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final state = createState();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('历史对话'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('搜索历史对话'), findsOneWidget);
+    expect(find.text('开启新对话'), findsOneWidget);
   });
 }

@@ -28,6 +28,7 @@ DEFAULT_TONE = "friendly"
 
 @dataclass(frozen=True, slots=True)
 class ResolvedStyleTone:
+    """封装 `ResolvedStyleTone` 的状态与行为。"""
     style: str
     tone: str
     style_rule: str
@@ -35,6 +36,7 @@ class ResolvedStyleTone:
 
 
 def _clean(value: str | None) -> str:
+    """清理 `clean` 相关数据。"""
     return value.strip() if value else ""
 
 

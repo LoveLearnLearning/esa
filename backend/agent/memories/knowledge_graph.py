@@ -1,5 +1,7 @@
 # backend/agent/memories/knowledge_graph.py
 
+"""提供 `knowledge_graph` 相关功能。"""
+
 from __future__ import annotations
 
 import sqlite3
@@ -20,6 +22,7 @@ class KnowledgeGraphStore:
         self,
         database_path: str | Path = "data/knowledge_graph.db",
     ) -> None:
+        """初始化 `KnowledgeGraphStore` 实例。"""
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(
             parents=True,
@@ -351,6 +354,7 @@ class KnowledgeGraphStore:
         return self.get_points(ids)
 
     def list_courses(self) -> list[str]:
+        """列出 `courses` 相关数据。"""
         with self.__connect() as connection:
             rows = connection.execute(
                 """
@@ -377,6 +381,15 @@ class KnowledgeGraphStore:
         return str(row["course"]) if row is not None else None
 
     def add_course_alias(self, alias: str, course: str) -> bool:
+        """添加 `course alias` 相关数据。
+
+        Args:
+            alias: str => `alias` 参数。
+            course: str => `course` 参数。
+
+        Returns:
+            bool => 处理结果。
+        """
         normalized = "".join(alias.split()).casefold()
         canonical = course.strip()
         if not normalized or canonical not in set(self.list_courses()):
@@ -393,6 +406,7 @@ class KnowledgeGraphStore:
         return True
 
     def list_course_aliases(self) -> list[dict]:
+        """列出 `course aliases` 相关数据。"""
         with self.__connect() as connection:
             rows = connection.execute(
                 "SELECT alias, course FROM course_aliases ORDER BY alias"

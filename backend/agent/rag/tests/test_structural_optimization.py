@@ -1,3 +1,5 @@
+# backend/agent/rag/tests/test_structural_optimization.py
+
 """数据清洁、微批重排、跨语言查询和上下文契约的聚焦回归测试。"""
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from backend.agent.rag.retrieval.service import RetrievalService
 
 
 def _chunk(name: str, order: int, text: str | None = None) -> Chunk:
+    """处理 `_chunk` 相关逻辑。"""
     body = text or name
     evidence = ChunkEvidence(
         evidence_id=f"evidence_{name}",
@@ -55,17 +58,29 @@ def _chunk(name: str, order: int, text: str | None = None) -> Chunk:
 
 
 class _Scorer:
+    """封装 `_Scorer` 的状态与行为。"""
     model_name = "recording"
 
     def __init__(self) -> None:
+        """初始化 `_Scorer` 实例。"""
         self.batch_sizes: list[int] = []
 
     def score(self, query: str, documents: Sequence[str]) -> list[float]:
+        """处理 `score` 相关逻辑。
+
+        Args:
+            query: str => 查询文本。
+            documents: Sequence[str] => `documents` 参数。
+
+        Returns:
+            list[float] => 处理结果。
+        """
         self.batch_sizes.append(len(documents))
         return [float(document.removeprefix("chunk")) for document in documents]
 
 
 def test_reranker_micro_batches_all_candidates_then_sorts_globally() -> None:
+    """验证 `reranker_micro_batches_all_candidates_then_sorts_globally` 场景。"""
     chunks = {f"c{i}": _chunk(f"c{i}", i, f"chunk{i}") for i in range(23)}
     fused = [RankedItem(f"c{i}", 23 - i) for i in range(23)]
     scorer = _Scorer()
@@ -85,6 +100,7 @@ def test_reranker_micro_batches_all_candidates_then_sorts_globally() -> None:
 
 
 def test_reranker_batch_size_does_not_change_score_semantics() -> None:
+    """验证 `reranker_batch_size_does_not_change_score_semantics` 场景。"""
     chunks = {f"c{i}": _chunk(f"c{i}", i, f"chunk{i}") for i in range(20)}
     fused = [RankedItem(f"c{i}", 20 - i) for i in range(20)]
     rankings = []
@@ -106,19 +122,51 @@ def test_reranker_batch_size_does_not_change_score_semantics() -> None:
 
 
 class _StaticIndex:
+    """封装 `_StaticIndex` 的状态与行为。"""
     configuration_fingerprint = "test"
 
     def dense(self, query_vector, limit, content_roles=None):
+        """处理 `dense` 相关逻辑。
+
+        Args:
+            query_vector: object => `query_vector` 参数。
+            limit: object => 返回数量上限。
+            content_roles: object => `content_roles` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         return [RankedItem("B", 3.0), RankedItem("A", 2.0), RankedItem("C", 1.0)]
 
     def bm25_body(self, query, limit, content_roles=None):
+        """处理 `bm25_body` 相关逻辑。
+
+        Args:
+            query: object => 查询文本。
+            limit: object => 返回数量上限。
+            content_roles: object => `content_roles` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         return self.dense([], limit, content_roles)
 
     def bm25_heading(self, query, limit, content_roles=None):
+        """处理 `bm25_heading` 相关逻辑。
+
+        Args:
+            query: object => 查询文本。
+            limit: object => 返回数量上限。
+            content_roles: object => `content_roles` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         return self.dense([], limit, content_roles)
 
 
 def test_section_context_has_evidence_for_a_b_and_c() -> None:
+    """验证 `section_context_has_evidence_for_a_b_and_c` 场景。"""
     chunks = (_chunk("A", 0), _chunk("B", 1), _chunk("C", 2))
     collection = SimpleNamespace(
         chunks=chunks, document_names={"document": "paper.pdf"}
@@ -137,6 +185,7 @@ def test_section_context_has_evidence_for_a_b_and_c() -> None:
 
 
 def test_full_read_evidence_covers_every_context_chunk() -> None:
+    """验证 `full_read_evidence_covers_every_context_chunk` 场景。"""
     chunks = (_chunk("A", 0), _chunk("B", 1), _chunk("C", 2))
     collection = SimpleNamespace(
         chunks=chunks, document_names={"document": "paper.pdf"}
@@ -153,6 +202,7 @@ def test_full_read_evidence_covers_every_context_chunk() -> None:
 
 
 def test_context_budget_prioritizes_primary_hits_and_deduplicates() -> None:
+    """验证 `context_budget_prioritizes_primary_hits_and_deduplicates` 场景。"""
     chunks = [_chunk("A", 0), _chunk("B", 1), _chunk("C", 2)]
     plan = ContextBuilder(chunks, section_window=1).plan(
         [chunks[1], chunks[2]], ContextLevel.SECTION, max_tokens=3
@@ -164,34 +214,70 @@ def test_context_budget_prioritizes_primary_hits_and_deduplicates() -> None:
 
 
 class _RecordingEmbedding:
+    """封装 `_RecordingEmbedding` 的状态与行为。"""
     model_name = "recording"
 
     def __init__(self) -> None:
+        """初始化 `_RecordingEmbedding` 实例。"""
         self.query = ""
 
     def embed(self, texts):
+        """处理 `embed` 相关逻辑。"""
         self.query = texts[0]
         return [[1.0]]
 
 
 class _RecordingIndex:
+    """封装 `_RecordingIndex` 的状态与行为。"""
     def __init__(self) -> None:
+        """初始化 `_RecordingIndex` 实例。"""
         self.body_query = ""
         self.heading_query = ""
 
     def dense(self, query_vector, limit, content_roles=None):
+        """处理 `dense` 相关逻辑。
+
+        Args:
+            query_vector: object => `query_vector` 参数。
+            limit: object => 返回数量上限。
+            content_roles: object => `content_roles` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         return []
 
     def bm25_body(self, query, limit, content_roles=None):
+        """处理 `bm25_body` 相关逻辑。
+
+        Args:
+            query: object => 查询文本。
+            limit: object => 返回数量上限。
+            content_roles: object => `content_roles` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         self.body_query = query
         return []
 
     def bm25_heading(self, query, limit, content_roles=None):
+        """处理 `bm25_heading` 相关逻辑。
+
+        Args:
+            query: object => 查询文本。
+            limit: object => 返回数量上限。
+            content_roles: object => `content_roles` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         self.heading_query = query
         return []
 
 
 def test_chinese_query_expands_bm25_but_dense_keeps_original() -> None:
+    """验证 `chinese_query_expands_bm25_but_dense_keeps_original` 场景。"""
     query = "BKT 中猜测概率是什么意思？"
     processor = RuleBasedQueryProcessor()
     variants = processor.process(query)
@@ -208,8 +294,11 @@ def test_chinese_query_expands_bm25_but_dense_keeps_original() -> None:
 
 
 def test_query_processor_failure_falls_back_to_original() -> None:
+    """验证 `query_processor_failure_falls_back_to_original` 场景。"""
     class FailingProcessor:
+        """封装 `FailingProcessor` 的状态与行为。"""
         def process(self, query: str):
+            """处理 `process` 相关数据。"""
             raise RuntimeError("offline")
 
     index = _RecordingIndex()
@@ -225,27 +314,33 @@ def test_query_processor_failure_falls_back_to_original() -> None:
 
 
 def test_reference_intent_opens_suppressed_roles() -> None:
+    """验证 `reference_intent_opens_suppressed_roles` 场景。"""
     variants = RuleBasedQueryProcessor().process("这篇论文引用了哪些研究？")
     assert ContentRole.REFERENCE in variants.content_roles
     assert ContentRole.METADATA not in variants.content_roles
 
 
 def test_author_intent_opens_author_and_affiliation_roles() -> None:
+    """验证 `author_intent_opens_author_and_affiliation_roles` 场景。"""
     variants = RuleBasedQueryProcessor().process("这篇论文的作者和所属机构是什么？")
     assert {ContentRole.AUTHOR_INFO, ContentRole.AFFILIATION} <= variants.content_roles
 
 
 class _CapturingQdrant(QdrantIndex):
+    """封装 `_CapturingQdrant` 的状态与行为。"""
     def __init__(self) -> None:
+        """初始化 `_CapturingQdrant` 实例。"""
         super().__init__("http://127.0.0.1:6333", "test")
         self.payload = None
 
     def _request(self, method, path, payload=None):
+        """处理 `_request` 相关逻辑。"""
         self.payload = payload
         return {"result": {"points": []}}
 
 
 def test_qdrant_queries_filter_by_content_role() -> None:
+    """验证 `qdrant_queries_filter_by_content_role` 场景。"""
     index = _CapturingQdrant()
     index.bm25_body("query", 5, frozenset({ContentRole.BODY, ContentRole.TABLE}))
     assert index.payload["filter"]["must"][0] == {

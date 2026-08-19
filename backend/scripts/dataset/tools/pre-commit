@@ -1,0 +1,50 @@
+#!/bin/sh
+# 数据校验 pre-commit hook。
+#
+# 安装：
+#   ln -sf ../../dataset/tools/pre-commit .git/hooks/pre-commit
+#
+# 目的：坏样本不能进仓。LLaMA-Factory 遇到坏样本只打一行 warning 就静默跳过，
+# 训练量悄悄缩水而没人察觉——所以必须在入库这一步拦下来。
+
+set -e
+
+if ! git diff --cached --name-only | grep -q '^dataset/'; then
+    exit 0
+fi
+
+if ! ls dataset/data/ir/*.jsonl >/dev/null 2>&1; then
+    exit 0
+fi
+
+# Lint 必须和**目标仓库的 CI** 用同一套规则。
+#
+# 我们自己以前从不跑 lint，而 ESA 后端仓库的 .github/workflows/quality.yml
+# 会对整个仓库跑 `ruff check .` —— PR 一提上去 backend job 就红了，
+# 6 个错误（1 个未使用 import、1 个死变量、4 个 `l` 变量名）。
+# 数据校验全绿、代码风格却过不了门，是典型的"只验了一半"。
+#
+# 规则逐字取自后端 pyproject.toml 的 [tool.ruff]：
+#   target-version py310 / line-length 88 / select E4,E7,E9,F / ignore E501
+# 后端改了那份配置，这里要跟着改 —— 不然又会在 CI 上才发现。
+if command -v ruff >/dev/null 2>&1 || python3 -m ruff --version >/dev/null 2>&1; then
+    echo "==> Lint（与后端 CI 同规则）…"
+    python3 -m ruff check --target-version py310 --line-length 88 \
+        --select E4,E7,E9,F --ignore E501 dataset/ || {
+        echo
+        echo "ruff 未通过。这些错误会让后端仓库的 CI 变红，先修掉。"
+        exit 1
+    }
+else
+    echo "==> 跳过 Lint（本机没装 ruff：pip install ruff）"
+fi
+
+echo "==> 校验数据集…"
+PYTHONPATH=dataset python3 -m esa.validate dataset/data/ir/*.jsonl || {
+    echo
+    echo "校验未通过，提交已中止。修好上面的问题，或用 git commit --no-verify 跳过（不建议）。"
+    exit 1
+}
+
+echo "==> 自检…"
+python3 dataset/tests/test_validator.py >/dev/null || { echo "校验器自检失败"; exit 1; }

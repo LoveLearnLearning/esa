@@ -41,10 +41,18 @@
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="preload" href="main.dart.js" as="script">
 
   <title>星知智链</title>
   <link rel="manifest" href="manifest.json">
   <style>
+    @font-face {
+      font-family: "JetBrains Mono";
+      src: url("assets/assets/fonts/JetBrainsMono-Regular.ttf") format("truetype");
+      font-display: block;
+      font-style: normal;
+      font-weight: 400;
+    }
     /*
       Flutter paints visible text on its canvas. Browser translators and some
       accessibility extensions can override Flutter's transparent semantics
@@ -56,6 +64,10 @@
       color: transparent !important;
       text-shadow: none !important;
       -webkit-text-fill-color: transparent !important;
+    }
+    /* Monaco briefly enters message mode while automatic completion is empty. */
+    .monaco-editor .suggest-widget.message {
+      display: none !important;
     }
     /*
       移动浏览器兜底：深色背景避免弱网加载期白屏闪烁；
@@ -71,9 +83,76 @@
       overflow: hidden;
       -webkit-tap-highlight-color: transparent;
     }
+    #app-loading {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      background: #1B1A19;
+      color: #F8FAFC;
+      transition: opacity 160ms ease;
+    }
+    #app-loading.is-ready {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #app-loading img {
+      width: 56px;
+      height: 56px;
+    }
+    #app-loading strong {
+      display: block;
+      margin-top: 14px;
+      font: 600 18px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+      text-align: center;
+    }
+    #app-loading span {
+      display: block;
+      width: 22px;
+      height: 22px;
+      margin: 18px auto 0;
+      border: 2px solid rgba(248, 250, 252, 0.24);
+      border-top-color: #3B82F6;
+      border-radius: 50%;
+      animation: app-loading-spin 700ms linear infinite;
+    }
+    @keyframes app-loading-spin {
+      to { transform: rotate(360deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #app-loading { transition: none; }
+      #app-loading span { animation-duration: 1400ms; }
+    }
   </style>
 </head>
 <body>
+  <div id="app-loading" role="status" aria-label="星知智链正在启动">
+    <div>
+      <img src="icons/Icon-192.png" alt="">
+      <strong>星知智链</strong>
+      <span aria-hidden="true"></span>
+    </div>
+  </div>
+  <script>
+    // Clean up releases that used Flutter's old offline worker, but never
+    // block the current app download on browser cache housekeeping.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((items) => {
+        for (const item of items) item.unregister();
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then((keys) => {
+        for (const key of keys) {
+          if (key.startsWith('flutter-')) caches.delete(key);
+        }
+      });
+    }
+  </script>
+  <script src="esa_lsp_client.js?v=lsp-client-20260814-3"></script>
+  <script src="esa_monaco.js?v=keyboard-focus-20260815-2"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

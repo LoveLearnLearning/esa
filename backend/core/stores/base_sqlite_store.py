@@ -1,5 +1,7 @@
 # backend/core/stores/base_sqlite_store.py
 
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
 import sqlite3
@@ -17,6 +19,7 @@ class BaseSQLiteStore:
     """
 
     def __init__(self, database_path: str | Path) -> None:
+        """初始化 `BaseSQLiteStore` 实例。"""
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(
             parents=True,

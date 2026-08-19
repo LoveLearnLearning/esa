@@ -229,6 +229,22 @@ export MINERU_BIN="$(conda run -n esa-mineru which mineru)"
 export MINERU_MODEL_SOURCE=modelscope
 ```
 
+无桌面的计算节点若在导入 OpenCV 时提示 `libGL.so.1`、`libGLX.so.0` 或
+`libGLdispatch.so.0` 缺失，可把平台已有的兼容动态库目录以冒号分隔写入
+`MINERU_LIBRARY_PATH`。`bin/run-mineru` 只会为 MinerU 子进程追加该路径，不会污染
+ESA 主模型的动态库环境。模型缓存和 MinerU 配置也建议放进被忽略的 `runtime/`：
+
+```bash
+export MINERU_TOOLS_CONFIG_JSON="$ESA_WORKSPACE/runtime/mineru.json"
+export HF_HOME="$ESA_WORKSPACE/runtime/huggingface-mineru"
+export MINERU_MODEL_SOURCE=huggingface
+mineru-models-download -s huggingface -m pipeline
+```
+
+六卡部署中，MinerU 和长附件 Embedding 应与正式 RAG Embedding 共用第六张卡；在后端
+只暴露“主模型四卡 + 第六张卡”时，对应逻辑设备是 `cuda:4`。不要把 MinerU 默认的
+`cuda` 留在逻辑 `cuda:0`，否则会和主模型抢显存。
+
 首次解析时 MinerU 可能下载自己的模型。MinerU 模型、RAG Embedding 模型、可选
 Reranker 和 mm VLM 是不同组件，不能互相替代。
 
@@ -343,7 +359,11 @@ ESA_AUXILIARY_MODEL_PATH=/path/to/auxiliary-model
 
 ## 6. 启动 Qdrant
 
-正式 RAG 使用 Qdrant，默认地址是 `http://127.0.0.1:6333`。本机 Docker 示例：
+正式 RAG 使用 Qdrant，默认地址是 `http://127.0.0.1:6333`。Qdrant storage 必须放在
+支持可靠文件锁的本地文件系统，不能放在超算的 NFS 项目目录或 NFS 持久盘；否则
+Qdrant 会报告数据损坏风险。Slurm 启动脚本默认把在线 storage 放到当前作业的本地
+`$SLURM_TMPDIR`，通过 `ESA_QDRANT_SNAPSHOT_PATH` 从 NFS 上的只读 collection snapshot
+恢复；`ESA_QDRANT_STORAGE_PATH` 仅用于覆盖为另一处本地文件系统。本机 Docker 示例：
 
 ```bash
 mkdir -p "$ESA_WORKSPACE/runtime/qdrant/storage"
@@ -419,6 +439,7 @@ RAG_QDRANT_COLLECTION=rag_qwen3_embedding_4b_v2
 RAG_EMBEDDING_BACKEND=transformers
 RAG_EMBEDDING_MODEL_PATH=/path/to/model-storage/Qwen3-Embedding-4B
 RAG_EMBEDDING_DEVICE=cuda
+RAG_EMBEDDING_RUNTIME_DEVICE=
 RAG_EMBEDDING_DIMENSION=2560
 RAG_FUSION_METHOD=dense
 RAG_DENSE_WEIGHT=1.0
@@ -554,6 +575,14 @@ PY
 python -m backend.main
 ```
 
+在六卡 Slurm 节点使用 `backend/scripts/run_esa_stack.sh` 时，脚本会将前四张卡分给
+主模型、第五张卡分给辅助模型、第六张卡分给 Transformers Embedding，并自动把
+`RAG_EMBEDDING_RUNTIME_DEVICE` 设置为主后端中的逻辑 `cuda:4`。`RAG_EMBEDDING_DEVICE`
+仍保持为冻结部署指纹中的 `cuda`；前者只是物理放置别名，不改变索引身份。若
+`RAG_ENABLED=true` 且本机 6333 未运行，脚本还会从
+`runtime/qdrant/bin/qdrant` 启动仅监听本机的 Qdrant，拒绝把在线 storage 启动在 NFS，
+并在新作业的本地 storage 为空时恢复 `ESA_QDRANT_SNAPSHOT_PATH`。
+
 应用启动时：
 
 - RAG lifecycle 加载并验证 deployment、Collection、Qdrant 和 Embedding provider，
@@ -661,6 +690,12 @@ docker logs esa-rag-qdrant
 command -v "$MINERU_BIN"
 bin/run-mineru --version
 ```
+
+### MinerU 导入 OpenCV 时缺少 OpenGL 动态库
+
+先用 `ldd` 确认缺少的库，再把同一套 Conda/系统运行库目录配置到
+`MINERU_LIBRARY_PATH`。不要把不匹配版本的单个 `.so` 复制进项目，也不要覆盖主环境的
+全局 `LD_LIBRARY_PATH`；包装脚本会把该变量限制在 MinerU 子进程内。
 
 ### CUDA OOM
 

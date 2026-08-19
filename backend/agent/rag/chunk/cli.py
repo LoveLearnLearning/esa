@@ -39,6 +39,7 @@ def _collection_id(
     documents: list[tuple[Path, Document]],
     config: ChunkConfig,
 ) -> str:
+    """处理 `_collection_id` 相关逻辑。"""
     identity = sorted(
         (document.document_id, document.parse_revision.parse_revision_id)
         for _path, document in documents
@@ -52,6 +53,7 @@ def _resume_document(
     config: ChunkConfig,
     expected_ref: ChunkDocumentRef | None,
 ) -> ChunkDocument:
+    """处理 `_resume_document` 相关逻辑。"""
     if expected_ref is None:
         raise ValueError(f"已有 ChunkDocument 没有 manifest 验证记录: {path}")
     if expected_ref.path != path.relative_to(path.parents[2]).as_posix():
@@ -79,6 +81,17 @@ def build_collection(
     *,
     resume: bool = True,
 ) -> tuple[Path, ChunkCollection, CollectionStats]:
+    """构建 `collection` 相关数据。
+
+    Args:
+        input_root: Path => `input_root` 参数。
+        output_root: Path => `output_root` 参数。
+        config: ChunkConfig => 运行配置。
+        resume: bool => `resume` 参数。
+
+    Returns:
+        tuple[Path, ChunkCollection, CollectionStats] => 处理结果。
+    """
     paths = discover_docir_documents(input_root)
     if not paths:
         raise ValueError(f"没有发现 DocIR document.json: {input_root}")
@@ -147,6 +160,14 @@ def build_collection(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     parser = argparse.ArgumentParser(
         description="从 DocIR run 构建 ChunkCollection"
     )

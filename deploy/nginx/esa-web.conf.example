@@ -1,0 +1,94 @@
+# Reference HTTPS server for the Flutter Web frontend. Replace certificate,
+# document-root and upstream values with the paths used on the web server.
+server {
+    listen 443 ssl http2;
+    server_name esa.lovelearnlearning.cn;
+
+    ssl_certificate /etc/letsencrypt/live/lovelearnlearning.cn/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/lovelearnlearning.cn/privkey.pem;
+
+    root /var/www/esa;
+    index index.html;
+
+    # The release archive includes .gz siblings. Serving those avoids spending
+    # CPU compressing the 5 MB Dart bundle and CanvasKit WASM on every request.
+    gzip_static on;
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_comp_level 6;
+    gzip_types
+        application/javascript
+        application/json
+        application/manifest+json
+        application/wasm
+        image/svg+xml
+        text/css;
+
+    location = /index.html {
+        add_header Cache-Control "no-cache" always;
+        try_files $uri =404;
+    }
+
+    location = /flutter_bootstrap.js {
+        add_header Cache-Control "no-cache" always;
+        try_files $uri =404;
+    }
+
+    location = /main.dart.js {
+        add_header Cache-Control "no-cache" always;
+        try_files $uri =404;
+    }
+
+    location ~* \.(?:wasm|js|json)$ {
+        add_header Cache-Control "no-cache" always;
+        try_files $uri =404;
+    }
+
+    location ~* \.(?:png|jpe?g|webp|svg|ico|woff2?|ttf|otf)$ {
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800" always;
+        try_files $uri =404;
+    }
+
+    location ^~ /api/internal/ {
+        return 404;
+    }
+
+    # LSP uses an authenticated WebSocket; keep Upgrade headers scoped to this
+    # endpoint so ordinary REST and SSE traffic retains its existing behavior.
+    location ^~ /api/lsp/ {
+        proxy_pass http://115.29.197.244:51024;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    location ^~ /api/ {
+        proxy_pass http://115.29.197.244:51024;
+        proxy_http_version 1.1;
+        client_max_body_size 200m;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    location / {
+        add_header Cache-Control "no-cache" always;
+        try_files $uri $uri/ /index.html;
+    }
+}

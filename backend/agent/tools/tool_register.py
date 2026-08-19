@@ -1,7 +1,11 @@
-# backend/core/agent/tools/tool_register.py
+# backend/agent/tools/tool_register.py
+
+"""提供 `tool_register` 相关功能。"""
 
 
 from collections.abc import Callable
+import asyncio
+import inspect
 from typing import Any, TypeVar
 
 from backend.core.utils.tool_arguments import normalize_tool_arguments
@@ -18,7 +22,9 @@ F = TypeVar(
 
 
 class ToolRegistry:
+    """封装 `ToolRegistry` 的状态与行为。"""
     def __init__(self) -> None:
+        """初始化 `ToolRegistry` 实例。"""
         self.registered_tools: dict[str, tuple[dict[str, Any], ToolFn]] = {}
         # 先创建一个存 registered_tools 的字典
 
@@ -77,9 +83,28 @@ class ToolRegistry:
         schema, fn = self.registered_tools[name]
 
         try:
-            return fn(**self._normalize_arguments(schema, arguments))
+            result = fn(**self._normalize_arguments(schema, arguments))
+            if inspect.isawaitable(result):
+                if inspect.iscoroutine(result):
+                    result.close()
+                return f"[Error]: async tool {name!r} requires acall()"
+            return result
         except (ValueError, TypeError, RuntimeError) as e:
             return f"[Error]: {e}"
+
+    async def acall(self, name: str, arguments: dict[str, Any]) -> Any:
+        """Execute either a synchronous or asynchronous registered tool."""
+
+        if name not in self.registered_tools:
+            return f"[Error]: unknown tool {name!r}"
+        schema, fn = self.registered_tools[name]
+        try:
+            normalized = self._normalize_arguments(schema, arguments)
+            if inspect.iscoroutinefunction(fn):
+                return await fn(**normalized)
+            return await asyncio.to_thread(fn, **normalized)
+        except (ValueError, TypeError, RuntimeError, KeyError) as error:
+            return f"[Error]: {error}"
 
     @staticmethod
     def _normalize_arguments(

@@ -1,3 +1,7 @@
+# backend/tests/test_profile_store.py
+
+"""验证 `profile_store` 相关行为与回归场景。"""
+
 import sqlite3
 from datetime import datetime, timedelta
 
@@ -5,6 +9,7 @@ from backend.core.stores.profile_store import ProfileStore
 
 
 def _setup_db(tmp_path):
+    """处理 `_setup_db` 相关逻辑。"""
     db_path = tmp_path / "test.db"
     # Create users table first (ProfileStore's FK references it)
     conn = sqlite3.connect(db_path)
@@ -28,6 +33,7 @@ def _setup_db(tmp_path):
 
 
 def test_upsert_and_get_dimension(tmp_path):
+    """验证 `upsert_and_get_dimension` 场景。"""
     db_path = _setup_db(tmp_path)
     store = ProfileStore(db_path)
 
@@ -56,6 +62,7 @@ def test_upsert_and_get_dimension(tmp_path):
 
 
 def test_upsert_updates_existing(tmp_path):
+    """验证 `upsert_updates_existing` 场景。"""
     db_path = _setup_db(tmp_path)
     store = ProfileStore(db_path)
 
@@ -82,6 +89,7 @@ def test_upsert_updates_existing(tmp_path):
 
 
 def test_list_dimensions(tmp_path):
+    """验证 `list_dimensions` 场景。"""
     db_path = _setup_db(tmp_path)
     store = ProfileStore(db_path)
 
@@ -106,6 +114,7 @@ def test_list_dimensions(tmp_path):
 
 
 def test_suppress_and_restore(tmp_path):
+    """验证 `suppress_and_restore` 场景。"""
     db_path = _setup_db(tmp_path)
     store = ProfileStore(db_path)
 
@@ -127,6 +136,7 @@ def test_suppress_and_restore(tmp_path):
 
 
 def test_get_nonexistent(tmp_path):
+    """验证 `get_nonexistent` 场景。"""
     db_path = _setup_db(tmp_path)
     store = ProfileStore(db_path)
 
@@ -134,6 +144,7 @@ def test_get_nonexistent(tmp_path):
 
 
 def test_suppress_nonexistent(tmp_path):
+    """验证 `suppress_nonexistent` 场景。"""
     db_path = _setup_db(tmp_path)
     store = ProfileStore(db_path)
 
@@ -141,6 +152,7 @@ def test_suppress_nonexistent(tmp_path):
 
 
 def test_cleanup_expired_dimensions(tmp_path):
+    """验证 `cleanup_expired_dimensions` 场景。"""
     db_path = _setup_db(tmp_path)
     store = ProfileStore(db_path)
     now = datetime.now()
@@ -191,4 +203,3 @@ def test_cleanup_expired_dimensions(tmp_path):
     assert store.get_dimension("u1", "future_field") is not None
     # 近期 suppressed 记录保留
     assert store.get_dimension("u1", "recent_suppressed") is not None
-

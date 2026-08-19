@@ -99,4 +99,181 @@ void main() {
     expect(restored.breakDurationMinutes, 10);
     expect(restored.termStartDate, '2026-08-03');
   });
+
+  test('ChatGroup parses nullable style/tone and conversation count', () {
+    final group = ChatGroup.fromJson({
+      'group_id': 'group-1',
+      'user_id': 'user-1',
+      'name': '高数',
+      'description': '高等数学复习',
+      'custom_instruction': '用苏格拉底式提问引导我',
+      'style': 'socratic',
+      'tone': null,
+      'conversation_count': 3,
+      'created_at': '2026-08-12T08:00:00Z',
+      'updated_at': '2026-08-12T09:00:00Z',
+    });
+
+    expect(group.id, 'group-1');
+    expect(group.userId, 'user-1');
+    expect(group.name, '高数');
+    expect(group.style, 'socratic');
+    expect(group.tone, isNull);
+    expect(group.conversationCount, 3);
+  });
+
+  test('ChatConversation parses optional group id', () {
+    final conversation = ChatConversation.fromJson({
+      'conversation_id': 'conversation-1',
+      'title': '线性代数',
+      'updated_at': '2026-08-12T08:00:00Z',
+      'workspace_type': 'learning',
+      'group_id': 'group-1',
+    });
+
+    expect(conversation.groupId, 'group-1');
+  });
+
+  test('ChatConversation parses research and classroom resource bindings', () {
+    final research = ChatConversation.fromJson({
+      'conversation_id': 'research-chat',
+      'workspace_type': 'research',
+      'research_project_id': 'project-1',
+    });
+    final teaching = ChatConversation.fromJson({
+      'conversation_id': 'teaching-chat',
+      'workspace_type': 'teaching',
+      'classroom_binding': {
+        'class_id': 'class-1',
+        'class_name': 'Algorithms',
+        'assignment_id': 'assignment-1',
+        'assignment_title': 'Binary search',
+      },
+    });
+
+    expect(research.workspaceType, WorkspaceType.research);
+    expect(research.researchProjectId, 'project-1');
+    expect(teaching.workspaceType, WorkspaceType.teaching);
+    expect(teaching.classId, 'class-1');
+    expect(teaching.className, 'Algorithms');
+    expect(teaching.assignmentId, 'assignment-1');
+    expect(teaching.assignmentTitle, 'Binary search');
+  });
+
+  test('CoreMemory V2 models preserve workspace scope and candidates', () {
+    final memory = CoreMemoryItem.fromJson({
+      'memory_id': 'memory-1',
+      'memory_key': 'writing_style',
+      'content': 'Use concise summaries',
+      'category': 'preference',
+      'scope_type': 'workspace',
+      'workspace_type': 'research',
+      'status': 'suppressed',
+      'revision': 3,
+    });
+    final candidate = MemoryCandidateItem.fromJson({
+      'candidate_id': 'candidate-1',
+      'memory_key': 'writing_style',
+      'proposed_content': 'Use evidence-first summaries',
+      'category': 'preference',
+      'scope_type': 'workspace',
+      'workspace_type': 'research',
+    });
+
+    expect(memory.id, 'memory-1');
+    expect(memory.scopeType, 'workspace');
+    expect(memory.workspaceType, 'research');
+    expect(memory.status, 'suppressed');
+    expect(memory.revision, 3);
+    expect(candidate.id, 'candidate-1');
+    expect(candidate.workspaceType, 'research');
+  });
+
+  test('Project Profile and Agent Action parse approval contracts', () {
+    final profile = ResearchProjectProfile.fromJson({
+      'agent_instructions': 'Cite primary sources.',
+      'revision': 4,
+    });
+    final action = AgentActionItem.fromJson({
+      'action_id': 'action-1',
+      'action_type': 'start_frontier_tracking',
+      'status': 'pending',
+      'workspace_type': 'research',
+      'arguments': {'query': 'agent memory'},
+      'resource_snapshot': {'project_id': 'project-1'},
+      'created_at': '2026-08-14T00:00:00Z',
+      'expires_at': '2026-08-14T00:30:00Z',
+    });
+
+    expect(profile.instructions, 'Cite primary sources.');
+    expect(profile.revision, 4);
+    expect(action.id, 'action-1');
+    expect(action.status, 'pending');
+    expect(action.arguments['query'], 'agent memory');
+    expect(action.resourceSnapshot['project_id'], 'project-1');
+    expect(action.expiresAt, isNotNull);
+  });
+
+  test(
+    'teaching models parse backend identifiers and nested workflow data',
+    () {
+      final classroom = TeachingClass.fromJson({
+        'class_id': 'class-1',
+        'name': '数据结构 1 班',
+        'canonical_course': '数据结构',
+        'student_count': 12,
+        'open_assignment_count': 2,
+        'membership_status': 'active',
+      });
+      final assignment = TeachingAssignment.fromJson({
+        'assignment_id': 'assignment-1',
+        'class_id': 'class-1',
+        'class_name': '数据结构 1 班',
+        'canonical_course': '数据结构',
+        'title': '二分查找诊断',
+        'status': 'published',
+        'total_points': 10,
+        'questions': [
+          {
+            'question_id': 'question-1',
+            'question_type': 'code',
+            'prompt': '实现二分查找',
+            'max_points': 10,
+          },
+        ],
+      });
+      final submission = TeachingSubmission.fromJson({
+        'submission_id': 'submission-1',
+        'assignment_id': 'assignment-1',
+        'student_username': 'student',
+        'analysis_status': 'completed',
+        'feedback_status': 'published',
+        'answers': [
+          {
+            'answer_id': 'answer-1',
+            'question_id': 'question-1',
+            'prompt': '实现二分查找',
+            'answer_text': '代码答案',
+            'max_points': 10,
+            'ai_score': 7,
+            'ai_feedback': 'AI 建议',
+            'ai_kp_id': 'kp-ai',
+            'final_score': 8,
+            'final_feedback': '教师反馈',
+            'final_kp_id': 'kp-final',
+          },
+        ],
+      });
+
+      expect(classroom.id, 'class-1');
+      expect(classroom.course, '数据结构');
+      expect(classroom.studentCount, 12);
+      expect(assignment.id, 'assignment-1');
+      expect(assignment.questions.single.type, 'code');
+      expect(submission.studentUsername, 'student');
+      expect(submission.answers.single.finalScore, 8);
+      expect(submission.answers.single.feedback, '教师反馈');
+      expect(submission.answers.single.kpId, 'kp-final');
+    },
+  );
 }

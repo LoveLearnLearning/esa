@@ -1,11 +1,15 @@
+# backend/agent/mm/service.py
+
 """多模态附件从源文件到 direct/RAG handle 的主编排。"""
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -23,27 +27,38 @@ from .config import MMConfig
 from .contracts import (
     AttachmentMode,
     DocumentParser,
+    MM_VISUAL_CONTRACT_VERSION,
     PreparedAttachment,
     TokenCounter,
     VisionProvider,
 )
 from .enrichment import VLM_DESCRIPTION_PROMPT, enrich_visual_assets
+from .routing import MM_VISUAL_ROUTING_VERSION
+from .selection import MM_VISUAL_SELECTION_VERSION
 from .index import InMemoryAttachmentIndex
 from .parser import MinerUDocumentParser
 from .providers import OpenAICompatibleVisionProvider, TransformersTokenCounter
 from .render import render_document_markdown
+from backend.core.log.logger import get_pipeline_logger
+
+
+logger = get_pipeline_logger("MM", __name__)
+rag_logger = get_pipeline_logger("RAG", __name__)
 
 
 def _canonical_sha256(value: object) -> str:
+    """处理 `_canonical_sha256` 相关逻辑。"""
     raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _atomic_json(path: Path, payload: object) -> None:
+    """处理 `_atomic_json` 相关逻辑。"""
     _atomic_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
 
 def _atomic_text(path: Path, value: str) -> None:
+    """处理 `_atomic_text` 相关逻辑。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
@@ -72,11 +87,13 @@ class MultimodalIngestionService:
         chunk_config: ChunkConfig | None = None,
         retrieval_config: RetrievalConfig | None = None,
     ) -> None:
+        """初始化 `MultimodalIngestionService` 实例。"""
         self.config = config or MMConfig.from_env()
         self.parser = parser or MinerUDocumentParser(
-            self.config.mineru_command,
-            self.config.mineru_timeout_seconds,
-            self.config.mineru_attempts,
+            command=self.config.mineru_command,
+            timeout_seconds=self.config.mineru_timeout_seconds,
+            attempts=self.config.mineru_attempts,
+            api_url=self.config.mineru_api_url,
         )
         self.vision = vision or OpenAICompatibleVisionProvider(
             base_url=self.config.vlm_base_url,
@@ -109,6 +126,15 @@ class MultimodalIngestionService:
         return tuple(prepared)
 
     async def prepare_file(self, source: Path) -> PreparedAttachment:
+        """准备 `file` 相关数据。
+
+        Args:
+            source: Path => `source` 参数。
+
+        Returns:
+            PreparedAttachment => 处理结果。
+        """
+        started = time.monotonic()
         source = Path(source).resolve(strict=True)
         if not source.is_file():
             raise FileNotFoundError(source)
@@ -124,6 +150,11 @@ class MultimodalIngestionService:
         markdown_path = run_root / "document.md"
         manifest_path = run_root / "manifest.json"
         run_root.mkdir(parents=True, exist_ok=True)
+        logger.info(
+            "attachment ingestion started source=%s sha256=%s",
+            source.name,
+            source_sha256,
+        )
         try:
             cached = self._load_cache(
                 manifest_path,
@@ -135,7 +166,16 @@ class MultimodalIngestionService:
             if cached is None:
                 # MinerU 自身管理独立子进程和超时。这里保持调用同步，避免为一次
                 # 长生命周期解析额外遗留线程；上层若需并发应使用任务进程隔离。
-                parsed = self.parser.parse(source, document_root)
+                parsed = await asyncio.to_thread(
+                    self.parser.parse,
+                    source,
+                    document_root,
+                )
+                logger.info(
+                    "visual enrichment started document_id=%s document_assets=%d",
+                    parsed.document.document_id,
+                    len(parsed.document.assets),
+                )
                 enrichment = await enrich_visual_assets(
                     parsed.document,
                     parsed.document_root,
@@ -146,10 +186,20 @@ class MultimodalIngestionService:
                 save_document(document, document_path)
                 markdown = render_document_markdown(document)
                 _atomic_text(markdown_path, markdown)
-                token_count = self.token_counter.count_tokens(markdown)
+                token_count = await asyncio.to_thread(
+                    self.token_counter.count_tokens,
+                    markdown,
+                )
                 mode = self._route(token_count)
+                logger.info(
+                    "attachment routed mode=%s token_count=%d visual_assets=%d visual_failures=%d",
+                    mode.value,
+                    token_count,
+                    enrichment.analyzed_assets,
+                    len(enrichment.failed_assets),
+                )
                 manifest = {
-                    "schema_version": "mm-run-0.1",
+                    "schema_version": "mm-run-0.2",
                     "status": "success",
                     "source": {
                         "filename": source.name,
@@ -168,6 +218,22 @@ class MultimodalIngestionService:
                     "vlm": {
                         "analyzed_assets": enrichment.analyzed_assets,
                         "failed_asset_ids": list(enrichment.failed_assets),
+                        "review_asset_ids": list(enrichment.reviewed_assets),
+                        "rejected_asset_ids": list(enrichment.rejected_assets),
+                        "outcomes": [
+                            {
+                                "asset_id": outcome.request.asset_id,
+                                "element_id": outcome.request.element_id,
+                                "route": outcome.route_decision.route.value,
+                                "risk": outcome.route_decision.risk.value,
+                                "decision": outcome.decision.value,
+                                "reason": outcome.reason,
+                            }
+                            for outcome in enrichment.outcomes
+                        ],
+                        "contract_version": MM_VISUAL_CONTRACT_VERSION,
+                        "routing_version": MM_VISUAL_ROUTING_VERSION,
+                        "selection_version": MM_VISUAL_SELECTION_VERSION,
                         "provider_fingerprint": (
                             self.vision.configuration_fingerprint
                         ),
@@ -179,17 +245,24 @@ class MultimodalIngestionService:
                 _atomic_json(manifest_path, manifest)
             else:
                 document, markdown, token_count, mode = cached
+                logger.info(
+                    "attachment cache hit document_id=%s mode=%s token_count=%d",
+                    document.document_id,
+                    mode.value,
+                    token_count,
+                )
         except Exception as exc:
             _atomic_json(
                 manifest_path,
                 {
-                    "schema_version": "mm-run-0.1",
+                    "schema_version": "mm-run-0.2",
                     "status": "failed",
                     "source": {"filename": source.name, "sha256": source_sha256},
                     "pipeline_fingerprint": pipeline_fingerprint,
                     "error": {"type": type(exc).__name__, "message": str(exc)},
                 },
             )
+            logger.exception("attachment ingestion failed source=%s", source.name)
             raise
 
         retrieval = None
@@ -197,7 +270,13 @@ class MultimodalIngestionService:
         if mode is AttachmentMode.DIRECT:
             direct_context = markdown
         else:
-            retrieval = self._build_retrieval(run_root)
+            retrieval = await asyncio.to_thread(self._build_retrieval, run_root)
+        logger.info(
+            "attachment ingestion completed document_id=%s mode=%s elapsed_seconds=%.3f",
+            document.document_id,
+            mode.value,
+            time.monotonic() - started,
+        )
         return PreparedAttachment(
             source_path=source,
             document=document,
@@ -210,9 +289,13 @@ class MultimodalIngestionService:
         )
 
     def _pipeline_fingerprint(self) -> str:
+        """处理 `_pipeline_fingerprint` 相关逻辑。"""
         return _canonical_sha256(
             {
-                "schema": "mm-pipeline-0.1",
+                "schema": "mm-pipeline-0.3",
+                "visual_contract": MM_VISUAL_CONTRACT_VERSION,
+                "visual_routing": MM_VISUAL_ROUTING_VERSION,
+                "visual_selection": MM_VISUAL_SELECTION_VERSION,
                 "parser": self.parser.configuration_fingerprint,
                 "vision": self.vision.configuration_fingerprint,
                 "prompt_sha256": hashlib.sha256(
@@ -227,6 +310,7 @@ class MultimodalIngestionService:
         )
 
     def _route(self, token_count: int) -> AttachmentMode:
+        """处理 `_route` 相关逻辑。"""
         return (
             AttachmentMode.DIRECT
             if token_count <= self.config.direct_context_token_limit
@@ -241,6 +325,7 @@ class MultimodalIngestionService:
         source_sha256: str,
         pipeline_fingerprint: str,
     ) -> tuple[Any, str, int, AttachmentMode] | None:
+        """加载 `cache` 相关数据。"""
         if not all(path.is_file() for path in (manifest_path, document_path, markdown_path)):
             return None
         try:
@@ -267,6 +352,9 @@ class MultimodalIngestionService:
             return None
 
     def _build_retrieval(self, run_root: Path) -> RetrievalService:
+        """构建 `retrieval` 相关数据。"""
+        started = time.monotonic()
+        rag_logger.info("attachment index build started run_root=%s", run_root)
         collection_root, _manifest, _stats = build_collection(
             run_root / "docir",
             run_root / "chunks",
@@ -276,10 +364,16 @@ class MultimodalIngestionService:
         collection = load_chunk_collection(collection_root / "manifest.json")
         index = InMemoryAttachmentIndex()
         IndexingService(collection, index, self.embedding).build()
-        return RetrievalService(
+        service = RetrievalService(
             collection,
             index,
             self.embedding,
             reranker=None,
             config=self.retrieval_config,
         )
+        rag_logger.info(
+            "attachment index build completed chunks=%d elapsed_seconds=%.3f",
+            len(collection.chunks),
+            time.monotonic() - started,
+        )
+        return service

@@ -1,5 +1,7 @@
 # backend/core/web/routers/groups.py
 
+"""提供 `groups` 相关功能。"""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -52,6 +54,15 @@ def list_groups(
     request: Request,
     session: CurrentSession,
 ) -> list[GroupOut]:
+    """列出 `groups` 相关数据。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        list[GroupOut] => 处理结果。
+    """
     group_store: GroupStore = request.app.state.group_store
     return [GroupOut(**group) for group in group_store.list_groups(session.user_id)]
 
@@ -62,6 +73,16 @@ def create_group(
     request: Request,
     session: CurrentSession,
 ) -> GroupOut:
+    """创建 `group` 相关数据。
+
+    Args:
+        body: GroupCreateRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        GroupOut => 处理结果。
+    """
     group_store: GroupStore = request.app.state.group_store
 
     validate_style_tone(body.style, body.tone)
@@ -94,6 +115,17 @@ def update_group(
     request: Request,
     session: CurrentSession,
 ) -> GroupOut:
+    """更新 `group` 相关数据。
+
+    Args:
+        group_id: str => 分组 ID。
+        body: GroupUpdateRequest => `body` 参数。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        GroupOut => 处理结果。
+    """
     _load_owned_group(request, group_id, session)
     group_store: GroupStore = request.app.state.group_store
 
@@ -127,6 +159,13 @@ def delete_group(
     request: Request,
     session: CurrentSession,
 ) -> None:
+    """删除 `group` 相关数据。
+
+    Args:
+        group_id: str => 分组 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+    """
     _load_owned_group(request, group_id, session)
     group_store: GroupStore = request.app.state.group_store
     group_store.delete_group(group_id, session.user_id)

@@ -804,6 +804,9 @@ class _SchedulePageState extends State<SchedulePage> {
         type: FileType.custom,
         allowedExtensions: const [
           'pdf',
+          'docx',
+          'pptx',
+          'xlsx',
           'png',
           'jpg',
           'jpeg',
@@ -825,9 +828,9 @@ class _SchedulePageState extends State<SchedulePage> {
       if (file == null) return;
       if (file.size > _maxImportBytes) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('文件不能超过 15 MB')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('文件不能超过 15 MB')));
         return;
       }
       final target = await _askImportTarget(app);
@@ -837,9 +840,9 @@ class _SchedulePageState extends State<SchedulePage> {
       // withData: true 时字节已在内存，直接用，避免整份文件的多余复制
       final bytes = file.bytes ?? await file.xFile.readAsBytes();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('正在识别课表，大约需要半分钟…')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('正在识别课表，大约需要半分钟…')));
       final importResult = await app.importScheduleFile(
         filename: file.name,
         bytes: bytes,
@@ -849,6 +852,9 @@ class _SchedulePageState extends State<SchedulePage> {
       if (!mounted) return;
       final count = importResult.courses.length;
       final skipped = importResult.skippedCount;
+      final parserLabel = importResult.documentPipeline == 'docir'
+          ? 'DocIR 已解析'
+          : '已解析';
       final destination = toNewTable
           ? '「${app.activeScheduleTable?.name ?? '新课程表'}」'
           : '';
@@ -857,8 +863,8 @@ class _SchedulePageState extends State<SchedulePage> {
                 ? '识别到 $skipped 条课程与现有课表时间冲突，未导入'
                 : '没有发现新的课程，已有课程不会重复导入')
           : (skipped > 0
-                ? '已导入 $count 条课程安排到$destination，另有 $skipped 条因时间冲突被跳过'
-                : '已识别并导入 $count 条课程安排${destination.isEmpty ? '' : '到$destination'}');
+                ? '$parserLabel，已导入 $count 条课程安排到$destination，另有 $skipped 条因时间冲突被跳过'
+                : '$parserLabel，已导入 $count 条课程安排${destination.isEmpty ? '' : '到$destination'}');
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));
@@ -1066,7 +1072,9 @@ class _HustImportDialogState extends State<_HustImportDialog> {
       validationError = '请输入统一身份认证账号和密码。';
     } else if (_captcha.text.trim().isEmpty) {
       validationError = '请输入图形验证码。';
-    } else if (_semesterName.text.trim().isEmpty || start == null || end == null) {
+    } else if (_semesterName.text.trim().isEmpty ||
+        start == null ||
+        end == null) {
       validationError = '请补全学期名称和日期。';
     } else if (end.isBefore(start)) {
       validationError = '学期结束日期不能早于开始日期。';
@@ -1221,10 +1229,7 @@ class _HustImportDialogState extends State<_HustImportDialog> {
                         decoration: const InputDecoration(
                           labelText: '图形验证码',
                           counterText: '',
-                          prefixIcon: Icon(
-                            LucideIcons.shieldCheck,
-                            size: 17,
-                          ),
+                          prefixIcon: Icon(LucideIcons.shieldCheck, size: 17),
                         ),
                       ),
                     ),
@@ -1296,7 +1301,11 @@ class _HustImportDialogState extends State<_HustImportDialog> {
             border: Border.all(color: context.n.divider),
             borderRadius: BorderRadius.circular(EsaRadii.field),
           ),
-          child: Image.memory(bytes, fit: BoxFit.contain, gaplessPlayback: true),
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+          ),
         ),
       ),
     );

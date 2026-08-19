@@ -1,8 +1,13 @@
+# backend/tests/test_mastery_runtime_semantics.py
+
+"""验证 `mastery_runtime_semantics` 相关行为与回归场景。"""
+
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
-from backend.agent.tools.mastery_tools import EsaMasteryStore
+from backend.agent.tools.learning.mastery import EsaMasteryStore
 
 
 def test_target_itself_is_not_returned_as_weak_prerequisite(tmp_path):
+    """验证 `target_itself_is_not_returned_as_weak_prerequisite` 场景。"""
     kg = KnowledgeGraphStore(tmp_path / "kg.db")
     mastery = EsaMasteryStore(tmp_path / "mastery.db")
 

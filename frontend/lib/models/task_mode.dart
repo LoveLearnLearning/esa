@@ -7,6 +7,10 @@ enum TaskMode {
   masteryReport,
   practiceRecommendation,
   academicSearch,
+  literatureFrontier,
+  academicWriting,
+  researchDataAnalysis,
+  researchPlanning,
 }
 
 extension TaskModeInfo on TaskMode {
@@ -19,6 +23,10 @@ extension TaskModeInfo on TaskMode {
     TaskMode.masteryReport => '查看学习情况',
     TaskMode.practiceRecommendation => '推荐下一步练习',
     TaskMode.academicSearch => '搜索学术论文',
+    TaskMode.literatureFrontier => '领域前沿追踪',
+    TaskMode.academicWriting => '学术写作辅助',
+    TaskMode.researchDataAnalysis => '科研数据分析',
+    TaskMode.researchPlanning => '研究方案讨论',
   };
 
   String get description => switch (this) {
@@ -30,6 +38,10 @@ extension TaskModeInfo on TaskMode {
     TaskMode.masteryReport => '查看掌握度、薄弱知识点和复习情况',
     TaskMode.practiceRecommendation => '根据课程和考试时间推荐练习',
     TaskMode.academicSearch => '通过 ArXiv 查找论文和研究资料',
+    TaskMode.literatureFrontier => '检索论文，归纳热点、脉络与发展趋势',
+    TaskMode.academicWriting => '生成综述、搭建框架、润色与规范检查',
+    TaskMode.researchDataAnalysis => '分析实验、调查或文本资料并提炼结论',
+    TaskMode.researchPlanning => '梳理研究问题、方法、条件与里程碑',
   };
 
   String get hint => switch (this) {
@@ -41,6 +53,10 @@ extension TaskModeInfo on TaskMode {
     TaskMode.masteryReport => '例：查看数据结构课程的掌握情况…',
     TaskMode.practiceRecommendation => '例：操作系统，距离考试还有 3 周…',
     TaskMode.academicSearch => '输入论文主题、关键词或研究方向…',
+    TaskMode.literatureFrontier => '输入研究领域、关键词和关注的时间范围…',
+    TaskMode.academicWriting => '描述文稿类型、主题、目标期刊或修改要求…',
+    TaskMode.researchDataAnalysis => '描述数据来源、字段、研究问题，或添加附件…',
+    TaskMode.researchPlanning => '描述研究目标、现有条件和主要限制…',
   };
 
   String get instruction => switch (this) {
@@ -54,6 +70,14 @@ extension TaskModeInfo on TaskMode {
       '任务模式：练习推荐。调用练习推荐工具，根据课程、掌握度和距离考试时间给出下一步练习顺序。',
     TaskMode.academicSearch =>
       '任务模式：学术论文搜索。优先使用 arxiv_search 工具，列出论文标题、摘要、作者、发布时间和链接。',
+    TaskMode.literatureFrontier =>
+      '任务模式：领域前沿追踪。先明确研究范围和时间窗口，再检索可靠论文来源，区分来源事实与趋势判断，归纳热点、演化脉络和研究空白。',
+    TaskMode.academicWriting =>
+      '任务模式：学术写作辅助。根据用户给出的材料与目标生成或修改学术文本；不得编造引用，明确标记缺少来源支持的内容。',
+    TaskMode.researchDataAnalysis =>
+      '任务模式：科研数据分析。先确认数据结构、研究问题与评价口径，再分析资料并区分观察结果、推断和限制；当前无法直接执行的分析应明确说明。',
+    TaskMode.researchPlanning =>
+      '任务模式：研究方案讨论。围绕研究问题、假设、数据、方法、资源、风险和成功标准形成结构化方案。',
   };
 
   String buildPrompt(String input) => '$instruction\n\n用户提供的内容：\n$input';

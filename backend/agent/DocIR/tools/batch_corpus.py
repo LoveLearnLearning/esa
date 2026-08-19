@@ -47,12 +47,14 @@ TERMINAL_STATUSES = {"success"}
 
 @dataclass(frozen=True)
 class SourceMetadata:
+    """封装 `SourceMetadata` 的状态与行为。"""
     media_type: str
     page_count: int | None
     encrypted: bool | None
 
 
 def file_sha256(path: Path) -> str:
+    """处理 `file_sha256` 相关逻辑。"""
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -68,6 +70,7 @@ def stable_directory_name(path: Path, sha256: str | None = None) -> str:
 
 
 def discover_documents(input_dir: Path) -> list[Path]:
+    """处理 `discover_documents` 相关逻辑。"""
     return sorted(
         (
             path
@@ -79,12 +82,27 @@ def discover_documents(input_dir: Path) -> list[Path]:
 
 
 def atomic_json(path: Path, data: Any) -> None:
+    """处理 `atomic_json` 相关逻辑。
+
+    Args:
+        path: Path => 目标路径。
+        data: Any => 输入数据。
+    """
     temporary = path.with_name(f".{path.name}.tmp")
     temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     os.replace(temporary, path)
 
 
 def link_or_copy(source: Path, target: Path) -> str:
+    """处理 `link_or_copy` 相关逻辑。
+
+    Args:
+        source: Path => `source` 参数。
+        target: Path => `target` 参数。
+
+    Returns:
+        str => 处理结果。
+    """
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
         if file_sha256(target) != file_sha256(source):
@@ -99,6 +117,14 @@ def link_or_copy(source: Path, target: Path) -> str:
 
 
 def find_parse_dir(output_root: Path) -> Path:
+    """查找 `parse dir` 相关数据。
+
+    Args:
+        output_root: Path => `output_root` 参数。
+
+    Returns:
+        Path => 处理结果。
+    """
     matches = sorted(
         {
             path.parent
@@ -115,6 +141,7 @@ def find_parse_dir(output_root: Path) -> Path:
 
 
 def should_retain(path: Path) -> bool:
+    """处理 `should_retain` 相关逻辑。"""
     return not any(path.name.endswith(suffix) for suffix in PRUNABLE_SUFFIXES)
 
 
@@ -123,7 +150,7 @@ def prune_mineru_output(output_root: Path) -> list[str]:
     removed: list[str] = []
     for path in sorted(output_root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
         if path.is_file() and not should_retain(path):
-            removed.append(str(path.relative_to(output_root)))
+            removed.append(path.relative_to(output_root).as_posix())
             path.unlink()
         elif path.is_dir() and not any(path.iterdir()):
             path.rmdir()
@@ -131,6 +158,14 @@ def prune_mineru_output(output_root: Path) -> list[str]:
 
 
 def source_metadata(path: Path) -> SourceMetadata:
+    """处理 `source_metadata` 相关逻辑。
+
+    Args:
+        path: Path => 目标路径。
+
+    Returns:
+        SourceMetadata => 处理结果。
+    """
     suffix = path.suffix.lower()
     media_type = source_media_type(path)
     if suffix == ".pdf":
@@ -148,6 +183,18 @@ def source_metadata(path: Path) -> SourceMetadata:
 
 
 def run_mineru(source: Path, output_root: Path, log_path: Path, timeout_seconds: int, attempts: int = 2) -> dict[str, Any]:
+    """执行 `mineru` 相关数据。
+
+    Args:
+        source: Path => `source` 参数。
+        output_root: Path => `output_root` 参数。
+        log_path: Path => `log_path` 参数。
+        timeout_seconds: int => `timeout_seconds` 参数。
+        attempts: int => `attempts` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     command = [
         str(WORKSPACE / "bin/run-mineru"), "-p", str(source), "-o", str(output_root),
         "-b", "pipeline", "-m", "auto", "-l", "ch",
@@ -170,6 +217,14 @@ def run_mineru(source: Path, output_root: Path, log_path: Path, timeout_seconds:
 
 
 def raw_metrics(bundle: Any) -> dict[str, Any]:
+    """处理 `raw_metrics` 相关逻辑。
+
+    Args:
+        bundle: Any => `bundle` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     block_types: Counter[str] = Counter()
     discarded_types: Counter[str] = Counter()
     v2_types: Counter[str] = Counter()
@@ -217,6 +272,14 @@ def raw_metrics(bundle: Any) -> dict[str, Any]:
 
 
 def document_metrics(document: Any) -> dict[str, Any]:
+    """处理 `document_metrics` 相关逻辑。
+
+    Args:
+        document: Any => `document` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     kinds = Counter(element.kind for element in document.elements)
     source_types = Counter(element.source_type or "none" for element in document.elements)
     roles = Counter(element.role.value for element in document.elements)
@@ -261,6 +324,7 @@ def document_metrics(document: Any) -> dict[str, Any]:
 
 
 def element_preview(element: Any) -> str:
+    """处理 `element_preview` 相关逻辑。"""
     text = ""
     if element.text and element.text.layers:
         text = element.text.layers[0].text.replace("\n", " ").strip()
@@ -269,6 +333,12 @@ def element_preview(element: Any) -> str:
 
 
 def write_preview(path: Path, document: Any) -> None:
+    """写入 `preview` 相关数据。
+
+    Args:
+        path: Path => 目标路径。
+        document: Any => `document` 参数。
+    """
     selected = list(document.elements[:10])
     if len(document.elements) > 15:
         selected.extend(document.elements[-5:])
@@ -280,6 +350,15 @@ def write_preview(path: Path, document: Any) -> None:
 
 
 def verify_bundle(root: Path, document_path: Path) -> dict[str, Any]:
+    """验证 `bundle` 相关数据。
+
+    Args:
+        root: Path => `root` 参数。
+        document_path: Path => `document_path` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     document = load_document(document_path)
     missing, bad = [], []
     for asset in document.assets:
@@ -316,6 +395,17 @@ def convert_one(
     docir_root: Path,
     source_pages: int | None,
 ) -> tuple[Any, dict[str, Any]]:
+    """转换 `one` 相关数据。
+
+    Args:
+        source: Path => `source` 参数。
+        parse_dir: Path => `parse_dir` 参数。
+        docir_root: Path => `docir_root` 参数。
+        source_pages: int | None => `source_pages` 参数。
+
+    Returns:
+        tuple[Any, dict[str, Any]] => 处理结果。
+    """
     bundle = load_bundle(parse_dir)
     document = convert_bundle(bundle, source, source_page_count=source_pages, strict=False)
     docir_root.mkdir(parents=True, exist_ok=True)
@@ -342,6 +432,14 @@ def convert_one(
 
 
 def aggregate(results: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """处理 `aggregate` 相关逻辑。
+
+    Args:
+        results: Iterable[dict[str, Any]] => `results` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     items = list(results)
     successful = [item for item in items if item.get("status") == "success"]
     block_types: Counter[str] = Counter()
@@ -437,6 +535,13 @@ def aggregate(results: Iterable[dict[str, Any]]) -> dict[str, Any]:
 
 
 def write_report(path: Path, run_id: str, results: list[dict[str, Any]]) -> None:
+    """写入 `report` 相关数据。
+
+    Args:
+        path: Path => 目标路径。
+        run_id: str => run ID。
+        results: list[dict[str, Any]] => `results` 参数。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     totals = aggregate(results)
     strict_complete = totals["documents_success"] > 0 and totals["strict_passed"] == totals["documents_success"]
@@ -503,6 +608,20 @@ def write_report(path: Path, run_id: str, results: list[dict[str, Any]]) -> None
 
 
 def process_document(source: Path, run_id: str, mineru_run: Path, docir_run: Path, timeout: int, resume: bool, refresh_conversions: bool = False) -> dict[str, Any]:
+    """处理 `document` 相关数据。
+
+    Args:
+        source: Path => `source` 参数。
+        run_id: str => run ID。
+        mineru_run: Path => `mineru_run` 参数。
+        docir_run: Path => `docir_run` 参数。
+        timeout: int => 超时时间。
+        resume: bool => `resume` 参数。
+        refresh_conversions: bool => `refresh_conversions` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     sha = file_sha256(source)
     directory = stable_directory_name(source, sha)
     docir_root = docir_run / directory
@@ -579,6 +698,14 @@ def process_document(source: Path, run_id: str, mineru_run: Path, docir_run: Pat
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-dir", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--run-id", default=DEFAULT_RUN_ID)

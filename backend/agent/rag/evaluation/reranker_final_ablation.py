@@ -1,3 +1,5 @@
+# backend/agent/rag/evaluation/reranker_final_ablation.py
+
 """Final bounded Qwen reranker experiment: instruction, top-3 and prior fusion."""
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ DEFAULT_OUTPUT_ROOT = _BENCHMARK_ROOT / "reranker-final-20260811"
 
 
 def _route_items(row: dict[str, Any], route: str) -> list[RankedItem]:
+    """处理 `_route_items` 相关逻辑。"""
     values = [
         candidate
         for candidate in row["candidates"]
@@ -45,6 +48,7 @@ def _route_items(row: dict[str, Any], route: str) -> list[RankedItem]:
 
 
 def _calibrators(rows: list[dict[str, Any]]):
+    """处理 `_calibrators` 相关逻辑。"""
     body = [
         float(candidate["bm25_body_raw_score"])
         for row in rows
@@ -72,6 +76,7 @@ def _prior(
     config: dict[str, Any],
     source: str,
 ) -> list[RankedItem]:
+    """处理 `_prior` 相关逻辑。"""
     routes = {
         route: _route_items(row, route)
         for route in ("dense", "bm25_body", "bm25_heading")
@@ -95,6 +100,7 @@ def _prior(
 
 
 def _top_chunks(candidate: dict[str, Any]) -> list[str]:
+    """处理 `_top_chunks` 相关逻辑。"""
     output: list[str] = []
     for route in ("dense", "bm25_body", "bm25_heading"):
         for chunk_id in candidate[f"{route}_top_chunk_ids"]:
@@ -112,6 +118,7 @@ def _score_query(
     instruction: str,
     batch_size: int,
 ) -> list[float]:
+    """处理 `_score_query` 相关逻辑。"""
     scores: list[float] = []
     for start in range(0, len(documents), batch_size):
         scores.extend(
@@ -123,6 +130,7 @@ def _score_query(
 def _blend(
     prior: list[RankedItem], reranker: dict[str, float], prior_weight: float
 ) -> list[str]:
+    """处理 `_blend` 相关逻辑。"""
     if prior_weight == 1.0:
         return [item.chunk_id for item in prior]
     indexed = list(enumerate(prior))
@@ -140,6 +148,15 @@ def _blend(
 
 
 def run_dataset(arguments: argparse.Namespace, dataset: str) -> dict[str, Any]:
+    """执行 `dataset` 相关数据。
+
+    Args:
+        arguments: argparse.Namespace => `arguments` 参数。
+        dataset: str => `dataset` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     fusion_dir = arguments.fusion_root / dataset
     rows = _read_jsonl(fusion_dir / "fusion_raw.jsonl")
     fusion_summary = json.loads((fusion_dir / "summary.json").read_text())
@@ -287,6 +304,7 @@ def run_dataset(arguments: argparse.Namespace, dataset: str) -> dict[str, Any]:
 
 
 def _parser() -> argparse.ArgumentParser:
+    """处理 `_parser` 相关逻辑。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", choices=(*DATASETS, "all"), default="all")
     parser.add_argument("--data-root", type=Path, default=DEFAULT_DATA_ROOT)
@@ -298,6 +316,14 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     arguments = _parser().parse_args(argv)
     datasets = DATASETS if arguments.dataset == "all" else (arguments.dataset,)
     reports = {dataset: run_dataset(arguments, dataset) for dataset in datasets}

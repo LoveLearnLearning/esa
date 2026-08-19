@@ -1,5 +1,7 @@
 # backend/core/web/routers/preferences.py
 
+"""提供 `preferences` 相关功能。"""
+
 import json
 from datetime import datetime
 from typing import Annotated
@@ -44,6 +46,7 @@ def _snapshot_to_view(snap_dict: dict, *, user) -> ProfileViewOut:
     其余 source_memory_ids/last_confirmed_at 等内部字段不输出到视图。
     """
     def to_fields(items: list[dict]) -> list[ProfileFieldOut]:
+        """转换 `fields` 相关数据。"""
         return [
             ProfileFieldOut(
                 field=item["field"],
@@ -455,12 +458,18 @@ def get_memory_settings(
 
     if settings is None:
         return MemorySettingsOut(
+            saved_memory_enabled=True,
+            chat_history_enabled=True,
+            auto_extract_enabled=False,
             learning_profile_enabled=True,
             inferred_profile_enabled=True,
             default_conversation_mode="normal",
         )
 
     return MemorySettingsOut(
+        saved_memory_enabled=settings.saved_memory_enabled,
+        chat_history_enabled=settings.chat_history_enabled,
+        auto_extract_enabled=settings.auto_extract_enabled,
         learning_profile_enabled=settings.learning_profile_enabled,
         inferred_profile_enabled=settings.inferred_profile_enabled,
         default_conversation_mode=settings.default_conversation_mode,
@@ -493,6 +502,9 @@ def update_memory_settings(
     if updates:
         updated = user_store.update_memory_settings(
             user_id=session.user_id,
+            saved_memory_enabled=updates.get("saved_memory_enabled"),
+            chat_history_enabled=updates.get("chat_history_enabled"),
+            auto_extract_enabled=updates.get("auto_extract_enabled"),
             learning_profile_enabled=updates.get("learning_profile_enabled"),
             inferred_profile_enabled=updates.get("inferred_profile_enabled"),
             default_conversation_mode=updates.get("default_conversation_mode"),
@@ -506,12 +518,18 @@ def update_memory_settings(
     settings = user_store.get_memory_settings(session.user_id)
     if settings is None:
         return MemorySettingsOut(
+            saved_memory_enabled=True,
+            chat_history_enabled=True,
+            auto_extract_enabled=False,
             learning_profile_enabled=True,
             inferred_profile_enabled=True,
             default_conversation_mode="normal",
         )
 
     return MemorySettingsOut(
+        saved_memory_enabled=settings.saved_memory_enabled,
+        chat_history_enabled=settings.chat_history_enabled,
+        auto_extract_enabled=settings.auto_extract_enabled,
         learning_profile_enabled=settings.learning_profile_enabled,
         inferred_profile_enabled=settings.inferred_profile_enabled,
         default_conversation_mode=settings.default_conversation_mode,

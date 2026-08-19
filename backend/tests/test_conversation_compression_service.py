@@ -1,3 +1,7 @@
+# backend/tests/test_conversation_compression_service.py
+
+"""验证 `conversation_compression_service` 相关行为与回归场景。"""
+
 import asyncio
 
 from backend.core.services.conversation_compression_service import (
@@ -12,15 +16,28 @@ from backend.core.utils.models import UserRecord
 
 
 class _AuxiliaryLLM:
+    """封装 `_AuxiliaryLLM` 的状态与行为。"""
     def __init__(self) -> None:
+        """初始化 `_AuxiliaryLLM` 实例。"""
         self.calls = []
 
     async def chat(self, messages, *, max_tokens, temperature):
+        """处理 `chat` 相关逻辑。
+
+        Args:
+            messages: object => 消息列表。
+            max_tokens: object => `max_tokens` 参数。
+            temperature: object => `temperature` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         self.calls.append((messages, max_tokens, temperature))
         return "用户正在讨论离散数学；助手已解释前六条消息，后续问题尚待处理。"
 
 
 def test_offline_compression_keeps_originals_and_recent_context(tmp_path):
+    """验证 `offline_compression_keeps_originals_and_recent_context` 场景。"""
     database_path = tmp_path / "compression.db"
     user_store = UserStore(database_path)
     assert user_store.create(
@@ -91,6 +108,7 @@ def test_offline_compression_keeps_originals_and_recent_context(tmp_path):
 
 
 def test_summary_is_not_committed_after_user_returns_online(tmp_path):
+    """验证 `summary_is_not_committed_after_user_returns_online` 场景。"""
     database_path = tmp_path / "online-race.db"
     user_store = UserStore(database_path)
     assert user_store.create(
@@ -114,7 +132,18 @@ def test_summary_is_not_committed_after_user_returns_online(tmp_path):
     summary_store = ConversationSummaryStore(database_path)
 
     class _ReturnOnlineLLM(_AuxiliaryLLM):
+        """封装 `_ReturnOnlineLLM` 的状态与行为。"""
         async def chat(self, messages, *, max_tokens, temperature):
+            """处理 `chat` 相关逻辑。
+
+            Args:
+                messages: object => 消息列表。
+                max_tokens: object => `max_tokens` 参数。
+                temperature: object => `temperature` 参数。
+
+            Returns:
+                object => 处理结果。
+            """
             presence_store.mark_online("u1")
             return await super().chat(
                 messages,

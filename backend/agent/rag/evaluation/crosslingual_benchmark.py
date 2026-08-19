@@ -1,3 +1,5 @@
+# backend/agent/rag/evaluation/crosslingual_benchmark.py
+
 """人工 gold 的中文查询→英文语料评测 schema 与离线评测入口。
 
 本模块只接受显式提供的 gold document IDs，不生成或猜测标签。
@@ -25,6 +27,7 @@ PIPELINES = (
 
 @dataclass(frozen=True)
 class ChineseEnglishCase:
+    """封装 `ChineseEnglishCase` 的状态与行为。"""
     case_id: str
     query_zh: str
     gold_document_ids: frozenset[str]
@@ -32,12 +35,21 @@ class ChineseEnglishCase:
     tags: tuple[str, ...] = ()
 
     def benchmark_case(self) -> BenchmarkCase:
+        """处理 `benchmark_case` 相关逻辑。"""
         return BenchmarkCase(
             self.case_id, self.query_zh, self.gold_document_ids, self.tags
         )
 
 
 def load_cases(path: Path) -> tuple[ChineseEnglishCase, ...]:
+    """加载 `cases` 相关数据。
+
+    Args:
+        path: Path => 目标路径。
+
+    Returns:
+        tuple[ChineseEnglishCase, ...] => 处理结果。
+    """
     cases: list[ChineseEnglishCase] = []
     seen: set[str] = set()
     for value in _read_jsonl(path):
@@ -91,6 +103,7 @@ def evaluate_replay(case_path: Path, result_path: Path) -> dict[str, Any]:
 
 
 def _parser() -> argparse.ArgumentParser:
+    """处理 `_parser` 相关逻辑。"""
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     validate = commands.add_parser("validate")
@@ -103,6 +116,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。"""
     arguments = _parser().parse_args(argv)
     if arguments.command == "validate":
         print(json.dumps({"query_count": len(load_cases(arguments.cases))}))

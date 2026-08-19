@@ -1,9 +1,14 @@
+# backend/core/stores/profile_store.py
+
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
 import json
 import logging
 import sqlite3
 import uuid
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -16,10 +21,12 @@ class ProfileStore(BaseSQLiteStore):
     """结构化用户画像维度、审计日志与版本号的 SQLite 存储层。"""
 
     def __init__(self, database_path: str | Path = "data/esa.db") -> None:
+        """初始化 `ProfileStore` 实例。"""
         super().__init__(database_path)
 
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        """初始化 `initialize` 相关数据。"""
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_profile_dimensions (
@@ -73,6 +80,7 @@ class ProfileStore(BaseSQLiteStore):
 
     @staticmethod
     def _row_to_dict(row: sqlite3.Row) -> dict:
+        """处理 `_row_to_dict` 相关逻辑。"""
         return {
             "user_id": row["user_id"],
             "field_key": row["field_key"],
@@ -233,6 +241,15 @@ class ProfileStore(BaseSQLiteStore):
         return count > 0
 
     def suppress_dimension(self, user_id: str, field_key: str) -> bool:
+        """处理 `suppress_dimension` 相关逻辑。
+
+        Args:
+            user_id: str => 用户 ID。
+            field_key: str => `field_key` 参数。
+
+        Returns:
+            bool => 处理结果。
+        """
         now_iso = datetime.now().isoformat()
         before = self.get_dimension(user_id, field_key, include_expired=True)
         count = self.execute(
@@ -257,6 +274,15 @@ class ProfileStore(BaseSQLiteStore):
         return count > 0
 
     def restore_dimension(self, user_id: str, field_key: str) -> bool:
+        """处理 `restore_dimension` 相关逻辑。
+
+        Args:
+            user_id: str => 用户 ID。
+            field_key: str => `field_key` 参数。
+
+        Returns:
+            bool => 处理结果。
+        """
         now_iso = datetime.now().isoformat()
         before = self.get_dimension(user_id, field_key, include_expired=True)
         count = self.execute(
@@ -281,6 +307,7 @@ class ProfileStore(BaseSQLiteStore):
         return count > 0
 
     def cleanup_expired_dimensions(self, retention_days: int = 90) -> int:
+        """处理 `cleanup_expired_dimensions` 相关逻辑。"""
         now_iso = datetime.now().isoformat()
         cutoff_iso = (datetime.now() - timedelta(days=retention_days)).isoformat()
         return self.execute(
@@ -301,6 +328,7 @@ class ProfileStore(BaseSQLiteStore):
         after_json: str | None = None,
         actor: str = "user",
     ) -> None:
+        """处理 `_insert_audit_log` 相关逻辑。"""
         try:
             self.execute(
                 """
@@ -331,6 +359,15 @@ class ProfileStore(BaseSQLiteStore):
             )
 
     def list_audit_logs(self, user_id: str, limit: int = 50) -> list[dict]:
+        """列出 `audit logs` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            limit: int => 返回数量上限。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         rows = self.query_all(
             """
             SELECT audit_id, user_id, action, field_key,
@@ -345,6 +382,14 @@ class ProfileStore(BaseSQLiteStore):
         return [dict(row) for row in rows]
 
     def get_next_profile_version(self, user_id: str) -> int:
+        """获取 `next profile version` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+
+        Returns:
+            int => 处理结果。
+        """
         now_iso = datetime.now().isoformat()
         self.execute(
             """
@@ -365,6 +410,7 @@ class ProfileStore(BaseSQLiteStore):
         return row["max_ver"] if row and row["max_ver"] is not None else 1
 
     def delete_all_dimensions(self, user_id: str) -> int:
+        """删除 `all dimensions` 相关数据。"""
         self._insert_audit_log(
             user_id=user_id,
             action="delete_all",

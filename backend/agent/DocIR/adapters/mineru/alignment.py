@@ -34,6 +34,7 @@ class AlignmentError(ValueError):
 
 @dataclass(frozen=True)
 class AlignedBlock:
+    """封装 `AlignedBlock` 的状态与行为。"""
     middle: RawMiddleBlock
     v2: dict[str, Any] | None
     discarded: bool
@@ -46,6 +47,7 @@ def extract_text(value: Any) -> str:
     pieces: list[str] = []
 
     def visit(item: Any) -> None:
+        """处理 `visit` 相关逻辑。"""
         if isinstance(item, dict):
             if item.get("type") in {"text", "inline_text"} and isinstance(item.get("content"), str):
                 pieces.append(item["content"])
@@ -61,6 +63,15 @@ def extract_text(value: Any) -> str:
 
 
 def types_compatible(middle_type: str, v2_type: str | None) -> bool:
+    """处理 `types_compatible` 相关逻辑。
+
+    Args:
+        middle_type: str => `middle_type` 参数。
+        v2_type: str | None => `v2_type` 参数。
+
+    Returns:
+        bool => 处理结果。
+    """
     if v2_type is None:
         return False
     return middle_type == v2_type or v2_type in TYPE_ALIASES.get(middle_type, frozenset())
@@ -71,6 +82,7 @@ def _middle_bbox_1000(
     width: float | None,
     height: float | None,
 ) -> tuple[float, float, float, float] | None:
+    """处理 `_middle_bbox_1000` 相关逻辑。"""
     if block.bbox is None and width is None and height is None:
         return None
     if (
@@ -87,6 +99,7 @@ def _middle_bbox_1000(
 
 
 def _v2_bbox(item: dict[str, Any]) -> tuple[float, float, float, float] | None:
+    """处理 `_v2_bbox` 相关逻辑。"""
     bbox = item.get("bbox")
     if bbox is None:
         return None
@@ -96,10 +109,12 @@ def _v2_bbox(item: dict[str, Any]) -> tuple[float, float, float, float] | None:
 
 
 def _bbox_delta(left: tuple[float, ...], right: tuple[float, ...]) -> float:
+    """处理 `_bbox_delta` 相关逻辑。"""
     return max(abs(a - b) for a, b in zip(left, right))
 
 
 def _text_distance(middle: RawMiddleBlock, v2: dict[str, Any]) -> float:
+    """处理 `_text_distance` 相关逻辑。"""
     left = extract_text(middle.model_dump(mode="python"))
     right = extract_text(v2)
     if not left and not right:

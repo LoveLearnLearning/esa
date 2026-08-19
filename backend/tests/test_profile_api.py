@@ -1,3 +1,5 @@
+# backend/tests/test_profile_api.py
+
 """Profile V2 API 端点测试
 
 覆盖 SubTask 13.3:
@@ -28,31 +30,66 @@ from backend.core.web.routers.preferences import (
 
 
 class StubMasteryStore:
+    """封装 `stub mastery store` 数据持久化操作。"""
     def get(self, user_name, kp_id):
+        """获取 `get` 相关数据。
+
+        Args:
+            user_name: object => `user_name` 参数。
+            kp_id: object => kp ID。
+
+        Returns:
+            object => 处理结果。
+        """
         return None
 
     def get_weak_prerequisites(
         self, user_name, kp_id, kg_store, mastery_threshold=50.0, max_depth=5
     ):
+        """获取 `weak prerequisites` 相关数据。
+
+        Args:
+            user_name: object => `user_name` 参数。
+            kp_id: object => kp ID。
+            kg_store: object => `kg_store` 参数。
+            mastery_threshold: object => `mastery_threshold` 参数。
+            max_depth: object => `max_depth` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         return []
 
 
 class StubKGStore:
+    """封装 `stub k g store` 数据持久化操作。"""
     def list_all(self):
+        """列出 `all` 相关数据。"""
         return []
 
 
 class StubEvidenceStore:
+    """封装 `stub evidence store` 数据持久化操作。"""
     def get_summary(self, user_name, *, kp_id=None, limit=20):
+        """获取 `summary` 相关数据。
+
+        Args:
+            user_name: object => `user_name` 参数。
+            kp_id: object => kp ID。
+            limit: object => 返回数量上限。
+        """
         raise AssertionError("API profile view has no resolved knowledge point")
 
 
 class StubCoreMemory:
+    """封装 `StubCoreMemory` 的状态与行为。"""
     def get_all(self, user_name):
+        """获取 `all` 相关数据。"""
         return []
 
 
 def _make_user() -> UserRecord:
+    """处理 `_make_user` 相关逻辑。"""
     return UserRecord(
         id="u1",
         username="alice",
@@ -72,6 +109,7 @@ def _make_user() -> UserRecord:
 
 
 def _make_session() -> SessionPrincipal:
+    """处理 `_make_session` 相关逻辑。"""
     return SessionPrincipal(
         session_id="s1",
         user_id="u1",
@@ -110,6 +148,7 @@ def _create_app(tmp_path) -> FastAPI:
     from backend.core.web.deps import get_current_session
 
     def _override_session():
+        """处理 `_override_session` 相关逻辑。"""
         return _make_session()
 
     app.dependency_overrides[get_current_session] = _override_session

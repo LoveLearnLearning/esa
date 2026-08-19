@@ -14,6 +14,7 @@ from backend.agent.DocIR.tests.core.test_document import make_document
 
 
 def test_round_trip_and_schema(tmp_path):
+    """验证 `round_trip_and_schema` 场景。"""
     path = tmp_path / "document.json"
     save_document(make_document(), path)
     assert load_document(path) == make_document().model_copy(update={"created_at": load_document(path).created_at})

@@ -51,6 +51,7 @@ from backend.agent.rag.chunk.serializer import file_sha256
 
 
 def _text(element_id: str, value: str) -> TextContent | None:
+    """处理 `_text` 相关逻辑。"""
     if not value:
         return None
     layer_id = f"text_{element_id}"
@@ -68,6 +69,14 @@ def _text(element_id: str, value: str) -> TextContent | None:
 
 
 def make_document(specs: list[dict]) -> Document:
+    """处理 `make_document` 相关逻辑。
+
+    Args:
+        specs: list[dict] => `specs` 参数。
+
+    Returns:
+        Document => 处理结果。
+    """
     elements = []
     for index, spec in enumerate(specs):
         element_id = f"element_{index}"
@@ -192,6 +201,7 @@ def make_document(specs: list[dict]) -> Document:
 
 
 def test_config_is_strict_and_ordered() -> None:
+    """验证 `config_is_strict_and_ordered` 场景。"""
     default = ChunkConfig()
     assert default.schema_version == "chunk-config-0.3"
     assert default.sha256 == ChunkConfig().sha256
@@ -205,6 +215,7 @@ def test_config_is_strict_and_ordered() -> None:
 
 
 def test_text_split_prefers_boundaries_and_preserves_offsets() -> None:
+    """验证 `text_split_prefers_boundaries_and_preserves_offsets` 场景。"""
     text = "第一句。第二句很长。第三句。"
     pieces = split_text_spans(text, 8)
     assert all(len(value) <= 8 for value, _start, _end in pieces)
@@ -213,6 +224,7 @@ def test_text_split_prefers_boundaries_and_preserves_offsets() -> None:
 
 
 def test_text_split_rebalances_an_avoidable_short_tail() -> None:
+    """验证 `text_split_rebalances_an_avoidable_short_tail` 场景。"""
     text = "甲" * 25
 
     pieces = split_text_spans(text, 20, min_chars=8)
@@ -223,6 +235,7 @@ def test_text_split_rebalances_an_avoidable_short_tail() -> None:
 
 
 def test_heading_roles_and_empty_figure_have_explicit_dispositions() -> None:
+    """验证 `heading_roles_and_empty_figure_have_explicit_dispositions` 场景。"""
     document = make_document(
         [
             {"kind": "heading", "text": "第一章"},
@@ -244,6 +257,7 @@ def test_heading_roles_and_empty_figure_have_explicit_dispositions() -> None:
 
 
 def test_standalone_figure_and_navigation_labels_are_filtered_conservatively() -> None:
+    """验证 `standalone_figure_and_navigation_labels_are_filtered_conservatively` 场景。"""
     document = make_document(
         [
             {"kind": "figure", "text": "图 4-59"},
@@ -279,6 +293,7 @@ def test_standalone_figure_and_navigation_labels_are_filtered_conservatively() -
 
 
 def test_standalone_label_filters_can_be_disabled() -> None:
+    """验证 `standalone_label_filters_can_be_disabled` 场景。"""
     result = ChunkBuilder(
         ChunkConfig(
             min_chars=0,
@@ -304,6 +319,7 @@ def test_standalone_label_filters_can_be_disabled() -> None:
 
 
 def test_element_without_locator_still_builds_evidence() -> None:
+    """验证 `element_without_locator_still_builds_evidence` 场景。"""
     document = make_document([{"text": "没有空间定位的正文", "no_locator": True}])
 
     result = ChunkBuilder().build(document, docir_sha256="c" * 64)
@@ -313,6 +329,7 @@ def test_element_without_locator_still_builds_evidence() -> None:
 
 
 def test_normal_chunks_overlap_one_whole_element_and_mark_group() -> None:
+    """验证 `normal_chunks_overlap_one_whole_element_and_mark_group` 场景。"""
     document = make_document(
         [
             {"text": "甲" * 10},
@@ -337,6 +354,7 @@ def test_normal_chunks_overlap_one_whole_element_and_mark_group() -> None:
 
 
 def test_overlap_is_skipped_when_it_would_exceed_hard_limit() -> None:
+    """验证 `overlap_is_skipped_when_it_would_exceed_hard_limit` 场景。"""
     document = make_document([{"text": "甲" * 25}, {"text": "乙" * 10}])
     result = ChunkBuilder(
         ChunkConfig(target_chars=20, max_chars=30, min_chars=0)
@@ -347,6 +365,7 @@ def test_overlap_is_skipped_when_it_would_exceed_hard_limit() -> None:
 
 
 def test_oversized_element_splits_without_losing_text() -> None:
+    """验证 `oversized_element_splits_without_losing_text` 场景。"""
     value = "长句。" * 30
     document = make_document([{"text": value}])
     result = ChunkBuilder(
@@ -360,6 +379,7 @@ def test_oversized_element_splits_without_losing_text() -> None:
 
 
 def test_normalization_expansion_still_respects_hard_limit() -> None:
+    """验证 `normalization_expansion_still_respects_hard_limit` 场景。"""
     value = "目录……" * 30
     result = ChunkBuilder(
         ChunkConfig(
@@ -377,6 +397,7 @@ def test_normalization_expansion_still_respects_hard_limit() -> None:
 
 
 def test_table_uses_repeated_header_and_consecutive_row_groups() -> None:
+    """验证 `table_uses_repeated_header_and_consecutive_row_groups` 场景。"""
     html = (
         "<table><thead><tr><th>姓名</th><th>分数</th></tr></thead><tbody>"
         + "".join(f"<tr><td>学生{i}</td><td>{i}</td></tr>" for i in range(8))
@@ -397,6 +418,7 @@ def test_table_uses_repeated_header_and_consecutive_row_groups() -> None:
 
 
 def test_table_without_html_falls_back_to_primary_text() -> None:
+    """验证 `table_without_html_falls_back_to_primary_text` 场景。"""
     document = make_document([{"kind": "table", "text": "A B C " * 20, "html": None}])
     result = ChunkBuilder(ChunkConfig(target_chars=20, max_chars=25)).build(
         document, docir_sha256="c" * 64
@@ -411,6 +433,7 @@ def test_table_without_html_falls_back_to_primary_text() -> None:
 
 
 def test_unverified_text_is_retrievable_but_not_quotable() -> None:
+    """验证 `unverified_text_is_retrievable_but_not_quotable` 场景。"""
     result = ChunkBuilder().build(
         make_document([{"text": "OCR 风险内容"}]), docir_sha256="c" * 64
     )
@@ -421,6 +444,7 @@ def test_unverified_text_is_retrievable_but_not_quotable() -> None:
 
 
 def test_serialization_is_deterministic_and_round_trips(tmp_path: Path) -> None:
+    """验证 `serialization_is_deterministic_and_round_trips` 场景。"""
     source = make_document([{"text": "稳定输出"}])
     document = ChunkBuilder().build(source, docir_sha256="c" * 64)
     rebuilt = ChunkBuilder().build(source, docir_sha256="c" * 64)
@@ -439,6 +463,7 @@ def test_serialization_is_deterministic_and_round_trips(tmp_path: Path) -> None:
 
 
 def test_build_collection_resume_verifies_existing_document(tmp_path: Path) -> None:
+    """验证 `build_collection_resume_verifies_existing_document` 场景。"""
     input_root = tmp_path / "input"
     bundle = input_root / "one"
     bundle.mkdir(parents=True)
@@ -466,6 +491,7 @@ def test_build_collection_resume_verifies_existing_document(tmp_path: Path) -> N
 
 
 def test_cleaning_classifies_roles_without_changing_raw_evidence() -> None:
+    """验证 `cleaning_classifies_roles_without_changing_raw_evidence` 场景。"""
     document = make_document(
         [
             {"text": "TITLE: Retrieval Study"},
@@ -493,6 +519,7 @@ def test_cleaning_classifies_roles_without_changing_raw_evidence() -> None:
 
 
 def test_normal_body_mentioning_university_is_not_affiliation() -> None:
+    """验证 `normal_body_mentioning_university_is_not_affiliation` 场景。"""
     result = ChunkBuilder(ChunkConfig(min_chars=0)).build(
         make_document([{"text": "The university deployed the system to learners."}]),
         docir_sha256="c" * 64,
@@ -502,6 +529,7 @@ def test_normal_body_mentioning_university_is_not_affiliation() -> None:
 
 
 def test_front_matter_author_and_date_are_suppressed_conservatively() -> None:
+    """验证 `front_matter_author_and_date_are_suppressed_conservatively` 场景。"""
     result = ChunkBuilder(ChunkConfig(min_chars=0, overlap_elements=0)).build(
         make_document(
             [
@@ -520,6 +548,7 @@ def test_front_matter_author_and_date_are_suppressed_conservatively() -> None:
 
 
 def test_normalization_only_changes_retrieval_copy() -> None:
+    """验证 `normalization_only_changes_retrieval_copy` 场景。"""
     raw = "<span>ef-\nfective</span> \\mathrm { s e l e c t i o n }"
     result = ChunkBuilder(ChunkConfig(min_chars=0)).build(
         make_document([{"text": raw}]), docir_sha256="c" * 64
@@ -530,6 +559,7 @@ def test_normalization_only_changes_retrieval_copy() -> None:
 
 
 def test_short_chunks_merge_without_exceeding_hard_limit() -> None:
+    """验证 `short_chunks_merge_without_exceeding_hard_limit` 场景。"""
     result = ChunkBuilder(
         ChunkConfig(
             target_chars=25,
@@ -547,6 +577,7 @@ def test_short_chunks_merge_without_exceeding_hard_limit() -> None:
 
 
 def test_short_chunks_never_merge_across_sections() -> None:
+    """验证 `short_chunks_never_merge_across_sections` 场景。"""
     result = ChunkBuilder(
         ChunkConfig(target_chars=25, max_chars=50, min_chars=20, overlap_elements=0)
     ).build(
@@ -563,6 +594,7 @@ def test_short_chunks_never_merge_across_sections() -> None:
 
 
 def test_short_tail_rebalances_by_moving_complete_fragments() -> None:
+    """验证 `short_tail_rebalances_by_moving_complete_fragments` 场景。"""
     result = ChunkBuilder(
         ChunkConfig(
             target_chars=50,
@@ -588,6 +620,7 @@ def test_short_tail_rebalances_by_moving_complete_fragments() -> None:
 
 
 def test_short_chunks_do_not_rebalance_across_roles_or_special_elements() -> None:
+    """验证 `short_chunks_do_not_rebalance_across_roles_or_special_elements` 场景。"""
     role_result = ChunkBuilder(
         ChunkConfig(target_chars=50, max_chars=50, min_chars=20, overlap_elements=0)
     ).build(
@@ -618,6 +651,7 @@ def test_short_chunks_do_not_rebalance_across_roles_or_special_elements() -> Non
 
 
 def test_meaningful_short_term_dense_text_uses_complete_section_path() -> None:
+    """验证 `meaningful_short_term_dense_text_uses_complete_section_path` 场景。"""
     result = ChunkBuilder().build(
         make_document(
             [
@@ -640,6 +674,7 @@ def test_meaningful_short_term_dense_text_uses_complete_section_path() -> None:
 
 
 def test_fragment_overlap_is_one_sentence_and_preserves_raw_offsets() -> None:
+    """验证 `fragment_overlap_is_one_sentence_and_preserves_raw_offsets` 场景。"""
     value = "第一句很长。第二句也很长。第三句继续很长。第四句结束。"
     result = ChunkBuilder(
         ChunkConfig(

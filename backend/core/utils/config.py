@@ -1,8 +1,11 @@
 # backend/core/utils/config.py
 
+"""集中管理运行配置。"""
+
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar, cast
 
@@ -15,10 +18,13 @@ if TYPE_CHECKING:
     from vllm.model_executor.layers.quantization import QuantizationMethods
 
 DEBUG_MODE: bool = os.environ.get("ESA_DEBUG", "false").strip().lower() in {
-    "1", "true", "yes", "on"
+    "1",
+    "true",
+    "yes",
+    "on",
 }
 
-SEARXNG_BASE_URL = os.environ.get("SEARXNG_BASE_URL", "http://127.0.0.1:8888")
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 # model
 MODEL_PATH: str = os.environ.get("ESA_MODEL_PATH", "Qwen/Qwen3.5-122B-A10B")
@@ -47,8 +53,10 @@ AUXILIARY_MODEL_MAX_NUM_SEQS: int = 8
 AUXILIARY_MODEL_MAX_IMAGES_PER_PROMPT: int = 4
 AUXILIARY_MODEL_REQUEST_TIMEOUT: float = 180.0
 
-# agent
+# agent runtime
 AGENT_LOOP_TIME: int = 10
+AGENT_TOOL_TIMEOUT_SECONDS: float = 30.0
+AGENT_STREAM_HEARTBEAT_SECONDS: float = 15.0
 
 # Offline conversation context compression. Original messages are retained;
 # the summary only replaces old messages in the next model prompt.
@@ -60,6 +68,14 @@ CONVERSATION_COMPRESSION_MIN_NEW_MESSAGES: int = 6
 CONVERSATION_COMPRESSION_KEEP_RECENT_MESSAGES: int = 8
 CONVERSATION_COMPRESSION_MAX_INPUT_CHARS: int = 60000
 CONVERSATION_COMPRESSION_MAX_OUTPUT_TOKENS: int = 2048
+
+# Generate one concise history title from the first user question. This shares
+# the local auxiliary model sidecar and never delays the start of the main run.
+CONVERSATION_TITLE_ENABLED: bool = True
+CONVERSATION_TITLE_MAX_INPUT_CHARS: int = 4000
+CONVERSATION_TITLE_MAX_OUTPUT_TOKENS: int = 48
+CONVERSATION_TITLE_REQUEST_TIMEOUT: float = 15.0
+CONVERSATION_TITLE_MAX_CHARS: int = 24
 
 # ------------- rag ---------------
 
@@ -75,6 +91,7 @@ def _path_from_env(name: str, default: Path) -> Path:
 
 
 def _str_from_env(name: str, default: str) -> str:
+    """处理 `_str_from_env` 相关逻辑。"""
     value = os.environ.get(name, default).strip()
     if not value:
         raise ValueError(f"{name} cannot be blank")
@@ -82,6 +99,7 @@ def _str_from_env(name: str, default: str) -> str:
 
 
 def _optional_str_from_env(name: str, default: str | None = None) -> str | None:
+    """处理 `_optional_str_from_env` 相关逻辑。"""
     value = os.environ.get(name)
     if value is None:
         return default
@@ -90,6 +108,7 @@ def _optional_str_from_env(name: str, default: str | None = None) -> str | None:
 
 
 def _bool_from_env(name: str, default: bool) -> bool:
+    """处理 `_bool_from_env` 相关逻辑。"""
     value = os.environ.get(name)
     if value is None:
         return default
@@ -102,6 +121,7 @@ def _bool_from_env(name: str, default: bool) -> bool:
 
 
 def _int_from_env(name: str, default: int, *, minimum: int = 1) -> int:
+    """处理 `_int_from_env` 相关逻辑。"""
     try:
         value = int(os.environ.get(name, default))
     except ValueError as exc:
@@ -118,6 +138,7 @@ def _float_from_env(
     minimum: float | None = None,
     maximum: float | None = None,
 ) -> float:
+    """处理 `_float_from_env` 相关逻辑。"""
     try:
         value = float(os.environ.get(name, default))
     except ValueError as exc:
@@ -136,6 +157,7 @@ def _optional_float_from_env(
     minimum: float | None = None,
     maximum: float | None = None,
 ) -> float | None:
+    """处理 `_optional_float_from_env` 相关逻辑。"""
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
         return default
@@ -152,11 +174,148 @@ def _choice_from_env(
     default: _T,
     choices: tuple[_T, ...],
 ) -> _T:
+    """处理 `_choice_from_env` 相关逻辑。"""
     value = cast(_T, os.environ.get(name, default))
     if value not in choices:
         expected = ", ".join(map(str, choices))
         raise ValueError(f"{name} must be one of: {expected}")
     return value
+
+
+def _csv_from_env(name: str, default: str) -> tuple[str, ...]:
+    """Read a comma-separated environment setting without accepting blanks."""
+
+    values = tuple(
+        item.strip()
+        for item in os.environ.get(name, default).split(",")
+        if item.strip()
+    )
+    if not values:
+        raise ValueError(f"{name} must contain at least one value")
+    return values
+
+
+# MCP child processes. The ESA backend is the MCP client and owns the complete
+# subprocess lifetime. Only the audited You.com search tool is exposed.
+MCP_ENABLED: bool = True
+MCP_YOU_SERVER_NAME: str = "you"
+MCP_YOU_COMMAND: str = "npx"
+MCP_YOU_ARGS: tuple[str, ...] = (
+    "--yes",
+    "@youdotcom-oss/mcp@3.5.0",
+)
+MCP_YOU_ALLOWED_TOOLS: frozenset[str] = frozenset({"you-search"})
+MCP_YOU_API_KEY: str | None = _optional_str_from_env("YDC_API_KEY")
+MCP_STARTUP_TIMEOUT_SECONDS: float = 45.0
+MCP_CALL_TIMEOUT_SECONDS: float = 20.0
+MCP_MAX_RESULT_CHARS: int = 120_000
+
+
+# HTTP deployment.  The public browser-facing URL is supplied by Nginx; the
+# application itself owns the /api prefix so the proxy must preserve the URI.
+API_PREFIX: str = "/api"
+SERVER_HOST: str = _str_from_env("HOST", "0.0.0.0")
+SERVER_PORT: int = _int_from_env("PORT", 51024)
+if SERVER_PORT > 65535:
+    raise ValueError("PORT must be <= 65535")
+
+CORS_ALLOWED_ORIGINS: tuple[str, ...] = _csv_from_env(
+    "ESA_CORS_ALLOWED_ORIGINS",
+    "https://esa.lovelearnlearning.cn",
+)
+if "*" in CORS_ALLOWED_ORIGINS:
+    raise ValueError("ESA_CORS_ALLOWED_ORIGINS must list explicit origins")
+TRUSTED_HOSTS: tuple[str, ...] = _csv_from_env(
+    "ESA_TRUSTED_HOSTS",
+    "esa.lovelearnlearning.cn,localhost,127.0.0.1",
+)
+if "*" in TRUSTED_HOSTS:
+    raise ValueError("ESA_TRUSTED_HOSTS must list explicit hosts")
+# Never trust arbitrary clients to supply X-Forwarded-* headers.  Production
+# must set this to the actual reverse-proxy source IP; loopback remains the
+# safe local default.
+FORWARDED_ALLOW_IPS: tuple[str, ...] = _csv_from_env(
+    "ESA_FORWARDED_ALLOW_IPS",
+    "127.0.0.1",
+)
+if "*" in FORWARDED_ALLOW_IPS:
+    raise ValueError("ESA_FORWARDED_ALLOW_IPS must list trusted proxy addresses")
+ENABLE_LEGACY_API_ROUTES: bool = _bool_from_env(
+    "ESA_ENABLE_LEGACY_API_ROUTES",
+    True,
+)
+
+# Workspace runtime rollout. Authorization is always computed by Core Router;
+# these switches only select the execution adapter during a staged deployment.
+WORKSPACE_ROUTER_SHADOW_ENABLED: bool = _bool_from_env("ESA_WORKSPACE_ROUTER_SHADOW_ENABLED", True)
+WORKSPACE_RUNTIME_ENABLED: bool = _bool_from_env("ESA_WORKSPACE_RUNTIME_ENABLED", True)
+WORKSPACE_RUNTIME_LEARNING_ENABLED: bool = _bool_from_env("ESA_WORKSPACE_RUNTIME_LEARNING_ENABLED", True)
+WORKSPACE_RUNTIME_TEACHING_ENABLED: bool = _bool_from_env("ESA_WORKSPACE_RUNTIME_TEACHING_ENABLED", True)
+WORKSPACE_RUNTIME_RESEARCH_ENABLED: bool = _bool_from_env("ESA_WORKSPACE_RUNTIME_RESEARCH_ENABLED", True)
+CORE_MEMORY_V2_ENABLED: bool = _bool_from_env("ESA_CORE_MEMORY_V2_ENABLED", True)
+RESEARCH_WORKFLOW_TOOLS_ENABLED: bool = _bool_from_env("ESA_RESEARCH_WORKFLOW_TOOLS_ENABLED", True)
+
+# User uploads are persisted before any model or DocIR work begins. The public
+# proxy limit must be at least this large.
+USER_ATTACHMENT_ROOT: Path = _path_from_env(
+    "ESA_USER_ATTACHMENT_ROOT",
+    BACKEND_ROOT / "data" / "user",
+)
+USER_ATTACHMENT_MAX_BYTES: int = _int_from_env(
+    "ESA_USER_ATTACHMENT_MAX_BYTES",
+    200 * 1024 * 1024,
+)
+
+# Email verification on the supercomputer. Fill these constants in the private
+# deployment copy of this file; the standalone mail server has its own config.
+EMAIL_PROVIDER: Literal["disabled", "service"] = "service"
+EMAIL_SERVICE_URL: str = "https://mail-api.lovelearnlearning.cn"
+EMAIL_SERVICE_TOKEN: str = (
+    "e9493dca7a911f60226ec698e90678add37d8d28eb3f02271706026d7ba491d5"
+)
+EMAIL_VERIFICATION_SECRET: str = (
+    "22d6394ed15a7dec1b3bac78e3f5cf2739386483aeca3c88d4cafad40e4d0da2"
+)
+EMAIL_CODE_TTL_SECONDS: int = 600
+EMAIL_CODE_COOLDOWN_SECONDS: int = 60
+EMAIL_CODE_MAX_ATTEMPTS: int = 5
+EMAIL_CODE_EMAIL_HOURLY_LIMIT: int = 5
+EMAIL_CODE_IP_HOURLY_LIMIT: int = 20
+
+# Language Server Protocol. The backend proxies authenticated WebSocket
+# sessions to local stdio language servers. Missing executables only disable
+# that language; Monaco keeps its local completion fallback.
+LSP_ENABLED: bool = True
+LSP_MAX_SESSIONS: int = 24
+LSP_MAX_SESSIONS_PER_USER: int = 2
+LSP_AUTH_TIMEOUT_SECONDS: float = 8.0
+LSP_MAX_MESSAGE_BYTES: int = 2 * 1024 * 1024
+LSP_ALLOWED_ORIGINS: tuple[str, ...] = (
+    "https://www.lovelearnlearning.cn",
+    "https://esa.lovelearnlearning.cn",
+)
+LSP_SERVER_COMMANDS: dict[str, tuple[str, ...]] = {
+    "c": ("clangd",),
+    "cpp": ("clangd",),
+    "python": ("pyright-langserver", "--stdio"),
+    "javascript": ("typescript-language-server", "--stdio"),
+    "typescript": ("typescript-language-server", "--stdio"),
+    "dart": ("dart", "language-server", "--protocol=lsp"),
+    "java": ("jdtls",),
+    "go": ("gopls",),
+    "rust": ("rust-analyzer",),
+}
+LSP_DOCUMENT_FILENAMES: dict[str, str] = {
+    "c": "main.c",
+    "cpp": "main.cpp",
+    "python": "main.py",
+    "javascript": "main.js",
+    "typescript": "main.ts",
+    "dart": "main.dart",
+    "java": "Main.java",
+    "go": "main.go",
+    "rust": "main.rs",
+}
 
 
 # collection and deployment
@@ -173,18 +332,12 @@ RAG_INDEX_DEPLOYMENT_ROOT: Path = _path_from_env(
 )
 
 # qdrant
-RAG_QDRANT_BASE_URL: str = _str_from_env(
-    "RAG_QDRANT_BASE_URL", "http://127.0.0.1:6333"
-)
+RAG_QDRANT_BASE_URL: str = _str_from_env("RAG_QDRANT_BASE_URL", "http://127.0.0.1:6333")
 RAG_QDRANT_COLLECTION: str = _str_from_env(
     "RAG_QDRANT_COLLECTION", "rag_qwen3_embedding_4b_v2"
 )
-RAG_QDRANT_TIMEOUT: float = _float_from_env(
-    "RAG_QDRANT_TIMEOUT", 30.0, minimum=0.001
-)
-RAG_QDRANT_UPSERT_BATCH_SIZE: int = _int_from_env(
-    "RAG_QDRANT_UPSERT_BATCH_SIZE", 64
-)
+RAG_QDRANT_TIMEOUT: float = _float_from_env("RAG_QDRANT_TIMEOUT", 30.0, minimum=0.001)
+RAG_QDRANT_UPSERT_BATCH_SIZE: int = _int_from_env("RAG_QDRANT_UPSERT_BATCH_SIZE", 64)
 
 # embedding
 EmbeddingBackend = Literal["reference", "transformers", "vllm"]
@@ -196,10 +349,11 @@ RAG_EMBEDDING_BACKEND: EmbeddingBackend = _choice_from_env(
 RAG_EMBEDDING_MODEL_PATH: str = _str_from_env(
     "RAG_EMBEDDING_MODEL_PATH", "Qwen/Qwen3-Embedding-4B"
 )
-RAG_EMBEDDING_BASE_URL: str | None = _optional_str_from_env(
-    "RAG_EMBEDDING_BASE_URL"
-)
+RAG_EMBEDDING_BASE_URL: str | None = _optional_str_from_env("RAG_EMBEDDING_BASE_URL")
 RAG_EMBEDDING_DEVICE: str = _str_from_env("RAG_EMBEDDING_DEVICE", "cuda")
+RAG_EMBEDDING_RUNTIME_DEVICE: str | None = _optional_str_from_env(
+    "RAG_EMBEDDING_RUNTIME_DEVICE"
+)
 RAG_EMBEDDING_DIMENSION: int = _int_from_env("RAG_EMBEDDING_DIMENSION", 2560)
 RAG_EMBEDDING_MAX_LENGTH: int = _int_from_env("RAG_EMBEDDING_MAX_LENGTH", 8192)
 RAG_EMBEDDING_BATCH_SIZE: int = _int_from_env("RAG_EMBEDDING_BATCH_SIZE", 8)
@@ -218,9 +372,7 @@ RAG_RERANKER_BACKEND: RerankerBackend = _choice_from_env(
 RAG_RERANKER_MODEL_PATH: str = _str_from_env(
     "RAG_RERANKER_MODEL_PATH", "Qwen/Qwen3-Reranker-4B"
 )
-RAG_RERANKER_BASE_URL: str | None = _optional_str_from_env(
-    "RAG_RERANKER_BASE_URL"
-)
+RAG_RERANKER_BASE_URL: str | None = _optional_str_from_env("RAG_RERANKER_BASE_URL")
 RAG_RERANKER_DEVICE: str = _str_from_env("RAG_RERANKER_DEVICE", "cuda")
 RAG_RERANKER_MAX_LENGTH: int = _int_from_env("RAG_RERANKER_MAX_LENGTH", 8192)
 RAG_RERANKER_TIMEOUT: float = _float_from_env(
@@ -255,9 +407,7 @@ RAG_DENSE_WEIGHT: float = _float_from_env(
 RAG_LEXICAL_BODY_WEIGHT: float = _float_from_env(
     "RAG_LEXICAL_BODY_WEIGHT", 0.75, minimum=0.0, maximum=1.0
 )
-RAG_LEXICAL_GATE_ENABLED: bool = _bool_from_env(
-    "RAG_LEXICAL_GATE_ENABLED", True
-)
+RAG_LEXICAL_GATE_ENABLED: bool = _bool_from_env("RAG_LEXICAL_GATE_ENABLED", True)
 # prior_weight 是融合排序先验的权重；其余权重交给 Reranker 分数。
 RAG_RERANKER_PRIOR_WEIGHT: float = _float_from_env(
     "RAG_RERANKER_PRIOR_WEIGHT", 0.90, minimum=0.0, maximum=1.0
@@ -292,6 +442,37 @@ def validate_startup_config() -> None:
         candidate = Path(value).expanduser()
         if candidate.is_absolute() and not candidate.exists():
             raise RuntimeError(f"{name} points to a missing local path: {candidate}")
+    if MCP_ENABLED:
+        if not MCP_YOU_API_KEY:
+            raise RuntimeError(
+                "YDC_API_KEY must be set in the supercomputer environment"
+            )
+        if shutil.which(MCP_YOU_COMMAND) is None:
+            raise RuntimeError(
+                f"MCP command {MCP_YOU_COMMAND!r} was not found on PATH; "
+                "install Node.js 18 or newer"
+            )
+    if EMAIL_PROVIDER == "service":
+        if not EMAIL_SERVICE_URL or not EMAIL_SERVICE_URL.startswith("https://"):
+            raise RuntimeError("EMAIL_SERVICE_URL must be an https URL")
+        if not EMAIL_SERVICE_TOKEN or len(EMAIL_SERVICE_TOKEN) < 32:
+            raise RuntimeError(
+                "EMAIL_SERVICE_TOKEN in config.py must contain at least 32 characters"
+            )
+        if not EMAIL_VERIFICATION_SECRET or len(EMAIL_VERIFICATION_SECRET) < 32:
+            raise RuntimeError(
+                "EMAIL_VERIFICATION_SECRET in config.py must contain at least 32 characters"
+            )
+        numeric_email_settings = {
+            "EMAIL_CODE_TTL_SECONDS": EMAIL_CODE_TTL_SECONDS,
+            "EMAIL_CODE_COOLDOWN_SECONDS": EMAIL_CODE_COOLDOWN_SECONDS,
+            "EMAIL_CODE_MAX_ATTEMPTS": EMAIL_CODE_MAX_ATTEMPTS,
+            "EMAIL_CODE_EMAIL_HOURLY_LIMIT": EMAIL_CODE_EMAIL_HOURLY_LIMIT,
+            "EMAIL_CODE_IP_HOURLY_LIMIT": EMAIL_CODE_IP_HOURLY_LIMIT,
+        }
+        invalid = [name for name, value in numeric_email_settings.items() if value <= 0]
+        if invalid:
+            raise RuntimeError(f"{', '.join(invalid)} must be greater than zero")
     if not RAG_ENABLED:
         return
     missing = [

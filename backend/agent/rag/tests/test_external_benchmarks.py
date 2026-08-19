@@ -1,3 +1,7 @@
+# backend/agent/rag/tests/test_external_benchmarks.py
+
+"""验证 `external_benchmarks` 相关行为与回归场景。"""
+
 from __future__ import annotations
 
 import json
@@ -15,6 +19,7 @@ from backend.agent.rag.evaluation.external_benchmarks import (
 
 
 def test_load_scifact_uses_positive_test_qrels(tmp_path: Path) -> None:
+    """验证 `load_scifact_uses_positive_test_qrels` 场景。"""
     (tmp_path / "qrels").mkdir()
     (tmp_path / "corpus.jsonl").write_text(
         json.dumps({"_id": "doc", "title": "Alpha", "text": "alpha body"}) + "\n",
@@ -36,6 +41,7 @@ def test_load_scifact_uses_positive_test_qrels(tmp_path: Path) -> None:
 
 
 def test_load_xor_gold_deduplicates_paragraphs(tmp_path: Path) -> None:
+    """验证 `load_xor_gold_deduplicates_paragraphs` 场景。"""
     target = tmp_path / "xorqa_reading_comprehension_format"
     target.mkdir()
     payload = {
@@ -65,6 +71,7 @@ def test_load_xor_gold_deduplicates_paragraphs(tmp_path: Path) -> None:
 
 
 def test_evaluate_benchmark_calls_rag_and_writes_layered_metrics(tmp_path: Path) -> None:
+    """验证 `evaluate_benchmark_calls_rag_and_writes_layered_metrics` 场景。"""
     data = BenchmarkData(
         name="fixture",
         scope="unit test",
@@ -87,6 +94,7 @@ def test_evaluate_benchmark_calls_rag_and_writes_layered_metrics(tmp_path: Path)
 
 
 def test_load_m3docvqa_uses_cached_pages_and_document_gold(tmp_path: Path) -> None:
+    """验证 `load_m3docvqa_uses_cached_pages_and_document_gold` 场景。"""
     (tmp_path / "multimodalqa").mkdir()
     (tmp_path / "dev_doc_ids.json").write_text('["doc"]', encoding="utf-8")
     cache = tmp_path / "extracted_pages.jsonl"

@@ -1,3 +1,5 @@
+# backend/agent/memories/profile_builder.py
+
 """结构化用户画像构建器。
 
 ProfileBuilder 只组装结构化画像，不直接读取 CoreMemory。长期原始记忆只能通过
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ProfileMetrics:
+    """封装 `ProfileMetrics` 的状态与行为。"""
     build_total: int = 0
     build_latency_ms_sum: float = 0.0
     build_latency_ms_max: float = 0.0
@@ -39,14 +42,17 @@ class ProfileMetrics:
 
     @property
     def cache_hit_ratio(self) -> float:
+        """处理 `cache_hit_ratio` 相关逻辑。"""
         total = self.cache_hits + self.cache_misses
         return self.cache_hits / total if total else 0.0
 
     @property
     def avg_build_latency_ms(self) -> float:
+        """处理 `avg_build_latency_ms` 相关逻辑。"""
         return self.build_latency_ms_sum / self.build_total if self.build_total else 0.0
 
     def snapshot(self) -> dict:
+        """处理 `snapshot` 相关逻辑。"""
         return {
             "build_total": self.build_total,
             "avg_build_latency_ms": round(self.avg_build_latency_ms, 2),
@@ -60,6 +66,7 @@ class ProfileMetrics:
         }
 
     def to_prometheus(self) -> str:
+        """转换 `prometheus` 相关数据。"""
         lines = [
             "# HELP profile_build_total Total number of profile builds",
             "# TYPE profile_build_total counter",
@@ -99,6 +106,7 @@ class ProfileMetrics:
 
 
 class ProfileBuilder:
+    """封装 `ProfileBuilder` 的状态与行为。"""
     CACHE_TTL_SECONDS = 60
 
     def __init__(
@@ -109,6 +117,7 @@ class ProfileBuilder:
         profile_store,
         evidence_store,
     ):
+        """初始化 `ProfileBuilder` 实例。"""
         self._user_store = user_store
         self._mastery_store = mastery_store
         self._kg_store = kg_store
@@ -120,18 +129,30 @@ class ProfileBuilder:
 
     @property
     def metrics(self) -> ProfileMetrics:
+        """处理 `metrics` 相关逻辑。"""
         return self._metrics
 
     def get_metrics_snapshot(self) -> dict:
+        """获取 `metrics snapshot` 相关数据。"""
         return self._metrics.snapshot()
 
     def get_metrics_prometheus(self) -> str:
+        """获取 `metrics prometheus` 相关数据。"""
         return self._metrics.to_prometheus()
 
     def invalidate(self, user_id: str) -> None:
+        """处理 `invalidate` 相关逻辑。"""
         self._cache.pop(user_id, None)
 
     def build(self, query: ProfileQuery) -> ProfileSnapshot:
+        """构建 `build` 相关数据。
+
+        Args:
+            query: ProfileQuery => 查询文本。
+
+        Returns:
+            ProfileSnapshot => 处理结果。
+        """
         start_ts = time.monotonic()
         user = self._user_store.get_by_id(query.user_id)
         if user is None:
@@ -214,6 +235,7 @@ class ProfileBuilder:
         return snapshot
 
     def _build_explicit_context(self, user) -> list[ProfileField]:
+        """构建 `explicit context` 相关数据。"""
         fields = [
             ProfileField("major", user.major, ProfileOrigin.EXPLICIT_SETTING, 1.0),
         ]
@@ -240,6 +262,7 @@ class ProfileBuilder:
         return fields
 
     def _build_response_preferences(self, user, query: ProfileQuery) -> list[ProfileField]:
+        """构建 `response preferences` 相关数据。"""
         preferred_style = query.group_style or user.preferred_style
         preferred_tone = query.group_tone or user.preferred_tone
         merged_instruction = user.custom_instruction or ""
@@ -276,6 +299,7 @@ class ProfileBuilder:
         query: ProfileQuery,
         settings,
     ) -> list[ProfileField]:
+        """构建 `relevant learning state` 相关数据。"""
         if not getattr(settings, "learning_profile_enabled", True):
             return []
 
@@ -458,6 +482,7 @@ class ProfileBuilder:
 
     @staticmethod
     def _compact_recent_messages(messages: list[dict] | None) -> list[dict[str, str]]:
+        """处理 `_compact_recent_messages` 相关逻辑。"""
         compact: list[dict[str, str]] = []
         for message in messages or []:
             if not isinstance(message, dict):
@@ -548,9 +573,11 @@ class ProfileBuilder:
 
     @staticmethod
     def _empty_snapshot(user_id: str) -> ProfileSnapshot:
+        """处理 `_empty_snapshot` 相关逻辑。"""
         return ProfileSnapshot(user_id=user_id, profile_version=0)
 
 
 class _DefaultSettings:
+    """保存 `default settings` 配置。"""
     learning_profile_enabled = True
     inferred_profile_enabled = True

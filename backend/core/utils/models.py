@@ -1,5 +1,7 @@
 # backend/core/utils/models.py
 
+"""定义数据模型与序列化结构。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,12 +14,14 @@ if TYPE_CHECKING:
 
 @dataclass
 class ToolCall:
+    """封装 `ToolCall` 的状态与行为。"""
     name: str
     arguments: dict
 
 
 @dataclass
 class ParsedOutput:
+    """表示 `parsed output` 数据结构。"""
     reasoning: str | None = None
     content: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
@@ -25,6 +29,7 @@ class ParsedOutput:
 
 @dataclass
 class AgentStreamEvent:
+    """封装 `AgentStreamEvent` 的状态与行为。"""
     event: str
     data: dict
 
@@ -39,6 +44,7 @@ class UserRecord:
     username: str
     password_hash: str
     status: str
+    account_role: str = "student"
 
     preferred_style: str = "concise"
     preferred_tone: str = "friendly"
@@ -53,12 +59,19 @@ class UserRecord:
     learning_profile_enabled: bool = True
     inferred_profile_enabled: bool = True
 
+    # 邮箱身份：新用户注册时必填并已验证；老用户为 None 直至主动绑定
+    email: str | None = None
+    email_verified_at: str | None = None
+
 
 @dataclass
 class MemorySettings:
     """记忆与画像开关设置，实际持久化在 memory_settings 表。"""
 
     user_id: str
+    saved_memory_enabled: bool = True
+    chat_history_enabled: bool = True
+    auto_extract_enabled: bool = False
     learning_profile_enabled: bool = True
     inferred_profile_enabled: bool = True
     default_conversation_mode: str = "normal"
@@ -103,8 +116,10 @@ class PromptContext:
     group_custom_instruction: str = ""
     conversation_summary: str = ""
     conversation_mode: str = "normal"
+    attachment_context: str = ""
+    workspace_type: str = "learning"
 
-    # 由 Agent._prepare_run 内部生成，不属于用户可写偏好。
+    # 兼容 prompt builder 使用；生产 Agent 主链由 Workspace Runtime 生成。
     pedagogy_context: str = ""
     autoload_skills_context: str = ""
 
@@ -121,3 +136,7 @@ class MessageContext:
     group_custom_instruction: str
     conversation_summary: str = ""
     conversation_mode: str = "normal"
+    workspace_type: str = "learning"
+    user_message_id: int | None = None
+    resolved_kp_ids: tuple[str, ...] = ()
+    pending_practice_kp_id: str | None = None

@@ -1,5 +1,7 @@
 # backend/agent/tools/tools.py
 
+"""提供 `tools` 相关功能。"""
+
 from datetime import timezone
 
 from backend.agent.tools.tool_register import ToolRegistry
@@ -26,6 +28,7 @@ tr = ToolRegistry()
     }
 )
 def get_weather(city: str) -> str:
+    """获取 `weather` 相关数据。"""
     return f"{city}: 26 摄氏度 晴朗"
 
 
@@ -44,6 +47,7 @@ def get_weather(city: str) -> str:
     }
 )
 def get_time() -> str:
+    """获取 `time` 相关数据。"""
     from datetime import datetime
 
     return datetime.now(timezone.utc).strftime("%D-%H:%M:%S")

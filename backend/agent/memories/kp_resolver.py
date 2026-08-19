@@ -1,3 +1,5 @@
+# backend/agent/memories/kp_resolver.py
+
 """Resolve natural-language mentions to concrete knowledge graph IDs."""
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from backend.agent.memories.paths import KNOWLEDGE_ALIASES_YAML
 
 @dataclass(frozen=True, slots=True)
 class KnowledgePointMatch:
+    """封装 `KnowledgePointMatch` 的状态与行为。"""
     kp_id: str
     name: str
     course: str
@@ -27,17 +30,20 @@ class KnowledgePointResolver:
     MIN_SCORE = 0.85
 
     def __init__(self, kg_store):
+        """初始化 `KnowledgePointResolver` 实例。"""
         self._kg_store = kg_store
         self._aliases = self._load_aliases()
 
     @staticmethod
     def _normalize(text: str) -> str:
+        """规范化 `normalize` 相关数据。"""
         text = text.lower().strip()
         text = re.sub(r"\s+", "", text)
         return re.sub(r"[，。！？、；：,.!?;:'\"`()（）\[\]{}]", "", text)
 
     @staticmethod
     def _load_aliases() -> dict[str, list[str]]:
+        """加载 `aliases` 相关数据。"""
         if not KNOWLEDGE_ALIASES_YAML.exists():
             return {}
 
@@ -63,6 +69,15 @@ class KnowledgePointResolver:
         *,
         limit: int = MAX_RESULTS,
     ) -> list[KnowledgePointMatch]:
+        """解析 `resolve` 相关数据。
+
+        Args:
+            text: str => 待处理文本。
+            limit: int => 返回数量上限。
+
+        Returns:
+            list[KnowledgePointMatch] => 处理结果。
+        """
         original = text or ""
         normalized = self._normalize(original)
         if not normalized:

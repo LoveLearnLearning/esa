@@ -1,3 +1,5 @@
+# backend/agent/memories/memory_models.py
+
 """结构化用户画像系统的数据模型。"""
 
 from __future__ import annotations
@@ -6,42 +8,14 @@ import json
 from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime
 from enum import Enum
-from typing import Protocol
+from backend.core.utils.token_estimation import TOKEN_ENCODING, estimate_tokens
 
-
-class _TokenEncoding(Protocol):
-    def encode(self, text: str) -> list[int]: ...
-
-
-_TIKTOKEN_ENCODING: _TokenEncoding | None
-
-try:  # pragma: no cover - 可选依赖
-    from tiktoken import get_encoding as _get_encoding
-
-    _TIKTOKEN_ENCODING = _get_encoding("cl100k_base")
-except Exception:  # noqa: BLE001
-    _TIKTOKEN_ENCODING = None
-
-
-def _estimate_tokens(text: str) -> int:
-    if _TIKTOKEN_ENCODING is not None:
-        return len(_TIKTOKEN_ENCODING.encode(text))
-
-    cjk = 0
-    ascii_count = 0
-    other = 0
-    for ch in text:
-        code = ord(ch)
-        if code <= 0x007F:
-            ascii_count += 1
-        elif 0x4E00 <= code <= 0x9FFF:
-            cjk += 1
-        else:
-            other += 1
-    return int(ascii_count / 4 + cjk * 1.5 + other)
+_TIKTOKEN_ENCODING = TOKEN_ENCODING
+_estimate_tokens = estimate_tokens
 
 
 class ProfileOrigin(str, Enum):
+    """封装 `ProfileOrigin` 的状态与行为。"""
     EXPLICIT_SETTING = "explicit_setting"
     EXPLICIT_MEMORY = "explicit_memory"
     CONFIRMED_MEMORY = "confirmed_memory"
@@ -52,6 +26,7 @@ class ProfileOrigin(str, Enum):
 
 @dataclass
 class ProfileField:
+    """封装 `ProfileField` 的状态与行为。"""
     field: str
     value: object
     origin: ProfileOrigin
@@ -60,6 +35,7 @@ class ProfileField:
     last_confirmed_at: datetime | None = None
 
     def to_dict(self) -> dict:
+        """将当前对象转换为字典。"""
         return {
             "field": self.field,
             "value": self.value,
@@ -95,6 +71,7 @@ class ProfileSnapshot:
     generated_at: datetime = dataclass_field(default_factory=datetime.now)
 
     def to_dict(self) -> dict:
+        """将当前对象转换为字典。"""
         return {
             "user_id": self.user_id,
             "profile_version": self.profile_version,
@@ -131,6 +108,7 @@ class ProfileSnapshot:
         ]
 
         def field_to_dict(item: ProfileField) -> dict:
+            """处理 `field_to_dict` 相关逻辑。"""
             return {
                 "field": item.field,
                 "value": item.value,
@@ -139,6 +117,7 @@ class ProfileSnapshot:
             }
 
         def token_count(payload: dict) -> int:
+            """处理 `token_count` 相关逻辑。"""
             text = json.dumps(payload, ensure_ascii=False, indent=2)
             return _estimate_tokens(text)
 
@@ -170,6 +149,7 @@ class ProfileSnapshot:
 
 @dataclass
 class ProfileQuery:
+    """封装 `ProfileQuery` 的状态与行为。"""
     user_id: str
     username: str
     conversation_id: str | None = None

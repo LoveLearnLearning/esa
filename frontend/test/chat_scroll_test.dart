@@ -108,7 +108,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField), '新问题');
     await tester.pump();
-    await tester.tap(find.text('发送'));
+    await tester.tap(find.bySemanticsLabel('发送'));
     await tester.pumpAndSettle();
 
     expect(find.text('新问题'), findsOneWidget);

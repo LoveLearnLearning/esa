@@ -18,10 +18,21 @@ from backend.agent.DocIR.adapters.mineru.models import RawMiddleBlock, RawMiddle
 
 
 def block(kind: str, bbox: list[float], index: int) -> RawMiddleBlock:
+    """处理 `block` 相关逻辑。
+
+    Args:
+        kind: str => `kind` 参数。
+        bbox: list[float] => `bbox` 参数。
+        index: int => `index` 参数。
+
+    Returns:
+        RawMiddleBlock => 处理结果。
+    """
     return RawMiddleBlock(type=kind, bbox=bbox, index=index)
 
 
 def test_bbox_alignment_handles_discarded_header_reordered_in_v2():
+    """验证 `bbox_alignment_handles_discarded_header_reordered_in_v2` 场景。"""
     page = RawMiddlePage(
         page_idx=0,
         page_size=[1000, 1000],
@@ -51,10 +62,12 @@ def test_bbox_alignment_handles_discarded_header_reordered_in_v2():
     ],
 )
 def test_observed_type_aliases_are_compatible(middle_type: str, v2_type: str):
+    """验证 `observed_type_aliases_are_compatible` 场景。"""
     assert types_compatible(middle_type, v2_type)
 
 
 def test_strict_alignment_rejects_cardinality_mismatch():
+    """验证 `strict_alignment_rejects_cardinality_mismatch` 场景。"""
     page = RawMiddlePage(
         page_idx=3,
         page_size=[1000, 1000],
@@ -65,6 +78,7 @@ def test_strict_alignment_rejects_cardinality_mismatch():
 
 
 def test_strict_alignment_rejects_bbox_beyond_threshold():
+    """验证 `strict_alignment_rejects_bbox_beyond_threshold` 场景。"""
     page = RawMiddlePage(
         page_idx=0,
         page_size=[1000, 1000],

@@ -1,3 +1,5 @@
+# backend/agent/tools/math_tools/_base_evaluator.py
+
 """AST 安全求值器基类
 
 提供基于白名单的 AST 安全求值通用框架，子类只需配置白名单常量即可。
@@ -40,19 +42,23 @@ class BaseSafeEvaluator(ast.NodeVisitor):
     # ------------------------------------------------------------------
 
     def visit_Expression(self, node: ast.Expression) -> Any:
+        """处理 `visit_Expression` 相关逻辑。"""
         return self.visit(node.body)
 
     def visit_Constant(self, node: ast.Constant) -> Any:
+        """处理 `visit_Constant` 相关逻辑。"""
         if isinstance(node.value, (int, float)):
             return node.value
         raise ValueError(f"不支持的常量类型: {type(node.value).__name__}")
 
     def visit_Name(self, node: ast.Name) -> Any:
+        """处理 `visit_Name` 相关逻辑。"""
         if node.id in self._CONSTANTS:
             return self._CONSTANTS[node.id]
         raise ValueError(f"未知的变量或常量: {node.id!r}")
 
     def visit_BinOp(self, node: ast.BinOp) -> Any:
+        """处理 `visit_BinOp` 相关逻辑。"""
         left = self.visit(node.left)
         right = self.visit(node.right)
         op_type = type(node.op)
@@ -66,6 +72,7 @@ class BaseSafeEvaluator(ast.NodeVisitor):
             raise ValueError(f"运算错误: {exc}") from exc
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> Any:
+        """处理 `visit_UnaryOp` 相关逻辑。"""
         operand = self.visit(node.operand)
         op_type = type(node.op)
         if op_type not in self._UNARY_OPS:
@@ -73,6 +80,14 @@ class BaseSafeEvaluator(ast.NodeVisitor):
         return self._UNARY_OPS[op_type](operand)
 
     def visit_Call(self, node: ast.Call) -> Any:
+        """处理 `visit_Call` 相关逻辑。
+
+        Args:
+            node: ast.Call => `node` 参数。
+
+        Returns:
+            Any => 处理结果。
+        """
         if not isinstance(node.func, ast.Name):
             raise TypeError("仅支持简单函数调用")
         fn_name = node.func.id
@@ -87,6 +102,7 @@ class BaseSafeEvaluator(ast.NodeVisitor):
             raise ValueError(f"函数 '{fn_name}' 调用错误: {exc}") from exc
 
     def generic_visit(self, node: ast.AST) -> Any:
+        """处理 `generic_visit` 相关逻辑。"""
         raise ValueError(f"不支持的表达式类型: {type(node).__name__}")
 
     # ------------------------------------------------------------------

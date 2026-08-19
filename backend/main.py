@@ -1,5 +1,7 @@
 # backend/main.py
 
+"""提供 `main` 相关功能。"""
+
 # from pathlib import Path
 
 # from backend.agent.agent import Agent
@@ -7,6 +9,7 @@ import uvicorn
 
 # from backend.core.agent.tools.tools import tr
 from backend.core.log.logger import setup_logging
+from backend.core.utils.config import SERVER_HOST, SERVER_PORT
 
 # from backend.core.services.auth_service import AuthService
 # from backend.core.stores.session_store import SessionStore
@@ -75,12 +78,16 @@ def main() -> None:
     #     new_messages = agent.run(user_input, "Fengqwq", history=history)
     #     history += new_messages
 
+    """运行当前模块的命令行入口。"""
     uvicorn.run(
         "backend.core.web.webAPI:app",
-        host="0.0.0.0",
-        port=51024,
+        host=SERVER_HOST,
+        port=SERVER_PORT,
         reload=False,
         log_level="info",
+        # ProxyHeadersMiddleware is configured on the FastAPI application so
+        # trusted proxy handling is identical under uvicorn and TestClient.
+        proxy_headers=False,
     )
 
 

@@ -1,5 +1,7 @@
 # backend/core/stores/group_store.py
 
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
 import uuid
@@ -18,9 +20,11 @@ class GroupStore(BaseSQLiteStore):
     )
 
     def __init__(self, database_path: str | Path = "data/esa.db") -> None:
+        """初始化 `GroupStore` 实例。"""
         super().__init__(database_path)
 
     def _initialize(self) -> None:
+        """初始化 `initialize` 相关数据。"""
         with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
@@ -47,6 +51,7 @@ class GroupStore(BaseSQLiteStore):
 
     @staticmethod
     def _now() -> str:
+        """处理 `_now` 相关逻辑。"""
         return datetime.now(timezone.utc).isoformat()
 
     def create_group(
@@ -59,6 +64,20 @@ class GroupStore(BaseSQLiteStore):
         tone: str | None = None,
         group_limit: int | None = None,
     ) -> dict | None:
+        """创建 `group` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            name: str => `name` 参数。
+            description: str => `description` 参数。
+            custom_instruction: str => `custom_instruction` 参数。
+            style: str | None => `style` 参数。
+            tone: str | None => `tone` 参数。
+            group_limit: int | None => `group_limit` 参数。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         now = self._now()
         group: dict = {
             "group_id": str(uuid.uuid4()),
@@ -116,6 +135,15 @@ class GroupStore(BaseSQLiteStore):
         group_id: str,
         user_id: str | None = None,
     ) -> dict | None:
+        """获取 `group` 相关数据。
+
+        Args:
+            group_id: str => 分组 ID。
+            user_id: str | None => 用户 ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         sql = """
             SELECT g.group_id, g.user_id, g.name, g.description,
                    g.custom_instruction, g.style, g.tone,
@@ -138,6 +166,14 @@ class GroupStore(BaseSQLiteStore):
         return dict(row) if row is not None else None
 
     def list_groups(self, user_id: str) -> list[dict]:
+        """列出 `groups` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         rows = self.query_all(
             """
             SELECT g.group_id, g.user_id, g.name, g.description,
@@ -162,6 +198,16 @@ class GroupStore(BaseSQLiteStore):
         user_id: str | None = None,
         **fields: str | None,
     ) -> bool:
+        """更新 `group` 相关数据。
+
+        Args:
+            group_id: str => 分组 ID。
+            user_id: str | None => 用户 ID。
+            fields: str | None => `fields` 参数。
+
+        Returns:
+            bool => 处理结果。
+        """
         unknown = set(fields) - self._UPDATEABLE_FIELDS
         if unknown:
             raise ValueError(f"不允许更新的字段: {sorted(unknown)}")
@@ -179,6 +225,15 @@ class GroupStore(BaseSQLiteStore):
         return self.execute(sql, params) > 0
 
     def delete_group(self, group_id: str, user_id: str) -> bool:
+        """删除 `group` 相关数据。
+
+        Args:
+            group_id: str => 分组 ID。
+            user_id: str => 用户 ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         with closing(self._connect()) as connection:
             try:
                 connection.execute("BEGIN IMMEDIATE")

@@ -26,17 +26,20 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class PageRange(StrictModel):
+    """封装 `PageRange` 的状态与行为。"""
     start: int = Field(ge=0)
     end: int = Field(ge=0)
 
     @model_validator(mode="after")
     def ordered(self) -> "PageRange":
+        """处理 `ordered` 相关逻辑。"""
         if self.end < self.start:
             raise ValueError("page_range.end 必须不小于 start")
         return self
 
 
 class ModelReference(StrictModel):
+    """封装 `ModelReference` 的状态与行为。"""
     name: str
     version: str | None = None
     sha256: str | None = None
@@ -44,12 +47,14 @@ class ModelReference(StrictModel):
     @field_validator("sha256")
     @classmethod
     def hash_format(cls, value: str | None) -> str | None:
+        """处理 `hash_format` 相关逻辑。"""
         if value is not None and not SHA256.fullmatch(value):
             raise ValueError("模型 sha256 格式错误")
         return value
 
 
 class SourceVersion(StrictModel):
+    """封装 `SourceVersion` 的状态与行为。"""
     source_version_id: str
     filename: str
     media_type: str
@@ -60,12 +65,14 @@ class SourceVersion(StrictModel):
     @field_validator("sha256")
     @classmethod
     def source_hash(cls, value: str) -> str:
+        """处理 `source_hash` 相关逻辑。"""
         if not SHA256.fullmatch(value):
             raise ValueError("source sha256 必须为 64 位小写十六进制")
         return value
 
 
 class ParseRevision(StrictModel):
+    """封装 `ParseRevision` 的状态与行为。"""
     parse_revision_id: str
     parser_name: str
     parser_version: str
@@ -83,6 +90,7 @@ class ParseRevision(StrictModel):
     @field_validator("config_sha256")
     @classmethod
     def config_hash(cls, value: str) -> str:
+        """处理 `config_hash` 相关逻辑。"""
         if not SHA256.fullmatch(value):
             raise ValueError("config_sha256 格式错误")
         return value
@@ -102,6 +110,7 @@ class EnrichmentRevision(StrictModel):
     @field_validator("prompt_sha256")
     @classmethod
     def prompt_hash(cls, value: str) -> str:
+        """处理 `prompt_hash` 相关逻辑。"""
         if not SHA256.fullmatch(value):
             raise ValueError("prompt_sha256 格式错误")
         return value
@@ -109,6 +118,7 @@ class EnrichmentRevision(StrictModel):
     @field_validator("asset_sha256s")
     @classmethod
     def asset_hashes(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        """处理 `asset_hashes` 相关逻辑。"""
         if any(not SHA256.fullmatch(value) for value in values):
             raise ValueError("asset_sha256s 包含无效 SHA-256")
         if len(values) != len(set(values)):
@@ -117,6 +127,7 @@ class EnrichmentRevision(StrictModel):
 
 
 class PrintedPageNumber(StrictModel):
+    """封装 `PrintedPageNumber` 的状态与行为。"""
     text: str
     origin: TextOrigin
     confidence: float | None = Field(default=None, ge=0, le=1)
@@ -124,6 +135,7 @@ class PrintedPageNumber(StrictModel):
 
 
 class Page(StrictModel):
+    """封装 `Page` 的状态与行为。"""
     page_id: str
     page_index: int = Field(ge=0)
     display_page_no: int | None = Field(default=None, ge=1)
@@ -139,6 +151,7 @@ class Page(StrictModel):
     quality_issue_ids: tuple[str, ...] = ()
 
 class Section(StrictModel):
+    """封装 `Section` 的状态与行为。"""
     section_id: str
     parent_section_id: str | None = None
     title_element_id: str | None = None
@@ -146,6 +159,7 @@ class Section(StrictModel):
 
 
 class Asset(StrictModel):
+    """封装 `Asset` 的状态与行为。"""
     asset_id: str
     kind: AssetKind
     path: str
@@ -158,6 +172,7 @@ class Asset(StrictModel):
     @field_validator("path")
     @classmethod
     def relative_safe_path(cls, value: str) -> str:
+        """处理 `relative_safe_path` 相关逻辑。"""
         path = PurePosixPath(value)
         if path.is_absolute() or ".." in path.parts or not value.strip():
             raise ValueError("asset.path 必须是安全的相对 POSIX 路径")
@@ -166,12 +181,14 @@ class Asset(StrictModel):
     @field_validator("sha256")
     @classmethod
     def asset_hash(cls, value: str) -> str:
+        """处理 `asset_hash` 相关逻辑。"""
         if not SHA256.fullmatch(value):
             raise ValueError("asset sha256 格式错误")
         return value
 
 
 class QualityIssue(StrictModel):
+    """封装 `QualityIssue` 的状态与行为。"""
     issue_id: str
     code: str
     severity: Severity = Severity.WARNING
@@ -180,6 +197,7 @@ class QualityIssue(StrictModel):
 
 
 class ValidationSummary(StrictModel):
+    """封装 `ValidationSummary` 的状态与行为。"""
     status: ValidationStatus
     issue_ids: tuple[str, ...] = ()
 
@@ -197,6 +215,7 @@ class _DocumentIndex:
 
 
 class Document(StrictModel):
+    """封装 `Document` 的状态与行为。"""
     schema_name: Literal["docir"] = "docir"
     document_id: str
     created_at: datetime
@@ -216,6 +235,7 @@ class Document(StrictModel):
 
     @model_validator(mode="after")
     def global_invariants(self) -> "Document":
+        """处理 `global_invariants` 相关逻辑。"""
         index = _build_document_index(self)
         _validate_page_invariants(self, index)
         _validate_element_invariants(self, index)
@@ -227,11 +247,13 @@ class Document(StrictModel):
 
 
 def _require_unique(values: list[str] | list[int], message: str) -> None:
+    """处理 `_require_unique` 相关逻辑。"""
     if len(values) != len(set(values)):
         raise ValueError(message)
 
 
 def _build_document_index(document: Document) -> _DocumentIndex:
+    """构建 `document index` 相关数据。"""
     elements = {element.element_id: element for element in document.elements}
     return _DocumentIndex(
         page_ids=frozenset(page.page_id for page in document.pages),
@@ -246,6 +268,7 @@ def _build_document_index(document: Document) -> _DocumentIndex:
 
 
 def _validate_page_invariants(document: Document, index: _DocumentIndex) -> None:
+    """校验 `page invariants` 相关数据。"""
     if document.parsed_page_count != len(document.pages):
         raise ValueError("parsed_page_count 必须等于 pages 的数量")
     if document.source_page_count is not None and document.source_page_count < document.parsed_page_count:
@@ -270,6 +293,7 @@ def _validate_page_invariants(document: Document, index: _DocumentIndex) -> None
 
 
 def _validate_element_invariants(document: Document, index: _DocumentIndex) -> None:
+    """校验 `element invariants` 相关数据。"""
     element_ids = [element.element_id for element in document.elements]
     _require_unique(element_ids, "element_id 不能重复")
     orders = [element.document_order for element in document.elements]
@@ -303,6 +327,7 @@ def _validate_element_invariants(document: Document, index: _DocumentIndex) -> N
 
 
 def _validate_asset_invariants(document: Document, index: _DocumentIndex) -> None:
+    """校验 `asset invariants` 相关数据。"""
     asset_ids = [asset.asset_id for asset in document.assets]
     _require_unique(asset_ids, "asset_id 不能重复")
     original_id = document.source.original_asset_id
@@ -334,6 +359,7 @@ def _validate_asset_invariants(document: Document, index: _DocumentIndex) -> Non
 
 
 def _validate_section_invariants(document: Document, index: _DocumentIndex) -> None:
+    """校验 `section invariants` 相关数据。"""
     section_ids = [section.section_id for section in document.sections]
     _require_unique(section_ids, "section_id 不能重复")
     if not document.sections:
@@ -368,6 +394,7 @@ def _validate_section_invariants(document: Document, index: _DocumentIndex) -> N
 
 
 def _validate_section_chain(section: Section, index: _DocumentIndex) -> None:
+    """校验 `section chain` 相关数据。"""
     seen: set[str] = set()
     cursor = section
     while cursor.parent_section_id is not None:
@@ -378,6 +405,7 @@ def _validate_section_chain(section: Section, index: _DocumentIndex) -> None:
 
 
 def _validate_element_relations(document: Document, index: _DocumentIndex) -> None:
+    """校验 `element relations` 相关数据。"""
     for element in document.elements:
         _require_unique(
             list(element.caption_element_ids),
@@ -402,6 +430,7 @@ def _validate_element_reference(
     field_name: str,
     index: _DocumentIndex,
 ) -> None:
+    """校验 `element reference` 相关数据。"""
     if reference == owner.element_id:
         raise ValueError(f"Element.{field_name} 不能自引用: {owner.element_id}")
     if reference not in index.element_by_id:
@@ -409,6 +438,7 @@ def _validate_element_reference(
 
 
 def _validate_parent_chain(element: ElementBase, index: _DocumentIndex) -> None:
+    """校验 `parent chain` 相关数据。"""
     seen: set[str] = set()
     cursor = element
     while cursor.parent_element_id is not None:
@@ -419,6 +449,7 @@ def _validate_parent_chain(element: ElementBase, index: _DocumentIndex) -> None:
 
 
 def _validate_quality_invariants(document: Document, index: _DocumentIndex) -> None:
+    """校验 `quality invariants` 相关数据。"""
     issue_ids = [issue.issue_id for issue in document.quality_issues]
     _require_unique(issue_ids, "quality_issues.issue_id 不能重复")
     if any(issue_id not in index.issue_ids for issue_id in document.validation.issue_ids):

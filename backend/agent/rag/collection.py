@@ -34,6 +34,7 @@ class LoadedChunkCollection:
 
 
 def _file_sha256(path: Path) -> str:
+    """处理 `_file_sha256` 相关逻辑。"""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):

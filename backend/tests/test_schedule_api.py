@@ -1,19 +1,36 @@
+# backend/tests/test_schedule_api.py
+
+"""验证 `schedule_api` 相关行为与回归场景。"""
+
 import io
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from backend.core.services.schedule_import_service import ExtractedScheduleDocument
 from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
 from backend.core.web.deps import get_current_session
 from backend.core.web.routers import schedule
+from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 
 
 class _LLMClient:
+    """封装 `_LLMClient` 的状态与行为。"""
     async def chat(self, messages, *, max_tokens, temperature):
+        """处理 `chat` 相关逻辑。
+
+        Args:
+            messages: object => 消息列表。
+            max_tokens: object => `max_tokens` 参数。
+            temperature: object => `temperature` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         content = messages[-1]["content"]
         if isinstance(content, list):
             assert any(part.get("type") == "image_url" for part in content)
@@ -36,12 +53,14 @@ class _LLMClient:
 
 
 def _schedule_png() -> bytes:
+    """处理 `_schedule_png` 相关逻辑。"""
     output = io.BytesIO()
     Image.new("RGB", (64, 48), "white").save(output, format="PNG")
     return output.getvalue()
 
 
 def _app(tmp_path, monkeypatch):
+    """处理 `_app` 相关逻辑。"""
     database = tmp_path / "schedule-api.db"
     user_store = UserStore(database)
     user = UserRecord(
@@ -56,15 +75,19 @@ def _app(tmp_path, monkeypatch):
     app.state.schedule_store = ScheduleStore(database)
     app.state.user_course_store = UserCourseStore(database)
     app.state.auxiliary_llm_client = _LLMClient()
+    app.state.knowledge_graph_store = KnowledgeGraphStore(tmp_path / "kg.db")
     app.include_router(schedule.router)
     app.dependency_overrides[get_current_session] = lambda: SessionPrincipal(
         session_id="session", user_id=user.id
     )
-    monkeypatch.setattr(schedule.kg_store, "resolve_course_name", lambda name: name)
+    monkeypatch.setattr(
+        app.state.knowledge_graph_store, "resolve_course_name", lambda name: name
+    )
     return app
 
 
 def test_schedule_crud_and_html_model_import(tmp_path, monkeypatch):
+    """验证 `schedule_crud_and_html_model_import` 场景。"""
     app = _app(tmp_path, monkeypatch)
     client = TestClient(app)
     initial = client.get("/me/schedule")
@@ -113,6 +136,7 @@ def test_schedule_crud_and_html_model_import(tmp_path, monkeypatch):
 def test_schedule_image_import_uses_multimodal_auxiliary_model(
     tmp_path, monkeypatch
 ):
+    """验证 `schedule_image_import_uses_multimodal_auxiliary_model` 场景。"""
     app = _app(tmp_path, monkeypatch)
     client = TestClient(app)
 
@@ -127,6 +151,7 @@ def test_schedule_image_import_uses_multimodal_auxiliary_model(
 
 
 def test_schedule_table_management_and_import_to_new_table(tmp_path, monkeypatch):
+    """验证 `schedule_table_management_and_import_to_new_table` 场景。"""
     app = _app(tmp_path, monkeypatch)
     client = TestClient(app)
 
@@ -175,3 +200,43 @@ def test_schedule_table_management_and_import_to_new_table(tmp_path, monkeypatch
     # 剩两张，逐个删到最后一张时拒绝
     assert client.delete(f"/me/schedule/tables/{new_id}").status_code == 204
     assert client.delete(f"/me/schedule/tables/{default_id}").status_code == 409
+
+
+def test_schedule_import_prefers_docir_when_mm_is_enabled(tmp_path, monkeypatch):
+    """验证 `schedule_import_prefers_docir_when_mm_is_enabled` 场景。"""
+    app = _app(tmp_path, monkeypatch)
+    app.state.mm_sessions = object()
+
+    async def _docir(**kwargs):
+        """处理 `_docir` 相关逻辑。"""
+        assert kwargs["filename"] == "schedule.xlsx"
+        assert kwargs["data"] == b"xlsx"
+        return ExtractedScheduleDocument(
+            text="周一第1-2节 数据结构",
+            pipeline="docir",
+            docir_document_id="docir-schedule",
+            docir_validation_status="passed",
+            docir_element_count=8,
+            docir_page_count=1,
+        )
+
+    monkeypatch.setattr(schedule, "extract_schedule_document_via_docir", _docir)
+    response = TestClient(app).post(
+        "/me/schedule/import",
+        files={
+            "file": (
+                "schedule.xlsx",
+                b"xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["document"] == {
+        "pipeline": "docir",
+        "document_id": "docir-schedule",
+        "validation_status": "passed",
+        "element_count": 8,
+        "page_count": 1,
+    }

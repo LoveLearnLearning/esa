@@ -1,3 +1,5 @@
+# backend/agent/DocIR/tests/adapters/mineru/test_raw_normalization.py
+
 """Stage 4 regression tests for lossless cross-format raw bundle loading."""
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ requires_multiformat_fixture = pytest.mark.skipif(
 
 
 def _bundle_root(format_name: str) -> Path:
+    """处理 `_bundle_root` 相关逻辑。"""
     case_name = CASES[format_name][0]
     middle_paths = sorted((OUTPUT_ROOT / case_name).rglob("*_middle.json"))
     assert len(middle_paths) == 1
@@ -47,12 +50,14 @@ def _bundle_root(format_name: str) -> Path:
 
 
 def _raw_json(root: Path, suffix: str) -> Any:
+    """处理 `_raw_json` 相关逻辑。"""
     paths = sorted(root.glob(f"*{suffix}"))
     assert len(paths) == 1
     return json.loads(paths[0].read_text(encoding="utf-8"))
 
 
 def _values_for_key(value: Any, key: str) -> list[Any]:
+    """处理 `_values_for_key` 相关逻辑。"""
     values: list[Any] = []
     if isinstance(value, dict):
         for child_key, child in value.items():
@@ -68,6 +73,7 @@ def _values_for_key(value: Any, key: str) -> list[Any]:
 @requires_multiformat_fixture
 @pytest.mark.parametrize("format_name", CASES)
 def test_six_real_formats_load_without_losing_raw_json(format_name: str) -> None:
+    """验证 `six_real_formats_load_without_losing_raw_json` 场景。"""
     root = _bundle_root(format_name)
     bundle = load_bundle(root)
     expected_backend = CASES[format_name][2]
@@ -94,6 +100,7 @@ def test_six_real_formats_load_without_losing_raw_json(format_name: str) -> None
 @requires_multiformat_fixture
 @pytest.mark.parametrize("format_name", ("DOCX", "PPTX", "XLSX"))
 def test_office_missing_geometry_remains_missing(format_name: str) -> None:
+    """验证 `office_missing_geometry_remains_missing` 场景。"""
     bundle = load_bundle(_bundle_root(format_name))
 
     assert bundle.middle.pdf_info
@@ -108,6 +115,7 @@ def test_office_missing_geometry_remains_missing(format_name: str) -> None:
 @requires_multiformat_fixture
 @pytest.mark.parametrize("format_name", ("PDF", "PNG", "JPG"))
 def test_pipeline_geometry_and_confidence_are_preserved(format_name: str) -> None:
+    """验证 `pipeline_geometry_and_confidence_are_preserved` 场景。"""
     root = _bundle_root(format_name)
     raw = _raw_json(root, "_middle.json")
     bundle = load_bundle(root)
@@ -130,6 +138,7 @@ def test_pipeline_geometry_and_confidence_are_preserved(format_name: str) -> Non
 
 @requires_multiformat_fixture
 def test_office_specific_middle_and_v2_fields_remain_accessible() -> None:
+    """验证 `office_specific_middle_and_v2_fields_remain_accessible` 场景。"""
     docx = load_bundle(_bundle_root("DOCX"))
     list_block = next(
         block
@@ -167,6 +176,7 @@ def test_office_specific_middle_and_v2_fields_remain_accessible() -> None:
 @requires_multiformat_fixture
 @pytest.mark.parametrize("format_name", ("PPTX", "XLSX"))
 def test_office_chart_preserves_present_but_empty_asset_path(format_name: str) -> None:
+    """验证 `office_chart_preserves_present_but_empty_asset_path` 场景。"""
     bundle = load_bundle(_bundle_root(format_name))
     chart = next(
         block
@@ -184,6 +194,7 @@ def test_office_chart_preserves_present_but_empty_asset_path(format_name: str) -
 
 
 def test_raw_model_distinguishes_missing_null_and_empty_values() -> None:
+    """验证 `raw_model_distinguishes_missing_null_and_empty_values` 场景。"""
     missing = RawMiddleBlock(type="chart")
     explicit_null = RawMiddleBlock(type="chart", bbox=None)
     empty = RawMiddleBlock(type="chart", bbox=[])
@@ -202,6 +213,7 @@ def test_raw_model_distinguishes_missing_null_and_empty_values() -> None:
 @requires_multiformat_fixture
 @pytest.mark.parametrize("format_name", ("PDF", "PNG", "JPG"))
 def test_pipeline_pdf_and_image_conversion_regression(format_name: str) -> None:
+    """验证 `pipeline_pdf_and_image_conversion_regression` 场景。"""
     case_name, filename, _backend = CASES[format_name]
     bundle = load_bundle(_bundle_root(format_name))
     document = convert_bundle(
@@ -227,6 +239,7 @@ def test_pipeline_pdf_and_image_conversion_regression(format_name: str) -> None:
 def test_office_conversion_uses_real_group_locators_without_geometry(
     format_name: str,
 ) -> None:
+    """验证 `office_conversion_uses_real_group_locators_without_geometry` 场景。"""
     _case_name, filename, _backend = CASES[format_name]
     bundle = load_bundle(_bundle_root(format_name))
 
@@ -251,6 +264,7 @@ def test_office_conversion_uses_real_group_locators_without_geometry(
 @requires_multiformat_fixture
 @pytest.mark.parametrize("format_name", CASES)
 def test_six_formats_convert_to_retrievable_chunks(format_name: str) -> None:
+    """验证 `six_formats_convert_to_retrievable_chunks` 场景。"""
     _case_name, filename, _backend = CASES[format_name]
     bundle = load_bundle(_bundle_root(format_name))
     document = convert_bundle(

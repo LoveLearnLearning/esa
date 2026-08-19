@@ -1,3 +1,5 @@
+# backend/agent/rag/evaluation/external_benchmarks.py
+
 """Run ESA's retrieval pipeline against public retrieval/QA benchmarks.
 
 The adapters in this module intentionally live in ``evaluation``.  They turn
@@ -85,6 +87,7 @@ class BenchmarkData:
 
 @dataclass
 class _FieldIndex:
+    """封装 `_FieldIndex` 的状态与行为。"""
     postings: dict[str, list[tuple[int, int]]]
     lengths: np.ndarray
     average_length: float
@@ -107,6 +110,7 @@ class CachedReferenceIndex:
 
     @property
     def configuration_fingerprint(self) -> str:
+        """处理 `configuration_fingerprint` 相关逻辑。"""
         return configuration_sha256(
             {
                 "backend": "evaluation-cached-reference-index-0.1",
@@ -122,10 +126,26 @@ class CachedReferenceIndex:
         generation_id: str,
         expected_count: int,
     ) -> None:
+        """准备 `prepare` 相关数据。
+
+        Args:
+            dense_dimension: int => `dense_dimension` 参数。
+            generation_id: str => generation ID。
+            expected_count: int => `expected_count` 参数。
+        """
         if dense_dimension <= 0 or not generation_id or expected_count < 0:
             raise ValueError("invalid index preparation arguments")
 
     def generation_is_ready(self, generation_id: str, expected_count: int) -> bool:
+        """处理 `generation_is_ready` 相关逻辑。
+
+        Args:
+            generation_id: str => generation ID。
+            expected_count: int => `expected_count` 参数。
+
+        Returns:
+            bool => 处理结果。
+        """
         return (
             self.generation_id == generation_id
             and len(self.chunks) == expected_count
@@ -140,6 +160,13 @@ class CachedReferenceIndex:
         *,
         generation_id: str,
     ) -> None:
+        """构建 `build` 相关数据。
+
+        Args:
+            chunks: Sequence[Chunk] => `chunks` 参数。
+            dense_vectors: Sequence[Sequence[float]] => `dense_vectors` 参数。
+            generation_id: str => generation ID。
+        """
         vectors = np.asarray(dense_vectors, dtype=np.float32)
         if vectors.ndim != 2 or vectors.shape[0] != len(chunks) or not vectors.shape[1]:
             raise ValueError("dense vectors must be a non-empty matrix")
@@ -151,6 +178,7 @@ class CachedReferenceIndex:
         self.generation_id = generation_id
 
     def _make_field(self, name: str) -> _FieldIndex:
+        """处理 `_make_field` 相关逻辑。"""
         postings: dict[str, list[tuple[int, int]]] = defaultdict(list)
         lengths = np.zeros(len(self.chunks), dtype=np.int32)
         for index, chunk in enumerate(self.chunks):
@@ -166,6 +194,7 @@ class CachedReferenceIndex:
 
     @staticmethod
     def _roles_allow_body(content_roles: frozenset[ContentRole] | None) -> bool:
+        """处理 `_roles_allow_body` 相关逻辑。"""
         return content_roles is None or ContentRole.BODY in content_roles
 
     def dense(
@@ -174,6 +203,16 @@ class CachedReferenceIndex:
         limit: int,
         content_roles: frozenset[ContentRole] | None = None,
     ) -> list[RankedItem]:
+        """处理 `dense` 相关逻辑。
+
+        Args:
+            query_vector: Sequence[float] => `query_vector` 参数。
+            limit: int => 返回数量上限。
+            content_roles: frozenset[ContentRole] | None => `content_roles` 参数。
+
+        Returns:
+            list[RankedItem] => 处理结果。
+        """
         if not self._roles_allow_body(content_roles) or self._vectors is None:
             return []
         query = np.asarray(query_vector, dtype=np.float32)
@@ -184,6 +223,7 @@ class CachedReferenceIndex:
         return [RankedItem(self.chunks[i].chunk_id, float(scores[i])) for i in ordered]
 
     def _bm25(self, query: str, field_name: str, limit: int) -> list[RankedItem]:
+        """处理 `_bm25` 相关逻辑。"""
         field_index = self._fields[field_name]
         query_counts = Counter(reference_tokens(query))
         scores: dict[int, float] = defaultdict(float)
@@ -221,6 +261,16 @@ class CachedReferenceIndex:
         limit: int,
         content_roles: frozenset[ContentRole] | None = None,
     ) -> list[RankedItem]:
+        """处理 `bm25_body` 相关逻辑。
+
+        Args:
+            query: str => 查询文本。
+            limit: int => 返回数量上限。
+            content_roles: frozenset[ContentRole] | None => `content_roles` 参数。
+
+        Returns:
+            list[RankedItem] => 处理结果。
+        """
         if not self._roles_allow_body(content_roles):
             return []
         return self._bm25(query, "bm25_body", limit)
@@ -231,12 +281,23 @@ class CachedReferenceIndex:
         limit: int,
         content_roles: frozenset[ContentRole] | None = None,
     ) -> list[RankedItem]:
+        """处理 `bm25_heading` 相关逻辑。
+
+        Args:
+            query: str => 查询文本。
+            limit: int => 返回数量上限。
+            content_roles: frozenset[ContentRole] | None => `content_roles` 参数。
+
+        Returns:
+            list[RankedItem] => 处理结果。
+        """
         if not self._roles_allow_body(content_roles):
             return []
         return self._bm25(query, "bm25_heading", limit)
 
 
 def _read_jsonl(path: Path) -> Iterable[dict[str, Any]]:
+    """读取 `jsonl` 相关数据。"""
     with path.open(encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, 1):
             if line.strip():
@@ -317,6 +378,7 @@ def load_xor_tydi_gold(root: Path) -> BenchmarkData:
 
 
 def _extract_pdf(pdf_path: Path) -> tuple[str, list[str], str | None]:
+    """提取 `pdf` 相关数据。"""
     try:
         result = subprocess.run(
             ["pdftotext", "-layout", "-enc", "UTF-8", str(pdf_path), "-"],
@@ -427,6 +489,7 @@ def load_m3docvqa(root: Path, cache_path: Path, workers: int = 8) -> BenchmarkDa
 
 
 def _split_text(text: str, max_chars: int = 1800) -> list[str]:
+    """拆分 `text` 相关数据。"""
     text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
     if len(text) <= max_chars:
         return [text] if text else []
@@ -546,6 +609,7 @@ def build_benchmark_collection(data: BenchmarkData) -> LoadedChunkCollection:
 def _deduplicated_documents(
     ranking: Sequence[str], chunk_to_document: Mapping[str, str]
 ) -> list[str]:
+    """处理 `_deduplicated_documents` 相关逻辑。"""
     output: list[str] = []
     seen: set[str] = set()
     for chunk_id in ranking:
@@ -559,6 +623,7 @@ def _deduplicated_documents(
 def _ranking_metrics(
     cases: Sequence[BenchmarkCase], rankings: Mapping[str, Sequence[str]]
 ) -> dict[str, float | int]:
+    """处理 `_ranking_metrics` 相关逻辑。"""
     if not cases:
         return {"query_count": 0}
     cutoffs = (1, 5, 10, 20)
@@ -594,6 +659,7 @@ def _ranking_metrics(
 
 
 def _select_cases(cases: Sequence[BenchmarkCase], maximum: int) -> tuple[BenchmarkCase, ...]:
+    """选择 `cases` 相关数据。"""
     if maximum <= 0 or maximum >= len(cases):
         return tuple(cases)
     groups: dict[str, list[BenchmarkCase]] = defaultdict(list)
@@ -732,6 +798,7 @@ def evaluate_benchmark(
 
 
 def _load_dataset(arguments: argparse.Namespace) -> BenchmarkData:
+    """加载 `dataset` 相关数据。"""
     if arguments.dataset == "scifact":
         return load_scifact(arguments.data_root / "beir/scifact")
     if arguments.dataset == "xor-tydi":
@@ -741,6 +808,7 @@ def _load_dataset(arguments: argparse.Namespace) -> BenchmarkData:
 
 
 def _parser() -> argparse.ArgumentParser:
+    """处理 `_parser` 相关逻辑。"""
     parser = argparse.ArgumentParser(description="Run external datasets through ESA RAG")
     parser.add_argument("dataset", choices=("scifact", "xor-tydi", "m3docvqa"))
     parser.add_argument("--data-root", type=Path, default=DEFAULT_DATA_ROOT)
@@ -752,6 +820,14 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     arguments = _parser().parse_args(argv)
     if arguments.max_queries < 0 or arguments.workers <= 0:
         raise ValueError("max-queries must be non-negative and workers must be positive")

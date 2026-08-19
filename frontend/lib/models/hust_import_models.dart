@@ -41,18 +41,14 @@ class HustImportChallenge {
     return HustImportChallenge(
       challengeId: json['challenge_id']?.toString() ?? '',
       captchaImageBase64: json['captcha_image_base64']?.toString() ?? '',
-      captchaMimeType:
-          json['captcha_mime_type']?.toString() ?? 'image/jpeg',
+      captchaMimeType: json['captcha_mime_type']?.toString() ?? 'image/jpeg',
       expiresAt: _dateValue(
         json['expires_at'],
         now.add(const Duration(minutes: 5)),
       ),
       recommendedSemesterName:
           json['recommended_semester_name']?.toString() ?? '',
-      recommendedStartDate: _dateValue(
-        json['recommended_start_date'],
-        now,
-      ),
+      recommendedStartDate: _dateValue(json['recommended_start_date'], now),
       recommendedEndDate: _dateValue(
         json['recommended_end_date'],
         now.add(const Duration(days: 18 * 7 - 1)),

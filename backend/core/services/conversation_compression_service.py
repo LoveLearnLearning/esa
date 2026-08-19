@@ -1,3 +1,5 @@
+# backend/core/services/conversation_compression_service.py
+
 """Background compression of old context for conversations whose users are offline."""
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ class ConversationCompressionService:
         max_output_tokens: int,
         enabled: bool = True,
     ) -> None:
+        """初始化 `ConversationCompressionService` 实例。"""
         if offline_after_seconds < 0 or scan_interval_seconds <= 0:
             raise ValueError("离线阈值不能为负且扫描间隔必须大于 0")
         if min_messages <= 0 or min_new_messages <= 0:
@@ -57,6 +60,7 @@ class ConversationCompressionService:
         self._task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
+        """启动 `start` 相关数据。"""
         if not self.enabled or self._task is not None:
             return
         self._task = asyncio.create_task(
@@ -65,10 +69,12 @@ class ConversationCompressionService:
         )
 
     def wake(self) -> None:
+        """处理 `wake` 相关逻辑。"""
         if self.enabled:
             self._wake_event.set()
 
     async def stop(self) -> None:
+        """停止 `stop` 相关数据。"""
         self._stop_event.set()
         self._wake_event.set()
         if self._task is not None:
@@ -80,6 +86,7 @@ class ConversationCompressionService:
             self._task = None
 
     async def _run_loop(self) -> None:
+        """执行 `loop` 相关数据。"""
         while not self._stop_event.is_set():
             try:
                 await self.run_once()
@@ -132,6 +139,7 @@ class ConversationCompressionService:
         *,
         offline_before: str,
     ) -> bool:
+        """处理 `_compress_candidate` 相关逻辑。"""
         boundary = int(candidate["summarized_through_message_id"])
         messages = self.summary_store.get_messages_after(
             str(candidate["conversation_id"]),
@@ -200,6 +208,7 @@ class ConversationCompressionService:
     ) -> tuple[list[dict], str]:
         # Keep room for the previous summary and prompt framing. Never partially
         # summarize a message because the stored boundary is message-granular.
+        """处理 `_bounded_transcript` 相关逻辑。"""
         available = max(
             1,
             self.max_input_chars - min(len(previous_summary), 16000) - 2000,
@@ -226,6 +235,7 @@ class ConversationCompressionService:
         previous_summary: str,
         transcript: str,
     ) -> list[dict]:
+        """处理 `_messages_for_summary` 相关逻辑。"""
         previous = previous_summary or "（无，这是首次压缩）"
         return [
             {
@@ -246,6 +256,7 @@ class ConversationCompressionService:
 
     @staticmethod
     def _clean_summary(raw: str) -> str:
+        """清理 `summary` 相关数据。"""
         cleaned = re.sub(
             r"<think>[\s\S]*?</think>",
             "",

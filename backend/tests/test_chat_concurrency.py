@@ -1,3 +1,7 @@
+# backend/tests/test_chat_concurrency.py
+
+"""验证 `chat_concurrency` 相关行为与回归场景。"""
+
 import asyncio
 import sqlite3
 from types import SimpleNamespace
@@ -13,16 +17,29 @@ from backend.core.web.schemas import SendMessageRequest
 
 
 class _ProfileBuilder:
+    """封装 `_ProfileBuilder` 的状态与行为。"""
     def build(self, query):
+        """构建 `build` 相关数据。"""
         return None
 
 
 class _Agent:
+    """封装 `_Agent` 的状态与行为。"""
     def __init__(self):
+        """初始化 `_Agent` 实例。"""
         self.active_runs = 0
         self.max_active_runs = 0
 
-    async def run(self, content, username, **kwargs):
+    async def run(self, run_spec):
+        """执行 `run` 相关数据。
+
+        Args:
+            run_spec: object => `run_spec` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
+        content = run_spec.messages[-1]["content"]
         self.active_runs += 1
         self.max_active_runs = max(self.max_active_runs, self.active_runs)
         try:
@@ -40,6 +57,7 @@ class _Agent:
 
 
 def _setup(database_path):
+    """处理 `_setup` 相关逻辑。"""
     user_store = UserStore(database_path)
     user_store.create(
         UserRecord(
@@ -57,6 +75,7 @@ def _setup(database_path):
 
 
 def _request(user_store, chat_store, agent, coordinator):
+    """处理 `_request` 相关逻辑。"""
     return SimpleNamespace(
         app=SimpleNamespace(
             state=SimpleNamespace(
@@ -71,6 +90,7 @@ def _request(user_store, chat_store, agent, coordinator):
 
 
 def test_same_conversation_turns_are_serialized(tmp_path):
+    """验证 `same_conversation_turns_are_serialized` 场景。"""
     database_path = tmp_path / "chat.db"
     user_store, chat_store, conversation_id = _setup(database_path)
     agent = _Agent()
@@ -79,6 +99,7 @@ def test_same_conversation_turns_are_serialized(tmp_path):
     session = SessionPrincipal(session_id="s1", user_id="u1")
 
     async def run_concurrently():
+        """执行 `concurrently` 相关数据。"""
         await asyncio.gather(
             send_message(
                 conversation_id,
@@ -108,6 +129,7 @@ def test_same_conversation_turns_are_serialized(tmp_path):
 
 
 def test_different_conversations_can_run_in_parallel(tmp_path):
+    """验证 `different_conversations_can_run_in_parallel` 场景。"""
     database_path = tmp_path / "chat.db"
     user_store, chat_store, first_conversation_id = _setup(database_path)
     second_conversation_id = chat_store.create_conversation("u1")["conversation_id"]
@@ -117,6 +139,7 @@ def test_different_conversations_can_run_in_parallel(tmp_path):
     session = SessionPrincipal(session_id="s1", user_id="u1")
 
     async def run_concurrently():
+        """执行 `concurrently` 相关数据。"""
         await asyncio.gather(
             send_message(
                 first_conversation_id,
@@ -154,6 +177,7 @@ def test_two_worker_coordinators_share_the_database_lease(tmp_path):
     session = SessionPrincipal(session_id="s1", user_id="u1")
 
     async def run_across_workers():
+        """执行 `across workers` 相关数据。"""
         await asyncio.gather(
             send_message(
                 conversation_id,
@@ -184,6 +208,7 @@ def test_two_worker_coordinators_share_the_database_lease(tmp_path):
 
 
 def test_expired_database_lease_is_recovered(tmp_path):
+    """验证 `expired_database_lease_is_recovered` 场景。"""
     database_path = tmp_path / "chat.db"
     _, chat_store, conversation_id = _setup(database_path)
     coordinator = ConversationTurnCoordinator(
@@ -203,6 +228,7 @@ def test_expired_database_lease_is_recovered(tmp_path):
     )
 
     async def acquire_and_release():
+        """处理 `acquire_and_release` 相关逻辑。"""
         lease = await coordinator.acquire(conversation_id)
         await lease.release()
 
@@ -212,6 +238,7 @@ def test_expired_database_lease_is_recovered(tmp_path):
 
 
 def test_transient_sqlite_write_lock_is_retried(tmp_path, monkeypatch):
+    """验证 `transient_sqlite_write_lock_is_retried` 场景。"""
     database_path = tmp_path / "chat.db"
     _, chat_store, conversation_id = _setup(database_path)
     coordinator = ConversationTurnCoordinator(
@@ -223,6 +250,15 @@ def test_transient_sqlite_write_lock_is_retried(tmp_path, monkeypatch):
     attempts = 0
 
     def briefly_locked(target_conversation_id, owner_token):
+        """处理 `briefly_locked` 相关逻辑。
+
+        Args:
+            target_conversation_id: object => target conversation ID。
+            owner_token: object => `owner_token` 参数。
+
+        Returns:
+            object => 处理结果。
+        """
         nonlocal attempts
         attempts += 1
         if attempts == 1:
@@ -236,6 +272,7 @@ def test_transient_sqlite_write_lock_is_retried(tmp_path, monkeypatch):
     )
 
     async def acquire_and_release():
+        """处理 `acquire_and_release` 相关逻辑。"""
         lease = await coordinator.acquire(conversation_id)
         await lease.release()
 

@@ -1,3 +1,5 @@
+# backend/core/services/auxiliary_llm_service.py
+
 """Client for the localhost-only auxiliary multimodal Qwen vLLM service."""
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ class AuxiliaryLLMUnavailable(RuntimeError):
 
 
 class AuxiliaryLLMClient:
+    """封装 `AuxiliaryLLMClient` 的状态与行为。"""
     def __init__(
         self,
         *,
@@ -19,6 +22,7 @@ class AuxiliaryLLMClient:
         model: str,
         timeout: float = 180.0,
     ) -> None:
+        """初始化 `AuxiliaryLLMClient` 实例。"""
         self.base_url = base_url.rstrip("/")
         self.model = model
         self._client = httpx.AsyncClient(
@@ -28,9 +32,11 @@ class AuxiliaryLLMClient:
         )
 
     async def close(self) -> None:
+        """释放当前对象持有的资源。"""
         await self._client.aclose()
 
     async def is_ready(self) -> bool:
+        """判断 `ready` 相关数据。"""
         try:
             response = await self._client.get("/models")
             response.raise_for_status()

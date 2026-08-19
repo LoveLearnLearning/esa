@@ -1,5 +1,7 @@
 # backend/agent/tools/skills.py
 
+"""提供 `skills` 相关功能。"""
+
 from __future__ import annotations
 
 import re
@@ -38,6 +40,7 @@ class SkillDefinition:
 
 
 def _as_str_tuple(meta: dict[str, Any], key: str) -> tuple[str, ...]:
+    """处理 `_as_str_tuple` 相关逻辑。"""
     value = meta.get(key, [])
     if value is None:
         return ()
@@ -49,6 +52,7 @@ def _as_str_tuple(meta: dict[str, Any], key: str) -> tuple[str, ...]:
 
 
 def _parse_skill(path: Path) -> SkillDefinition:
+    """解析 `skill` 相关数据。"""
     text = path.read_text(encoding="utf-8")
     if not text.startswith("---\n"):
         raise SkillValidationError(
@@ -63,7 +67,9 @@ def _parse_skill(path: Path) -> SkillDefinition:
     try:
         meta = yaml.safe_load(frontmatter) or {}
     except yaml.YAMLError as exc:
-        raise SkillValidationError(f"{path.name} frontmatter YAML 解析失败: {exc}") from exc
+        raise SkillValidationError(
+            f"{path.name} frontmatter YAML 解析失败: {exc}"
+        ) from exc
 
     if not isinstance(meta, dict):
         raise SkillValidationError(f"{path.name} frontmatter 必须是 YAML object")
@@ -118,11 +124,7 @@ def _parse_skill(path: Path) -> SkillDefinition:
 
 def list_skills() -> list[Path]:
     """列举 skills 目录中的实际 Skill 文件。"""
-    return sorted(
-        path
-        for path in SKILLS_DIR.glob("*.md")
-        if path.name != "SKILLS.md"
-    )
+    return sorted(path for path in SKILLS_DIR.rglob("*.md") if path.name != "SKILLS.md")
 
 
 @lru_cache(maxsize=1)
@@ -139,6 +141,7 @@ def refresh_skill_cache() -> None:
     """清除 Skill 解析/契约缓存，供热更新或测试使用。"""
     list_skill_definitions.cache_clear()
     _validated_definitions.cache_clear()
+    _trigger_index.cache_clear()
 
 
 def list_skills_detail() -> list[tuple[str, str]]:
@@ -158,6 +161,7 @@ def validate_skill_contracts(
     errors: list[str] = []
 
     names: dict[str, Path] = {}
+    triggers: dict[str, str] = {}
     for skill in definitions:
         previous = names.get(skill.name)
         if previous is not None:
@@ -166,12 +170,19 @@ def validate_skill_contracts(
             )
         else:
             names[skill.name] = skill.path
+        for trigger in skill.triggers:
+            previous_skill = triggers.get(trigger)
+            if previous_skill is not None:
+                errors.append(
+                    f"Skill trigger 重复: {trigger!r} "
+                    f"({previous_skill}, {skill.name})"
+                )
+            else:
+                triggers[trigger] = skill.name
 
     available_skills = set(names)
     available_tools = (
-        set(tr.registered_tools)
-        if tool_names is None
-        else set(tool_names)
+        set(tr.registered_tools) if tool_names is None else set(tool_names)
     )
 
     for skill in definitions:
@@ -192,6 +203,7 @@ def validate_skill_contracts(
 
 @lru_cache(maxsize=1)
 def _validated_definitions() -> tuple[SkillDefinition, ...]:
+    """处理 `_validated_definitions` 相关逻辑。"""
     errors = validate_skill_contracts()
     if errors:
         formatted = "\n".join(f"- {error}" for error in errors)
@@ -199,23 +211,53 @@ def _validated_definitions() -> tuple[SkillDefinition, ...]:
     return list_skill_definitions()
 
 
-def build_skills_context() -> str:
+@lru_cache(maxsize=1)
+def _trigger_index() -> dict[str, str]:
+    """Build the validated deterministic trigger-to-Skill mapping."""
+    index: dict[str, str] = {}
+    for skill in list_skill_definitions():
+        for trigger in skill.triggers:
+            previous = index.get(trigger)
+            if previous is not None:
+                raise SkillValidationError(
+                    f"Skill trigger 重复: {trigger!r} ({previous}, {skill.name})"
+                )
+            index[trigger] = skill.name
+    return index
+
+
+def skill_name_for_trigger(trigger: str) -> str:
+    """Resolve one declared semantic trigger to its Skill name."""
+    normalized = trigger.strip()
+    try:
+        return _trigger_index()[normalized]
+    except KeyError as error:
+        raise SkillValidationError(
+            f"没有 Skill 声明 trigger={normalized!r}"
+        ) from error
+
+
+def build_skills_context(*, categories: set[str] | None = None) -> str:
     """
     构建给 Agent 的 Skill 索引。
 
     这里只注入 name/category/description，完整正文按需通过 load_skill 加载，
     避免把所有 Skill 正文永久塞进 system prompt。
     """
+    selected = [
+        skill
+        for skill in _validated_definitions()
+        if categories is None or skill.category in categories
+    ]
     skills = sorted(
-        _validated_definitions(),
+        selected,
         key=lambda skill: (-skill.priority, skill.name),
     )
     if not skills:
         return "暂无可用 skill"
 
     return "\n".join(
-        f"- {skill.name} [{skill.category}] {skill.description}"
-        for skill in skills
+        f"- {skill.name} [{skill.category}] {skill.description}" for skill in skills
     )
 
 
@@ -225,19 +267,12 @@ def build_autoload_skills_context() -> str:
 
     autoload 应只用于短、全局稳定的策略；普通教学流程仍按需 load_skill。
     """
-    skills = [
-        skill
-        for skill in _validated_definitions()
-        if skill.autoload
-    ]
+    skills = [skill for skill in _validated_definitions() if skill.autoload]
     if not skills:
         return ""
 
     skills.sort(key=lambda skill: (-skill.priority, skill.name))
-    return "\n\n".join(
-        f"## {skill.name}\n{skill.body}"
-        for skill in skills
-    )
+    return "\n\n".join(f"## {skill.name}\n{skill.body}" for skill in skills)
 
 
 def load_skill(name: str) -> str:
@@ -247,26 +282,3 @@ def load_skill(name: str) -> str:
         if skill.name == normalized:
             return skill.body
     return f"{normalized} skill not found!"
-
-
-@tr.register(
-    {
-        "type": "function",
-        "function": {
-            "name": "load_skill",
-            "description": "加载某个 Skill 的详细操作说明；只有任务匹配时才调用",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Skill 名称",
-                    },
-                },
-                "required": ["name"],
-            },
-        },
-    }
-)
-def load_skill_tool(name: str) -> str:
-    return load_skill(name)

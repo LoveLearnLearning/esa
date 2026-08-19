@@ -59,23 +59,28 @@ from .models import RawMiddleBlock, RawMiddlePage
 
 
 class _HTMLText(HTMLParser):
+    """封装 `_HTMLText` 的状态与行为。"""
     def __init__(self) -> None:
+        """初始化 `_HTMLText` 实例。"""
         super().__init__()
         self.pieces: list[str] = []
 
     def handle_data(self, data: str) -> None:
+        """处理 `data` 相关数据。"""
         value = data.strip()
         if value:
             self.pieces.append(value)
 
 
 def _html_text(value: str) -> str:
+    """处理 `_html_text` 相关逻辑。"""
     parser = _HTMLText()
     parser.feed(value)
     return " ".join(parser.pieces).strip()
 
 
 def file_sha256(path: Path) -> str:
+    """处理 `file_sha256` 相关逻辑。"""
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -110,25 +115,30 @@ def source_media_type(path: Path) -> str:
 
 
 def _stable(prefix: str, *parts: object) -> str:
+    """处理 `_stable` 相关逻辑。"""
     raw = json.dumps(parts, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return f"{prefix}_{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:24]}"
 
 
 def _block_text(block: RawMiddleBlock) -> str:
+    """处理 `_block_text` 相关逻辑。"""
     return extract_text(block.model_dump(mode="python"))
 
 
 def _content(item: dict[str, Any] | None) -> dict[str, Any]:
+    """处理 `_content` 相关逻辑。"""
     value = item.get("content") if item else None
     return value if isinstance(value, dict) else {}
 
 
 def _v2_type(item: dict[str, Any] | None) -> str | None:
+    """处理 `_v2_type` 相关逻辑。"""
     value = item.get("type") if item else None
     return value if isinstance(value, str) else None
 
 
 def _text_content(element_id: str, value: str, score: float | None) -> TextContent | None:
+    """处理 `_text_content` 相关逻辑。"""
     if not value:
         return None
     layer_id = f"text_{element_id}"
@@ -147,6 +157,7 @@ def _text_content(element_id: str, value: str, score: float | None) -> TextConte
 
 
 def _role(aligned: AlignedBlock) -> ElementRole:
+    """处理 `_role` 相关逻辑。"""
     source_type = _v2_type(aligned.v2) or aligned.middle.type
     if source_type in {"page_header", "header"}:
         return ElementRole.HEADER
@@ -160,6 +171,7 @@ def _role(aligned: AlignedBlock) -> ElementRole:
 
 
 def _semantic_text(aligned: AlignedBlock) -> str:
+    """处理 `_semantic_text` 相关逻辑。"""
     item = aligned.v2
     block = aligned.middle
     source_type = _v2_type(item) or block.type
@@ -180,6 +192,7 @@ def _semantic_text(aligned: AlignedBlock) -> str:
 
 
 def _list_items(content: dict[str, Any]) -> tuple[str, ...]:
+    """列出 `items` 相关数据。"""
     items = content.get("list_items")
     if not isinstance(items, list):
         return ()
@@ -187,6 +200,7 @@ def _list_items(content: dict[str, Any]) -> tuple[str, ...]:
 
 
 def _visual_path(content: dict[str, Any]) -> str | None:
+    """处理 `_visual_path` 相关逻辑。"""
     source = content.get("image_source")
     path = source.get("path") if isinstance(source, dict) else None
     # MinerU 跨页续表占位会产生 ``images/``，它是目录前缀而
@@ -239,6 +253,7 @@ def convert_bundle(
 
 @dataclass
 class _ConversionState:
+    """封装 `_ConversionState` 的状态与行为。"""
     pages: list[Page] = field(default_factory=list)
     elements: list[ElementBase] = field(default_factory=list)
     assets: list[Asset] = field(default_factory=list)
@@ -265,6 +280,7 @@ class _MinerUConverter:
         strict: bool,
         max_bbox_delta: float,
     ) -> None:
+        """初始化 `_MinerUConverter` 实例。"""
         self.bundle = bundle
         self.source_file = source_file
         self.source_page_count = source_page_count
@@ -279,12 +295,14 @@ class _MinerUConverter:
         self.original_asset, self.raw_asset_ids = self._register_source_assets()
 
     def convert(self) -> Document:
+        """转换 `convert` 相关数据。"""
         self._validate_page_sets()
         for page_position, raw_page in enumerate(self.bundle.middle.pdf_info):
             self._convert_page(page_position, raw_page)
         return self._build_document()
 
     def _conversion_config(self) -> dict[str, Any]:
+        """处理 `_conversion_config` 相关逻辑。"""
         return {
             "strict": self.strict,
             "source_page_count": self.source_page_count,
@@ -297,6 +315,7 @@ class _MinerUConverter:
         }
 
     def _register_source_assets(self) -> tuple[Asset, dict[str, str]]:
+        """注册 `source assets` 相关数据。"""
         original = Asset(
             asset_id="asset_original",
             kind=AssetKind.ORIGINAL,
@@ -331,6 +350,7 @@ class _MinerUConverter:
         return original, raw_ids
 
     def _validate_page_sets(self) -> None:
+        """校验 `page sets` 相关数据。"""
         if not self.bundle.middle.pdf_info:
             raise ValueError("MinerU middle bundle 不包含页面")
         if self.strict and len(self.bundle.content_v2) != len(self.bundle.middle.pdf_info):
@@ -340,6 +360,7 @@ class _MinerUConverter:
             )
 
     def _convert_page(self, page_position: int, raw_page: RawMiddlePage) -> None:
+        """转换 `page` 相关数据。"""
         page_id: str | None = None
         width: float | None = None
         height: float | None = None
@@ -375,6 +396,7 @@ class _MinerUConverter:
             )
 
     def _v2_page_items(self, page_position: int) -> list[Any]:
+        """处理 `_v2_page_items` 相关逻辑。"""
         if page_position >= len(self.bundle.content_v2):
             return []
         page_items = self.bundle.content_v2[page_position]
@@ -389,6 +411,7 @@ class _MinerUConverter:
         width: float | None,
         height: float | None,
     ) -> None:
+        """转换 `block` 相关数据。"""
         block = aligned.middle
         element_id = _stable("element", self.source_hash, page_index, block.index, block.type, block.bbox)
         locator = self._make_locator(
@@ -446,6 +469,7 @@ class _MinerUConverter:
         width: float | None,
         height: float | None,
     ) -> Locator:
+        """处理 `_make_locator` 相关逻辑。"""
         if page_id is None:
             return Locator(
                 locator_id=_stable("locator", element_id, "group", group_index),
@@ -476,6 +500,7 @@ class _MinerUConverter:
         aligned: AlignedBlock,
         group_index: int,
     ) -> tuple[ElementProvenance, ...]:
+        """处理 `_provenance` 相关逻辑。"""
         output = [
             ElementProvenance(
                 artifact_id=self.raw_asset_ids["middle"],
@@ -497,6 +522,7 @@ class _MinerUConverter:
         return tuple(output)
 
     def _alignment_issue_ids(self, aligned: AlignedBlock, element_id: str, page_index: int) -> list[str]:
+        """处理 `_alignment_issue_ids` 相关逻辑。"""
         mismatched = (
             aligned.v2 is None
             or not types_compatible(aligned.middle.type, _v2_type(aligned.v2))
@@ -539,6 +565,7 @@ class _MinerUConverter:
         return issue.issue_id
 
     def _record_text_origin_issue(self, element_id: str) -> str:
+        """处理 `_record_text_origin_issue` 相关逻辑。"""
         issue = QualityIssue(
             issue_id=_stable("issue", "text_origin", element_id),
             code="text_origin_unverified",
@@ -560,6 +587,7 @@ class _MinerUConverter:
         locator_id: str,
         issue_ids: list[str],
     ) -> str | None:
+        """注册 `visual asset` 相关数据。"""
         visual_path = _visual_path(content)
         if visual_path is None:
             return None
@@ -606,6 +634,7 @@ class _MinerUConverter:
         visual_asset_id: str | None,
         issue_ids: list[str],
     ) -> ElementBase:
+        """创建 `element` 相关数据。"""
         content = _content(aligned.v2)
         role = _role(aligned)
         section_id = "section_root" if role != ElementRole.BODY else self.state.current_section
@@ -733,6 +762,7 @@ class _MinerUConverter:
         code: str,
         message: str,
     ) -> str:
+        """处理 `_record_heading_level_issue` 相关逻辑。"""
         issue = QualityIssue(
             issue_id=_stable("issue", code, element_id),
             code=code,
@@ -774,6 +804,7 @@ class _MinerUConverter:
         source_type: str,
         issue_ids: list[str],
     ) -> UnknownElement:
+        """处理 `_unknown_element` 相关逻辑。"""
         issue = QualityIssue(
             issue_id=_stable("issue", "unknown_type", common["element_id"]),
             code="unknown_element_type",
@@ -797,6 +828,7 @@ class _MinerUConverter:
         page_id: str | None,
         locator_id: str,
     ) -> None:
+        """注册 `element` 相关数据。"""
         self.state.elements.append(element)
         section_id = element.section_id or "section_root"
         self.state.section_elements.setdefault(section_id, []).append(element.element_id)
@@ -814,6 +846,7 @@ class _MinerUConverter:
             )
 
     def _build_document(self) -> Document:
+        """构建 `document` 相关数据。"""
         pages = tuple(
             page.model_copy(update={"printed_page": self.state.printed_pages.get(page.page_id)})
             for page in self.state.pages

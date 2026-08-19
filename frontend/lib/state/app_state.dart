@@ -13,37 +13,78 @@ import 'package:http/http.dart' show ClientException;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
+import '../models/code_editor_settings.dart';
 import '../models/models.dart';
 import '../theme/esa_theme.dart';
 
 class AppState extends ChangeNotifier {
-  AppState({ApiClient? api}) : api = api ?? ApiClient();
+  AppState({ApiClient? api, this.restoringSession = false})
+    : api = api ?? ApiClient();
 
   final ApiClient api;
 
   static const _rememberSessionKey = 'esa.remember.session_id';
   static const _rememberUserIdKey = 'esa.remember.user_id';
   static const _rememberUsernameKey = 'esa.remember.username';
+  static const _rememberEmailKey = 'esa.remember.email';
   static const _rememberExpiresAtKey = 'esa.remember.expires_at';
   static const _scheduleStoragePrefix = 'esa.schedule.';
   static const _scheduleSettingsStoragePrefix = 'esa.schedule.settings.';
+  static const _codeEditorIndentSizeKey = 'esa.editor.indent_size';
+  static const _codeEditorThemeKey = 'esa.editor.theme';
+  static const _groupProjectBindingsPrefix = 'esa.group_projects.';
 
   // ---- 本地设置(不落后端) ----
   ThemeMode themeMode = ThemeMode.dark;
   bool streamOn = true;
   bool toolsOn = true;
+  int codeEditorIndentSize = 2;
+  String codeEditorTheme = 'vs-dark';
+  String accountRole = 'student';
+  List<WorkspaceDescriptor> availableWorkspaces = const [
+    WorkspaceDescriptor(
+      type: WorkspaceType.learning,
+      name: '学习空间',
+      description: '',
+      capabilities: ['chat'],
+    ),
+    WorkspaceDescriptor(
+      type: WorkspaceType.research,
+      name: '科研空间',
+      description: '',
+      capabilities: ['chat', 'research_projects'],
+    ),
+  ];
+  WorkspaceType activeWorkspace = WorkspaceType.learning;
+  final List<ResearchProject> researchProjects = [];
+  bool loadingResearchProjects = false;
+  bool researchProjectsLoaded = false;
   String email = '';
   String role = '学生';
   UserPreferences preferences = const UserPreferences();
   UserProfile userProfile = const UserProfile();
   bool loadingProfile = false;
+  List<LearningCourseSummary> learningCourses = const [];
+  List<TeachingAssignment> studentAssignments = const [];
+  MasteryReport? masteryReport;
+  bool loadingLearningOverview = false;
+  String? learningOverviewError;
+  bool restoringSession;
 
   // ---- 对话数据 ----
   final List<ChatConversation> conversations = [];
   final Map<String, List<ChatMessage>> _messages = {};
   final Set<String> _pinned = {}; // 本地置顶集合
+  final Set<String> _pinnedGroupIds = {}; // 本地分组置顶集合
+  final Map<String, String> _groupProjectBindings = {}; // 科研分组归属项目(前端本地)
+  final List<ChatGroup> groups = [];
+  String? activeGroupId;
+  String? activeResearchProjectId;
+  bool loadingGroups = false;
+  bool groupsLoaded = false;
   String? activeId;
   Future<void>? _conversationCreation;
+  String? _draftConversationId;
 
   bool busy = false; // 正在发消息
   bool loadingConversations = false;
@@ -57,6 +98,19 @@ class AppState extends ChangeNotifier {
   String get username => api.username ?? '';
   bool get isLoggedIn => api.isLoggedIn;
 
+  bool isGroupPinned(String groupId) => _pinnedGroupIds.contains(groupId);
+
+  String? groupProjectId(String groupId) => _groupProjectBindings[groupId];
+
+  List<ChatGroup> groupsForProject(String projectId) => groups.where((group) {
+    if (_groupProjectBindings[group.id] == projectId) return true;
+    return conversations.any(
+      (conversation) =>
+          conversation.researchProjectId == projectId &&
+          conversation.groupId == group.id,
+    );
+  }).toList();
+
   List<ChatMessage> get messages =>
       activeId == null ? const [] : (_messages[activeId] ?? const []);
 
@@ -64,6 +118,54 @@ class AppState extends ChangeNotifier {
     if (activeId == null) return null;
     for (final c in conversations) {
       if (c.id == activeId) return c;
+    }
+    return null;
+  }
+
+  List<ChatConversation> get groupedConversations =>
+      conversations.where((c) => c.groupId != null).toList();
+
+  List<ChatConversation> get ungroupedConversations =>
+      conversations.where((c) => c.groupId == null).toList();
+
+  List<ChatConversation> conversationsInGroup(String groupId) =>
+      conversations.where((c) => c.groupId == groupId).toList();
+
+  List<ChatConversation> conversationsInGroupForProject(
+    String groupId,
+    String projectId,
+  ) => conversations
+      .where((c) => c.groupId == groupId && c.researchProjectId == projectId)
+      .toList();
+
+  List<ChatConversation> ungroupedConversationsInProject(String projectId) =>
+      conversations
+          .where((c) => c.groupId == null && c.researchProjectId == projectId)
+          .toList();
+
+  List<String> get scheduleCourseNames {
+    final seen = <String>{};
+    return scheduleCourses
+        .map((course) => course.name.trim())
+        .where((name) => name.isNotEmpty && seen.add(name))
+        .toList();
+  }
+
+  List<DocumentAttachment> get recentAttachments {
+    final seen = <String>{};
+    return _messages.values
+        .expand((items) => items)
+        .expand((message) => message.attachments)
+        .where(
+          (attachment) => attachment.id.isNotEmpty && seen.add(attachment.id),
+        )
+        .toList();
+  }
+
+  ChatGroup? get activeGroup {
+    if (activeGroupId == null) return null;
+    for (final group in groups) {
+      if (group.id == activeGroupId) return group;
     }
     return null;
   }
@@ -77,7 +179,7 @@ class AppState extends ChangeNotifier {
   }) async {
     try {
       await api.login(username, password);
-      email = '$username@esa.study';
+      email = api.email ?? '';
       await _afterLogin();
       if (rememberLogin) {
         await _rememberCurrentSession();
@@ -93,11 +195,34 @@ class AppState extends ChangeNotifier {
   }
 
   /// 注册并自动登录 返回 null 表示成功 否则返回错误文案
-  Future<String?> register(String username, String password) async {
+  Future<String?> sendRegistrationCode(String emailAddress) async {
     try {
-      await api.register(username, password);
-      await api.login(username, password);
-      email = '$username@esa.study';
+      final seconds = await api.sendRegistrationCode(emailAddress);
+      return seconds.toString();
+    } on ApiException catch (e) {
+      return e.detail;
+    } catch (_) {
+      return '无法连接服务器 请检查后端是否启动';
+    }
+  }
+
+  Future<String?> register(
+    String emailAddress,
+    String verificationCode,
+    String username,
+    String password,
+    String accountRole,
+  ) async {
+    try {
+      await api.register(
+        emailAddress,
+        verificationCode,
+        username,
+        password,
+        accountRole,
+      );
+      await api.login(emailAddress, password);
+      email = api.email ?? emailAddress;
       await _afterLogin();
       return null;
     } on ApiException catch (e) {
@@ -108,48 +233,83 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _afterLogin() async {
-    await Future.wait([loadConversations(), loadPreferencesAndProfile()]);
-    if (conversations.isNotEmpty) {
-      await setActive(conversations.first.id);
-    } else {
-      activeId = null;
+    final manifest = await api.getWorkspaceManifest();
+    accountRole = manifest.accountRole;
+    api.accountRole = manifest.accountRole;
+    role = accountRole == 'teacher' ? '教师' : '学生';
+    availableWorkspaces = manifest.workspaces;
+    if (!availableWorkspaces.any((item) => item.type == activeWorkspace)) {
+      activeWorkspace = manifest.defaultWorkspace;
     }
+    final startupTasks = <Future<void>>[
+      loadConversations(),
+      loadGroups(),
+      _loadGroupProjectBindings(),
+      loadPreferencesAndProfile(),
+      loadLearningOverview(),
+    ];
+    if (accountRole == 'student') startupTasks.add(loadStudentAssignments());
+    await Future.wait(startupTasks);
+    // 登录后先进入学习首页，不自动打开最近一条对话；历史对话仍由侧栏选择。
+    activeId = null;
     notifyListeners();
   }
 
   Future<void> logout() async {
+    await _discardDraftConversation();
     await api.logout();
     _clearSession();
   }
 
+  /// 游客模式：纯本地进入主界面，不创建后端会话。
+  void enterAsGuest() {
+    _clearSession();
+    api.username = '游客';
+    notifyListeners();
+  }
+
   Future<void> restoreSession() async {
-    final localPreferences = await _getLocalPreferences();
-    if (localPreferences == null) return;
-    final sessionId = localPreferences.getString(_rememberSessionKey);
-    final userId = localPreferences.getString(_rememberUserIdKey);
-    final username = localPreferences.getString(_rememberUsernameKey);
-    final expiresAtValue = localPreferences.getString(_rememberExpiresAtKey);
-    final expiresAt = DateTime.tryParse(expiresAtValue ?? '');
-
-    if (sessionId == null ||
-        userId == null ||
-        username == null ||
-        expiresAt == null ||
-        !expiresAt.isAfter(DateTime.now().toUtc())) {
-      await _forgetRememberedSession();
-      return;
-    }
-
-    api.sessionId = sessionId;
-    api.userId = userId;
-    api.username = username;
-    api.sessionExpiresAt = expiresAt;
-    email = '$username@esa.study';
-
     try {
-      await _afterLogin();
-    } catch (_) {
-      _clearSession();
+      final localPreferences = await _getLocalPreferences();
+      if (localPreferences == null) return;
+      _loadLocalEditorSettings(localPreferences);
+      final sessionId = localPreferences.getString(_rememberSessionKey);
+      final userId = localPreferences.getString(_rememberUserIdKey);
+      final username = localPreferences.getString(_rememberUsernameKey);
+      final rememberedEmail = localPreferences.getString(_rememberEmailKey);
+      final expiresAtValue = localPreferences.getString(_rememberExpiresAtKey);
+      final expiresAt = DateTime.tryParse(expiresAtValue ?? '');
+
+      if (sessionId == null ||
+          userId == null ||
+          username == null ||
+          expiresAt == null ||
+          !expiresAt.isAfter(DateTime.now().toUtc())) {
+        await _forgetRememberedSession();
+        return;
+      }
+
+      api.sessionId = sessionId;
+      api.userId = userId;
+      api.username = username;
+      api.email = rememberedEmail;
+      api.sessionExpiresAt = expiresAt;
+      email = rememberedEmail ?? '';
+
+      // The local session is enough to render the application shell. Remote
+      // workspace and conversation data can continue loading behind it.
+      restoringSession = false;
+      notifyListeners();
+      try {
+        await _afterLogin();
+      } catch (_) {
+        _clearSession();
+      }
+    } finally {
+      if (restoringSession) {
+        restoringSession = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -169,6 +329,11 @@ class AppState extends ChangeNotifier {
     await localPreferences.setString(_rememberSessionKey, sessionId);
     await localPreferences.setString(_rememberUserIdKey, userId);
     await localPreferences.setString(_rememberUsernameKey, username);
+    if (api.email case final rememberedEmail?) {
+      await localPreferences.setString(_rememberEmailKey, rememberedEmail);
+    } else {
+      await localPreferences.remove(_rememberEmailKey);
+    }
     await localPreferences.setString(
       _rememberExpiresAtKey,
       expiresAt.toUtc().toIso8601String(),
@@ -182,6 +347,7 @@ class AppState extends ChangeNotifier {
       localPreferences.remove(_rememberSessionKey),
       localPreferences.remove(_rememberUserIdKey),
       localPreferences.remove(_rememberUsernameKey),
+      localPreferences.remove(_rememberEmailKey),
       localPreferences.remove(_rememberExpiresAtKey),
     ]);
   }
@@ -193,6 +359,17 @@ class AppState extends ChangeNotifier {
       // 新增插件后仅 Hot Restart 时 Web 插件可能尚未重新注册。
       // 此时跳过会话持久化，让应用仍可正常进入登录页。
       return null;
+    }
+  }
+
+  void _loadLocalEditorSettings(SharedPreferences localPreferences) {
+    final indentSize = localPreferences.getInt(_codeEditorIndentSizeKey);
+    if (indentSize == 2 || indentSize == 4 || indentSize == 8) {
+      codeEditorIndentSize = indentSize!;
+    }
+    final editorTheme = localPreferences.getString(_codeEditorThemeKey);
+    if (isCodeEditorTheme(editorTheme)) {
+      codeEditorTheme = editorTheme!;
     }
   }
 
@@ -211,24 +388,68 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<String?> sendBindEmailCode(String emailAddress) async {
+    try {
+      return (await api.sendBindEmailCode(emailAddress)).toString();
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) _clearSession();
+      return e.detail;
+    } catch (_) {
+      return '无法连接服务器 请稍后重试';
+    }
+  }
+
+  Future<String?> bindEmail(
+    String emailAddress,
+    String verificationCode,
+  ) async {
+    try {
+      await api.bindEmail(emailAddress, verificationCode);
+      email = api.email ?? emailAddress;
+      await _rememberCurrentSession();
+      notifyListeners();
+      return null;
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) _clearSession();
+      return e.detail;
+    } catch (_) {
+      return '无法连接服务器 请稍后重试';
+    }
+  }
+
   void _clearSession() {
     api.sessionId = null;
     api.userId = null;
     api.username = null;
+    api.email = null;
     api.sessionExpiresAt = null;
     unawaited(_forgetRememberedSession());
     conversations.clear();
     _messages.clear();
     _pinned.clear();
+    _pinnedGroupIds.clear();
+    _groupProjectBindings.clear();
+    groups.clear();
+    activeGroupId = null;
+    activeResearchProjectId = null;
+    groupsLoaded = false;
+    loadingGroups = false;
     scheduleCourses.clear();
     scheduleTables.clear();
     activeScheduleTableId = '';
     scheduleSettings = const ScheduleSettings();
     scheduleLoaded = false;
     activeId = null;
+    _draftConversationId = null;
     busy = false;
     preferences = const UserPreferences();
     userProfile = const UserProfile();
+    learningCourses = const [];
+    studentAssignments = const [];
+    masteryReport = null;
+    loadingLearningOverview = false;
+    learningOverviewError = null;
+    email = '';
     notifyListeners();
   }
 
@@ -508,9 +729,14 @@ class AppState extends ChangeNotifier {
     loadingConversations = true;
     notifyListeners();
     try {
-      final list = await api.listConversations();
+      final list = activeWorkspace == WorkspaceType.learning
+          ? await api.listConversations()
+          : await api.listWorkspaceConversations(activeWorkspace);
       for (final c in list) {
         c.pinned = _pinned.contains(c.id);
+        if (c.researchProjectId != null && c.groupId != null) {
+          _groupProjectBindings[c.groupId!] = c.researchProjectId!;
+        }
       }
       conversations
         ..clear()
@@ -523,7 +749,318 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  String get _groupProjectBindingsKey =>
+      '$_groupProjectBindingsPrefix${api.userId ?? 'guest'}';
+
+  Future<void> _loadGroupProjectBindings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_groupProjectBindingsKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        _groupProjectBindings
+          ..clear()
+          ..addAll(
+            decoded.map(
+              (key, value) => MapEntry(key.toString(), value.toString()),
+            ),
+          );
+      }
+    } catch (_) {
+      // 本地缓存损坏时直接忽略，分组归属仍可从对话数据恢复。
+    }
+  }
+
+  Future<void> _saveGroupProjectBindings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _groupProjectBindingsKey,
+      jsonEncode(_groupProjectBindings),
+    );
+  }
+
+  void _bindGroupToProject(String groupId, String projectId) {
+    if (_groupProjectBindings[groupId] == projectId) return;
+    _groupProjectBindings[groupId] = projectId;
+    unawaited(_saveGroupProjectBindings());
+  }
+
+  // ============ 对话分组 ============
+  Future<void> loadGroups({bool force = false}) async {
+    if (loadingGroups || (groupsLoaded && !force)) return;
+    loadingGroups = true;
+    notifyListeners();
+    try {
+      groups
+        ..clear()
+        ..addAll(await api.listGroups());
+      groupsLoaded = true;
+    } catch (error) {
+      if (!_handled401(error)) rethrow;
+    } finally {
+      loadingGroups = false;
+      notifyListeners();
+    }
+  }
+
+  Future<ChatGroup> createGroup({
+    required String name,
+    String description = '',
+    String customInstruction = '',
+    String? style,
+    String? tone,
+    String? projectId,
+  }) async {
+    final group = await api.createGroup(
+      name: name.trim(),
+      description: description,
+      customInstruction: customInstruction,
+      style: style,
+      tone: tone,
+    );
+    groups.insert(0, group);
+    if (projectId != null) {
+      _bindGroupToProject(group.id, projectId);
+    }
+    activeGroupId = group.id;
+    notifyListeners();
+    return group;
+  }
+
+  void setActiveGroup(String? groupId) {
+    if (activeGroupId == groupId) return;
+    activeGroupId = groupId;
+    notifyListeners();
+  }
+
+  void toggleGroupPin(String groupId) {
+    if (_pinnedGroupIds.contains(groupId)) {
+      _pinnedGroupIds.remove(groupId);
+    } else {
+      _pinnedGroupIds.add(groupId);
+      final index = groups.indexWhere((group) => group.id == groupId);
+      if (index > 0) {
+        final group = groups.removeAt(index);
+        groups.insert(0, group);
+      }
+    }
+    notifyListeners();
+  }
+
+  void reorderGroups(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= groups.length) return;
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (newIndex < 0) newIndex = 0;
+    if (newIndex > groups.length) newIndex = groups.length;
+    final group = groups.removeAt(oldIndex);
+    groups.insert(newIndex, group);
+    notifyListeners();
+  }
+
+  Future<ChatGroup> updateGroup(
+    String groupId, {
+    String? name,
+    String? description,
+    String? customInstruction,
+    Object? style = groupFieldUnset,
+    Object? tone = groupFieldUnset,
+  }) async {
+    final updated = await api.updateGroup(
+      groupId,
+      name: name?.trim(),
+      description: description,
+      customInstruction: customInstruction,
+      style: style,
+      tone: tone,
+    );
+    final index = groups.indexWhere((group) => group.id == groupId);
+    if (index >= 0) {
+      groups.removeAt(index);
+    }
+    groups.insert(0, updated);
+    notifyListeners();
+    return updated;
+  }
+
+  Future<void> deleteGroup(String groupId) async {
+    await api.deleteGroup(groupId);
+    groups.removeWhere((group) => group.id == groupId);
+    _groupProjectBindings.remove(groupId);
+    unawaited(_saveGroupProjectBindings());
+    if (activeGroupId == groupId) activeGroupId = null;
+    for (final conversation in conversations) {
+      if (conversation.groupId == groupId) conversation.groupId = null;
+    }
+    notifyListeners();
+    await loadConversations();
+  }
+
+  Future<void> moveConversationToGroup(
+    String conversationId,
+    String? groupId,
+  ) async {
+    final index = conversations.indexWhere(
+      (conversation) => conversation.id == conversationId,
+    );
+    if (index < 0) throw ApiException(404, '对话不存在');
+    final previousGroupId = conversations[index].groupId;
+    if (previousGroupId == groupId) return;
+    await api.moveConversation(conversationId, groupId);
+    conversations[index].groupId = groupId;
+    final projectId = conversations[index].researchProjectId;
+    if (projectId != null && groupId != null) {
+      _bindGroupToProject(groupId, projectId);
+    }
+    _adjustGroupCounts(previousGroupId, groupId);
+    notifyListeners();
+  }
+
+  void _adjustGroupCounts(String? fromGroupId, String? toGroupId) {
+    if (fromGroupId == toGroupId) return;
+
+    void adjust(String? groupId, int delta) {
+      if (groupId == null) return;
+      final index = groups.indexWhere((group) => group.id == groupId);
+      if (index < 0) return;
+      final group = groups[index];
+      groups[index] = ChatGroup(
+        id: group.id,
+        userId: group.userId,
+        name: group.name,
+        description: group.description,
+        customInstruction: group.customInstruction,
+        style: group.style,
+        tone: group.tone,
+        conversationCount: (group.conversationCount + delta)
+            .clamp(0, 1 << 30)
+            .toInt(),
+        createdAt: group.createdAt,
+        updatedAt: group.updatedAt,
+      );
+    }
+
+    adjust(fromGroupId, -1);
+    adjust(toGroupId, 1);
+  }
+
+  Future<void> switchWorkspace(WorkspaceType workspace) async {
+    if (workspace == activeWorkspace ||
+        !availableWorkspaces.any((item) => item.type == workspace)) {
+      return;
+    }
+    await _discardDraftConversation();
+    activeWorkspace = workspace;
+    activeId = null;
+    conversations.clear();
+    notifyListeners();
+    await loadConversations();
+    if (conversations.isNotEmpty) await setActive(conversations.first.id);
+    if (workspace == WorkspaceType.research) await loadResearchProjects();
+  }
+
+  Future<void> loadResearchProjects({bool force = false}) async {
+    if (loadingResearchProjects || (researchProjectsLoaded && !force)) return;
+    loadingResearchProjects = true;
+    notifyListeners();
+    try {
+      researchProjects
+        ..clear()
+        ..addAll(await api.listResearchProjects());
+      researchProjectsLoaded = true;
+    } catch (error) {
+      if (!_handled401(error)) rethrow;
+    } finally {
+      loadingResearchProjects = false;
+      notifyListeners();
+    }
+  }
+
+  Future<ResearchProject> createResearchProject(
+    String name,
+    String description,
+  ) async {
+    final project = await api.createResearchProject(
+      name.trim(),
+      description.trim(),
+    );
+    researchProjects.insert(0, project);
+    notifyListeners();
+    return project;
+  }
+
+  Future<ResearchProject> updateResearchProject(
+    String id, {
+    required String name,
+    required String description,
+  }) async {
+    final updated = await api.updateResearchProject(
+      id,
+      name: name.trim(),
+      description: description.trim(),
+    );
+    final index = researchProjects.indexWhere((item) => item.id == id);
+    if (index >= 0) researchProjects[index] = updated;
+    notifyListeners();
+    return updated;
+  }
+
+  Future<void> archiveResearchProject(String id) async {
+    await api.archiveResearchProject(id);
+    researchProjects.removeWhere((item) => item.id == id);
+    notifyListeners();
+  }
+
+  Future<void> openResearchProject(ResearchProject project) async {
+    await _discardDraftConversation();
+    final existing = conversations.where(
+      (item) => item.researchProjectId == project.id,
+    );
+    if (existing.isNotEmpty) {
+      await setActive(existing.first.id);
+      return;
+    }
+    final conversation = await api.createWorkspaceConversation(
+      WorkspaceType.research,
+      researchProjectId: project.id,
+    );
+    conversations.insert(0, conversation);
+    _messages[conversation.id] = [];
+    activeId = conversation.id;
+    notifyListeners();
+  }
+
+  Future<void> openTeachingContext(
+    TeachingClass classroom, {
+    TeachingAssignment? assignment,
+  }) async {
+    await _discardDraftConversation();
+    if (activeWorkspace != WorkspaceType.teaching) {
+      await switchWorkspace(WorkspaceType.teaching);
+    }
+    final existing = conversations.where(
+      (item) =>
+          item.classId == classroom.id && item.assignmentId == assignment?.id,
+    );
+    if (existing.isNotEmpty) {
+      await setActive(existing.first.id);
+      return;
+    }
+    final conversation = await api.createWorkspaceConversation(
+      WorkspaceType.teaching,
+      classId: classroom.id,
+      assignmentId: assignment?.id,
+    );
+    conversations.insert(0, conversation);
+    _messages[conversation.id] = [];
+    activeId = conversation.id;
+    notifyListeners();
+  }
+
   Future<void> setActive(String id) async {
+    if (activeId != id) {
+      await _discardDraftConversation(exceptId: id);
+    }
     activeId = id;
     notifyListeners();
     if (!_messages.containsKey(id)) {
@@ -537,6 +1074,15 @@ class AppState extends ChangeNotifier {
     try {
       final msgs = await api.getMessages(id);
       _messages[id] = msgs;
+      final conversation = conversations.where((item) => item.id == id);
+      if (activeId == id &&
+          msgs.isEmpty &&
+          conversation.isNotEmpty &&
+          conversation.first.title == '新对话') {
+        _draftConversationId = id;
+      } else if (_draftConversationId == id && msgs.isNotEmpty) {
+        _draftConversationId = null;
+      }
     } catch (e) {
       if (_handled401(e)) return;
       _messages[id] = [];
@@ -546,18 +1092,55 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  bool get _activeConversationIsEmpty {
-    final id = activeId;
-    return id == null ||
-        (_messages.containsKey(id) && (_messages[id]?.isEmpty ?? true));
-  }
-
   Future<void> newConversation() async {
-    if (_activeConversationIsEmpty) return;
-    // 先立即切换到空白页，避免网络延迟期间还看到旧对话。
+    if (activeId == null) return;
+    await _discardDraftConversation();
+    // 新对话先保持为前端空白页，首次发送或上传附件时再写入后端。
     activeId = null;
     notifyListeners();
-    await _createConversation();
+  }
+
+  Future<void> newConversationInGroup(
+    String groupId, {
+    String? researchProjectId,
+  }) async {
+    activeGroupId = groupId;
+    activeResearchProjectId =
+        researchProjectId ?? _groupProjectBindings[groupId];
+    notifyListeners();
+    await newConversation();
+  }
+
+  Future<void> startResearchChat() async {
+    activeGroupId = null;
+    activeResearchProjectId = null;
+    notifyListeners();
+    await newConversation();
+  }
+
+  Future<void> _discardDraftConversation({String? exceptId}) async {
+    final id = _draftConversationId;
+    if (id == null || id == exceptId) return;
+
+    final index = conversations.indexWhere(
+      (conversation) => conversation.id == id,
+    );
+    final groupId = index < 0 ? null : conversations[index].groupId;
+    _draftConversationId = null;
+    conversations.removeWhere((conversation) => conversation.id == id);
+    _messages.remove(id);
+    _pinned.remove(id);
+    _adjustGroupCounts(groupId, null);
+    if (activeId == id) activeId = null;
+    notifyListeners();
+
+    try {
+      await api.deleteConversation(id);
+    } catch (error) {
+      if (!_handled401(error)) {
+        debugPrint('Failed to discard unsent conversation $id: $error');
+      }
+    }
   }
 
   Future<void> _createConversation() async {
@@ -579,7 +1162,13 @@ class AppState extends ChangeNotifier {
 
   Future<void> _createConversationImpl() async {
     try {
-      final conv = await api.createConversation();
+      final conv = activeWorkspace == WorkspaceType.learning
+          ? await api.createConversation(groupId: activeGroupId)
+          : await api.createWorkspaceConversation(
+              activeWorkspace,
+              researchProjectId: activeResearchProjectId,
+              groupId: activeGroupId,
+            );
       conversations.insert(0, conv);
       _messages[conv.id] = [];
       activeId = conv.id;
@@ -604,6 +1193,8 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> deleteConversation(String id) async {
+    final index = conversations.indexWhere((c) => c.id == id);
+    final removedGroupId = index >= 0 ? conversations[index].groupId : null;
     try {
       await api.deleteConversation(id);
     } catch (e) {
@@ -613,6 +1204,8 @@ class AppState extends ChangeNotifier {
     conversations.removeWhere((c) => c.id == id);
     _messages.remove(id);
     _pinned.remove(id);
+    if (_draftConversationId == id) _draftConversationId = null;
+    _adjustGroupCounts(removedGroupId, null);
     if (activeId == id) {
       activeId = conversations.isNotEmpty ? conversations.first.id : null;
       if (activeId != null && !_messages.containsKey(activeId)) {
@@ -639,6 +1232,8 @@ class AppState extends ChangeNotifier {
     String text, {
     bool markdown = false,
     String? displayText,
+    List<String> attachmentIds = const [],
+    List<DocumentAttachment> attachments = const [],
   }) async {
     final input = text.trim();
     if (input.isEmpty || busy) return;
@@ -649,11 +1244,21 @@ class AppState extends ChangeNotifier {
       if (activeId == null) return; // 建失败
     }
     final id = activeId!;
+    if (_draftConversationId == id) _draftConversationId = null;
     final list = _messages.putIfAbsent(id, () => []);
+    final isFirstQuestion = !list.any((message) => message.isUser);
 
     final visibleInput = (displayText ?? input).trim();
-    list.add(ChatMessage.user(visibleInput, markdown: markdown));
-    _touchConversation(id, visibleInput);
+    final selectedAttachmentIds = attachmentIds.isNotEmpty
+        ? attachmentIds
+        : attachments.map((item) => item.id).toList();
+    final userMessage = ChatMessage.user(
+      visibleInput,
+      markdown: markdown,
+      attachments: attachments,
+    );
+    list.add(userMessage);
+    _touchConversation(id);
 
     final placeholder = ChatMessage.typingPlaceholder();
     list.add(placeholder);
@@ -662,11 +1267,28 @@ class AppState extends ChangeNotifier {
 
     try {
       if (streamOn) {
-        await _receiveStream(id, input, list, placeholder);
+        await _receiveStream(
+          id,
+          input,
+          list,
+          placeholder,
+          attachmentIds: selectedAttachmentIds,
+          userMessage: userMessage,
+          titleInput: isFirstQuestion ? visibleInput : null,
+        );
       } else {
-        final newMsgs = await api.sendMessage(id, input);
+        final newMsgs = selectedAttachmentIds.isEmpty
+            ? await api.sendMessage(id, input)
+            : await api.sendMessageWithAttachments(
+                id,
+                input,
+                selectedAttachmentIds,
+              );
         list.remove(placeholder);
         list.addAll(newMsgs.where((message) => !message.isUser));
+        if (isFirstQuestion) {
+          await _ensureConversationTitle(id, visibleInput);
+        }
         notifyListeners();
       }
     } catch (e) {
@@ -718,8 +1340,12 @@ class AppState extends ChangeNotifier {
     String conversationId,
     String input,
     List<ChatMessage> list,
-    ChatMessage assistant,
-  ) async {
+    ChatMessage assistant, {
+    List<String> attachmentIds = const [],
+    ChatMessage? userMessage,
+    int? replaceMessageId,
+    String? titleInput,
+  }) async {
     var completed = false;
     final reasoningQueue = Queue<String>();
     final contentQueue = Queue<String>();
@@ -772,6 +1398,16 @@ class AppState extends ChangeNotifier {
       ensureTypewriter();
     }
 
+    void finishRunningTools(String fallbackText) {
+      for (final message in list.where(
+        (message) => message.isTool && message.toolRunning,
+      )) {
+        message.toolRunning = false;
+        if (message.text.isEmpty) message.text = fallbackText;
+        message.notifyListeners();
+      }
+    }
+
     Future<void> finishTypewriter() async {
       streamEnded = true;
       if (reasoningQueue.isEmpty && contentQueue.isEmpty) {
@@ -788,7 +1424,20 @@ class AppState extends ChangeNotifier {
       // 事件间隔超过 120 秒视为挂死，结束流走中断恢复。只在 Web 上
       // 启用：原生平台连接中断会正常抛错，而且 Stream.timeout 的假
       // 定时器会挂死 FakeAsync 测试环境。
-      var events = api.streamMessage(conversationId, input);
+      var events = replaceMessageId != null
+          ? api.streamRevisedMessage(
+              conversationId,
+              input,
+              replaceMessageId,
+              attachmentIds,
+            )
+          : attachmentIds.isEmpty
+          ? api.streamMessage(conversationId, input)
+          : api.streamMessageWithAttachments(
+              conversationId,
+              input,
+              attachmentIds,
+            );
       if (kIsWeb) {
         events = events.timeout(
           const Duration(seconds: 120),
@@ -798,25 +1447,74 @@ class AppState extends ChangeNotifier {
       await for (final event in events) {
         switch (event.event) {
           case 'start':
+            final persistedId = event.data['user_message_id']?.toString();
+            if (persistedId != null && persistedId.isNotEmpty) {
+              userMessage?.id = persistedId;
+              userMessage?.notifyListeners();
+            }
             break;
           case 'reasoning':
             enqueue(reasoningQueue, event.data['delta'] as String? ?? '');
           case 'content':
             enqueue(contentQueue, event.data['delta'] as String? ?? '');
-          case 'tool':
-            // 工具结果应位于最终助手回复之前。
+          case 'title':
+            final title = event.data['title']?.toString().trim() ?? '';
+            final titleConversationId =
+                event.data['conversation_id']?.toString() ?? conversationId;
+            if (title.isNotEmpty) {
+              _setConversationTitle(titleConversationId, title);
+              notifyListeners();
+            }
+          case 'tool_start':
             list.remove(assistant);
             list.add(
               ChatMessage(
-                id: DateTime.now().microsecondsSinceEpoch.toString(),
+                id:
+                    event.data['id']?.toString() ??
+                    DateTime.now().microsecondsSinceEpoch.toString(),
                 role: MessageRole.tool,
                 name: event.data['name'] as String?,
-                text: event.data['content']?.toString() ?? '',
+                toolRunning: true,
               ),
             );
             list.add(assistant);
             notifyListeners();
+          case 'tool_progress':
+            // 后端长任务心跳；保留调用中卡片并刷新 Web 的 SSE 超时计时。
+            break;
+          case 'heartbeat':
+            // 模型排队或生成隐藏工具参数时的保活事件，不改变界面内容。
+            break;
+          case 'tool':
+            final toolId = event.data['id']?.toString();
+            final toolIndex = toolId == null
+                ? -1
+                : list.lastIndexWhere(
+                    (message) => message.isTool && message.id == toolId,
+                  );
+            if (toolIndex >= 0) {
+              final tool = list[toolIndex];
+              tool.text = event.data['content']?.toString() ?? '';
+              tool.toolRunning = false;
+              tool.notifyListeners();
+            } else {
+              // 兼容尚未发送 tool_start 的旧后端。
+              list.remove(assistant);
+              list.add(
+                ChatMessage(
+                  id:
+                      toolId ??
+                      DateTime.now().microsecondsSinceEpoch.toString(),
+                  role: MessageRole.tool,
+                  name: event.data['name'] as String?,
+                  text: event.data['content']?.toString() ?? '',
+                ),
+              );
+              list.add(assistant);
+            }
+            notifyListeners();
           case 'done':
+            finishRunningTools('工具调用已结束，未返回可展示结果');
             await finishTypewriter();
             completed = true;
             assistant.typing = false;
@@ -841,11 +1539,90 @@ class AppState extends ChangeNotifier {
         reasoningQueue.clear();
         contentQueue.clear();
         assistant.notifyListeners();
+        finishRunningTools('工具调用未完成：连接已中断');
+        notifyListeners();
       }
     }
 
     if (!completed) {
       throw ApiException(500, '流式连接意外中断');
+    }
+    if (titleInput != null) {
+      await _ensureConversationTitle(conversationId, titleInput);
+    }
+  }
+
+  Future<DocumentAttachment> uploadConversationAttachment({
+    required String filename,
+    required Stream<List<int>> stream,
+    required int length,
+  }) async {
+    final createsDraft = activeId == null;
+    if (activeId == null) {
+      await _createConversation();
+    }
+    final conversationId = activeId;
+    if (conversationId == null) {
+      throw ApiException(0, '无法创建对话，请稍后重试');
+    }
+    if (createsDraft) _draftConversationId = conversationId;
+    return api.uploadConversationAttachment(
+      conversationId: conversationId,
+      filename: filename,
+      stream: stream,
+      length: length,
+    );
+  }
+
+  Future<void> removeConversationAttachment(
+    DocumentAttachment attachment,
+    String conversationId,
+  ) async {
+    await api.deleteConversationAttachment(conversationId, attachment.id);
+  }
+
+  Future<void> reviseUserMessage(ChatMessage message, String text) async {
+    final conversationId = activeId;
+    final messageId = int.tryParse(message.id);
+    final input = text.trim();
+    if (conversationId == null || messageId == null || input.isEmpty || busy) {
+      return;
+    }
+    final list = _messages[conversationId];
+    final index = list?.indexWhere((item) => identical(item, message)) ?? -1;
+    if (list == null || index < 0) return;
+    message.text = input;
+    message.notifyListeners();
+    if (index + 1 < list.length) list.removeRange(index + 1, list.length);
+    final placeholder = ChatMessage.typingPlaceholder();
+    list.add(placeholder);
+    busy = true;
+    notifyListeners();
+    try {
+      await _receiveStream(
+        conversationId,
+        input,
+        list,
+        placeholder,
+        attachmentIds: message.attachments.map((item) => item.id).toList(),
+        userMessage: message,
+        replaceMessageId: messageId,
+      );
+    } catch (error) {
+      final recovered = await _recoverInterruptedReply(conversationId, list);
+      if (!recovered) {
+        list.remove(placeholder);
+        list.add(
+          ChatMessage(
+            id: DateTime.now().microsecondsSinceEpoch.toString(),
+            role: MessageRole.assistant,
+            text: '（修改消息失败：${error is ApiException ? error.detail : '网络异常'}）',
+          ),
+        );
+      }
+    } finally {
+      busy = false;
+      notifyListeners();
     }
   }
 
@@ -871,17 +1648,48 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void _touchConversation(String id, String firstInput) {
+  void _touchConversation(String id) {
     final conv = activeConversation;
     if (conv == null || conv.id != id) return;
     conv.updatedAt = DateTime.now();
-    if (conv.title == '新对话') {
-      final title = firstInput.length > 18
-          ? '${firstInput.substring(0, 18)}…'
-          : firstInput;
-      conv.title = title;
-      // 持久化标题 忽略结果
-      api.renameConversation(id, title).catchError((_) {});
+  }
+
+  void _setConversationTitle(String id, String title) {
+    for (final conversation in conversations) {
+      if (conversation.id == id) {
+        conversation.title = title;
+        return;
+      }
+    }
+  }
+
+  Future<void> _ensureConversationTitle(String id, String firstInput) async {
+    final local = conversations.where((conversation) => conversation.id == id);
+    if (local.isEmpty || local.first.title != '新对话') return;
+    try {
+      final conversation = await api.getConversation(id);
+      _setConversationTitle(id, conversation.title);
+      if (conversation.title != '新对话') {
+        notifyListeners();
+        return;
+      }
+    } catch (error) {
+      if (_handled401(error)) return;
+      // During a rolling deployment the old backend has no single-conversation
+      // endpoint. Continue with the local fallback below.
+    }
+
+    final normalized = firstInput.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.isEmpty) return;
+    final title = normalized.characters.take(24).toString();
+    _setConversationTitle(id, title);
+    notifyListeners();
+    try {
+      await api.renameConversation(id, title);
+    } catch (error) {
+      if (!_handled401(error)) {
+        debugPrint('Failed to persist fallback title for $id: $error');
+      }
     }
   }
 
@@ -902,6 +1710,39 @@ class AppState extends ChangeNotifier {
       loadingProfile = false;
       notifyListeners();
     }
+  }
+
+  Future<void> loadLearningOverview() async {
+    if (!api.isLoggedIn || loadingLearningOverview) return;
+    loadingLearningOverview = true;
+    learningOverviewError = null;
+    notifyListeners();
+    try {
+      final values = await Future.wait([
+        api.getLearningCourses(),
+        api.getMasteryReport(),
+      ]);
+      learningCourses = values[0] as List<LearningCourseSummary>;
+      masteryReport = values[1] as MasteryReport;
+    } on ApiException catch (error) {
+      if (!_handled401(error)) learningOverviewError = error.detail;
+    } catch (_) {
+      learningOverviewError = '学习概览暂时无法加载';
+    } finally {
+      loadingLearningOverview = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadStudentAssignments() async {
+    try {
+      studentAssignments = await api.listStudentAssignments();
+    } on ApiException catch (error) {
+      if (!_handled401(error)) studentAssignments = const [];
+    } catch (_) {
+      studentAssignments = const [];
+    }
+    notifyListeners();
   }
 
   Future<String?> savePreferencesAndProfile({
@@ -957,10 +1798,30 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateProfile({String? name, String? mail, String? roleValue}) {
+  void setCodeEditorIndentSize(int value) {
+    if (value != 2 && value != 4 && value != 8) return;
+    codeEditorIndentSize = value;
+    notifyListeners();
+    unawaited(_persistCodeEditorSetting(_codeEditorIndentSizeKey, value));
+  }
+
+  void setCodeEditorTheme(String value) {
+    if (!isCodeEditorTheme(value)) return;
+    codeEditorTheme = value;
+    notifyListeners();
+    unawaited(_persistCodeEditorSetting(_codeEditorThemeKey, value));
+  }
+
+  Future<void> _persistCodeEditorSetting(String key, Object value) async {
+    final localPreferences = await _getLocalPreferences();
+    if (localPreferences == null) return;
+    if (value is int) await localPreferences.setInt(key, value);
+    if (value is String) await localPreferences.setString(key, value);
+  }
+
+  void updateProfile({String? name, String? mail}) {
     if (name != null && name.trim().isNotEmpty) api.username = name.trim();
     if (mail != null) email = mail.trim();
-    if (roleValue != null) role = roleValue;
     notifyListeners();
   }
 }

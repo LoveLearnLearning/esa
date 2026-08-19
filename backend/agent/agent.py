@@ -1,48 +1,94 @@
 # backend/agent/agent.py
 
+"""提供 `agent` 相关功能。"""
+
 from __future__ import annotations
 
 import asyncio
 import json
-import re
+import logging
+import time
 from collections.abc import AsyncIterator
-from dataclasses import replace
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from vllm.config.cache import CacheDType
     from vllm.config.model import ModelDType
     from vllm.model_executor.layers.quantization import QuantizationMethods
 
-from backend.agent.learning.pedagogy_router import PedagogyRouter
-from backend.agent.tools import tr
-from backend.agent.tools.mastery_tools import set_current_total_weeks
-from backend.agent.tools.memory_tools import (
-    set_current_conversation_mode,
-    set_current_user,
-)
-from backend.agent.tools.skills import (
-    build_autoload_skills_context,
-    build_skills_context,
-    load_skill,
-    validate_skill_contracts,
-)
-from backend.core.message.build_prompt import build_system_prompt
-from backend.core.utils.config import DEBUG_MODE
+from backend.agent.tools.bootstrap import register_builtin_tools
+from backend.agent.tools.skills import validate_skill_contracts
+from backend.agent.workspaces.models import ExecutableAgentRun
+from backend.agent.workspaces.history import sanitize_qwen_history as sanitize_qwen_history
+from backend.core.utils.config import AGENT_STREAM_HEARTBEAT_SECONDS, DEBUG_MODE
 from backend.core.utils.models import (
     AgentStreamEvent,
     ParsedOutput,
-    PromptContext,
     ToolCall,
-    UserRecord,
 )
 
 
-_UNSUPPORTED_TOOL_CALLS_PATTERN = re.compile(
-    r"<[^<>]*tool_calls(?:\s[^<>]*)?>",
-    re.IGNORECASE,
-)
+logger = logging.getLogger(__name__)
+
+
+def _observed_tools_and_actions(
+    messages: list[dict],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """处理 `_observed_tools_and_actions` 相关逻辑。"""
+    tools: set[str] = set()
+    actions: set[str] = set()
+    for message in messages:
+        if message.get("role") != "tool":
+            continue
+        name = message.get("name")
+        if isinstance(name, str) and name:
+            tools.add(name)
+        try:
+            payload = json.loads(str(message.get("content", "")))
+        except (TypeError, ValueError):
+            continue
+        if isinstance(payload, dict):
+            action_id = payload.get("action_id")
+            if isinstance(action_id, str) and action_id:
+                actions.add(action_id)
+    return tuple(sorted(tools)), tuple(sorted(actions))
+
+
+def _log_run_finished(
+    run_spec: ExecutableAgentRun,
+    *,
+    mode: str,
+    outcome: str,
+    started_at: float,
+    messages: list[dict],
+) -> None:
+    """记录 `run finished` 相关数据。"""
+    tool_names, action_ids = _observed_tools_and_actions(messages)
+    logger.info(
+        "agent run finished run_id=%s request_id=%s conversation_id=%s workspace=%s "
+        "definition_version=%s profile=%s profile_fingerprint=%s capability=%s "
+        "prompt_version=%s policy_versions=%s resource_revisions=%s "
+        "mode=%s outcome=%s latency_ms=%.2f tools=%s action_request_ids=%s",
+        run_spec.run_metadata.get("run_id"),
+        run_spec.run_metadata.get("request_id"),
+        run_spec.run_metadata.get("conversation_id"),
+        run_spec.run_metadata.get("workspace_type"),
+        run_spec.run_metadata.get("definition_version"),
+        run_spec.run_metadata.get("agent_profile_id"),
+        run_spec.run_metadata.get("profile_fingerprint"),
+        run_spec.capability_fingerprint,
+        run_spec.run_metadata.get("prompt_version"),
+        run_spec.run_metadata.get("policy_versions"),
+        run_spec.run_metadata.get("resource_revisions"),
+        mode,
+        outcome,
+        (time.monotonic() - started_at) * 1000,
+        ",".join(tool_names),
+        ",".join(action_ids),
+    )
 
 
 def serialize_tool_result(result: object) -> str:
@@ -54,49 +100,11 @@ def serialize_tool_result(result: object) -> str:
     return json.dumps(result, ensure_ascii=False, default=str)
 
 
-def sanitize_qwen_history(history: list[dict]) -> list[dict]:
-    """移除不属于 Qwen XML 协议的旧工具调用轮次。
-
-    Qwen 使用单数 ``<tool_call>``。旧会话中可能残留复数
-    ``<...tool_calls>`` 协议；把它重新放进 prompt 会诱导 Qwen 模仿旧格式。
-    删除旧 assistant 调用时，也删除紧随其后的 tool 结果，避免孤立消息。
-    """
-    sanitized: list[dict] = []
-    skip_following_tools = False
-
-    for message in history:
-        role = message.get("role")
-        content = message.get("content", "")
-
-        if role == "assistant":
-            skip_following_tools = isinstance(content, str) and bool(
-                _UNSUPPORTED_TOOL_CALLS_PATTERN.search(content)
-            )
-            if skip_following_tools:
-                continue
-        elif role == "tool":
-            if skip_following_tools:
-                continue
-        else:
-            skip_following_tools = False
-
-        sanitized.append(message)
-
-    return sanitized
-
-
-def build_user_profile_context(
-    user: UserRecord,
-) -> str | None:
-    """[已废弃] 旧扁平学情档案构建函数，保留签名用于向后兼容。"""
-    return None
-
-
 class Agent:
+    """封装 `Agent` 的状态与行为。"""
     def __init__(
         self,
         model_path: str | Path,
-        loop_times: int = 3,
         quantization: QuantizationMethods | None = None,
         dtype: ModelDType = "auto",
         kv_cache_dtype: CacheDType = "auto",
@@ -105,7 +113,13 @@ class Agent:
         max_output_tokens: int = 8192,
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
+        stream_heartbeat_seconds: float = AGENT_STREAM_HEARTBEAT_SECONDS,
     ) -> None:
+        """初始化 `Agent` 实例。"""
+        if stream_heartbeat_seconds <= 0:
+            raise ValueError("stream_heartbeat_seconds 必须大于 0")
+        self.stream_heartbeat_seconds = stream_heartbeat_seconds
+        register_builtin_tools()
         # 在加载昂贵的 vLLM 模型之前 fail-fast，避免 Skill/Tool 漂移带病启动。
         skill_errors = validate_skill_contracts()
         if skill_errors:
@@ -115,7 +129,6 @@ class Agent:
         # vLLM 保持延迟导入，确保测试/工具脚本可以在未安装 vLLM 时导入 Agent。
         from backend.core.services.vllm_service import LLMProvider
 
-        self.loop_times = loop_times
         self.llm_provider = LLMProvider(
             model_path=model_path,
             quantization=quantization,
@@ -128,104 +141,52 @@ class Agent:
             tensor_parallel_size=tensor_parallel_size,
         )
 
-    def _prepare_run(
+    async def run(self, run_spec: ExecutableAgentRun) -> list[dict]:
+        """Run one non-streaming turn from an already-authorized specification."""
+        started_at = time.monotonic()
+        logger.info(
+            "agent run started request_id=%s conversation_id=%s workspace=%s profile=%s capability=%s tools=%s",
+            run_spec.run_metadata.get("request_id"),
+            run_spec.run_metadata.get("conversation_id"),
+            run_spec.run_metadata.get("workspace_type"),
+            run_spec.run_metadata.get("agent_profile_id"),
+            run_spec.capability_fingerprint,
+            ",".join(run_spec.run_metadata.get("tool_names", ())),
+        )
+        messages = [dict(item) for item in run_spec.messages]
+        current = messages[-1]
+        new_messages = [{**current, "is_visible": True}]
+        outcome = "failed"
+        try:
+            result = await self._run_loop(messages, new_messages, run_spec)
+            outcome = "succeeded"
+            return result
+        finally:
+            _log_run_finished(
+                run_spec,
+                mode="sync",
+                outcome=outcome,
+                started_at=started_at,
+                messages=new_messages,
+            )
+
+    async def _run_loop(
         self,
-        input: str,
-        user_name: str,
-        history: list[dict] | None,
-        prompt_ctx: PromptContext | None = None,
-        total_weeks: int | None = None,
-    ) -> tuple[list[dict], list[dict]]:
-        prompt_ctx = prompt_ctx or PromptContext()
-        history = sanitize_qwen_history(history or [])
-
-        set_current_user(user_name)
-        set_current_conversation_mode(prompt_ctx.conversation_mode)
-
-        if total_weeks is not None:
-            set_current_total_weeks(total_weeks)
-
-        # 轻量确定性路由选中策略后按需加载 Skill 正文，
-        # 主 Agent 仍需结合用户当前消息决定具体执行。
-        decision = PedagogyRouter.route(
-            input,
-            history=history,
-            profile=prompt_ctx.user_profile_context,
-        )
-        loaded_skill_body = (
-            load_skill(decision.skill_name)
-            if decision.skill_name is not None
-            else None
-        )
-
-        prompt_ctx = replace(
-            prompt_ctx,
-            pedagogy_context=decision.to_prompt_context(
-                loaded_skill_body=loaded_skill_body,
-            ),
-            autoload_skills_context=build_autoload_skills_context(),
-        )
-        skills_context = build_skills_context()
-
-        system_prompt = build_system_prompt(
-            user_name=user_name,
-            skills_context=skills_context,
-            prompt_ctx=prompt_ctx,
-        )
-
-        user_message = {
-            "role": "user",
-            "content": input,
-        }
-
-        messages = [
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            *history,
-            user_message,
-        ]
-
-        new_messages = [
-            {
-                **user_message,
-                "is_visible": True,
-            }
-        ]
-
-        return messages, new_messages
-
-    async def run(
-        self,
-        input: str,
-        user_name: str,
-        history: list[dict] | None = None,
-        prompt_ctx: PromptContext | None = None,
-        total_weeks: int | None = None,
+        messages: list[dict],
+        new_messages: list[dict],
+        run_spec: ExecutableAgentRun,
     ) -> list[dict]:
-        """
-        运行一轮非流式对话。
-
-        返回本轮新消息（用户输入 + 助手回复 + Tool 结果），调用方可直接持久化。
-        """
-        messages, new_messages = self._prepare_run(
-            input,
-            user_name,
-            history,
-            prompt_ctx=prompt_ctx,
-            total_weeks=total_weeks,
-        )
-
-        for _ in range(self.loop_times):
+        """执行 `loop` 相关数据。"""
+        tool_schemas = [dict(item) for item in run_spec.tool_schemas]
+        for _ in range(run_spec.loop_policy.max_iterations):
             response = await self.llm_provider.generate(
                 messages,
-                tr.schemas,
+                tool_schemas,
             )
 
             parsed: ParsedOutput = self.llm_provider.parse_output(
                 response,
-                tr.schemas,
+                tool_schemas,
             )
             tool_calls: list[ToolCall] = parsed.tool_calls
 
@@ -266,10 +227,12 @@ class Agent:
             )
 
             for tool_call in tool_calls:
-                result = await asyncio.to_thread(
-                    tr.call,
-                    tool_call.name,
-                    tool_call.arguments,
+                result = await asyncio.wait_for(
+                    run_spec.tool_executor.execute(
+                        tool_call.name,
+                        tool_call.arguments,
+                    ),
+                    timeout=run_spec.loop_policy.tool_timeout_seconds,
                 )
                 result_text = serialize_tool_result(result)
 
@@ -293,32 +256,123 @@ class Agent:
 
     async def run_stream(
         self,
-        input: str,
-        user_name: str,
-        history: list[dict] | None = None,
-        prompt_ctx: PromptContext | None = None,
-        total_weeks: int | None = None,
+        run_spec: ExecutableAgentRun,
     ) -> AsyncIterator[AgentStreamEvent]:
-        messages, new_messages = self._prepare_run(
-            input,
-            user_name,
-            history,
-            prompt_ctx=prompt_ctx,
-            total_weeks=total_weeks,
+        """执行 `stream` 相关数据。
+
+        Args:
+            run_spec: AgentRunSpec => `run_spec` 参数。
+
+        Returns:
+            AsyncIterator[AgentStreamEvent] => 处理结果。
+        """
+        started_at = time.monotonic()
+        logger.info(
+            "agent stream started request_id=%s conversation_id=%s workspace=%s profile=%s capability=%s",
+            run_spec.run_metadata.get("request_id"),
+            run_spec.run_metadata.get("conversation_id"),
+            run_spec.run_metadata.get("workspace_type"),
+            run_spec.run_metadata.get("agent_profile_id"),
+            run_spec.capability_fingerprint,
         )
+        messages = [dict(item) for item in run_spec.messages]
+        current = messages[-1]
+        new_messages = [{**current, "is_visible": True}]
+        outcome = "cancelled"
+        try:
+            async for event in self._run_stream_loop(messages, new_messages, run_spec):
+                yield event
+            outcome = "succeeded"
+        except Exception:
+            outcome = "failed"
+            raise
+        finally:
+            _log_run_finished(
+                run_spec,
+                mode="stream",
+                outcome=outcome,
+                started_at=started_at,
+                messages=new_messages,
+            )
 
-        for _ in range(self.loop_times):
+    async def _run_stream_loop(
+        self,
+        messages: list[dict],
+        new_messages: list[dict],
+        run_spec: ExecutableAgentRun,
+    ) -> AsyncIterator[AgentStreamEvent]:
+        """执行 `stream loop` 相关数据。"""
+        tool_schemas = [dict(item) for item in run_spec.tool_schemas]
+        for _ in range(run_spec.loop_policy.max_iterations):
             stream_parser = self.llm_provider.create_stream_parser()
-
-            async for chunk in self.llm_provider.generate_stream(
+            generation = self.llm_provider.generate_stream(
                 messages,
-                tr.schemas,
-            ):
-                for event, delta in stream_parser.feed(chunk):
-                    yield AgentStreamEvent(
-                        event=event,
-                        data={"delta": delta},
+                tool_schemas,
+            ).__aiter__()
+            pending_chunk: asyncio.Task[str] | None = None
+            heartbeat_seconds = getattr(
+                self,
+                "stream_heartbeat_seconds",
+                AGENT_STREAM_HEARTBEAT_SECONDS,
+            )
+            last_event_at = time.monotonic()
+
+            try:
+                while True:
+                    if pending_chunk is None:
+                        pending_chunk = asyncio.create_task(anext(generation))
+
+                    wait_seconds = max(
+                        0.0,
+                        heartbeat_seconds - (time.monotonic() - last_event_at),
                     )
+                    done, _ = await asyncio.wait(
+                        {pending_chunk},
+                        timeout=wait_seconds,
+                    )
+                    if not done:
+                        yield AgentStreamEvent(
+                            event="heartbeat",
+                            data={"stage": "inference"},
+                        )
+                        last_event_at = time.monotonic()
+                        continue
+
+                    try:
+                        chunk = pending_chunk.result()
+                    except StopAsyncIteration:
+                        pending_chunk = None
+                        break
+                    pending_chunk = None
+
+                    visible_events = stream_parser.feed(chunk)
+                    for event, delta in visible_events:
+                        yield AgentStreamEvent(
+                            event=event,
+                            data={"delta": delta},
+                        )
+                        last_event_at = time.monotonic()
+
+                    # 工具调用 XML 不对用户展示，但模型可能持续生成很久。
+                    # 即使 vLLM 一直有隐藏 token，也按 SSE 空闲时间发送心跳。
+                    if (
+                        not visible_events
+                        and time.monotonic() - last_event_at >= heartbeat_seconds
+                    ):
+                        yield AgentStreamEvent(
+                            event="heartbeat",
+                            data={"stage": "inference"},
+                        )
+                        last_event_at = time.monotonic()
+            finally:
+                if pending_chunk is not None:
+                    if not pending_chunk.done():
+                        pending_chunk.cancel()
+                    with suppress(asyncio.CancelledError, StopAsyncIteration):
+                        await pending_chunk
+                close_generation = getattr(generation, "aclose", None)
+                if close_generation is not None:
+                    await close_generation()
 
             for event, delta in stream_parser.finish():
                 yield AgentStreamEvent(
@@ -329,7 +383,7 @@ class Agent:
             response = stream_parser.raw_text
             parsed = self.llm_provider.parse_output(
                 response,
-                tr.schemas,
+                tool_schemas,
             )
             tool_calls = parsed.tool_calls
 
@@ -368,11 +422,35 @@ class Agent:
             )
 
             for tool_call in tool_calls:
-                result = await asyncio.to_thread(
-                    tr.call,
-                    tool_call.name,
-                    tool_call.arguments,
+                tool_call_id = f"tool-{uuid4().hex}"
+                yield AgentStreamEvent(
+                    event="tool_start",
+                    data={
+                        "id": tool_call_id,
+                        "name": tool_call.name,
+                    },
                 )
+                tool_task = asyncio.create_task(
+                    run_spec.tool_executor.execute(
+                        tool_call.name,
+                        tool_call.arguments,
+                    )
+                )
+                while True:
+                    try:
+                        result = await asyncio.wait_for(
+                            asyncio.shield(tool_task),
+                            timeout=run_spec.loop_policy.tool_timeout_seconds,
+                        )
+                        break
+                    except asyncio.TimeoutError:
+                        yield AgentStreamEvent(
+                            event="tool_progress",
+                            data={
+                                "id": tool_call_id,
+                                "name": tool_call.name,
+                            },
+                        )
                 result_text = serialize_tool_result(result)
 
                 tool_message = {
@@ -394,6 +472,7 @@ class Agent:
                 yield AgentStreamEvent(
                     event="tool",
                     data={
+                        "id": tool_call_id,
                         "name": tool_call.name,
                         "content": result_text,
                     },

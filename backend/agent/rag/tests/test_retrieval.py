@@ -61,6 +61,7 @@ CASES = WORKSPACE_ROOT / "data/evaluation/reference_evaluation_v1.json"
 
 @pytest.fixture(scope="module")
 def collection() -> LoadedChunkCollection:
+    """处理 `collection` 相关逻辑。"""
     if not MANIFEST.exists():
         pytest.skip("ESA checkout does not include the external real-corpus artifacts")
     try:
@@ -71,6 +72,7 @@ def collection() -> LoadedChunkCollection:
 
 @pytest.fixture(scope="module")
 def service(collection: LoadedChunkCollection) -> RetrievalService:
+    """处理 `service` 相关逻辑。"""
     index = ReferenceIndex()
     embedding = HashingEmbeddingProvider()
     IndexingService(collection, index, embedding).build()
@@ -84,6 +86,7 @@ def service(collection: LoadedChunkCollection) -> RetrievalService:
 
 
 def _copy_collection(tmp_path: Path) -> Path:
+    """处理 `_copy_collection` 相关逻辑。"""
     if not MANIFEST.exists():
         pytest.skip("ESA checkout does not include the external real-corpus artifacts")
     target = tmp_path / "collection"
@@ -92,6 +95,7 @@ def _copy_collection(tmp_path: Path) -> Path:
 
 
 def test_load_real_collection_counts(collection: LoadedChunkCollection) -> None:
+    """验证 `load_real_collection_counts` 场景。"""
     assert len(collection.documents) == 7
     assert len(collection.chunks) == 532
     assert sum(len(chunk.evidence) for chunk in collection.chunks) == 2165
@@ -100,6 +104,7 @@ def test_load_real_collection_counts(collection: LoadedChunkCollection) -> None:
 def test_real_evidence_keeps_ocr_risk_and_multi_locator(
     collection: LoadedChunkCollection,
 ) -> None:
+    """验证 `real_evidence_keeps_ocr_risk_and_multi_locator` 场景。"""
     evidence = [item for chunk in collection.chunks for item in chunk.evidence]
     assert all(not item.quote_eligible for item in evidence)
     assert all(
@@ -112,6 +117,7 @@ def test_real_evidence_keeps_ocr_risk_and_multi_locator(
 def test_all_real_evidence_references_resolve_to_docir(
     collection: LoadedChunkCollection,
 ) -> None:
+    """验证 `all_real_evidence_references_resolve_to_docir` 场景。"""
     docir_paths = (WORKSPACE_ROOT / "artifacts/docir/runs/full-corpus-20260802").glob(
         "*/document.json"
     )
@@ -146,6 +152,7 @@ def test_all_real_evidence_references_resolve_to_docir(
 
 
 def test_three_routes_are_visible(service: RetrievalService) -> None:
+    """验证 `three_routes_are_visible` 场景。"""
     response = service.search("什么是黑盒测试？")
     assert set(response.trace.rankings) == {
         "dense",
@@ -160,6 +167,7 @@ def test_three_routes_are_visible(service: RetrievalService) -> None:
 def test_context_never_crosses_document_or_section(
     collection: LoadedChunkCollection, service: RetrievalService
 ) -> None:
+    """验证 `context_never_crosses_document_or_section` 场景。"""
     hit = service.search("黑盒测试", ContextLevel.FULL_READ).hits[0]
     by_id = {chunk.chunk_id: chunk for chunk in collection.chunks}
     identities = {
@@ -170,6 +178,7 @@ def test_context_never_crosses_document_or_section(
 
 
 def test_response_evidence_is_lossless_reference(service: RetrievalService) -> None:
+    """验证 `response_evidence_is_lossless_reference` 场景。"""
     evidence = service.search("黑盒测试").hits[0].evidence[0]
     assert evidence.evidence_text
     assert evidence.locators
@@ -178,6 +187,7 @@ def test_response_evidence_is_lossless_reference(service: RetrievalService) -> N
 
 
 def test_rrf_is_rank_only_and_reproducible() -> None:
+    """验证 `rrf_is_rank_only_and_reproducible` 场景。"""
     routes = {
         "dense": [RankedItem("b", 99), RankedItem("a", 1)],
         "body": [RankedItem("a", 0.01), RankedItem("b", 0.001)],
@@ -189,6 +199,7 @@ def test_rrf_is_rank_only_and_reproducible() -> None:
 
 
 def test_reference_embedding_is_deterministic_and_normalized() -> None:
+    """验证 `reference_embedding_is_deterministic_and_normalized` 场景。"""
     provider = HashingEmbeddingProvider()
     first = provider.embed(["黑盒测试 black box"])[0]
     second = provider.embed(["黑盒测试 black box"])[0]
@@ -197,6 +208,7 @@ def test_reference_embedding_is_deterministic_and_normalized() -> None:
 
 
 def test_reference_reranker_prefers_overlap() -> None:
+    """验证 `reference_reranker_prefers_overlap` 场景。"""
     scores = LexicalOverlapReranker().score(
         "黑盒测试", ["黑盒测试不关注内部结构", "完全无关的薪资信息"]
     )
@@ -204,6 +216,7 @@ def test_reference_reranker_prefers_overlap() -> None:
 
 
 def test_collection_loader_rejects_document_hash_tamper(tmp_path: Path) -> None:
+    """验证 `collection_loader_rejects_document_hash_tamper` 场景。"""
     manifest_path = _copy_collection(tmp_path)
     raw = json.loads(manifest_path.read_text(encoding="utf-8"))
     document_path = manifest_path.parent / raw["documents"][0]["path"]
@@ -213,6 +226,7 @@ def test_collection_loader_rejects_document_hash_tamper(tmp_path: Path) -> None:
 
 
 def test_collection_loader_rejects_missing_document(tmp_path: Path) -> None:
+    """验证 `collection_loader_rejects_missing_document` 场景。"""
     manifest_path = _copy_collection(tmp_path)
     raw = json.loads(manifest_path.read_text(encoding="utf-8"))
     (manifest_path.parent / raw["documents"][0]["path"]).unlink()
@@ -221,6 +235,7 @@ def test_collection_loader_rejects_missing_document(tmp_path: Path) -> None:
 
 
 def test_collection_loader_rejects_unsafe_path(tmp_path: Path) -> None:
+    """验证 `collection_loader_rejects_unsafe_path` 场景。"""
     manifest_path = _copy_collection(tmp_path)
     raw = json.loads(manifest_path.read_text(encoding="utf-8"))
     raw["documents"][0]["path"] = "../outside.json"
@@ -230,6 +245,7 @@ def test_collection_loader_rejects_unsafe_path(tmp_path: Path) -> None:
 
 
 def test_evaluation_case_enforces_positive_and_negative_gold() -> None:
+    """验证 `evaluation_case_enforces_positive_and_negative_gold` 场景。"""
     with pytest.raises(ValueError, match="need document"):
         EvaluationCase(
             "p", "q", True, frozenset(), frozenset(), frozenset(), ("body",), "note"
@@ -248,6 +264,7 @@ def test_evaluation_case_enforces_positive_and_negative_gold() -> None:
 
 
 def test_layer_evaluation_ignores_negative_cases() -> None:
+    """验证 `layer_evaluation_ignores_negative_cases` 场景。"""
     positive = EvaluationCase(
         "p",
         "q",
@@ -279,6 +296,7 @@ def test_layer_evaluation_ignores_negative_cases() -> None:
 
 
 class CapturingQdrant(QdrantIndex):
+    """封装 `CapturingQdrant` 的状态与行为。"""
     calls: ClassVar[list[tuple[str, str, dict[str, Any] | None]]] = []
 
     def _request(
@@ -287,6 +305,7 @@ class CapturingQdrant(QdrantIndex):
         path: str,
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """处理 `_request` 相关逻辑。"""
         self.calls.append((method, path, payload))
         if path.endswith("/points/query"):
             return {"result": {"points": []}}
@@ -296,6 +315,7 @@ class CapturingQdrant(QdrantIndex):
 def test_qdrant_ingest_uses_formal_chunk_and_fixed_bm25(
     collection: LoadedChunkCollection,
 ) -> None:
+    """验证 `qdrant_ingest_uses_formal_chunk_and_fixed_bm25` 场景。"""
     CapturingQdrant.calls.clear()
     index = CapturingQdrant("http://127.0.0.1:6333", "formal")
     index.build(
@@ -315,12 +335,25 @@ def test_qdrant_ingest_uses_formal_chunk_and_fixed_bm25(
 def test_online_failures_degrade_to_bm25_and_rrf(
     collection: LoadedChunkCollection,
 ) -> None:
+    """验证 `online_failures_degrade_to_bm25_and_rrf` 场景。"""
     class FailingEmbedding(HashingEmbeddingProvider):
+        """封装 `FailingEmbedding` 的状态与行为。"""
         def embed_query(self, query: str) -> list[float]:
+            """处理 `embed_query` 相关逻辑。"""
             raise InferenceUnavailable("offline")
 
     class FailingReranker(LexicalOverlapReranker):
+        """封装 `FailingReranker` 的状态与行为。"""
         def score(self, query: str, documents: Sequence[str]) -> list[float]:
+            """处理 `score` 相关逻辑。
+
+            Args:
+                query: str => 查询文本。
+                documents: Sequence[str] => `documents` 参数。
+
+            Returns:
+                list[float] => 处理结果。
+            """
             raise InferenceUnavailable("offline")
 
     index = ReferenceIndex()
@@ -346,6 +379,7 @@ def test_online_failures_degrade_to_bm25_and_rrf(
 
 
 def test_benchmark_remains_backend_neutral() -> None:
+    """验证 `benchmark_remains_backend_neutral` 场景。"""
     result = benchmark_backend(
         "fake",
         lambda: object(),
@@ -357,6 +391,7 @@ def test_benchmark_remains_backend_neutral() -> None:
 
 
 def test_blank_query_is_rejected(service: RetrievalService) -> None:
+    """验证 `blank_query_is_rejected` 场景。"""
     with pytest.raises(ValueError, match="blank"):
         service.search("   ")
 
@@ -377,6 +412,7 @@ def test_retrieval_config_reports_the_invalid_field(
     field_name: str,
     value: int,
 ) -> None:
+    """验证 `retrieval_config_reports_the_invalid_field` 场景。"""
     with pytest.raises(ValueError, match=field_name):
         RetrievalConfig(**{field_name: value})
 
@@ -384,6 +420,7 @@ def test_retrieval_config_reports_the_invalid_field(
 def test_index_generation_inputs_are_stable(
     collection: LoadedChunkCollection,
 ) -> None:
+    """验证 `index_generation_inputs_are_stable` 场景。"""
     embedding = HashingEmbeddingProvider()
     assert len(collection.manifest_sha256) == 64
     assert (
@@ -395,7 +432,9 @@ def test_index_generation_inputs_are_stable(
 def test_indexing_service_does_not_rebuild_same_instance(
     collection: LoadedChunkCollection,
 ) -> None:
+    """验证 `indexing_service_does_not_rebuild_same_instance` 场景。"""
     class CountingIndex(ReferenceIndex):
+        """封装 `CountingIndex` 的状态与行为。"""
         build_count = 0
 
         def build(
@@ -405,6 +444,13 @@ def test_indexing_service_does_not_rebuild_same_instance(
             *,
             generation_id: str,
         ) -> None:
+            """构建 `build` 相关数据。
+
+            Args:
+                chunks: Sequence[Any] => `chunks` 参数。
+                dense_vectors: Sequence[Sequence[float]] => `dense_vectors` 参数。
+                generation_id: str => generation ID。
+            """
             self.build_count += 1
             super().build(
                 chunks,
@@ -428,6 +474,7 @@ class StatefulQdrant(QdrantIndex):
     """只模拟生命周期 REST 语义，不模拟相似度查询。"""
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         super().__post_init__()
         object.__setattr__(self, "exists", False)
         object.__setattr__(self, "dense_dimension", None)
@@ -440,6 +487,7 @@ class StatefulQdrant(QdrantIndex):
         path: str,
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """处理 `_request` 相关逻辑。"""
         if method == "GET":
             if not self.exists:
                 raise CollectionNotFound("missing")
@@ -492,11 +540,14 @@ class StatefulQdrant(QdrantIndex):
 def test_qdrant_lifecycle_reuses_complete_generation_across_services(
     collection: LoadedChunkCollection,
 ) -> None:
+    """验证 `qdrant_lifecycle_reuses_complete_generation_across_services` 场景。"""
     class CountingEmbedding:
+        """封装 `CountingEmbedding` 的状态与行为。"""
         model_name = "counting-reference-embedding"
         dimensions = 384
 
         def __init__(self) -> None:
+            """初始化 `CountingEmbedding` 实例。"""
             self.calls = 0
             self.delegate = HashingEmbeddingProvider(
                 dimensions=self.dimensions,
@@ -505,12 +556,15 @@ def test_qdrant_lifecycle_reuses_complete_generation_across_services(
 
         @property
         def configuration_fingerprint(self) -> str:
+            """处理 `configuration_fingerprint` 相关逻辑。"""
             return self.delegate.configuration_fingerprint
 
         def embed(self, texts: Sequence[str]) -> list[list[float]]:
+            """处理 `embed` 相关逻辑。"""
             return self.delegate.embed(texts)
 
         def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+            """处理 `embed_documents` 相关逻辑。"""
             self.calls += 1
             return self.delegate.embed_documents(texts)
 
@@ -532,6 +586,7 @@ def test_qdrant_lifecycle_reuses_complete_generation_across_services(
 def test_qdrant_lifecycle_rejects_mixed_generations(
     collection: LoadedChunkCollection,
 ) -> None:
+    """验证 `qdrant_lifecycle_rejects_mixed_generations` 场景。"""
     index = StatefulQdrant("http://127.0.0.1:6333", "generation_conflict")
     object.__setattr__(index, "exists", True)
     object.__setattr__(index, "dense_dimension", 384)
@@ -542,6 +597,7 @@ def test_qdrant_lifecycle_rejects_mixed_generations(
 
 
 def test_qdrant_validate_existing_does_not_create_missing_collection() -> None:
+    """验证 `qdrant_validate_existing_does_not_create_missing_collection` 场景。"""
     index = StatefulQdrant("http://127.0.0.1:6333", "missing")
 
     with pytest.raises(CollectionNotFound):
@@ -554,6 +610,7 @@ def test_index_deployment_round_trip_and_identity_guard(
     collection: LoadedChunkCollection,
     tmp_path: Path,
 ) -> None:
+    """验证 `index_deployment_round_trip_and_identity_guard` 场景。"""
     result = IndexingService(
         collection,
         ReferenceIndex(),
@@ -581,6 +638,7 @@ def test_index_deployment_round_trip_and_identity_guard(
 def test_transformers_embedding_uses_bounded_batches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """验证 `transformers_embedding_uses_bounded_batches` 场景。"""
     provider = TransformersEmbeddingProvider(
         model_name="/models/embedding", batch_size=2
     )
@@ -588,6 +646,7 @@ def test_transformers_embedding_uses_bounded_batches(
     monkeypatch.setattr(provider, "_load", lambda: None)
 
     def embed_batch(texts: Sequence[str]) -> list[list[float]]:
+        """处理 `embed_batch` 相关逻辑。"""
         batches.append(list(texts))
         return [[float(len(text))] for text in texts]
 
@@ -597,17 +656,31 @@ def test_transformers_embedding_uses_bounded_batches(
     assert batches == [["a", "bb"], ["ccc"]]
 
 
+def test_transformers_embedding_runtime_device_does_not_change_index_identity() -> None:
+    """验证 `transformers_embedding_runtime_device_does_not_change_index_identity` 场景。"""
+    default = TransformersEmbeddingProvider(device="cuda")
+    remapped = TransformersEmbeddingProvider(
+        device="cuda",
+        runtime_device="cuda:4",
+    )
+
+    assert remapped.configuration_fingerprint == default.configuration_fingerprint
+
+
 def test_transformers_embedding_rejects_invalid_batch_size() -> None:
+    """验证 `transformers_embedding_rejects_invalid_batch_size` 场景。"""
     with pytest.raises(ValueError, match="batch_size must be positive"):
         TransformersEmbeddingProvider(batch_size=0)
 
 
 def test_transformers_embedding_rejects_invalid_dimension() -> None:
+    """验证 `transformers_embedding_rejects_invalid_dimension` 场景。"""
     with pytest.raises(ValueError, match="dimension must be positive"):
         TransformersEmbeddingProvider(dimension=0)
 
 
 def test_lifecycle_selects_local_transformers_backend() -> None:
+    """验证 `lifecycle_selects_local_transformers_backend` 场景。"""
     provider = qdrant_lifecycle._embedding_provider(
         "transformers",
         "/models/Qwen3-Embedding-4B",
@@ -620,6 +693,7 @@ def test_lifecycle_selects_local_transformers_backend() -> None:
 
 
 def test_lifecycle_selects_optional_local_reranker() -> None:
+    """验证 `lifecycle_selects_optional_local_reranker` 场景。"""
     disabled = qdrant_lifecycle._reranker(
         "none",
         "/models/Qwen3-Reranker-4B",
@@ -641,6 +715,7 @@ def test_build_deployment_creates_its_output_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """验证 `build_deployment_creates_its_output_directory` 场景。"""
     embedding = HashingEmbeddingProvider()
     index = ReferenceIndex()
     monkeypatch.setattr(
@@ -672,12 +747,14 @@ def test_build_deployment_creates_its_output_directory(
 def test_real_evaluation_set_resolves_all_gold(
     collection: LoadedChunkCollection,
 ) -> None:
+    """验证 `real_evaluation_set_resolves_all_gold` 场景。"""
     cases = load_evaluation_cases(CASES, collection)
     assert len(cases) == 42
     assert sum(case.answerable for case in cases) == 35
 
 
 def test_reference_evaluation_is_byte_deterministic(tmp_path: Path) -> None:
+    """验证 `reference_evaluation_is_byte_deterministic` 场景。"""
     if not MANIFEST.exists() or not CASES.exists():
         pytest.skip("ESA checkout does not include the external evaluation artifacts")
     first_root, first_summary = run_reference_evaluation(MANIFEST, CASES, tmp_path)
@@ -694,6 +771,7 @@ def test_reference_evaluation_is_byte_deterministic(tmp_path: Path) -> None:
 
 
 def test_reference_results_never_claim_quote_eligibility(tmp_path: Path) -> None:
+    """验证 `reference_results_never_claim_quote_eligibility` 场景。"""
     if not MANIFEST.exists() or not CASES.exists():
         pytest.skip("ESA checkout does not include the external evaluation artifacts")
     root, _summary = run_reference_evaluation(MANIFEST, CASES, tmp_path)

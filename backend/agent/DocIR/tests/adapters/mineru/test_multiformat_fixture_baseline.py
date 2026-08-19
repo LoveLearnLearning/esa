@@ -1,3 +1,5 @@
+# backend/agent/DocIR/tests/adapters/mineru/test_multiformat_fixture_baseline.py
+
 """MinerU 3.4.4 多格式原始输出的结构差异基线。"""
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ DOCUMENTS = BASELINE["documents"]
 
 
 def _sha256(path: Path) -> str:
+    """处理 `_sha256` 相关逻辑。"""
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -33,12 +36,14 @@ def _sha256(path: Path) -> str:
 
 
 def _exactly_one(root: Path, pattern: str) -> Path:
+    """处理 `_exactly_one` 相关逻辑。"""
     matches = sorted(root.rglob(pattern))
     assert len(matches) == 1, f"expected one {pattern} under {root}, got {matches}"
     return matches[0]
 
 
 def _values_for_key(value: Any, key: str) -> list[Any]:
+    """处理 `_values_for_key` 相关逻辑。"""
     values: list[Any] = []
     if isinstance(value, dict):
         for child_key, child in value.items():
@@ -52,6 +57,7 @@ def _values_for_key(value: Any, key: str) -> list[Any]:
 
 
 def _all_strings(value: Any) -> list[str]:
+    """处理 `_all_strings` 相关逻辑。"""
     strings: list[str] = []
     if isinstance(value, str):
         strings.append(value)
@@ -65,6 +71,7 @@ def _all_strings(value: Any) -> list[str]:
 
 
 def _actual(case: dict[str, Any]) -> dict[str, Any]:
+    """处理 `_actual` 相关逻辑。"""
     name = case["name"]
     output = OUTPUT_ROOT / name
     middle_path = _exactly_one(output, "*_middle.json")
@@ -141,6 +148,7 @@ def _actual(case: dict[str, Any]) -> dict[str, Any]:
 
 @pytest.mark.parametrize("case", DOCUMENTS, ids=[case["name"] for case in DOCUMENTS])
 def test_multiformat_raw_output_matches_baseline(case: dict[str, Any]):
+    """验证 `multiformat_raw_output_matches_baseline` 场景。"""
     source = SOURCE_ROOT / case["filename"]
     assert source.is_file()
     assert _sha256(source) == case["source_sha256"]
@@ -164,6 +172,7 @@ def test_multiformat_raw_output_matches_baseline(case: dict[str, Any]):
 
 
 def test_multiformat_baseline_covers_requested_formats():
+    """验证 `multiformat_baseline_covers_requested_formats` 场景。"""
     assert {case["format"] for case in DOCUMENTS} == {
         "PDF",
         "DOCX",

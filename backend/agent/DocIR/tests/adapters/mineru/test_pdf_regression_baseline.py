@@ -1,3 +1,5 @@
+# backend/agent/DocIR/tests/adapters/mineru/test_pdf_regression_baseline.py
+
 """真实 PDF → MinerU bundle → DocIR → Chunk/Evidence 回归基线。"""
 
 from __future__ import annotations
@@ -58,6 +60,7 @@ requires_pdf_baseline = pytest.mark.skipif(
 
 
 def _parse_dir(case: dict[str, object]) -> Path:
+    """解析 `dir` 相关数据。"""
     case_root = MINERU_RUN / str(case["directory"])
     matches = sorted({path.parent for path in case_root.rglob("*_middle.json")})
     assert len(matches) == 1, (
@@ -74,6 +77,7 @@ def _actual_metrics(
     parse_dir: Path,
     require_strict_alignment: bool = False,
 ) -> dict[str, int]:
+    """处理 `_actual_metrics` 相关逻辑。"""
     assert source.is_file(), f"missing PDF baseline source: {source}"
     assert file_sha256(source) == case["source_sha256"]
 
@@ -150,6 +154,7 @@ def _actual_metrics(
 def test_local_pdf_fixtures_match_regression_baseline(
     case: dict[str, object], tmp_path: Path
 ):
+    """验证 `local_pdf_fixtures_match_regression_baseline` 场景。"""
     output_root = LOCAL_OUTPUT_ROOT / str(case["name"])
     matches = sorted({path.parent for path in output_root.rglob("*_middle.json")})
     assert len(matches) == 1, f"expected one local MinerU bundle under {output_root}"
@@ -177,6 +182,7 @@ def test_local_pdf_fixtures_match_regression_baseline(
 def test_pdf_pipeline_matches_regression_baseline(
     case: dict[str, object], tmp_path: Path
 ):
+    """验证 `pdf_pipeline_matches_regression_baseline` 场景。"""
     expected = {
         key: value
         for key, value in case.items()
@@ -199,6 +205,7 @@ def test_pdf_pipeline_matches_regression_baseline(
 
 
 def test_pdf_regression_manifest_totals_are_internally_consistent():
+    """验证 `pdf_regression_manifest_totals_are_internally_consistent` 场景。"""
     metric_names = set(BASELINE["totals"]) - {"documents"}
     actual = {
         name: sum(int(document[name]) for document in DOCUMENTS)

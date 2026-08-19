@@ -1,3 +1,7 @@
+# backend/tests/test_profile_prompt_dedup.py
+
+"""验证 `profile_prompt_dedup` 相关行为与回归场景。"""
+
 import json
 
 from backend.agent.memories.memory_models import (
@@ -8,6 +12,7 @@ from backend.agent.memories.memory_models import (
 
 
 def test_response_preferences_are_kept_for_api_but_not_duplicated_into_prompt_json():
+    """验证 `response_preferences_are_kept_for_api_but_not_duplicated_into_prompt_json` 场景。"""
     snapshot = ProfileSnapshot(
         user_id="u1",
         profile_version=1,

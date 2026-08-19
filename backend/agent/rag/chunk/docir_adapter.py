@@ -29,5 +29,14 @@ def discover_docir_documents(input_root: Path) -> list[Path]:
 
 
 def build_from_path(path: Path, builder: ChunkBuilder) -> ChunkDocument:
+    """构建 `from path` 相关数据。
+
+    Args:
+        path: Path => 目标路径。
+        builder: ChunkBuilder => `builder` 参数。
+
+    Returns:
+        ChunkDocument => 处理结果。
+    """
     path = Path(path)
     return builder.build(load_document(path), docir_sha256=file_sha256(path))

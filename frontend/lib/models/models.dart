@@ -240,10 +240,10 @@ class ScheduleTable {
   final bool isActive;
 
   factory ScheduleTable.fromJson(Map<String, dynamic> json) => ScheduleTable(
-        id: json['id'] as String? ?? '',
-        name: json['name'] as String? ?? '',
-        isActive: json['is_active'] as bool? ?? false,
-      );
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    isActive: json['is_active'] as bool? ?? false,
+  );
 }
 
 class ScheduleSnapshot {
@@ -259,26 +259,22 @@ class ScheduleSnapshot {
   final List<ScheduleTable> tables;
   final String activeTableId;
 
-  factory ScheduleSnapshot.fromJson(Map<String, dynamic> json) =>
-      ScheduleSnapshot(
-        courses: (json['courses'] as List? ?? const [])
-            .whereType<Map>()
-            .map(
-              (item) =>
-                  ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
-            )
-            .toList(),
-        settings: ScheduleSettings.fromJson(
-          Map<String, dynamic>.from(json['settings'] as Map? ?? const {}),
-        ),
-        tables: (json['tables'] as List? ?? const [])
-            .whereType<Map>()
-            .map(
-              (item) => ScheduleTable.fromJson(Map<String, dynamic>.from(item)),
-            )
-            .toList(),
-        activeTableId: json['active_table_id'] as String? ?? '',
-      );
+  factory ScheduleSnapshot.fromJson(
+    Map<String, dynamic> json,
+  ) => ScheduleSnapshot(
+    courses: (json['courses'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => ScheduleCourse.fromJson(Map<String, dynamic>.from(item)))
+        .toList(),
+    settings: ScheduleSettings.fromJson(
+      Map<String, dynamic>.from(json['settings'] as Map? ?? const {}),
+    ),
+    tables: (json['tables'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => ScheduleTable.fromJson(Map<String, dynamic>.from(item)))
+        .toList(),
+    activeTableId: json['active_table_id'] as String? ?? '',
+  );
 }
 
 /// POST /me/schedule/import 的结果：成功导入的课程 + 因时间冲突被跳过的条数
@@ -288,12 +284,67 @@ class ScheduleImportResult {
     required this.skippedCount,
     this.importedCount,
     this.warnings = const [],
+    this.documentPipeline = 'legacy',
+    this.documentId,
   });
 
   final List<ScheduleCourse> courses;
   final int skippedCount;
   final int? importedCount;
   final List<String> warnings;
+  final String documentPipeline;
+  final String? documentId;
+}
+
+class DocumentAttachment {
+  const DocumentAttachment({
+    required this.id,
+    required this.filename,
+    required this.mode,
+    required this.tokenCount,
+    required this.elementCount,
+    required this.pageCount,
+    required this.validationStatus,
+    required this.qualityIssueCount,
+    this.mediaType = 'application/octet-stream',
+    this.sizeBytes = 0,
+  });
+
+  final String id;
+  final String filename;
+  final String mode;
+  final int tokenCount;
+  final int elementCount;
+  final int pageCount;
+  final String validationStatus;
+  final int qualityIssueCount;
+  final String mediaType;
+  final int sizeBytes;
+
+  String get extension {
+    final index = filename.lastIndexOf('.');
+    return index < 0 ? '' : filename.substring(index + 1).toLowerCase();
+  }
+
+  String get modeLabel => switch (mode) {
+    'pending' => '已保存 · 发送后按需解析',
+    'rag' => 'DocIR · RAG',
+    _ => 'DocIR · 全文',
+  };
+
+  factory DocumentAttachment.fromJson(Map<String, dynamic> json) =>
+      DocumentAttachment(
+        id: json['id']?.toString() ?? '',
+        filename: json['filename']?.toString() ?? '附件',
+        mode: json['mode']?.toString() ?? 'direct',
+        tokenCount: (json['token_count'] as num?)?.toInt() ?? 0,
+        elementCount: (json['element_count'] as num?)?.toInt() ?? 0,
+        pageCount: (json['page_count'] as num?)?.toInt() ?? 0,
+        validationStatus: json['validation_status']?.toString() ?? '',
+        qualityIssueCount: (json['quality_issue_count'] as num?)?.toInt() ?? 0,
+        mediaType: json['media_type']?.toString() ?? 'application/octet-stream',
+        sizeBytes: (json['size_bytes'] as num?)?.toInt() ?? 0,
+      );
 }
 
 String formatClockMinutes(int totalMinutes) {
@@ -411,12 +462,14 @@ class KnowledgeMapNode {
     required this.evidenceCount,
     required this.weakPrerequisiteCount,
     required this.level,
+    this.nodeType = 'knowledge_point',
     this.masteryLevel,
     this.retention,
     this.evidenceConfidence,
   });
 
   final String id;
+  final String nodeType;
   final String name;
   final String course;
   final String category;
@@ -433,9 +486,12 @@ class KnowledgeMapNode {
   final int weakPrerequisiteCount;
   final int level;
 
+  bool get isCourse => nodeType == 'course';
+
   factory KnowledgeMapNode.fromJson(Map<String, dynamic> json) =>
       KnowledgeMapNode(
         id: json['id']?.toString() ?? '',
+        nodeType: json['node_type']?.toString() ?? 'knowledge_point',
         name: json['name']?.toString() ?? '',
         course: json['course']?.toString() ?? '',
         category: json['category']?.toString() ?? 'general',
@@ -485,24 +541,84 @@ class KnowledgeMapData {
   final List<KnowledgeMapNode> nodes;
   final List<KnowledgeMapEdge> edges;
 
-  factory KnowledgeMapData.fromJson(Map<String, dynamic> json) =>
-      KnowledgeMapData(
-        course: json['course']?.toString() ?? '',
-        nodes: (json['nodes'] as List? ?? const [])
-            .whereType<Map>()
-            .map(
-              (item) =>
-                  KnowledgeMapNode.fromJson(Map<String, dynamic>.from(item)),
-            )
-            .toList(),
-        edges: (json['edges'] as List? ?? const [])
-            .whereType<Map>()
-            .map(
-              (item) =>
-                  KnowledgeMapEdge.fromJson(Map<String, dynamic>.from(item)),
-            )
-            .toList(),
+  factory KnowledgeMapData.fromJson(Map<String, dynamic> json) {
+    final course = json['course']?.toString() ?? '';
+    final nodes = (json['nodes'] as List? ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => KnowledgeMapNode.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+    final edges = (json['edges'] as List? ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => KnowledgeMapEdge.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+    if (course.isEmpty || nodes.isEmpty || nodes.any((node) => node.isCourse)) {
+      return KnowledgeMapData(course: course, nodes: nodes, edges: edges);
+    }
+
+    final nodeIds = nodes.map((node) => node.id).toSet();
+    final incoming = {for (final id in nodeIds) id: 0};
+    final adjacency = {for (final id in nodeIds) id: <String>{}};
+    for (final edge in edges) {
+      if (!nodeIds.contains(edge.from) || !nodeIds.contains(edge.to)) continue;
+      incoming[edge.to] = incoming[edge.to]! + 1;
+      adjacency[edge.from]!.add(edge.to);
+      adjacency[edge.to]!.add(edge.from);
+    }
+    final roots = <String>[];
+    final remaining = {...nodeIds};
+    while (remaining.isNotEmpty) {
+      final start = remaining.reduce((a, b) => a.compareTo(b) <= 0 ? a : b);
+      final component = <String>{start};
+      final queue = <String>[start];
+      for (var index = 0; index < queue.length; index++) {
+        for (final neighbor in adjacency[queue[index]]!) {
+          if (component.add(neighbor)) queue.add(neighbor);
+        }
+      }
+      remaining.removeAll(component);
+      final componentRoots = component.where((id) => incoming[id] == 0).toList()
+        ..sort();
+      roots.add(
+        componentRoots.isEmpty
+            ? component.reduce((a, b) => a.compareTo(b) <= 0 ? a : b)
+            : componentRoots.first,
       );
+      if (componentRoots.length > 1) roots.addAll(componentRoots.skip(1));
+    }
+
+    final courseNodeId = '__course__:$course';
+    return KnowledgeMapData(
+      course: course,
+      nodes: [
+        KnowledgeMapNode(
+          id: courseNodeId,
+          nodeType: 'course',
+          name: course,
+          course: course,
+          category: 'course',
+          weight: 0,
+          external: false,
+          hasRecord: false,
+          status: 'course',
+          needsReview: false,
+          practiceCount: 0,
+          evidenceCount: 0,
+          weakPrerequisiteCount: 0,
+          level: -1,
+        ),
+        ...nodes,
+      ],
+      edges: [
+        for (final root in roots)
+          KnowledgeMapEdge(from: courseNodeId, to: root, type: 'course_root'),
+        ...edges,
+      ],
+    );
+  }
 }
 
 class KnowledgePointDetail {
@@ -524,20 +640,117 @@ class KnowledgePointDetail {
 
 class CoreMemoryItem {
   const CoreMemoryItem({
+    required this.id,
     required this.key,
     required this.content,
     required this.category,
+    this.scopeType = 'global',
+    this.workspaceType,
+    this.status = 'active',
+    this.revision = 1,
   });
 
+  final String id;
   final String key;
   final String content;
   final String category;
+  final String scopeType;
+  final String? workspaceType;
+  final String status;
+  final int revision;
 
   factory CoreMemoryItem.fromJson(Map<String, dynamic> json) => CoreMemoryItem(
+    id: json['memory_id'] as String? ?? json['memory_key'] as String? ?? '',
     key: json['memory_key'] as String? ?? '',
     content: json['content'] as String? ?? '',
     category: json['category'] as String? ?? 'general',
+    scopeType: json['scope_type'] as String? ?? 'global',
+    workspaceType: json['workspace_type'] as String?,
+    status: json['status'] as String? ?? 'active',
+    revision: json['revision'] as int? ?? 1,
   );
+}
+
+class MemoryCandidateItem {
+  const MemoryCandidateItem({
+    required this.id,
+    required this.key,
+    required this.content,
+    required this.category,
+    required this.scopeType,
+    this.workspaceType,
+  });
+  final String id;
+  final String key;
+  final String content;
+  final String category;
+  final String scopeType;
+  final String? workspaceType;
+
+  factory MemoryCandidateItem.fromJson(Map<String, dynamic> json) =>
+      MemoryCandidateItem(
+        id: json['candidate_id'] as String? ?? '',
+        key: json['memory_key'] as String? ?? '',
+        content: json['proposed_content'] as String? ?? '',
+        category: json['category'] as String? ?? 'general',
+        scopeType: json['scope_type'] as String? ?? 'global',
+        workspaceType: json['workspace_type'] as String?,
+      );
+}
+
+class ResearchProjectProfile {
+  const ResearchProjectProfile({
+    required this.instructions,
+    required this.revision,
+  });
+  final String instructions;
+  final int revision;
+  factory ResearchProjectProfile.fromJson(Map<String, dynamic> json) =>
+      ResearchProjectProfile(
+        instructions: json['agent_instructions'] as String? ?? '',
+        revision: json['revision'] as int? ?? 0,
+      );
+}
+
+class AgentActionItem {
+  const AgentActionItem({
+    required this.id,
+    required this.type,
+    required this.status,
+    required this.workspaceType,
+    required this.arguments,
+    required this.resourceSnapshot,
+    required this.createdAt,
+    required this.expiresAt,
+    this.error,
+  });
+
+  final String id;
+  final String type;
+  final String status;
+  final String workspaceType;
+  final Map<String, dynamic> arguments;
+  final Map<String, dynamic> resourceSnapshot;
+  final DateTime? createdAt;
+  final DateTime? expiresAt;
+  final String? error;
+
+  factory AgentActionItem.fromJson(Map<String, dynamic> json) =>
+      AgentActionItem(
+        id: json['action_id']?.toString() ?? '',
+        type: json['action_type']?.toString() ?? '',
+        status: json['status']?.toString() ?? 'pending',
+        workspaceType: json['workspace_type']?.toString() ?? '',
+        arguments: json['arguments'] is Map
+            ? Map<String, dynamic>.from(json['arguments'] as Map)
+            : const {},
+        resourceSnapshot: json['resource_snapshot'] is Map
+            ? Map<String, dynamic>.from(json['resource_snapshot'] as Map)
+            : const {},
+        createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
+        expiresAt: DateTime.tryParse(json['expires_at']?.toString() ?? ''),
+        error: json['error']?.toString(),
+      );
 }
 
 enum MessageRole { user, assistant, tool }
@@ -564,9 +777,11 @@ class ChatMessage extends ChangeNotifier {
     this.typing = false,
     this.markdown = false,
     this.reasoning = '',
+    this.toolRunning = false,
+    this.attachments = const [],
   });
 
-  final String id;
+  String id;
   final MessageRole role;
   String text;
   final String? name; // 仅 tool 消息有 工具名
@@ -574,6 +789,8 @@ class ChatMessage extends ChangeNotifier {
   bool typing; // 等待后端回复时显示光标
   final bool markdown; // 仅前端使用：用户是否通过 Markdown 模式发送
   String reasoning; // 后端可选返回：模型思考内容
+  bool toolRunning; // 工具已开始调用但结果尚未返回
+  final List<DocumentAttachment> attachments;
 
   bool get isUser => role == MessageRole.user;
   bool get isTool => role == MessageRole.tool;
@@ -586,14 +803,27 @@ class ChatMessage extends ChangeNotifier {
       name: j['name'] as String?,
       createdAt: j['created_at'] as String?,
       reasoning: (j['reasoning'] ?? j['thinking']) as String? ?? '',
+      toolRunning: false,
+      attachments: (j['attachments'] as List? ?? const [])
+          .whereType<Map>()
+          .map(
+            (item) =>
+                DocumentAttachment.fromJson(Map<String, dynamic>.from(item)),
+          )
+          .toList(),
     );
   }
 
-  static ChatMessage user(String text, {bool markdown = false}) => ChatMessage(
+  static ChatMessage user(
+    String text, {
+    bool markdown = false,
+    List<DocumentAttachment> attachments = const [],
+  }) => ChatMessage(
     id: _nextId(),
     role: MessageRole.user,
     text: text,
     markdown: markdown,
+    attachments: attachments,
   );
 
   static ChatMessage typingPlaceholder() =>
@@ -601,26 +831,596 @@ class ChatMessage extends ChangeNotifier {
 }
 
 /// 一个历史对话 对应 /conversations 的元素
+enum WorkspaceType {
+  learning,
+  teaching,
+  research;
+
+  String get wireName => name;
+  String get label => switch (this) {
+    WorkspaceType.learning => '学习空间',
+    WorkspaceType.teaching => '教学空间',
+    WorkspaceType.research => '科研空间',
+  };
+
+  static WorkspaceType fromWire(String? value) => switch (value) {
+    'teaching' => WorkspaceType.teaching,
+    'research' => WorkspaceType.research,
+    _ => WorkspaceType.learning,
+  };
+}
+
+class WorkspaceDescriptor {
+  const WorkspaceDescriptor({
+    required this.type,
+    required this.name,
+    required this.description,
+    required this.capabilities,
+  });
+
+  final WorkspaceType type;
+  final String name;
+  final String description;
+  final List<String> capabilities;
+
+  factory WorkspaceDescriptor.fromJson(Map<String, dynamic> json) =>
+      WorkspaceDescriptor(
+        type: WorkspaceType.fromWire(json['type'] as String?),
+        name: json['name'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        capabilities: (json['capabilities'] as List? ?? const [])
+            .whereType<String>()
+            .toList(),
+      );
+}
+
+class WorkspaceManifest {
+  const WorkspaceManifest({
+    required this.accountRole,
+    required this.defaultWorkspace,
+    required this.workspaces,
+  });
+
+  final String accountRole;
+  final WorkspaceType defaultWorkspace;
+  final List<WorkspaceDescriptor> workspaces;
+
+  factory WorkspaceManifest.fromJson(Map<String, dynamic> json) =>
+      WorkspaceManifest(
+        accountRole: json['account_role'] as String? ?? 'student',
+        defaultWorkspace: WorkspaceType.fromWire(
+          json['default_workspace'] as String?,
+        ),
+        workspaces: (json['workspaces'] as List? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(WorkspaceDescriptor.fromJson)
+            .toList(),
+      );
+}
+
+class ResearchProject {
+  const ResearchProject({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.status,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final String status;
+  final DateTime updatedAt;
+
+  factory ResearchProject.fromJson(Map<String, dynamic> json) =>
+      ResearchProject(
+        id: json['project_id'] as String,
+        name: json['name'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        status: json['status'] as String? ?? 'active',
+        updatedAt:
+            DateTime.tryParse(json['updated_at'] as String? ?? '')?.toLocal() ??
+            DateTime.now(),
+      );
+
+  ResearchProject copyWith({
+    String? name,
+    String? description,
+    String? status,
+    DateTime? updatedAt,
+  }) => ResearchProject(
+    id: id,
+    name: name ?? this.name,
+    description: description ?? this.description,
+    status: status ?? this.status,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+}
+
+class FrontierTrackingJob {
+  const FrontierTrackingJob({
+    required this.id,
+    required this.query,
+    required this.status,
+    this.result,
+    this.error,
+  });
+
+  final String id;
+  final String query;
+  final String status;
+  final Map<String, dynamic>? result;
+  final String? error;
+
+  bool get isFinished => status == 'succeeded' || status == 'failed';
+
+  factory FrontierTrackingJob.fromJson(Map<String, dynamic> json) =>
+      FrontierTrackingJob(
+        id: json['job_id']?.toString() ?? '',
+        query: json['query']?.toString() ?? '',
+        status: json['status']?.toString() ?? 'queued',
+        result: json['result'] is Map
+            ? Map<String, dynamic>.from(json['result'] as Map)
+            : null,
+        error: json['error']?.toString(),
+      );
+}
+
+class ResearchDocument {
+  const ResearchDocument({
+    required this.id,
+    required this.title,
+    required this.type,
+    required this.content,
+    required this.version,
+  });
+
+  final String id;
+  final String title;
+  final String type;
+  final String content;
+  final int version;
+
+  factory ResearchDocument.fromJson(Map<String, dynamic> json) =>
+      ResearchDocument(
+        id: json['document_id']?.toString() ?? '',
+        title: json['title']?.toString() ?? '',
+        type: json['document_type']?.toString() ?? 'notes',
+        content: json['content']?.toString() ?? '',
+        version: (json['version'] as num?)?.toInt() ?? 1,
+      );
+}
+
+class ResearchWritingJob {
+  const ResearchWritingJob({
+    required this.id,
+    required this.documentId,
+    required this.status,
+    this.error,
+  });
+
+  final String id;
+  final String documentId;
+  final String status;
+  final String? error;
+
+  bool get isFinished => status == 'succeeded' || status == 'failed';
+
+  factory ResearchWritingJob.fromJson(Map<String, dynamic> json) =>
+      ResearchWritingJob(
+        id: json['job_id']?.toString() ?? '',
+        documentId: json['document_id']?.toString() ?? '',
+        status: json['status']?.toString() ?? 'queued',
+        error: json['error']?.toString(),
+      );
+}
+
+class ResearchDataset {
+  const ResearchDataset({
+    required this.id,
+    required this.name,
+    required this.filename,
+    required this.rowCount,
+    required this.columnCount,
+    required this.profile,
+  });
+
+  final String id;
+  final String name;
+  final String filename;
+  final int rowCount;
+  final int columnCount;
+  final Map<String, dynamic> profile;
+
+  factory ResearchDataset.fromJson(Map<String, dynamic> json) =>
+      ResearchDataset(
+        id: json['dataset_id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        filename: json['original_filename']?.toString() ?? '',
+        rowCount: (json['row_count'] as num?)?.toInt() ?? 0,
+        columnCount: (json['column_count'] as num?)?.toInt() ?? 0,
+        profile: json['profile'] is Map
+            ? Map<String, dynamic>.from(json['profile'] as Map)
+            : const {},
+      );
+}
+
+class ResearchAnalysisJob {
+  const ResearchAnalysisJob({
+    required this.id,
+    required this.datasetId,
+    required this.type,
+    required this.status,
+    this.result,
+    this.error,
+  });
+
+  final String id;
+  final String datasetId;
+  final String type;
+  final String status;
+  final Map<String, dynamic>? result;
+  final String? error;
+
+  bool get isFinished => status == 'succeeded' || status == 'failed';
+
+  factory ResearchAnalysisJob.fromJson(Map<String, dynamic> json) =>
+      ResearchAnalysisJob(
+        id: json['job_id']?.toString() ?? '',
+        datasetId: json['dataset_id']?.toString() ?? '',
+        type: json['analysis_type']?.toString() ?? 'descriptive',
+        status: json['status']?.toString() ?? 'queued',
+        result: json['result'] is Map
+            ? Map<String, dynamic>.from(json['result'] as Map)
+            : null,
+        error: json['error']?.toString(),
+      );
+}
+
 class ChatConversation {
   ChatConversation({
     required this.id,
     required this.title,
     required this.updatedAt,
     this.pinned = false,
+    this.workspaceType = WorkspaceType.learning,
+    this.researchProjectId,
+    this.classId,
+    this.className,
+    this.assignmentId,
+    this.assignmentTitle,
+    this.groupId,
   });
 
   final String id;
   String title;
   DateTime updatedAt;
+  final WorkspaceType workspaceType;
+  final String? researchProjectId;
+  final String? classId;
+  final String? className;
+  final String? assignmentId;
+  final String? assignmentTitle;
+  String? groupId;
   bool pinned; // 置顶 后端暂无字段 仅前端本地状态
 
   factory ChatConversation.fromJson(Map<String, dynamic> j) {
+    final binding = j['classroom_binding'] is Map
+        ? Map<String, dynamic>.from(j['classroom_binding'] as Map)
+        : const <String, dynamic>{};
     return ChatConversation(
       id: j['conversation_id'] as String,
       title: (j['title'] as String?) ?? '新对话',
       updatedAt:
           DateTime.tryParse(j['updated_at'] as String? ?? '')?.toLocal() ??
           DateTime.now(),
+      workspaceType: WorkspaceType.fromWire(j['workspace_type'] as String?),
+      researchProjectId: j['research_project_id'] as String?,
+      classId: binding['class_id']?.toString(),
+      className: binding['class_name']?.toString(),
+      assignmentId: binding['assignment_id']?.toString(),
+      assignmentTitle: binding['assignment_title']?.toString(),
+      groupId: j['group_id'] as String?,
+    );
+  }
+}
+
+/// 用于区分“未提供字段”和“显式传 null”的分组更新哨兵值。
+class GroupFieldUnset {
+  const GroupFieldUnset();
+}
+
+const groupFieldUnset = GroupFieldUnset();
+
+class ChatGroup {
+  const ChatGroup({
+    required this.id,
+    required this.userId,
+    required this.name,
+    required this.description,
+    required this.customInstruction,
+    required this.conversationCount,
+    required this.createdAt,
+    required this.updatedAt,
+    this.style,
+    this.tone,
+  });
+
+  final String id;
+  final String userId;
+  final String name;
+  final String description;
+  final String customInstruction;
+  final String? style;
+  final String? tone;
+  final int conversationCount;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  factory ChatGroup.fromJson(Map<String, dynamic> json) => ChatGroup(
+    id: json['group_id'] as String? ?? '',
+    userId: json['user_id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    description: json['description'] as String? ?? '',
+    customInstruction: json['custom_instruction'] as String? ?? '',
+    style: json['style'] as String?,
+    tone: json['tone'] as String?,
+    conversationCount: (json['conversation_count'] as num?)?.toInt() ?? 0,
+    createdAt:
+        DateTime.tryParse(json['created_at'] as String? ?? '')?.toLocal() ??
+        DateTime.now(),
+    updatedAt:
+        DateTime.tryParse(json['updated_at'] as String? ?? '')?.toLocal() ??
+        DateTime.now(),
+  );
+}
+
+/// Teaching API models. The backend uses snake_case identifiers while the
+/// Flutter pages use small typed view models for the classroom workflow.
+class TeachingClass {
+  const TeachingClass({
+    required this.id,
+    required this.name,
+    required this.course,
+    this.term = '',
+    this.description = '',
+    this.status = 'active',
+    this.studentCount = 0,
+    this.openAssignmentCount = 0,
+    this.membershipStatus,
+    this.membershipId,
+    this.teacherUsername,
+  });
+
+  final String id;
+  final String name;
+  final String course;
+  final String term;
+  final String description;
+  final String status;
+  final int studentCount;
+  final int openAssignmentCount;
+  final String? membershipStatus;
+  final String? membershipId;
+  final String? teacherUsername;
+
+  factory TeachingClass.fromJson(Map<String, dynamic> json) => TeachingClass(
+    id: (json['class_id'] ?? json['id'])?.toString() ?? '',
+    name: json['name']?.toString() ?? '',
+    course: (json['canonical_course'] ?? json['course'])?.toString() ?? '',
+    term: json['term']?.toString() ?? '',
+    description: json['description']?.toString() ?? '',
+    status: json['status']?.toString() ?? 'active',
+    studentCount: (json['student_count'] as num?)?.toInt() ?? 0,
+    openAssignmentCount: (json['open_assignment_count'] as num?)?.toInt() ?? 0,
+    membershipStatus: json['membership_status']?.toString(),
+    membershipId: json['membership_id']?.toString(),
+    teacherUsername: json['teacher_username']?.toString(),
+  );
+}
+
+class TeachingQuestion {
+  const TeachingQuestion({
+    required this.id,
+    required this.prompt,
+    required this.maxPoints,
+    this.questionType = 'short_answer',
+    this.rubric = '',
+    this.referenceAnswer = '',
+    this.kpId,
+  });
+
+  final String id;
+  final String prompt;
+  final double maxPoints;
+  final String questionType;
+  final String rubric;
+  final String referenceAnswer;
+  final String? kpId;
+
+  String get type => questionType;
+
+  factory TeachingQuestion.fromJson(Map<String, dynamic> json) =>
+      TeachingQuestion(
+        id: (json['question_id'] ?? json['id'])?.toString() ?? '',
+        prompt: json['prompt']?.toString() ?? '',
+        maxPoints: (json['max_points'] as num?)?.toDouble() ?? 0,
+        questionType: json['question_type']?.toString() ?? 'short_answer',
+        rubric: json['rubric']?.toString() ?? '',
+        referenceAnswer: json['reference_answer']?.toString() ?? '',
+        kpId: json['kp_id']?.toString(),
+      );
+}
+
+class TeachingAssignment {
+  const TeachingAssignment({
+    required this.id,
+    required this.classId,
+    required this.className,
+    required this.course,
+    required this.title,
+    required this.instructions,
+    required this.status,
+    required this.totalPoints,
+    required this.submittedCount,
+    required this.studentCount,
+    required this.questions,
+    this.dueAt,
+    this.submissionId,
+    this.submissionStatus,
+    this.analysisStatus,
+    this.feedbackStatus,
+    this.totalScore,
+    this.submittedAt,
+  });
+
+  final String id;
+  final String classId;
+  final String className;
+  final String course;
+  final String title;
+  final String instructions;
+  final String status;
+  final double totalPoints;
+  final int submittedCount;
+  final int studentCount;
+  final List<TeachingQuestion> questions;
+  final DateTime? dueAt;
+  final String? submissionId;
+  final String? submissionStatus;
+  final String? analysisStatus;
+  final String? feedbackStatus;
+  final double? totalScore;
+  final DateTime? submittedAt;
+
+  factory TeachingAssignment.fromJson(Map<String, dynamic> json) {
+    DateTime? date(String key) =>
+        DateTime.tryParse(json[key]?.toString() ?? '');
+    final rawQuestions = json['questions'];
+    return TeachingAssignment(
+      id: (json['assignment_id'] ?? json['id'])?.toString() ?? '',
+      classId: json['class_id']?.toString() ?? '',
+      className: json['class_name']?.toString() ?? '',
+      course: (json['canonical_course'] ?? json['course'])?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      instructions: json['instructions']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'draft',
+      totalPoints: (json['total_points'] as num?)?.toDouble() ?? 0,
+      submittedCount: (json['submitted_count'] as num?)?.toInt() ?? 0,
+      studentCount: (json['student_count'] as num?)?.toInt() ?? 0,
+      questions: rawQuestions is List
+          ? rawQuestions
+                .whereType<Map>()
+                .map(
+                  (item) => TeachingQuestion.fromJson(
+                    Map<String, dynamic>.from(item),
+                  ),
+                )
+                .toList()
+          : const [],
+      dueAt: date('due_at'),
+      submissionId: json['submission_id']?.toString(),
+      submissionStatus: json['submission_status']?.toString(),
+      analysisStatus: json['analysis_status']?.toString(),
+      feedbackStatus: json['feedback_status']?.toString(),
+      totalScore: (json['total_score'] as num?)?.toDouble(),
+      submittedAt: date('submitted_at'),
+    );
+  }
+}
+
+class TeachingAnswer {
+  TeachingAnswer({
+    required this.id,
+    required this.questionId,
+    required this.prompt,
+    required this.answerText,
+    required this.maxPoints,
+    this.aiScore,
+    this.finalScore,
+    this.feedback = '',
+    this.kpId,
+    Map<String, dynamic>? raw,
+  }) : raw = raw ?? <String, dynamic>{};
+
+  final String id;
+  final String questionId;
+  final String prompt;
+  final String answerText;
+  final double maxPoints;
+  final double? aiScore;
+  final double? finalScore;
+  final String feedback;
+  final String? kpId;
+  final Map<String, dynamic> raw;
+
+  factory TeachingAnswer.fromJson(Map<String, dynamic> json) => TeachingAnswer(
+    id: (json['answer_id'] ?? json['id'])?.toString() ?? '',
+    questionId: json['question_id']?.toString() ?? '',
+    prompt: json['prompt']?.toString() ?? '',
+    answerText: json['answer_text']?.toString() ?? '',
+    maxPoints: (json['max_points'] as num?)?.toDouble() ?? 0,
+    aiScore: (json['ai_score'] as num?)?.toDouble(),
+    finalScore: (json['final_score'] as num?)?.toDouble(),
+    feedback: (json['final_feedback'] ?? json['ai_feedback'])?.toString() ?? '',
+    kpId: (json['final_kp_id'] ?? json['ai_kp_id'] ?? json['kp_id'])
+        ?.toString(),
+    raw: Map<String, dynamic>.from(json),
+  );
+}
+
+class TeachingSubmission {
+  TeachingSubmission({
+    required this.id,
+    required this.studentUsername,
+    required this.analysisStatus,
+    required this.feedbackStatus,
+    required this.answers,
+    this.assignmentId = '',
+    this.studentId = '',
+    this.status = 'submitted',
+    this.totalScore,
+    this.submittedAt,
+    this.version = 1,
+  });
+
+  final String id;
+  final String assignmentId;
+  final String studentId;
+  final String studentUsername;
+  final String status;
+  final String analysisStatus;
+  final String feedbackStatus;
+  final double? totalScore;
+  final DateTime? submittedAt;
+  final int version;
+  final List<TeachingAnswer> answers;
+
+  factory TeachingSubmission.fromJson(Map<String, dynamic> json) {
+    DateTime? date(String key) =>
+        DateTime.tryParse(json[key]?.toString() ?? '');
+    final rawAnswers = json['answers'];
+    return TeachingSubmission(
+      id: (json['submission_id'] ?? json['id'])?.toString() ?? '',
+      assignmentId: json['assignment_id']?.toString() ?? '',
+      studentId: json['student_id']?.toString() ?? '',
+      studentUsername: json['student_username']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'submitted',
+      analysisStatus: json['analysis_status']?.toString() ?? 'pending',
+      feedbackStatus: json['feedback_status']?.toString() ?? 'unpublished',
+      totalScore: (json['total_score'] as num?)?.toDouble(),
+      submittedAt: date('submitted_at'),
+      version: (json['version'] as num?)?.toInt() ?? 1,
+      answers: rawAnswers is List
+          ? rawAnswers
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      TeachingAnswer.fromJson(Map<String, dynamic>.from(item)),
+                )
+                .toList()
+          : const [],
     );
   }
 }

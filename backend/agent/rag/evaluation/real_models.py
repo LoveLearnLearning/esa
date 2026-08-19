@@ -50,6 +50,7 @@ RERANK_SUFFIX = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
 
 
 def _sha256(path: Path) -> str:
+    """处理 `_sha256` 相关逻辑。"""
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -80,6 +81,7 @@ def load_collection_texts(root: Path) -> tuple[dict[str, Any], list[str]]:
 
 
 def _gpu_snapshot() -> dict[str, Any]:
+    """处理 `_gpu_snapshot` 相关逻辑。"""
     command = [
         "nvidia-smi",
         "--query-gpu=name,driver_version,memory.total,memory.used,memory.free",
@@ -96,6 +98,7 @@ def _gpu_snapshot() -> dict[str, Any]:
 
 
 def _model_revision(model_path: str) -> str | None:
+    """处理 `_model_revision` 相关逻辑。"""
     revision_file = Path(model_path) / "REVISION"
     if revision_file.is_file():
         return revision_file.read_text(encoding="utf-8").strip() or None
@@ -108,11 +111,13 @@ def _model_revision(model_path: str) -> str | None:
 
 
 def _error_record(exc: BaseException) -> dict[str, Any]:
+    """处理 `_error_record` 相关逻辑。"""
     message = " ".join(str(exc).split())
     return {"status": "oom" if "out of memory" in message.lower() else "error", "error": message[:1000]}
 
 
 def _cuda_mib(torch: Any, value: int) -> float:
+    """处理 `_cuda_mib` 相关逻辑。"""
     return round(value / (1024 * 1024), 2)
 
 
@@ -190,6 +195,7 @@ def _measure(
 
 
 def _make_token_text(tokenizer: Any, target_tokens: int) -> str:
+    """处理 `_make_token_text` 相关逻辑。"""
     seed = "这是用于真实模型显存与上下文长度压测的中文技术文本，包含表格、公式与检索证据。"
     text = seed
     while len(tokenizer.encode(text, add_special_tokens=False)) < target_tokens:
@@ -206,6 +212,7 @@ def _base_result(
     texts: Sequence[str],
     torch: Any,
 ) -> dict[str, Any]:
+    """处理 `_base_result` 相关逻辑。"""
     return {
         "schema_name": "rag-real-model-benchmark",
         "schema_version": "1.0",
@@ -233,6 +240,18 @@ def benchmark_embedding(
     texts: Sequence[str],
     repeats: int,
 ) -> dict[str, Any]:
+    """处理 `benchmark_embedding` 相关逻辑。
+
+    Args:
+        model_name: str => `model_name` 参数。
+        model_path: str => `model_path` 参数。
+        manifest: dict[str, Any] => `manifest` 参数。
+        texts: Sequence[str] => `texts` 参数。
+        repeats: int => `repeats` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     import torch
     from transformers import AutoModel, AutoTokenizer
 
@@ -252,7 +271,17 @@ def benchmark_embedding(
     result["embedding_dimension"] = int(model.config.hidden_size)
 
     def run(raw_texts: Sequence[str], max_length: int) -> tuple[Callable[[], tuple[dict[str, Any], int]], Callable[[dict[str, Any]], Any]]:
+        """执行 `run` 相关数据。
+
+        Args:
+            raw_texts: Sequence[str] => `raw_texts` 参数。
+            max_length: int => `max_length` 参数。
+
+        Returns:
+            tuple[Callable[[], tuple[dict[str, Any], int]], Callable[[dict[str, Any]], Any]] => 处理结果。
+        """
         def prepare() -> tuple[dict[str, Any], int]:
+            """准备 `prepare` 相关数据。"""
             encoded = tokenizer(
                 list(raw_texts), padding=True, truncation=True, max_length=max_length,
                 return_tensors="pt",
@@ -261,6 +290,7 @@ def benchmark_embedding(
             return ({key: value.to("cuda") for key, value in encoded.items()}, tokens)
 
         def infer(inputs: dict[str, Any]) -> Any:
+            """处理 `infer` 相关逻辑。"""
             hidden = model(**inputs).last_hidden_state
             return torch.nn.functional.normalize(hidden[:, -1], p=2, dim=1)
 
@@ -312,6 +342,18 @@ def benchmark_reranker(
     texts: Sequence[str],
     repeats: int,
 ) -> dict[str, Any]:
+    """处理 `benchmark_reranker` 相关逻辑。
+
+    Args:
+        model_name: str => `model_name` 参数。
+        model_path: str => `model_path` 参数。
+        manifest: dict[str, Any] => `manifest` 参数。
+        texts: Sequence[str] => `texts` 参数。
+        repeats: int => `repeats` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -339,12 +381,23 @@ def benchmark_reranker(
         max_length: int,
         query: str = domain_query,
     ) -> tuple[Callable[[], tuple[dict[str, Any], int]], Callable[[dict[str, Any]], Any]]:
+        """执行 `run` 相关数据。
+
+        Args:
+            documents: Sequence[str] => `documents` 参数。
+            max_length: int => `max_length` 参数。
+            query: str => 查询文本。
+
+        Returns:
+            tuple[Callable[[], tuple[dict[str, Any], int]], Callable[[dict[str, Any]], Any]] => 处理结果。
+        """
         payloads = [
             f"<Instruct>: {QUERY_INSTRUCTION}\n<Query>: {query}\n<Document>: {document}"
             for document in documents
         ]
 
         def prepare() -> tuple[dict[str, Any], int]:
+            """准备 `prepare` 相关数据。"""
             body_limit = max_length - len(prefix_ids) - len(suffix_ids)
             pairs = tokenizer(payloads, padding=False, truncation=True, max_length=body_limit)
             pairs["input_ids"] = [prefix_ids + ids + suffix_ids for ids in pairs["input_ids"]]
@@ -353,6 +406,7 @@ def benchmark_reranker(
             return ({key: value.to("cuda") for key, value in padded.items()}, tokens)
 
         def infer(inputs: dict[str, Any]) -> Any:
+            """处理 `infer` 相关逻辑。"""
             logits = model(**inputs).logits[:, -1, :]
             binary = torch.stack([logits[:, false_id], logits[:, true_id]], dim=1)
             return torch.nn.functional.log_softmax(binary, dim=1)[:, 1].exp()
@@ -420,6 +474,7 @@ def benchmark_reranker(
 
 
 def _write_json(path: Path, value: dict[str, Any]) -> None:
+    """写入 `json` 相关数据。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(
@@ -430,6 +485,14 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: Sequence[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("backend", choices=sorted(MODELS))
     parser.add_argument("--collection", type=Path, default=DEFAULT_COLLECTION)

@@ -24,6 +24,7 @@ from backend.agent.tools.tools import tr
             "name": "retrieve_knowledge",
             "description": (
                 "从已配置的知识库检索证据、上下文和可回查来源。"
+                "在学习空间回答课程知识点、概念、原理，或需要依据内部教材时优先调用。"
                 "该工具只读，不会隐式建立或修改索引。"
             ),
             "parameters": {

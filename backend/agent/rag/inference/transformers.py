@@ -26,6 +26,10 @@ class TransformersEmbeddingProvider:
     model_name: str = "Qwen/Qwen3-Embedding-4B"
     load_path: str | None = None
     device: str = "cuda"
+    # ``device`` is part of the frozen embedding fingerprint.  Cluster
+    # launchers may expose the same CUDA device under another logical index;
+    # keep that placement detail out of the semantic index identity.
+    runtime_device: str | None = None
     dimension: int = 2560
     max_length: int = 8192
     batch_size: int = 8
@@ -37,6 +41,7 @@ class TransformersEmbeddingProvider:
     _torch: Any = field(init=False, default=None, repr=False)
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if self.dimension <= 0:
             raise ValueError("dimension must be positive")
         if self.max_length <= 0:
@@ -80,11 +85,17 @@ class TransformersEmbeddingProvider:
             source,
             padding_side="left",
         )
+        target_device = self.runtime_device or self.device
         self._model = (
             AutoModel.from_pretrained(source, torch_dtype="auto")
-            .to(self.device)
+            .to(target_device)
             .eval()
         )
+
+    def warmup(self) -> None:
+        """Load model weights during application startup."""
+
+        self._load()
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """按固定批大小执行编码，避免整库 Padding 和显存峰值。"""
@@ -107,7 +118,8 @@ class TransformersEmbeddingProvider:
             max_length=self.max_length,
             return_tensors="pt",
         )
-        encoded = {name: value.to(self.device) for name, value in encoded.items()}
+        target_device = self.runtime_device or self.device
+        encoded = {name: value.to(target_device) for name, value in encoded.items()}
         with self._torch.inference_mode():
             hidden = self._model(**encoded).last_hidden_state
             pooled = self._torch.nn.functional.normalize(hidden[:, -1], p=2, dim=1)
@@ -151,6 +163,7 @@ class TransformersReranker:
     _suffix_tokens: list[int] = field(init=False, default_factory=list, repr=False)
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if self.max_length <= 0:
             raise ValueError("max_length must be positive")
 
@@ -214,6 +227,11 @@ class TransformersReranker:
             suffix,
             add_special_tokens=False,
         )
+
+    def warmup(self) -> None:
+        """Load model weights during application startup."""
+
+        self._load()
 
     def score(self, query: str, documents: Sequence[str]) -> list[float]:
         """为每个候选计算归一化的 yes 概率。"""

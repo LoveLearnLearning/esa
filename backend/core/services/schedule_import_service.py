@@ -1,3 +1,7 @@
+# backend/core/services/schedule_import_service.py
+
+"""提供领域服务实现。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -5,13 +9,17 @@ import base64
 import io
 import json
 import re
+import tempfile
 import warnings
 from dataclasses import dataclass
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
+from backend.agent.DocIR.tools.batch_corpus import SUPPORTED_SOURCE_SUFFIXES
+from backend.agent.mm import MultimodalSessionService, render_document_markdown
 from backend.core.utils.config import AUXILIARY_MODEL_MAX_IMAGES_PER_PROMPT
 
 MAX_PDF_PAGES = AUXILIARY_MODEL_MAX_IMAGES_PER_PROMPT
@@ -26,13 +34,70 @@ class ExtractedScheduleDocument:
 
     text: str = ""
     image_data_urls: tuple[str, ...] = ()
+    pipeline: str = "legacy"
+    docir_document_id: str | None = None
+    docir_validation_status: str | None = None
+    docir_element_count: int = 0
+    docir_page_count: int = 0
 
     @property
     def is_multimodal(self) -> bool:
+        """判断 `multimodal` 相关数据。"""
         return bool(self.image_data_urls)
+
+    @property
+    def metadata(self) -> dict[str, Any]:
+        """处理 `metadata` 相关逻辑。"""
+        return {
+            "pipeline": self.pipeline,
+            "document_id": self.docir_document_id,
+            "validation_status": self.docir_validation_status,
+            "element_count": self.docir_element_count,
+            "page_count": self.docir_page_count,
+        }
+
+
+def supports_docir_schedule(filename: str) -> bool:
+    """处理 `supports_docir_schedule` 相关逻辑。"""
+    return Path(filename).suffix.lower() in SUPPORTED_SOURCE_SUFFIXES
+
+
+async def extract_schedule_document_via_docir(
+    *,
+    mm_sessions: MultimodalSessionService,
+    session_key: str,
+    filename: str,
+    data: bytes,
+) -> ExtractedScheduleDocument:
+    """用生产 MinerU → DocIR 管线解析课表，再投影成辅助模型输入。"""
+
+    safe_name = Path(filename.replace("\\", "/")).name
+    if not supports_docir_schedule(safe_name):
+        raise ValueError("该课表文件类型不受 DocIR 支持")
+    try:
+        with tempfile.TemporaryDirectory(prefix="esa-schedule-") as temporary:
+            source = Path(temporary) / safe_name
+            source.write_bytes(data)
+            prepared = (await mm_sessions.prepare(session_key, [source]))[0]
+            document = prepared.document
+            text = render_document_markdown(document)
+    finally:
+        await mm_sessions.clear(session_key)
+
+    if not text.strip():
+        raise ValueError("DocIR 没有从文件中解析到可用内容")
+    return ExtractedScheduleDocument(
+        text=text[:120_000],
+        pipeline="docir",
+        docir_document_id=document.document_id,
+        docir_validation_status=document.validation.status.value,
+        docir_element_count=len(document.elements),
+        docir_page_count=document.source_page_count or document.parsed_page_count,
+    )
 
 
 class ExtractedScheduleCourse(BaseModel):
+    """封装 `ExtractedScheduleCourse` 的状态与行为。"""
     name: str = Field(min_length=1, max_length=80)
     teacher: str = Field(default="", max_length=80)
     location: str = Field(default="", max_length=80)
@@ -44,6 +109,7 @@ class ExtractedScheduleCourse(BaseModel):
 
     @model_validator(mode="after")
     def validate_ranges(self) -> "ExtractedScheduleCourse":
+        """校验 `ranges` 相关数据。"""
         if self.end_period < self.start_period:
             raise ValueError("end_period 不能小于 start_period")
         if self.end_week < self.start_week:
@@ -55,6 +121,7 @@ class _VisibleHTMLParser(HTMLParser):
     """提取可见文本；表格行内单元格用 " | " 连接，保留行列结构。"""
 
     def __init__(self) -> None:
+        """初始化 `_VisibleHTMLParser` 实例。"""
         super().__init__()
         self.parts: list[str] = []
         self.hidden_depth = 0
@@ -62,6 +129,12 @@ class _VisibleHTMLParser(HTMLParser):
         self._cell_parts: list[str] | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """处理 `starttag` 相关数据。
+
+        Args:
+            tag: str => `tag` 参数。
+            attrs: list[tuple[str, str | None]] => `attrs` 参数。
+        """
         tag = tag.lower()
         if tag in {"script", "style", "noscript"}:
             self.hidden_depth += 1
@@ -73,6 +146,7 @@ class _VisibleHTMLParser(HTMLParser):
             self._cell_parts = []
 
     def handle_endtag(self, tag: str) -> None:
+        """处理 `endtag` 相关数据。"""
         tag = tag.lower()
         if tag in {"script", "style", "noscript"} and self.hidden_depth:
             self.hidden_depth -= 1
@@ -84,6 +158,7 @@ class _VisibleHTMLParser(HTMLParser):
             self._flush_row()
 
     def handle_data(self, data: str) -> None:
+        """处理 `data` 相关数据。"""
         if self.hidden_depth or not data.strip():
             return
         if self._cell_parts is not None:
@@ -92,6 +167,7 @@ class _VisibleHTMLParser(HTMLParser):
             self.parts.append(data.strip())
 
     def _flush_cell(self) -> None:
+        """处理 `_flush_cell` 相关逻辑。"""
         if self._cell_parts is None:
             return
         # 空单元格保留占位，模型才能数出课程属于第几列（星期几）
@@ -99,6 +175,7 @@ class _VisibleHTMLParser(HTMLParser):
         self._cell_parts = None
 
     def _flush_row(self) -> None:
+        """处理 `_flush_row` 相关逻辑。"""
         self._flush_cell()
         if self._row_cells is None:
             return
@@ -107,6 +184,7 @@ class _VisibleHTMLParser(HTMLParser):
         self._row_cells = None
 
     def close(self) -> None:
+        """释放当前对象持有的资源。"""
         super().close()
         self._flush_row()
 
@@ -145,6 +223,7 @@ def _encode_pil_image(image: Any) -> str:
 
 
 def _image_data_url(data: bytes) -> str:
+    """处理 `_image_data_url` 相关逻辑。"""
     try:
         from PIL import Image, ImageOps, UnidentifiedImageError
     except ImportError as error:
@@ -209,6 +288,7 @@ def _pdf_image_data_urls(data: bytes) -> tuple[str, ...]:
 
 
 def _html_text(data: bytes) -> str:
+    """处理 `_html_text` 相关逻辑。"""
     text = data.decode("utf-8", errors="replace")
     parser = _VisibleHTMLParser()
     parser.feed(text)
@@ -219,6 +299,16 @@ def _html_text(data: bytes) -> str:
 async def extract_schedule_document(
     *, filename: str, content_type: str, data: bytes
 ) -> ExtractedScheduleDocument:
+    """提取 `schedule document` 相关数据。
+
+    Args:
+        filename: str => 文件名。
+        content_type: str => `content_type` 参数。
+        data: bytes => 输入数据。
+
+    Returns:
+        ExtractedScheduleDocument => 处理结果。
+    """
     extension = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
     if content_type == "application/pdf" or extension == "pdf":
         images = await asyncio.to_thread(_pdf_image_data_urls, data)
@@ -251,6 +341,7 @@ async def extract_schedule_document(
 
 
 def _json_array(raw: str) -> list[dict]:
+    """处理 `_json_array` 相关逻辑。"""
     cleaned = re.sub(r"```(?:json)?", "", raw, flags=re.IGNORECASE).replace("```", "")
     match = re.search(r"\[[\s\S]*\]", cleaned)
     if match is None:
@@ -272,6 +363,18 @@ async def extract_schedule_courses(
     settings: dict,
     max_output_tokens: int = 4096,
 ) -> list[dict]:
+    """提取 `schedule courses` 相关数据。
+
+    Args:
+        llm_client: Any => `llm_client` 参数。
+        document: ExtractedScheduleDocument => `document` 参数。
+        total_weeks: int => `total_weeks` 参数。
+        settings: dict => 设置数据。
+        max_output_tokens: int => `max_output_tokens` 参数。
+
+    Returns:
+        list[dict] => 处理结果。
+    """
     schema = {
         "name": "课程名称",
         "teacher": "教师，没有则空字符串",

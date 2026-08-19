@@ -1,5 +1,7 @@
 # backend/core/services/vllm_service.py
 
+"""提供领域服务实现。"""
+
 from __future__ import annotations
 
 import logging
@@ -23,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class LLMProvider:
+    """封装 `LLMProvider` 的状态与行为。"""
     def __init__(
         self,
         model_path: str | Path,
@@ -35,6 +38,7 @@ class LLMProvider:
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
     ) -> None:
+        """初始化 `LLMProvider` 实例。"""
         self.model_path = Path(model_path)
         if max_output_tokens <= 0:
             raise ValueError("max_output_tokens 必须大于 0")
@@ -124,6 +128,16 @@ class LLMProvider:
         tools: list[dict],
         request_id: str | None = None,
     ) -> AsyncIterator[str]:
+        """生成 `stream` 相关数据。
+
+        Args:
+            messages: list[dict] => 消息列表。
+            tools: list[dict] => 可用工具列表。
+            request_id: str | None => request ID。
+
+        Returns:
+            AsyncIterator[str] => 处理结果。
+        """
         request_id = request_id or str(uuid.uuid4())
 
         prompt = self.build_prompt(messages, tools)

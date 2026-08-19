@@ -1,3 +1,5 @@
+# backend/agent/memories/paths.py
+
 """Canonical filesystem paths for ESA memory stores and source data."""
 
 from pathlib import Path

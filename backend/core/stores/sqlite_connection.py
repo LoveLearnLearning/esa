@@ -1,10 +1,17 @@
+# backend/core/stores/sqlite_connection.py
+
+"""提供 `sqlite_connection` 相关功能。"""
+
 from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
 
 
-DEFAULT_SQLITE_TIMEOUT_SECONDS = 5.0
+# Startup initializes several independent stores against the same database.
+# On the shared filesystem used by the cluster, a short metadata/write lock can
+# outlive SQLite's usual five-second default even though no deadlock exists.
+DEFAULT_SQLITE_TIMEOUT_SECONDS = 30.0
 
 
 def connect_sqlite(

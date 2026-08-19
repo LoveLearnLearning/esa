@@ -1,13 +1,17 @@
 # backend/core/message/build_prompt.py
 
+"""兼容旧测试的 Prompt builder；生产请求由 WorkspaceRuntime 组装。"""
+
 from __future__ import annotations
 
 import backend.core.message.system as system_message
 import backend.core.message.style_tone as style_tone
 from backend.core.utils.models import PromptContext
+from backend.core.workspaces import workspace_prompt
 
 
 def _clean(value: str | None) -> str:
+    """清理 `clean` 相关数据。"""
     return value.strip() if value else ""
 
 
@@ -33,6 +37,7 @@ def build_system_prompt(
 
     sections = [
         system_message.SYSTEM_PROMPT.strip(),
+        f"# Current workspace\n\n{workspace_prompt(prompt_ctx.workspace_type)}",
         f"> 用户昵称: {user_name or '未提供'}",
         (
             "# 输出风格\n\n"
@@ -67,6 +72,16 @@ def build_system_prompt(
                 "仅将其作为可能相关的事实参考；与用户当前消息冲突时，以当前消息为准。\n\n"
                 f"{profile_json}"
             )
+
+    attachment_context = _clean(prompt_ctx.attachment_context)
+    if attachment_context:
+        sections.append(
+            "# 当前附件清单\n\n"
+            "以下清单由系统根据用户本轮明确选择的附件生成。附件仍未解析。\n"
+            "需要读取附件内容时，先从可用 Skills 中加载与文件类型匹配的 Skill，"
+            "再按 Skill 调用受限附件 Tool。不得猜测文件内容或文件路径。\n\n"
+            f"{attachment_context}"
+        )
 
     pedagogy_context = _clean(prompt_ctx.pedagogy_context)
     if pedagogy_context:

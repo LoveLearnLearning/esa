@@ -1,3 +1,5 @@
+# backend/agent/mm/render.py
+
 """最终 DocIR 的确定性 Markdown 投影。"""
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from backend.agent.DocIR.core.elements import (
 
 
 def _primary_text(element: object) -> str:
+    """处理 `_primary_text` 相关逻辑。"""
     content = getattr(element, "text", None)
     if content is None:
         return ""
@@ -34,6 +37,14 @@ def _safe_content(value: str) -> str:
 
 
 def render_document_markdown(document: Document) -> str:
+    """渲染 `document markdown` 相关数据。
+
+    Args:
+        document: Document => `document` 参数。
+
+    Returns:
+        str => 处理结果。
+    """
     lines = [
         (
             f'<document id="{html.escape(document.document_id, quote=True)}" '

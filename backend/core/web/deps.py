@@ -1,5 +1,7 @@
 # backend/core/web/deps.py
 
+"""提供 `deps` 相关功能。"""
+
 
 from __future__ import annotations
 
@@ -20,6 +22,15 @@ def get_current_session(
     request: Request,
     authorization: str = Header(...),
 ) -> SessionPrincipal:
+    """获取 `current session` 相关数据。
+
+    Args:
+        request: Request => 当前 HTTP 请求。
+        authorization: str => `authorization` 参数。
+
+    Returns:
+        SessionPrincipal => 处理结果。
+    """
     if not authorization.startswith("Bearer "):
         raise HTTPException(401, "格式错误")
 

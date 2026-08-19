@@ -2,6 +2,8 @@
 // AppScope 置于 MaterialApp 之上 弹层等路由也能访问全局状态
 // 主题深色为默认 设置里可实时切换
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'pages/home_shell.dart';
@@ -9,11 +11,11 @@ import 'pages/login_page.dart';
 import 'state/app_state.dart';
 import 'theme/esa_theme.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  final state = AppState();
-  await state.restoreSession();
+  final state = AppState(restoringSession: true);
   runApp(EsaApp(state: state));
+  unawaited(state.restoreSession());
 }
 
 class EsaApp extends StatefulWidget {
@@ -36,7 +38,9 @@ class _EsaAppState extends State<EsaApp> {
 
   @override
   void dispose() {
-    _app.dispose();
+    // Callers that inject an AppState own its lifecycle (tests and embedded
+    // shells); EsaApp only owns the state it creates itself.
+    if (widget.state == null) _app.dispose();
     super.dispose();
   }
 
@@ -53,10 +57,38 @@ class _EsaAppState extends State<EsaApp> {
             theme: esaTheme(brightness: Brightness.light),
             darkTheme: esaTheme(brightness: Brightness.dark),
             themeMode: _app.themeMode,
-            home: _app.username.isEmpty ? const LoginPage() : const HomeShell(),
+            home: _app.restoringSession
+                ? const _StartupPage()
+                : _app.username.isEmpty
+                ? const LoginPage()
+                : const HomeShell(),
           );
         },
       ),
     );
   }
+}
+
+class _StartupPage extends StatelessWidget {
+  const _StartupPage();
+
+  @override
+  Widget build(BuildContext context) => const Scaffold(
+    body: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '星知智链',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+          ),
+          SizedBox(height: 20),
+          SizedBox.square(
+            dimension: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ],
+      ),
+    ),
+  );
 }

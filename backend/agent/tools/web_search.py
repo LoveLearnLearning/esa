@@ -1,13 +1,18 @@
-# backend/agnet/tools/web_search.py
+# backend/agent/tools/web_search.py
+
+"""Stable Agent-facing adapter for the You.com MCP search tool."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
-import requests
-
+from backend.agent.tools.context import ToolExecutionContext
 from backend.agent.tools.tools import tr
-from backend.core.utils.config import SEARXNG_BASE_URL
+from backend.core.log.logger import pipeline_log_context
+
+
+YOU_MCP_SERVER = "you"
+YOU_MCP_SEARCH_TOOL = "you-search"
 
 
 @tr.register(
@@ -50,92 +55,94 @@ def web_search(
     language: str = "zh-CN",
     time_range: str | None = None,
 ) -> dict[str, Any]:
-    """
-    使用本地 SearXNG 搜索互联网
-    Args:
-        query       : str       => 搜索内容
-        max_results : int = 5   => 最大搜索结果数量
-        language    : str       => 搜索结果便好语言
-        time_range  : str | None = None =>
-            None: 不限制
-            day: 最近一天
-            month: 最近一个月
-            year: 最近一年
-    """
-    query = query.strip()
+    """Reject unbound calls; production execution needs the lifespan MCP client."""
 
+    del query, max_results, language, time_range
+    raise RuntimeError("web_search requires the application MCP runtime")
+
+
+def _schema_properties(schema: Mapping[str, Any]) -> Mapping[str, Any]:
+    properties = schema.get("properties", {})
+    return properties if isinstance(properties, Mapping) else {}
+
+
+def build_you_search_arguments(
+    schema: Mapping[str, Any],
+    *,
+    query: str,
+    max_results: int = 5,
+    language: str = "zh-CN",
+    time_range: str | None = None,
+) -> dict[str, Any]:
+    """Map ESA's stable search contract onto the discovered MCP schema."""
+
+    query = query.strip()
     if not query:
         raise ValueError("搜索关键词不能为空")
+    properties = _schema_properties(schema)
+    arguments: dict[str, Any] = {}
+
+    query_key = next(
+        (key for key in ("query", "q", "search_query") if key in properties),
+        None,
+    )
+    if query_key is None:
+        raise RuntimeError("You.com MCP search schema does not declare a query field")
+    arguments[query_key] = query
 
     max_results = max(1, min(max_results, 20))
-
-    params: dict[str, str | int] = {
-        "q": query,
-        "format": "json",
-        "categories": "general",
-        "language": language,
-        "safesearch": 1,
-    }
-
+    for key in ("max_results", "count", "limit", "num_results"):
+        if key in properties:
+            arguments[key] = max_results
+            break
+    for key in ("language", "search_language", "search_lang"):
+        if key in properties:
+            arguments[key] = language
+            break
     if time_range in {"day", "month", "year"}:
-        params["time_range"] = time_range
+        for key in ("time_range", "freshness", "recency"):
+            definition = properties.get(key)
+            if not isinstance(definition, Mapping):
+                continue
+            allowed = definition.get("enum")
+            if allowed is None or time_range in allowed:
+                arguments[key] = time_range
+                break
+    return arguments
 
-    try:
-        response = requests.get(
-            f"{SEARXNG_BASE_URL}/search",
-            params=params,
-            timeout=20,
+
+async def execute_web_search(
+    context: ToolExecutionContext,
+    *,
+    query: str,
+    max_results: int = 5,
+    language: str = "zh-CN",
+    time_range: str | None = None,
+) -> dict[str, Any]:
+    """Execute You.com search through the lifecycle-owned MCP child process."""
+
+    manager = context.runtime_dependencies.mcp_client_manager
+    if manager is None:
+        raise RuntimeError("You.com MCP search service is not configured")
+    schema = manager.tool_schema(YOU_MCP_SERVER, YOU_MCP_SEARCH_TOOL)
+    arguments = build_you_search_arguments(
+        schema,
+        query=query,
+        max_results=max_results,
+        language=language,
+        time_range=time_range,
+    )
+    with pipeline_log_context(
+        user_id=context.user_id,
+        conversation_id=context.conversation_id,
+    ):
+        result = await manager.call_tool(
+            YOU_MCP_SERVER,
+            YOU_MCP_SEARCH_TOOL,
+            arguments,
         )
-
-        response.raise_for_status()
-        data = response.json()
-
-    except requests.Timeout as exc:
-        raise RuntimeError("搜索请求超时") from exc
-
-    except requests.HTTPError as exc:
-        status_code = exc.response.status_code
-
-        if status_code == 403:
-            message = (
-                "SearXNG 禁止 JSON 输出，请检查 "
-                "settings.yml 中是否启用了 search.formats.json"
-            )
-        else:
-            message = f"SearXNG 返回 HTTP {status_code}"
-
-        raise RuntimeError(message) from exc
-
-    except requests.RequestException as exc:
-        raise RuntimeError(f"无法连接到 SearXNG：{exc}") from exc
-
-    except ValueError as exc:
-        raise RuntimeError("SearXNG 返回的不是有效 JSON") from exc
-
-    raw_results = data.get("results", [])
-
-    results = [
-        {
-            "title": item.get("title", ""),
-            "url": item.get("url", ""),
-            "content": item.get("content", ""),
-            "engine": item.get("engine", ""),
-            "engines": item.get("engines", []),
-            "published_date": item.get("publishedDate"),
-        }
-        for item in raw_results[:max_results]
-    ]
-
-    # 2026-07-19 TODO: 给搜索引擎的结果做一个 Reranker
-
     return {
-        "query": query,
-        "result_count": len(results),
-        "results": results,
-        "suggestions": data.get("suggestions", []),
-        "answers": data.get("answers", []),
-        "unresponsive_engines": data.get(
-            "unresponsive_engines",
-            [],
-        ),
+        "provider": "you.com",
+        "query": query.strip(),
+        **result,
     }

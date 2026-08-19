@@ -5,16 +5,16 @@ import 'package:flutter/material.dart';
 
 class EsaColors {
   // dark (default)
-  static const dBg = Color(0xFF1B1A19);
-  static const dSurface = Color(0xFF232120);
-  static const dText = Color(0xFFF0EEEC);
-  static const dDivider = Color(0x29F0EEEC); // 16%
-  static const dN100 = Color(0xFF252322);
-  static const dN200 = Color(0xFF302D2C);
-  static const dN300 = Color(0xFF454241);
-  static const dN500 = Color(0xFF8B8787);
-  static const dN600 = Color(0xFFA8A4A1);
-  static const dN700 = Color(0xFFC7C3C0);
+  static const dBg = Color(0xFF020913);
+  static const dSurface = Color(0xFF08121E);
+  static const dText = Color(0xFFF3F6FC);
+  static const dDivider = Color(0xFF203044);
+  static const dN100 = Color(0xFF0D1826);
+  static const dN200 = Color(0xFF122033);
+  static const dN300 = Color(0xFF1B2B40);
+  static const dN500 = Color(0xFF5F6D82);
+  static const dN600 = Color(0xFF95A2B6);
+  static const dN700 = Color(0xFFCAD3E0);
 
   // light
   static const lBg = Color(0xFFF3F2F2);
@@ -29,10 +29,10 @@ class EsaColors {
   static const lN700 = Color(0xFF605D5D);
 
   // shared —— 蓝色主色调
-  static const accent = Color(0xFF2563EB); // blue-600 主按钮 海报 强调
+  static const accent = Color(0xFF3478F6); // blue-600 主按钮 海报 强调
   static const accent100 = Color(0xFFEAF1FF); // 浅蓝 提示条底色
-  static const accent600 = Color(0xFF1D4ED8);
-  static const accent700 = Color(0xFF1E40AF); // 深蓝 提示条文字
+  static const accent600 = Color(0xFF1F63EA);
+  static const accent700 = Color(0xFF1749A7); // 深蓝 提示条文字
   static const onAccent = Color(0xFFF4F7FE); // 蓝底上的文字/图标
 }
 
@@ -80,12 +80,12 @@ class EsaRadii {
   static const bubble = 18.0; // user message
   static const composer = 18.0; // input container
   static const sheet = 18.0; // profile dialog, big avatar
-  static const button = 12.0; // buttons, small avatar, drawer new-chat
-  static const buttonLg = 12.0; // auth submit
-  static const field = 12.0; // inputs, list rows, segmented control
-  static const iconButton = 10.0; // 30px icon buttons
-  static const toolCard = 14.0;
-  static const card = 16.0; // suggestion cards
+  static const button = 10.0; // buttons, small avatar, drawer new-chat
+  static const buttonLg = 10.0; // auth submit
+  static const field = 10.0; // inputs, list rows, segmented control
+  static const iconButton = 9.0; // 30px icon buttons
+  static const toolCard = 12.0;
+  static const card = 12.0; // suggestion cards
   static const pill = 999.0; // send button, attachment chip, switches
 }
 
@@ -125,26 +125,26 @@ TextTheme _esaText(Color text, Color muted) {
     fontSize: size,
     height: height,
     fontWeight: weight,
-    letterSpacing: spacing,
+    letterSpacing: 0,
     color: color,
+    fontFamily: 'NotoSansSC',
     fontFamilyFallback: fallback,
   );
   return TextTheme(
     displayLarge: style(
-      size: 68,
-      height: 0.98,
+      size: 48,
+      height: 1.05,
       weight: FontWeight.w800,
-      spacing: -1.2,
       color: text,
     ),
     headlineMedium: style(
-      size: 36,
+      size: 28,
       height: 1.12,
       weight: FontWeight.w800,
       color: text,
     ),
     headlineSmall: style(
-      size: 24,
+      size: 22,
       height: 1.12,
       weight: FontWeight.w800,
       color: text,
@@ -156,7 +156,7 @@ TextTheme _esaText(Color text, Color muted) {
     labelSmall: style(
       size: 11,
       weight: FontWeight.w600,
-      spacing: 1.4,
+      spacing: 0,
       color: muted,
     ),
   );
@@ -173,6 +173,7 @@ ThemeData esaTheme({required Brightness brightness}) {
     useMaterial3: true,
     brightness: brightness,
     scaffoldBackgroundColor: bg,
+    fontFamily: 'NotoSansSC',
     dividerColor: n.divider,
     extensions: [n],
     colorScheme:

@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class RawModel(BaseModel):
+    """封装 `RawModel` 的状态与行为。"""
     model_config = ConfigDict(extra="allow")
 
     def field_was_provided(self, name: str) -> bool:
@@ -31,6 +32,7 @@ class RawModel(BaseModel):
 
 
 class RawMiddleBlock(RawModel):
+    """封装 `RawMiddleBlock` 的状态与行为。"""
     type: str
     bbox: list[float] | None = None
     bbox_fs: list[float] | None = None
@@ -44,6 +46,7 @@ class RawMiddleBlock(RawModel):
 
 
 class RawMiddlePage(RawModel):
+    """封装 `RawMiddlePage` 的状态与行为。"""
     page_idx: int
     page_size: list[float] | None = None
     para_blocks: list[RawMiddleBlock] = Field(default_factory=list)
@@ -52,6 +55,7 @@ class RawMiddlePage(RawModel):
 
 
 class RawMiddleDocument(RawModel):
+    """封装 `RawMiddleDocument` 的状态与行为。"""
     pdf_info: list[RawMiddlePage]
     backend: str | None = Field(default=None, alias="_backend")
     version_name: str | None = Field(default=None, alias="_version_name")

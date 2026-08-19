@@ -257,6 +257,7 @@ def _print_build_result(
 
 
 def _add_manifest_argument(parser: argparse.ArgumentParser) -> None:
+    """添加 `manifest argument` 相关数据。"""
     parser.add_argument(
         "--manifest",
         type=Path,
@@ -265,6 +266,7 @@ def _add_manifest_argument(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_deployment_argument(parser: argparse.ArgumentParser) -> None:
+    """添加 `deployment argument` 相关数据。"""
     parser.add_argument("--deployment-manifest", type=Path, required=True)
     _add_manifest_argument(parser)
 
@@ -329,6 +331,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。"""
     arguments = _parser().parse_args(argv)
     arguments.handler(arguments)
     return 0

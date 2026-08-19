@@ -1,3 +1,5 @@
+# backend/agent/DocIR/tests/adapters/mineru/test_schema_census.py
+
 """Regression tests for the raw MinerU cross-format schema census."""
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ requires_schema_baseline = pytest.mark.skipif(
 
 
 def test_scan_value_canonicalizes_arrays_and_tracks_parent_presence() -> None:
+    """验证 `scan_value_canonicalizes_arrays_and_tracks_parent_presence` 场景。"""
     scan = scan_value(
         {
             "items": [
@@ -70,6 +73,7 @@ def test_scan_value_canonicalizes_arrays_and_tracks_parent_presence() -> None:
 
 @requires_multiformat_fixture
 def test_fixed_fixture_census_detects_pipeline_office_schema_differences() -> None:
+    """验证 `fixed_fixture_census_detects_pipeline_office_schema_differences` 场景。"""
     census = build_census(default_fixtures(FIXTURE_ROOT))
 
     assert census["formats"] == ["PDF", "DOCX", "PPTX", "XLSX", "PNG", "JPG"]
@@ -101,6 +105,7 @@ def test_fixed_fixture_census_detects_pipeline_office_schema_differences() -> No
 
 @requires_multiformat_fixture
 def test_block_type_aggregation_distinguishes_missing_from_empty_chart_path() -> None:
+    """验证 `block_type_aggregation_distinguishes_missing_from_empty_chart_path` 场景。"""
     census = build_census(default_fixtures(FIXTURE_ROOT))
     v2_types = census["block_types"]["content_list_v2"]
 
@@ -128,6 +133,7 @@ def test_block_type_aggregation_distinguishes_missing_from_empty_chart_path() ->
 
 @requires_multiformat_fixture
 def test_artifact_inventory_detects_pipeline_and_office_outputs() -> None:
+    """验证 `artifact_inventory_detects_pipeline_and_office_outputs` 场景。"""
     census = build_census(default_fixtures(FIXTURE_ROOT))
     matrix = census["artifact_inventory"]["matrix"]
 
@@ -151,6 +157,7 @@ def test_artifact_inventory_detects_pipeline_and_office_outputs() -> None:
 @requires_multiformat_fixture
 @requires_schema_baseline
 def test_fixed_fixture_census_matches_machine_readable_baseline() -> None:
+    """验证 `fixed_fixture_census_matches_machine_readable_baseline` 场景。"""
     expected = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
     actual = build_census(default_fixtures(FIXTURE_ROOT))
     assert actual == expected

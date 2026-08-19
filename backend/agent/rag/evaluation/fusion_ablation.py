@@ -1,3 +1,5 @@
+# backend/agent/rag/evaluation/fusion_ablation.py
+
 """Rebuild raw route scores and evaluate dense-dominant fusion offline.
 
 This module deliberately reuses cached Qwen embeddings and the historical
@@ -45,11 +47,13 @@ DATASETS = ("scifact", "xor-tydi", "m3docvqa")
 
 @dataclass(frozen=True)
 class RawRanking:
+    """封装 `RawRanking` 的状态与行为。"""
     document_ids: tuple[str, ...]
     scores: tuple[float, ...]
     top_chunk_ids: tuple[tuple[str, ...], ...]
 
     def items(self) -> list[RankedItem]:
+        """处理 `items` 相关逻辑。"""
         return [
             RankedItem(document_id, score)
             for document_id, score in zip(self.document_ids, self.scores)
@@ -58,6 +62,7 @@ class RawRanking:
 
 @dataclass
 class _FieldIndex:
+    """封装 `_FieldIndex` 的状态与行为。"""
     postings: dict[str, list[tuple[int, int]]]
     lengths: np.ndarray
     average_length: float
@@ -72,6 +77,7 @@ class _RawBm25:
         chunk_document_indexes: np.ndarray,
         chunk_ids: Sequence[str],
     ) -> None:
+        """初始化 `_RawBm25` 实例。"""
         postings: dict[str, list[tuple[int, int]]] = defaultdict(list)
         lengths = np.zeros(len(texts), dtype=np.int32)
         for chunk_index, text in enumerate(texts):
@@ -88,6 +94,16 @@ class _RawBm25:
         self.chunk_ids = chunk_ids
 
     def rank(self, query: str, document_ids: Sequence[str], depth: int) -> RawRanking:
+        """处理 `rank` 相关逻辑。
+
+        Args:
+            query: str => 查询文本。
+            document_ids: Sequence[str] => `document_ids` 参数。
+            depth: int => `depth` 参数。
+
+        Returns:
+            RawRanking => 处理结果。
+        """
         query_counts = Counter(reference_tokens(query))
         chunk_scores: dict[int, float] = defaultdict(float)
         chunk_count = len(self.field.lengths)
@@ -152,6 +168,7 @@ def _dense_raw_rankings(
     chunks_by_document: Sequence[np.ndarray],
     chunk_ids: Sequence[str],
 ) -> list[RawRanking]:
+    """处理 `_dense_raw_rankings` 相关逻辑。"""
     chunk_vectors = np.load(document_embeddings, mmap_mode="r")
     query_vectors = np.load(query_embeddings, mmap_mode="r")
     output: list[RawRanking] = []
@@ -179,6 +196,7 @@ def _dense_raw_rankings(
 
 
 def _route_map(ranking: RawRanking) -> dict[str, tuple[int, float, tuple[str, ...]]]:
+    """处理 `_route_map` 相关逻辑。"""
     return {
         document_id: (rank, score, chunks)
         for rank, (document_id, score, chunks) in enumerate(
@@ -192,6 +210,7 @@ def _candidate_payload(
     body: RawRanking,
     heading: RawRanking,
 ) -> list[dict[str, Any]]:
+    """处理 `_candidate_payload` 相关逻辑。"""
     routes = {
         "dense": _route_map(dense),
         "bm25_body": _route_map(body),
@@ -221,12 +240,14 @@ def _candidate_payload(
 def _fit_calibrators(
     rankings: dict[str, Sequence[RawRanking]], method: str
 ) -> dict[str, ScoreCalibrator]:
+    """处理 `_fit_calibrators` 相关逻辑。"""
     values = {
         route: [score for ranking in items for score in ranking.scores]
         for route, items in rankings.items()
     }
 
     def percentile(route: str) -> ScoreCalibrator:
+        """处理 `percentile` 相关逻辑。"""
         scores = values[route]
         return (
             PercentileScoreCalibrator.fit(scores)
@@ -235,6 +256,7 @@ def _fit_calibrators(
         )
 
     def robust(route: str) -> ScoreCalibrator:
+        """处理 `robust` 相关逻辑。"""
         scores = values[route]
         if len(scores) < 2 or min(scores) == max(scores):
             return IdentityScoreCalibrator()
@@ -252,6 +274,7 @@ def _fit_calibrators(
 
 
 def _calibrator_metadata(calibrator: ScoreCalibrator) -> dict[str, Any]:
+    """处理 `_calibrator_metadata` 相关逻辑。"""
     if isinstance(calibrator, PercentileScoreCalibrator):
         values = calibrator.reference_scores
         return {
@@ -264,6 +287,15 @@ def _calibrator_metadata(calibrator: ScoreCalibrator) -> dict[str, Any]:
 
 
 def evaluate_dataset(arguments: argparse.Namespace, dataset: str) -> dict[str, Any]:
+    """评估 `dataset` 相关数据。
+
+    Args:
+        arguments: argparse.Namespace => `arguments` 参数。
+        dataset: str => `dataset` 参数。
+
+    Returns:
+        dict[str, Any] => 处理结果。
+    """
     data = _load_dataset(dataset, arguments.data_root)
     cases: tuple[BenchmarkCase, ...] = _selected_cases(
         data.cases, arguments.max_queries
@@ -443,6 +475,7 @@ def evaluate_dataset(arguments: argparse.Namespace, dataset: str) -> dict[str, A
 
 
 def _parser() -> argparse.ArgumentParser:
+    """处理 `_parser` 相关逻辑。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", choices=(*DATASETS, "all"), default="all")
     parser.add_argument("--data-root", type=Path, default=DEFAULT_DATA_ROOT)
@@ -459,6 +492,14 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """运行当前模块的命令行入口。
+
+    Args:
+        argv: list[str] | None => `argv` 参数。
+
+    Returns:
+        int => 处理结果。
+    """
     arguments = _parser().parse_args(argv)
     datasets = DATASETS if arguments.dataset == "all" else (arguments.dataset,)
     summaries = (

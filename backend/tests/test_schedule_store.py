@@ -1,9 +1,14 @@
+# backend/tests/test_schedule_store.py
+
+"""验证 `schedule_store` 相关行为与回归场景。"""
+
 from backend.core.stores.schedule_store import ScheduleStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import UserRecord
 
 
 def _user(user_id: str, username: str) -> UserRecord:
+    """处理 `_user` 相关逻辑。"""
     return UserRecord(
         id=user_id,
         username=username,
@@ -13,6 +18,7 @@ def _user(user_id: str, username: str) -> UserRecord:
 
 
 def test_schedule_is_persisted_per_user(tmp_path):
+    """验证 `schedule_is_persisted_per_user` 场景。"""
     database = tmp_path / "schedule.db"
     users = UserStore(database)
     alice = _user("alice-id", "alice")
@@ -59,6 +65,7 @@ def test_schedule_is_persisted_per_user(tmp_path):
 
 
 def _course(name: str, weekday: int, periods: tuple[int, int], weeks=(1, 18)) -> dict:
+    """处理 `_course` 相关逻辑。"""
     return {
         "name": name,
         "weekday": weekday,
@@ -70,6 +77,7 @@ def _course(name: str, weekday: int, periods: tuple[int, int], weeks=(1, 18)) ->
 
 
 def test_import_skips_duplicates_and_time_conflicts(tmp_path):
+    """验证 `import_skips_duplicates_and_time_conflicts` 场景。"""
     database = tmp_path / "schedule.db"
     users = UserStore(database)
     alice = _user("alice-id", "alice")
@@ -94,6 +102,7 @@ def test_import_skips_duplicates_and_time_conflicts(tmp_path):
 
 
 def test_multiple_schedule_tables_scope_courses(tmp_path):
+    """验证 `multiple_schedule_tables_scope_courses` 场景。"""
     database = tmp_path / "schedule.db"
     users = UserStore(database)
     alice = _user("alice-id", "alice")
@@ -133,6 +142,7 @@ def test_multiple_schedule_tables_scope_courses(tmp_path):
 
 
 def test_existing_courses_migrate_into_default_table(tmp_path):
+    """验证 `existing_courses_migrate_into_default_table` 场景。"""
     database = tmp_path / "schedule.db"
     users = UserStore(database)
     alice = _user("alice-id", "alice")

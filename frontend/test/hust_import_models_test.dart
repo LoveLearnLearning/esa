@@ -32,18 +32,15 @@ void main() {
 
   test('credentials are allowed only over HTTPS or to local development', () {
     expect(
-      ApiClient(baseUrl: 'https://api.example.com')
-          .allowsCredentialSubmission,
+      ApiClient(baseUrl: 'https://api.example.com').allowsCredentialSubmission,
       isTrue,
     );
     expect(
-      ApiClient(baseUrl: 'http://127.0.0.1:8000')
-          .allowsCredentialSubmission,
+      ApiClient(baseUrl: 'http://127.0.0.1:8000').allowsCredentialSubmission,
       isTrue,
     );
     expect(
-      ApiClient(baseUrl: 'http://api.example.com')
-          .allowsCredentialSubmission,
+      ApiClient(baseUrl: 'http://api.example.com').allowsCredentialSubmission,
       isFalse,
     );
   });

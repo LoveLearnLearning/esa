@@ -13,6 +13,7 @@ from enum import Enum
 
 
 class TextOrigin(str, Enum):
+    """封装 `TextOrigin` 的状态与行为。"""
     NATIVE_TEXT = "native_text"
     OCR_TEXT = "ocr_text"
     # MinerU auto 产物未保留足够证据时，只能确定文字来自
@@ -27,6 +28,7 @@ class TextOrigin(str, Enum):
 
 
 class ElementRole(str, Enum):
+    """封装 `ElementRole` 的状态与行为。"""
     BODY = "body"
     CAPTION = "caption"
     FOOTNOTE = "footnote"
@@ -39,17 +41,20 @@ class ElementRole(str, Enum):
 
 
 class Severity(str, Enum):
+    """封装 `Severity` 的状态与行为。"""
     WARNING = "warning"
     ERROR = "error"
 
 
 class ValidationStatus(str, Enum):
+    """封装 `ValidationStatus` 的状态与行为。"""
     PASSED = "passed"
     PASSED_WITH_WARNINGS = "passed_with_warnings"
     FAILED = "failed"
 
 
 class AssetKind(str, Enum):
+    """封装 `AssetKind` 的状态与行为。"""
     ORIGINAL = "original"
     PAGE_IMAGE = "page_image"
     FIGURE = "figure"

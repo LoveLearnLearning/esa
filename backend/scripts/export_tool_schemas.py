@@ -1,14 +1,19 @@
 # backend/scripts/export_tool_schemas.py
 
+"""提供 `export_tool_schemas` 数据处理或维护脚本。"""
+
 
 import argparse
 import json
 from pathlib import Path
 
+from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools import tr
 
 
 def export_tool_schemas(output_path: Path) -> None:
+    """导出 `tool schemas` 相关数据。"""
+    register_builtin_tools()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(
@@ -22,6 +27,7 @@ def export_tool_schemas(output_path: Path) -> None:
 
 
 def main() -> None:
+    """运行当前模块的命令行入口。"""
     parser = argparse.ArgumentParser(description="导出所有 Tool Schema")
     parser.add_argument(
         "--output",

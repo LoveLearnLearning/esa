@@ -1,10 +1,13 @@
 # backend/core/web/schemas.py
 
+"""定义接口请求与响应结构。"""
+
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # 风格/语调合法枚举 供偏好与分组接口共用
 VALID_STYLES = {"concise", "detailed", "socratic"}
@@ -15,35 +18,141 @@ VALID_MAJORS = {"cs"}
 
 # 请求
 class RegisterRequest(BaseModel):
+    """表示 `register request` 数据结构。"""
+    email: str = Field(min_length=3, max_length=254)
+    verification_code: str = Field(pattern=r"^\d{6}$")
     username: str = Field(min_length=1, max_length=32)
     password: str = Field(min_length=8, max_length=128)
+    account_role: Literal["student", "teacher"] = "student"
 
 
 class LoginRequest(BaseModel):
+    """表示 `login request` 数据结构。"""
     username: str
     password: str
 
 
+class EmailCodeRequest(BaseModel):
+    """表示 `email code request` 数据结构。"""
+    email: str = Field(min_length=3, max_length=254)
+
+
+class BindEmailRequest(EmailCodeRequest):
+    """表示 `bind email request` 数据结构。"""
+    verification_code: str = Field(pattern=r"^\d{6}$")
+
+
 class ChangePasswordRequest(BaseModel):
+    """表示 `change password request` 数据结构。"""
     old_password: str = Field(min_length=8, max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
 
 
 class SendMessageRequest(BaseModel):
+    """表示 `send message request` 数据结构。"""
     content: str = Field(min_length=1)
+    attachment_ids: list[str] = Field(default_factory=list, max_length=3)
+    replace_message_id: int | None = Field(default=None, ge=1)
+
+
+class ResearchProjectCreateRequest(BaseModel):
+    """表示 `research project create request` 数据结构。"""
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=1000)
+
+
+class ResearchProjectUpdateRequest(BaseModel):
+    """表示 `research project update request` 数据结构。"""
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=1000)
+    status: Literal["active", "archived"] | None = None
+
+    @model_validator(mode="after")
+    def require_an_update(self):
+        """处理 `require_an_update` 相关逻辑。"""
+        if not self.model_fields_set or all(
+            getattr(self, field) is None for field in self.model_fields_set
+        ):
+            raise ValueError("at least one project field must be provided")
+        return self
+
+
+class FrontierTrackingCreateRequest(BaseModel):
+    """表示 `frontier tracking create request` 数据结构。"""
+    query: str = Field(min_length=2, max_length=300)
+    time_window_years: int = Field(default=5, ge=1, le=20)
+    max_results: int = Field(default=20, ge=5, le=40)
+
+
+class ResearchDocumentCreateRequest(BaseModel):
+    """表示 `research document create request` 数据结构。"""
+    title: str = Field(min_length=1, max_length=120)
+    document_type: Literal["outline", "literature_review", "paper", "notes"]
+    content: str = Field(default="", max_length=200_000)
+
+
+class ResearchDocumentUpdateRequest(BaseModel):
+    """表示 `research document update request` 数据结构。"""
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    content: str | None = Field(default=None, max_length=200_000)
+
+
+class ResearchWritingJobCreateRequest(BaseModel):
+    """表示 `research writing job create request` 数据结构。"""
+    operation: Literal["outline", "literature_review", "polish", "format_check"]
+    instruction: str = Field(default="", max_length=4000)
+    source_text: str = Field(default="", max_length=200_000)
+
+
+class ResearchAnalysisJobCreateRequest(BaseModel):
+    """表示 `research analysis job create request` 数据结构。"""
+    analysis_type: Literal[
+        "descriptive", "correlation", "group_compare", "text_frequency"
+    ]
+    parameters: dict[str, str] = Field(default_factory=dict)
 
 
 class ConversationCreateRequest(BaseModel):
+    """表示 `conversation create request` 数据结构。"""
     title: str = Field(default="新对话", min_length=1, max_length=64)
     group_id: str | None = Field(default=None)
+    workspace_type: Literal["learning", "teaching", "research"] = "learning"
+    research_project_id: str | None = None
+    class_id: str | None = None
+    assignment_id: str | None = None
 
+    @model_validator(mode="after")
+    def validate_resource_bindings(self):
+        """校验 `resource bindings` 相关数据。"""
+        if self.research_project_id and self.workspace_type != "research":
+            raise ValueError("research_project_id requires the research workspace")
+        if (self.class_id or self.assignment_id) and self.workspace_type not in {
+            "learning",
+            "teaching",
+        }:
+            raise ValueError(
+                "classroom bindings require the learning or teaching workspace"
+            )
+        if self.assignment_id and not self.class_id:
+            raise ValueError("assignment_id requires class_id")
+        return self
 
 class ConversationPatchRequest(BaseModel):
+    """表示 `conversation patch request` 数据结构。"""
     title: str | None = Field(default=None, min_length=1, max_length=64)
     group_id: str | None = Field(default=None)
+    class_id: str | None = None
+    assignment_id: str | None = None
+
+
+class ResearchProjectProfileUpdateRequest(BaseModel):
+    """表示 `research project profile update request` 数据结构。"""
+    agent_instructions: str = Field(default="", max_length=12000)
+    expected_revision: int | None = Field(default=None, ge=0)
 
 
 class GroupCreateRequest(BaseModel):
+    """表示 `group create request` 数据结构。"""
     name: str = Field(min_length=1, max_length=20)
     description: str = Field(default="", max_length=100)
     custom_instruction: str = Field(default="", max_length=500)
@@ -52,6 +161,7 @@ class GroupCreateRequest(BaseModel):
 
 
 class GroupUpdateRequest(BaseModel):
+    """表示 `group update request` 数据结构。"""
     name: str | None = Field(default=None, min_length=1, max_length=20)
     description: str | None = Field(default=None, max_length=100)
     custom_instruction: str | None = Field(default=None, max_length=500)
@@ -60,18 +170,50 @@ class GroupUpdateRequest(BaseModel):
 
 
 class CoreMemoryUpsertRequest(BaseModel):
+    """表示 `core memory upsert request` 数据结构。"""
     memory_key: str = Field(min_length=1, max_length=64)
     content: str = Field(min_length=1, max_length=1000)
     category: str = Field(default="general", max_length=32)
 
 
+class CoreMemoryCreateRequest(BaseModel):
+    """表示 `core memory create request` 数据结构。"""
+    memory_key: str = Field(min_length=1, max_length=64)
+    content: str = Field(min_length=1, max_length=4000)
+    category: str = Field(default="general", max_length=32)
+    scope_type: str = Field(default="global", pattern="^(global|workspace)$")
+    workspace_type: Literal["learning", "teaching", "research"] | None = None
+
+
+class CoreMemoryUpdateRequest(BaseModel):
+    """表示 `core memory update request` 数据结构。"""
+    expected_revision: int = Field(ge=1)
+    content: str | None = Field(default=None, min_length=1, max_length=4000)
+    category: str | None = Field(default=None, max_length=32)
+
+
+class CoreMemoryRestoreRequest(BaseModel):
+    """表示 `core memory restore request` 数据结构。"""
+    expected_revision: int = Field(ge=1)
+
+
+class MemoryCandidateDecisionRequest(BaseModel):
+    """表示 `memory candidate decision request` 数据结构。"""
+    content: str | None = Field(default=None, min_length=1, max_length=4000)
+    category: str | None = Field(default=None, max_length=32)
+    scope_type: str | None = Field(default=None, pattern="^(global|workspace)$")
+    workspace_type: Literal["learning", "teaching", "research"] | None = None
+
+
 class UserPreferencesOut(BaseModel):
+    """封装 `UserPreferencesOut` 的状态与行为。"""
     preferred_style: str
     preferred_tone: str
     custom_instruction: str
 
 
 class UpdatePreferencesRequest(BaseModel):
+    """表示 `update preferences request` 数据结构。"""
     preferred_style: str | None = Field(None)
     preferred_tone: str | None = Field(None)
     custom_instruction: str | None = Field(None, max_length=500)
@@ -80,6 +222,7 @@ class UpdatePreferencesRequest(BaseModel):
 # 学习档案 专业/年级/教学周/学期总周数
 # 与输出偏好分端点：GET/PATCH /me/profile
 class UserProfileOut(BaseModel):
+    """封装 `UserProfileOut` 的状态与行为。"""
     major: str
     grade: str
     current_week: int
@@ -88,6 +231,7 @@ class UserProfileOut(BaseModel):
 
 
 class UpdateUserProfileRequest(BaseModel):
+    """表示 `update user profile request` 数据结构。"""
     major: str | None = Field(None)
     grade: str | None = Field(None, max_length=32)
     current_week: int | None = Field(None, ge=1, le=30)
@@ -97,8 +241,10 @@ class UpdateUserProfileRequest(BaseModel):
 
 # ===== Profile V2 Schema =====
 
+
 class ProfileFieldOut(BaseModel):
     """单个画像维度 含来源与置信度"""
+
     field: str
     value: object
     origin: str
@@ -128,6 +274,7 @@ class ProfileViewOut(BaseModel):
 
 class ProfileSourcesOut(BaseModel):
     """画像字段来源解释"""
+
     field_key: str
     origin: str
     confidence: float
@@ -138,6 +285,7 @@ class ProfileSourcesOut(BaseModel):
 
 class UpdateProfileExplicitRequest(BaseModel):
     """更新显式画像字段 只允许更新显式设置项"""
+
     major: str | None = Field(None)
     grade: str | None = Field(None, max_length=32)
     current_week: int | None = Field(None, ge=1, le=30)
@@ -149,6 +297,10 @@ class UpdateProfileExplicitRequest(BaseModel):
 
 class MemorySettingsOut(BaseModel):
     """记忆与画像开关"""
+
+    saved_memory_enabled: bool = True
+    chat_history_enabled: bool = True
+    auto_extract_enabled: bool = False
     learning_profile_enabled: bool
     inferred_profile_enabled: bool
     default_conversation_mode: str = "normal"
@@ -156,6 +308,10 @@ class MemorySettingsOut(BaseModel):
 
 class UpdateMemorySettingsRequest(BaseModel):
     """更新记忆与画像开关"""
+
+    saved_memory_enabled: bool | None = Field(None)
+    chat_history_enabled: bool | None = Field(None)
+    auto_extract_enabled: bool | None = Field(None)
     learning_profile_enabled: bool | None = Field(None)
     inferred_profile_enabled: bool | None = Field(None)
     default_conversation_mode: str | None = Field(None)
@@ -163,13 +319,17 @@ class UpdateMemorySettingsRequest(BaseModel):
 
 # 响应
 class LoginResponse(BaseModel):
+    """表示 `login response` 数据结构。"""
     session_id: str
     user_id: str
     username: str
+    email: str | None = None
+    account_role: Literal["student", "teacher"]
     expires_at: datetime
 
 
 class MessageOut(BaseModel):
+    """封装 `MessageOut` 的状态与行为。"""
     role: str
     content: str
     name: str | None = None
@@ -177,6 +337,7 @@ class MessageOut(BaseModel):
 
 
 class GroupOut(BaseModel):
+    """封装 `GroupOut` 的状态与行为。"""
     group_id: str
     user_id: str
     name: str

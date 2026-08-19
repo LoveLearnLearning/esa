@@ -1,5 +1,7 @@
 # backend/core/web/routers/_validators.py
 
+"""提供 `_validators` 相关功能。"""
+
 from __future__ import annotations
 
 from fastapi import HTTPException, status

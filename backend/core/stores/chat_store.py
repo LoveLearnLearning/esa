@@ -1,7 +1,10 @@
 # backend/core/stores/chat_store.py
 
+"""提供数据持久化实现。"""
+
 from __future__ import annotations
 
+import json
 import uuid
 from contextlib import closing
 from datetime import datetime, timezone
@@ -17,6 +20,7 @@ class ChatStore(BaseSQLiteStore):
     """聊天记录读写类。"""
 
     def __init__(self, database_path: str | Path = "data/esa.db") -> None:
+        """初始化 `ChatStore` 实例。"""
         super().__init__(database_path)
 
     def _initialize(self) -> None:
@@ -24,15 +28,36 @@ class ChatStore(BaseSQLiteStore):
         with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS research_projects (
+                    project_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    CHECK(status IN ('active', 'archived'))
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS conversations (
                     conversation_id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
                     title TEXT NOT NULL,
                     group_id TEXT,
+                    workspace_type TEXT NOT NULL DEFAULT 'learning',
+                    research_project_id TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE SET NULL
+                    FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE SET NULL,
+                    FOREIGN KEY(research_project_id)
+                        REFERENCES research_projects(project_id) ON DELETE SET NULL,
+                    CHECK(workspace_type IN ('learning', 'teaching', 'research')),
+                    CHECK(research_project_id IS NULL OR workspace_type = 'research')
                 )
                 """
             )
@@ -44,6 +69,7 @@ class ChatStore(BaseSQLiteStore):
                     role TEXT NOT NULL,
                     content TEXT NOT NULL,
                     name TEXT,
+                    attachments_json TEXT NOT NULL DEFAULT '[]',
                     is_visible INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(conversation_id)
@@ -74,6 +100,14 @@ class ChatStore(BaseSQLiteStore):
                 connection.execute(
                     "ALTER TABLE conversations ADD COLUMN group_id TEXT"
                 )
+            if "workspace_type" not in conversation_columns:
+                connection.execute(
+                    "ALTER TABLE conversations ADD COLUMN workspace_type TEXT NOT NULL DEFAULT 'learning'"
+                )
+            if "research_project_id" not in conversation_columns:
+                connection.execute(
+                    "ALTER TABLE conversations ADD COLUMN research_project_id TEXT"
+                )
 
             message_columns = {
                 row["name"]
@@ -85,6 +119,11 @@ class ChatStore(BaseSQLiteStore):
                     ALTER TABLE messages
                     ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1
                     """
+                )
+            if "attachments_json" not in message_columns:
+                connection.execute(
+                    "ALTER TABLE messages ADD COLUMN attachments_json "
+                    "TEXT NOT NULL DEFAULT '[]'"
                 )
 
             connection.execute(
@@ -103,6 +142,12 @@ class ChatStore(BaseSQLiteStore):
                 """
                 CREATE INDEX IF NOT EXISTS idx_conversations_group
                 ON conversations (user_id, group_id, updated_at)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_conversations_workspace
+                ON conversations (user_id, workspace_type, updated_at)
                 """
             )
             connection.execute(
@@ -152,6 +197,7 @@ class ChatStore(BaseSQLiteStore):
 
     @staticmethod
     def _now() -> str:
+        """处理 `_now` 相关逻辑。"""
         return datetime.now(timezone.utc).isoformat()
 
     def create_conversation(
@@ -159,13 +205,30 @@ class ChatStore(BaseSQLiteStore):
         user_id: str,
         title: str = "新对话",
         group_id: str | None = None,
+        *,
+        workspace_type: str = "learning",
+        research_project_id: str | None = None,
     ) -> dict:
+        """创建 `conversation` 相关数据。
+
+        Args:
+            user_id: str => 用户 ID。
+            title: str => `title` 参数。
+            group_id: str | None => 分组 ID。
+            workspace_type: str => `workspace_type` 参数。
+            research_project_id: str | None => research project ID。
+
+        Returns:
+            dict => 处理结果。
+        """
         now = self._now()
         conversation: dict = {
             "conversation_id": str(uuid.uuid4()),
             "user_id": user_id,
             "title": title,
             "group_id": group_id,
+            "workspace_type": workspace_type,
+            "research_project_id": research_project_id,
             "created_at": now,
             "updated_at": now,
         }
@@ -176,16 +239,20 @@ class ChatStore(BaseSQLiteStore):
                 user_id,
                 title,
                 group_id,
+                workspace_type,
+                research_project_id,
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 conversation["conversation_id"],
                 conversation["user_id"],
                 conversation["title"],
                 conversation["group_id"],
+                conversation["workspace_type"],
+                conversation["research_project_id"],
                 conversation["created_at"],
                 conversation["updated_at"],
             ),
@@ -197,8 +264,18 @@ class ChatStore(BaseSQLiteStore):
         conversation_id: str,
         user_id: str | None = None,
     ) -> dict | None:
+        """获取 `conversation` 相关数据。
+
+        Args:
+            conversation_id: str => 对话 ID。
+            user_id: str | None => 用户 ID。
+
+        Returns:
+            dict | None => 处理结果。
+        """
         sql = """
-            SELECT conversation_id, user_id, title, group_id, created_at, updated_at
+            SELECT conversation_id, user_id, title, group_id,
+                   workspace_type, research_project_id, created_at, updated_at
             FROM conversations
             WHERE conversation_id = ?
         """
@@ -216,6 +293,7 @@ class ChatStore(BaseSQLiteStore):
         group_id: str | None = None,
         *,
         include_all_groups: bool = True,
+        workspace_type: str | None = None,
     ) -> list[dict]:
         """列出用户对话。
 
@@ -223,7 +301,8 @@ class ChatStore(BaseSQLiteStore):
         传 group_id=None 且 include_all_groups=False。
         """
         sql = """
-            SELECT conversation_id, user_id, title, group_id, created_at, updated_at
+            SELECT conversation_id, user_id, title, group_id,
+                   workspace_type, research_project_id, created_at, updated_at
             FROM conversations
             WHERE user_id = ?
         """
@@ -237,6 +316,9 @@ class ChatStore(BaseSQLiteStore):
         elif group_id is not None:
             sql += " AND group_id = ?"
             params += (group_id,)
+        if workspace_type is not None:
+            sql += " AND workspace_type = ?"
+            params += (workspace_type,)
 
         sql += " ORDER BY updated_at DESC"
         return [dict(row) for row in self.query_all(sql, params)]
@@ -247,12 +329,48 @@ class ChatStore(BaseSQLiteStore):
         title: str,
         user_id: str | None = None,
     ) -> bool:
+        """处理 `rename_conversation` 相关逻辑。
+
+        Args:
+            conversation_id: str => 对话 ID。
+            title: str => `title` 参数。
+            user_id: str | None => 用户 ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         sql = """
             UPDATE conversations
             SET title = ?, updated_at = ?
             WHERE conversation_id = ?
         """
         params: tuple = (title, self._now(), conversation_id)
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params += (user_id,)
+        return self.execute(sql, params) > 0
+
+    def rename_conversation_if_title(
+        self,
+        conversation_id: str,
+        *,
+        expected_title: str,
+        title: str,
+        user_id: str | None = None,
+    ) -> bool:
+        """Rename only if nobody changed the current title in the meantime."""
+
+        sql = """
+            UPDATE conversations
+            SET title = ?, updated_at = ?
+            WHERE conversation_id = ? AND title = ?
+        """
+        params: tuple = (
+            title,
+            self._now(),
+            conversation_id,
+            expected_title,
+        )
         if user_id is not None:
             sql += " AND user_id = ?"
             params += (user_id,)
@@ -328,6 +446,15 @@ class ChatStore(BaseSQLiteStore):
         conversation_id: str,
         user_id: str | None = None,
     ) -> bool:
+        """删除 `conversation` 相关数据。
+
+        Args:
+            conversation_id: str => 对话 ID。
+            user_id: str | None => 用户 ID。
+
+        Returns:
+            bool => 处理结果。
+        """
         with closing(self._connect()) as connection, connection:
             where = "conversation_id = ?"
             params: tuple = (conversation_id,)
@@ -357,6 +484,12 @@ class ChatStore(BaseSQLiteStore):
         conversation_id: str,
         messages: list[dict],
     ) -> None:
+        """追加 `messages` 相关数据。
+
+        Args:
+            conversation_id: str => 对话 ID。
+            messages: list[dict] => 消息列表。
+        """
         if not messages:
             return
 
@@ -376,10 +509,11 @@ class ChatStore(BaseSQLiteStore):
                     role,
                     content,
                     name,
+                    attachments_json,
                     is_visible,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -387,6 +521,7 @@ class ChatStore(BaseSQLiteStore):
                         message["role"],
                         message["content"],
                         message.get("name"),
+                        json.dumps(message.get("attachments", []), ensure_ascii=False),
                         1 if message.get("is_visible", True) else 0,
                         current_time,
                     )
@@ -403,9 +538,17 @@ class ChatStore(BaseSQLiteStore):
             )
 
     def get_history(self, conversation_id: str) -> list[dict]:
+        """获取 `history` 相关数据。
+
+        Args:
+            conversation_id: str => 对话 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         rows = self.query_all(
             """
-            SELECT id, role, content, name, created_at
+            SELECT id, role, content, name, attachments_json, created_at
             FROM messages
             WHERE conversation_id = ?
               AND is_visible = 1
@@ -413,9 +556,103 @@ class ChatStore(BaseSQLiteStore):
             """,
             (conversation_id,),
         )
-        return [dict(row) for row in rows]
+        history = []
+        for row in rows:
+            message = dict(row)
+            try:
+                message["attachments"] = json.loads(
+                    message.pop("attachments_json") or "[]"
+                )
+            except (TypeError, json.JSONDecodeError):
+                message["attachments"] = []
+            history.append(message)
+        return history
+
+    def latest_message_id(self, conversation_id: str) -> int | None:
+        """处理 `latest_message_id` 相关逻辑。"""
+        row = self.query_one(
+            "SELECT MAX(id) AS id FROM messages WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        return int(row["id"]) if row is not None and row["id"] is not None else None
+
+    def revise_user_message(
+        self,
+        conversation_id: str,
+        message_id: int,
+        content: str,
+        attachments: list[dict],
+    ) -> tuple[str | None, list[dict]]:
+        """Replace one user turn and remove every later turn atomically."""
+        current_time = self._now()
+        with closing(self._connect()) as connection:
+            connection.isolation_level = None
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                target = connection.execute(
+                    """
+                    SELECT id, role FROM messages
+                    WHERE conversation_id = ? AND id = ?
+                    """,
+                    (conversation_id, message_id),
+                ).fetchone()
+                if target is None or target["role"] != "user":
+                    raise ValueError("只能修改当前对话中的用户消息")
+                rows = connection.execute(
+                    """
+                    SELECT role, content, name FROM messages
+                    WHERE conversation_id = ? AND id < ?
+                    ORDER BY id ASC
+                    """,
+                    (conversation_id, message_id),
+                ).fetchall()
+                history = []
+                for row in rows:
+                    message = {"role": row["role"], "content": row["content"]}
+                    if row["name"] is not None:
+                        message["name"] = row["name"]
+                    history.append(message)
+                connection.execute(
+                    "DELETE FROM messages WHERE conversation_id = ? AND id > ?",
+                    (conversation_id, message_id),
+                )
+                connection.execute(
+                    """
+                    UPDATE messages
+                    SET content = ?, attachments_json = ?, created_at = ?
+                    WHERE conversation_id = ? AND id = ?
+                    """,
+                    (
+                        content,
+                        json.dumps(attachments, ensure_ascii=False),
+                        current_time,
+                        conversation_id,
+                        message_id,
+                    ),
+                )
+                connection.execute(
+                    "DELETE FROM conversation_summaries WHERE conversation_id = ?",
+                    (conversation_id,),
+                )
+                connection.execute(
+                    "UPDATE conversations SET updated_at = ? WHERE conversation_id = ?",
+                    (current_time, conversation_id),
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        return None, history
 
     def get_model_messages(self, conversation_id: str) -> list[dict]:
+        """获取 `model messages` 相关数据。
+
+        Args:
+            conversation_id: str => 对话 ID。
+
+        Returns:
+            list[dict] => 处理结果。
+        """
         rows = self.query_all(
             """
             SELECT role, content, name
@@ -480,6 +717,7 @@ class ChatStore(BaseSQLiteStore):
         *,
         use_summary: bool,
     ) -> tuple[str | None, list[dict]]:
+        """获取 `model context and append` 相关数据。"""
         if not messages:
             raise ValueError("messages 不能为空")
 
@@ -540,10 +778,11 @@ class ChatStore(BaseSQLiteStore):
                     role,
                     content,
                     name,
+                    attachments_json,
                     is_visible,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -551,6 +790,7 @@ class ChatStore(BaseSQLiteStore):
                         message["role"],
                         message["content"],
                         message.get("name"),
+                        json.dumps(message.get("attachments", []), ensure_ascii=False),
                         1 if message.get("is_visible", True) else 0,
                         current_time,
                     )

@@ -1,3 +1,7 @@
+# backend/tests/test_profile_store_expiry.py
+
+"""验证 `profile_store_expiry` 相关行为与回归场景。"""
+
 import sqlite3
 from datetime import datetime, timedelta
 
@@ -5,6 +9,7 @@ from backend.core.stores.profile_store import ProfileStore
 
 
 def _db(tmp_path):
+    """处理 `_db` 相关逻辑。"""
     path = tmp_path / "profile.db"
     connection = sqlite3.connect(path)
     connection.execute(
@@ -26,6 +31,7 @@ def _db(tmp_path):
 
 
 def test_runtime_reads_exclude_expired_dimensions_but_export_keeps_them(tmp_path):
+    """验证 `runtime_reads_exclude_expired_dimensions_but_export_keeps_them` 场景。"""
     store = ProfileStore(_db(tmp_path))
     past = (datetime.now() - timedelta(minutes=1)).isoformat()
     future = (datetime.now() + timedelta(days=1)).isoformat()

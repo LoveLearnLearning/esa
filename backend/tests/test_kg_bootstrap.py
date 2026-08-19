@@ -1,8 +1,13 @@
+# backend/tests/test_kg_bootstrap.py
+
+"""验证 `kg_bootstrap` 相关行为与回归场景。"""
+
 from backend.agent.memories.kg_loader import ensure_knowledge_graph_seeded
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 
 
 def test_empty_knowledge_graph_is_seeded_idempotently(tmp_path):
+    """验证 `empty_knowledge_graph_is_seeded_idempotently` 场景。"""
     store = KnowledgeGraphStore(tmp_path / "knowledge_graph.db")
 
     assert store.count_points() == 0
@@ -24,6 +29,7 @@ def test_empty_knowledge_graph_is_seeded_idempotently(tmp_path):
 
 
 def test_batch_point_lookup_preserves_input_order(tmp_path):
+    """验证 `batch_point_lookup_preserves_input_order` 场景。"""
     store = KnowledgeGraphStore(tmp_path / "knowledge_graph.db")
     store.add_point("kp-a", "A", "course")
     store.add_point("kp-b", "B", "course")

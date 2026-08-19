@@ -1,8 +1,13 @@
+# backend/tests/test_group_prompt.py
+
+"""验证 `group_prompt` 相关行为与回归场景。"""
+
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.utils.models import PromptContext
 
 
 def test_group_style_and_instruction_override_user_defaults() -> None:
+    """验证 `group_style_and_instruction_override_user_defaults` 场景。"""
     prompt = build_system_prompt(
         user_name="tester",
         prompt_ctx=PromptContext(
@@ -24,6 +29,7 @@ def test_group_style_and_instruction_override_user_defaults() -> None:
 
 
 def test_group_style_falls_back_to_user_style() -> None:
+    """验证 `group_style_falls_back_to_user_style` 场景。"""
     prompt = build_system_prompt(
         user_name="tester",
         prompt_ctx=PromptContext(
@@ -39,6 +45,7 @@ def test_group_style_falls_back_to_user_style() -> None:
 
 
 def test_group_style_can_override_without_custom_instruction() -> None:
+    """验证 `group_style_can_override_without_custom_instruction` 场景。"""
     prompt = build_system_prompt(
         user_name="tester",
         prompt_ctx=PromptContext(
@@ -56,6 +63,7 @@ def test_group_style_can_override_without_custom_instruction() -> None:
 
 
 def test_empty_group_context_keeps_original_behavior() -> None:
+    """验证 `empty_group_context_keeps_original_behavior` 场景。"""
     prompt = build_system_prompt(
         user_name="tester",
         prompt_ctx=PromptContext(

@@ -2,13 +2,19 @@
 
 > 在这里记录前后端网络 endpoint 前端照此对接 后端改动接口时同步更新本文档
 >
-> 最后核对：2026-08-09。
+> 最后核对：2026-08-14。
 
-- Base URL（`python -m backend.main`）: `http://127.0.0.1:51024`
+- Base URL（`python -m backend.main`）: `http://127.0.0.1:51024/api`
+- 生产 Base URL: `https://esa.lovelearnlearning.cn/api`
 - 开发启动命令: `uvicorn backend.core.web.webAPI:app --host 0.0.0.0 --port 51024 --reload`
 - 交互式调试: 启动后访问 `http://127.0.0.1:51024/docs`
 - 通信格式: 普通接口使用 JSON 流式消息接口响应 `text/event-stream`
 - 时间格式: 统一为 UTC ISO 8601 字符串 例如 `2026-07-24T05:22:08.123456+00:00`
+
+下文标题中的 `/auth/...`、`/conversations/...`、`/me/...` 均为相对 Base URL
+的路径。例如 `POST /auth/login` 的实际 canonical wire path 是
+`POST /api/auth/login`。迁移期仍可通过 `ESA_ENABLE_LEGACY_API_ROUTES=true`
+启用旧的无 `/api` 前缀别名，但新客户端不得依赖这些别名。
 
 ## 认证约定
 
@@ -30,23 +36,62 @@ Authorization: Bearer <session_id>
 
 | 状态码 | 含义                                                           |
 | ------ | -------------------------------------------------------------- |
-| 401    | 未登录 / 会话无效 / 会话过期 / 用户名或密码错误                |
+| 401    | 未登录 / 会话无效 / 会话过期 / 邮箱、用户名或密码错误          |
 | 404    | 资源不存在或不属于当前用户                                     |
-| 409    | 资源冲突，如用户名已存在、分组达到上限或同一对话上一轮仍在生成 |
+| 409    | 资源冲突，如用户名或邮箱已存在、分组达到上限                    |
+| 429    | 验证码发送过于频繁，按 `Retry-After` 响应头稍后重试             |
 | 422    | 请求体校验不通过 由 pydantic 自动返回                          |
+
+---
+
+## 运维接口
+
+### GET /health — 存活检查
+
+无需认证，成功响应 `200`：
+
+```json
+{ "status": "ok" }
+```
+
+该接口只表示 HTTP 进程存活，不访问数据库，也不调用主模型、辅助模型或 RAG。
 
 ---
 
 ## 已实现接口
 
-### POST /auth/register — 注册
+### POST /auth/email/send-code — 发送注册验证码
+
+无需认证。请求体：
+
+```json
+{ "email": "user@example.com" }
+```
+
+成功响应 `202`：
+
+```json
+{ "status": "accepted", "retry_after_seconds": 60 }
+```
+
+验证码默认 10 分钟有效、同一邮箱 60 秒内不可重发。验证码由业务后端生成和校验，
+独立邮件服务器只负责投递。邮箱已注册返回 `409`，邮件服务未配置返回 `503`，
+投递失败返回 `502`。
+
+### POST /auth/register — 邮箱注册
 
 无需认证
 
 请求体:
 
 ```json
-{ "username": "feng", "password": "password123" }
+{
+  "email": "user@example.com",
+  "verification_code": "123456",
+  "username": "feng",
+  "password": "password123",
+  "account_role": "student"
+}
 ```
 
 校验规则: `username` 1-32 位 `password` 8-128 位 不符合返回 422
@@ -54,10 +99,10 @@ Authorization: Bearer <session_id>
 成功响应 `201`:
 
 ```json
-{ "user_id": "服务端生成的uuid", "username": "feng" }
+{ "user_id": "服务端生成的uuid", "username": "feng", "email": "user@example.com", "account_role": "student" }
 ```
 
-失败: `409` 用户名已存在
+验证码错误或过期返回 `400`，用户名或邮箱已存在返回 `409`。
 
 ### POST /auth/login — 登录
 
@@ -66,7 +111,7 @@ Authorization: Bearer <session_id>
 请求体:
 
 ```json
-{ "username": "feng", "password": "password123" }
+{ "username": "user@example.com", "password": "password123" }
 ```
 
 成功响应 `200`:
@@ -76,13 +121,30 @@ Authorization: Bearer <session_id>
     "session_id": "uuid 作为后续请求的 Bearer token",
     "user_id": "用户uuid",
     "username": "feng",
+    "email": "user@example.com",
+    "account_role": "student",
     "expires_at": "2026-07-24T07:22:08.123456+00:00"
 }
 ```
 
-失败: `401` 用户名或密码错误(不区分具体原因)
+`username` 字段兼容邮箱和用户名。老用户可继续用用户名登录；已绑定邮箱的用户也可
+使用邮箱登录。失败返回 `401`，不区分具体原因。
 
 注意: 密码原样发送 前端不要对密码做 trim 或其他改动
+
+### POST /auth/email/bind/send-code — 发送绑定邮箱验证码
+
+需要认证，请求和响应与发送注册验证码相同。邮箱已被使用返回 `409`。
+
+### POST /auth/email/bind — 绑定或更换邮箱
+
+需要认证。请求体：
+
+```json
+{ "email": "user@example.com", "verification_code": "123456" }
+```
+
+成功响应 `200`：`{ "email": "user@example.com" }`。
 
 ### POST /auth/logout — 登出
 
@@ -105,11 +167,100 @@ Authorization: Bearer <session_id>
 
 ---
 
+## Workspace 与科研项目接口
+
+以下接口均需要认证。`account_role` 目前只允许 `student` 或 `teacher`：学生可进入学习、科研 Workspace，教师可进入教学、科研 Workspace。
+
+### GET /workspaces — 当前账号可用 Workspace
+
+响应 `200`：
+
+```json
+{
+  "account_role": "student",
+  "default_workspace": "learning",
+  "workspaces": [
+    {
+      "type": "learning",
+      "name": "学习空间",
+      "description": "课程学习、练习、课表与知识掌握",
+      "capabilities": ["chat", "schedule", "knowledge_map", "mastery"]
+    },
+    {
+      "type": "research",
+      "name": "科研空间",
+      "description": "科研项目、文献、写作、趋势与数据分析",
+      "capabilities": ["chat", "research_projects", "attachments"]
+    }
+  ]
+}
+```
+
+### GET/POST /research/projects — 科研项目列表与创建
+
+创建请求：
+
+```json
+{ "name": "多智能体科研", "description": "前沿追踪与论文写作" }
+```
+
+创建成功返回 `201`。列表默认只返回当前用户的活跃项目；`GET /research/projects?include_archived=true` 可包含归档项目。
+
+### GET/PATCH /research/projects/{project_id} — 项目详情与更新
+
+PATCH 可传 `name`、`description`、`status`，其中 `status` 为 `active` 或 `archived`。项目不存在或不属于当前用户均返回 `404`。
+
+### GET/PUT /research/projects/{project_id}/profile — Project Profile
+
+读取或更新项目级 Agent 指令。PUT 请求体：
+
+```json
+{
+  "agent_instructions": "引用采用 APA 7，并明确标注证据不足处",
+  "expected_revision": 2
+}
+```
+
+`expected_revision` 用于乐观并发控制；冲突返回 `409` 和当前 revision。Project Profile
+只注入绑定该项目的 Research 对话，并作为受限用户配置，不能覆盖系统安全规则或能力边界。
+
+### 领域前沿追踪
+
+- `GET /research/projects/{project_id}/frontier-jobs`：列出项目的追踪任务。
+- `POST /research/projects/{project_id}/frontier-jobs`：创建任务，返回 `202`。请求体字段为 `query`、`time_window_years`（1–20）和 `max_results`（5–40）。
+- `GET /research/frontier-jobs/{job_id}`：查询任务状态和结果。
+
+后台任务从 arXiv 获取真实论文，输出年度分布、类别、热点词、新兴词和论文样本。热点与增长分值仅作为筛选信号，不等同于正式文献计量结论。单机部署使用 SQLite 持久队列；服务重启后会重新排队未完成任务。
+
+### 学术写作
+
+- `GET/POST /research/projects/{project_id}/documents`：列出或创建项目文档。
+- `GET /research/documents/{document_id}`：获取当前版本。
+- `GET /research/documents/{document_id}/versions`：获取版本历史。
+- `POST /research/documents/{document_id}/writing-jobs`：创建写作任务，返回 `202`。
+- `GET /research/writing-jobs/{job_id}`：查询写作任务状态。
+
+文档类型：`outline`、`literature_review`、`paper`、`notes`。写作操作：`outline`、`literature_review`、`polish`、`format_check`。每次成功任务会写入一个不可覆盖的文档新版本；生成规则禁止虚构来源、数据、实验结果和引用，材料不足处标记 `[待补来源]`。
+
+### 科研数据分析
+
+- `GET /research/projects/{project_id}/datasets`：列出数据集。
+- `POST /research/projects/{project_id}/datasets`：以 multipart 上传，字段为 `name` 和 `file`，返回 `201`。
+- `GET /research/datasets/{dataset_id}`：获取不含服务器文件路径的数据画像。
+- `GET/POST /research/datasets/{dataset_id}/analysis-jobs`：列出或创建分析任务。
+- `GET /research/analysis-jobs/{job_id}`：查询分析结果。
+
+生产形态 demo 采用单机本地文件存储，支持 UTF-8 CSV、JSON、TXT，单文件最多 15 MB，最多读取 100,000 行。分析类型包括 `descriptive`、`correlation`、`group_compare` 和 `text_frequency`。相关分析不代表因果，分组比较暂不进行显著性检验。
+
+---
+
 ## 对话接口
 
 以下接口均需要认证 只能访问属于当前登录用户的对话
 
 ### GET /conversations — 历史对话列表
+
+可用 `workspace_type=learning|teaching|research` 过滤；服务端会校验当前账号是否有权进入该 Workspace。
 
 响应 `200` 按最近更新排序:
 
@@ -120,6 +271,8 @@ Authorization: Bearer <session_id>
         "user_id": "用户uuid",
         "title": "对话标题",
         "group_id": "分组uuid 或 null(未分组)",
+        "workspace_type": "learning",
+        "research_project_id": null,
         "created_at": "...",
         "updated_at": "..."
     }
@@ -131,12 +284,22 @@ Authorization: Bearer <session_id>
 请求体(`title` / `group_id` 均可省略 默认 "新对话" + 未分组):
 
 ```json
-{ "title": "线性代数问题", "group_id": "分组uuid" }
+{
+  "title": "线性代数问题",
+  "group_id": "分组uuid",
+  "workspace_type": "learning",
+  "research_project_id": null,
+  "class_id": null,
+  "assignment_id": null
+}
 ```
 
-响应 `201`: 单个对话对象 结构同上
+响应 `201`: 单个对话对象，包含上述资源绑定字段。Research 对话可绑定一个归属当前
+用户的 `research_project_id`；Teaching 对话可绑定一个教师拥有的 `class_id`，并可选
+绑定该班级的 `assignment_id`。资源归属不匹配返回 `404/403`，跨 Workspace 绑定返回
+`422`。这些绑定由服务端验证后交给 Runtime，消息内容和 Tool 参数不能覆盖。
 
-`group_id` 不存在或不属于当前用户: `404`
+`group_id` 不存在或不属于当前用户: `404`。无权进入所选 Workspace 返回 `403`；科研项目不存在或不属于当前用户返回 `404`；非科研 Workspace 绑定科研项目返回 `422`。
 
 ### PATCH /conversations/{conversation_id} — 重命名或移动分组
 
@@ -174,14 +337,35 @@ Authorization: Bearer <session_id>
 请求体:
 
 ```json
-{ "content": "用户输入的内容" }
+{
+  "content": "用户输入的内容",
+  "attachment_ids": ["本对话内已上传的 attachment_id"]
+}
 ```
+
+`attachment_ids` 可省略，单轮最多 3 个；附件不存在或不属于当前用户和对话时返回
+`404`。发送消息后，模型会先加载匹配文件类型的 Skill，再按需调用受限附件 Tool；Tool
+只能读取本轮明确传入的附件 ID，不能接收客户端文件路径。
 
 响应 `200`: 本轮新产生的消息列表(用户消息 + 助手回复 + 工具结果) 结构同历史消息
 
 注意: 该同步兼容接口会等待本轮模型与工具调用全部完成后再返回
 
 对话不存在或不属于当前用户: `404`
+
+### POST /conversations/{conversation_id}/attachments — 上传附件
+
+使用 `multipart/form-data` 上传字段名为 `file` 的单个文件，默认最大 200 MB。支持 PDF、
+DOCX、PPTX、XLSX 及 PNG/JPEG/WebP/BMP/GIF/TIFF。上传请求仅将源文件流式保存到
+`backend/data/user`，不会运行 MinerU、DocIR、VLM 或 RAG；响应中的 `mode` 和
+`validation_status` 均为 `pending`。
+
+将响应 `id` 放进发送消息的 `attachment_ids` 后，模型才能调用对应 Tool 解析该文件。
+默认大小由 `ESA_USER_ATTACHMENT_MAX_BYTES` 控制；反向代理的请求体限制不得更小。
+
+### DELETE /conversations/{conversation_id}/attachments/{attachment_id}
+
+删除当前对话内的附件源文件和元数据，成功响应 `204`。
 
 ### POST /conversations/{conversation_id}/messages/stream — 流式发送消息
 
@@ -424,11 +608,12 @@ Uvicorn worker 串行处理，从读取历史、写入用户消息直到助手�
 
 ### POST /me/schedule/import
 
-使用 `multipart/form-data` 上传字段名为 `file` 的课表文件，最大 15 MB，支持 PDF、
-PNG/JPEG/WebP/BMP 和 HTML。图片会经过像素限制、缩放和重新编码后直接发送给本机
-Qwen3.5-9B 的多模态接口；PDF 最多 4 页，会先安全栅格化为页面图片；HTML 则保留表格
-结构并提取可见文本。模型输出经过严格 Schema 校验后才会去重写入用户课表。辅助模型
-不可用时返回 `502`，不会回退占用 122B 主模型。该导入链路不依赖 DocIR。
+使用 `multipart/form-data` 上传字段名为 `file` 的课表文件，最大 15 MB。启用 MM 时，
+PDF、DOCX、PPTX、XLSX 与常见图片先经过 `MinerU → DocIR → Markdown`，再由本机辅助
+模型做课程字段提取；响应的 `document.pipeline` 为 `docir`，并携带 document id、
+校验状态、元素数与页数。HTML 以及未启用 MM 时的 PDF/图片保留兼容解析路径，响应为
+`document.pipeline: legacy`。模型输出经过严格 Schema 校验后才会去重写入用户课表；
+辅助模型不可用时返回 `502`，不会回退占用主模型。
 
 ### POST /me/schedule/import/hust/challenge
 
@@ -480,7 +665,62 @@ challenge 会被关闭。
 
 ## 长期记忆接口
 
-以下接口均需要认证，并且只能管理当前用户的记忆。
+以下接口均需要认证，并且只能管理当前用户的记忆。`/me/core-memories` 是正式
+CoreMemory V2 接口；`/me/memories` 仅为迁移期 global 兼容接口，新客户端不得依赖。
+
+### GET/POST /me/core-memories
+
+GET 支持 `limit`、`offset`，返回当前用户拥有的记忆（包括 scope、状态、revision、
+复核和过期信息）。POST 创建显式记忆：
+
+```json
+{
+  "memory_key": "citation_style",
+  "content": "优先使用 APA 7",
+  "category": "preference",
+  "scope_type": "workspace",
+  "workspace_type": "research"
+}
+```
+
+`scope_type` 为 `global|workspace`；Workspace scope 必须与当前账号允许进入的
+`workspace_type` 一致。模型从对话中推断的信息不会直接进入正式记忆，只会创建候选。
+
+### PATCH/DELETE /me/core-memories/{memory_id}
+
+PATCH 请求包含 `expected_revision`，以及可选的 `content`、`category`；并发冲突返回
+`409` 和当前 revision。DELETE 按稳定 `memory_id` 彻底遗忘正文、版本、候选及派生投影，
+成功响应 `204`。
+
+### POST /me/core-memories/{memory_id}/suppress|restore
+
+抑制会停止检索与画像投影但保留可恢复数据；restore 恢复使用。两者返回最新记忆记录。
+
+### GET /me/core-memories/{memory_id}/versions
+
+返回版本历史。`POST /me/core-memories/{memory_id}/versions/{revision}/restore` 使用
+`{ "expected_revision": 3 }` 恢复指定版本，并生成一个新 revision。
+
+### GET /me/memory-candidates
+
+列出待确认候选。候选与 Agent Action 是不同状态机，候选接受前不会成为有效记忆。
+
+### POST /me/memory-candidates/{candidate_id}/accept|reject
+
+accept 可用以下可选字段在确认前编辑候选：
+
+```json
+{
+  "content": "编辑后的内容",
+  "category": "preference",
+  "scope_type": "workspace",
+  "workspace_type": "research"
+}
+```
+
+reject 无请求体，成功响应 `204`。过期候选不能接受。
+
+### 兼容接口：GET/PUT/DELETE /me/memories
 
 ### GET /me/memories
 
@@ -501,6 +741,21 @@ challenge 会被关闭。
 ### DELETE /me/memories/{memory_key}
 
 删除指定记忆，成功响应 `204`。
+
+---
+
+## Agent Action 确认接口
+
+Research Workflow 等高影响 Agent Tool 只创建待确认 Action，不会立即启动业务任务。
+
+- `GET /me/agent-actions?status=pending`：列出当前用户的 Action，可按状态过滤。
+- `GET /me/agent-actions/{action_id}`：读取单个 Action。
+- `POST /me/agent-actions/{action_id}/approve`：重新校验身份、资源和策略后幂等执行。
+- `POST /me/agent-actions/{action_id}/reject`：拒绝待确认 Action。
+
+状态为 `pending -> approved -> executing -> succeeded|failed`，或
+`pending -> rejected|expired`。重复批准不会重复创建 Research Job；Action 的
+`succeeded` 仅表示权威 Job 已成功创建，任务最终状态仍查询对应 Research Job 接口。
 
 ---
 
@@ -605,16 +860,241 @@ Profile V2 的显式字段统一更新入口，可部分更新：
 
 成功时返回最新设置；该接口每个用户每分钟最多 10 次。
 
+## 教师端与学生端教学接口
+
+以下接口均需要认证，并根据注册时固定的 `account_role` 限制入口。教师接口要求
+`teacher`，学生接口要求 `student`；角色不匹配返回 `403`。资源不存在或不属于当前
+用户统一返回 `404`，避免泄露班级、作业和提交是否存在。
+
+班级加入不使用邀请码。教师必须输入学生的精确用户名发出邀请，学生本人确认后才成为
+活动成员。班级课程只用于关联教学内容，不会限制学生原有课程和知识图谱的查看范围。
+
+### 教师接口
+
+#### GET /teaching/overview
+
+返回当前教师的教学工作台统计和 `classes` 列表，包括班级数、活动学生数、待复核提交数
+和待发布反馈数。
+
+#### GET /teaching/classes
+
+返回当前教师创建的班级。每项包含 `class_id`、班级名称、`canonical_course`、学期、状态、
+活动学生数和已发布作业数。
+
+#### POST /teaching/classes
+
+创建班级：
+
+```json
+{
+  "name": "数据结构 1 班",
+  "canonical_course": "数据结构",
+  "term": "2026 秋",
+  "description": "演示班级"
+}
+```
+
+`canonical_course` 必须能映射到已有知识图谱课程。成功返回 `201`；课程不存在返回
+`422`；当前教师已有同名活动班级返回 `409`。
+
+#### GET /teaching/classes/{class_id}
+
+返回班级详情、`members` 和 `assignments`。仅班级创建者可访问。
+
+#### POST /teaching/classes/{class_id}/invitations
+
+按精确用户名邀请学生：
+
+```json
+{ "username": "student" }
+```
+
+成功返回 `201` 和状态为 `pending` 的成员关系；学生账号不存在返回 `404`；归档班级
+返回 `409`。重复邀请会把原成员关系重新置为待确认，不产生邀请码。
+
+#### DELETE /teaching/classes/{class_id}/members/{student_id}
+
+移除班级成员，成功返回 `204`。被移除学生不能查看或提交之后发布的新作业，只保留本人
+已有且反馈已发布的历史作业和提交。
+
+#### POST /teaching/classes/{class_id}/assignments
+
+创建作业草稿：
+
+```json
+{
+  "title": "二分查找诊断",
+  "instructions": "说明推理过程",
+  "due_at": "2026-08-20T12:00:00+00:00",
+  "questions": [
+    {
+      "question_type": "short_answer",
+      "prompt": "为什么时间复杂度是 O(log n)？",
+      "max_points": 10,
+      "rubric": "说明搜索区间每轮减半",
+      "reference_answer": "搜索区间每轮减半",
+      "kp_id": "binary_search"
+    }
+  ]
+}
+```
+
+`question_type` 当前支持 `short_answer` 和 `code`；`code` 仅按文本分析，不执行代码。
+关联知识点必须属于班级课程。成功返回 `201`；知识点无效返回 `422`。
+
+#### POST /teaching/assignments/{assignment_id}/publish
+
+发布草稿作业。成功返回完整作业；非草稿状态返回 `409`。
+
+#### GET /teaching/assignments/{assignment_id}/submissions
+
+返回每名学生的最新提交版本及分析、复核和反馈状态。
+
+#### POST /teaching/assignments/{assignment_id}/analyze
+
+批量分析当前作业中每名学生的最新提交，返回：
+
+```json
+{
+  "assignment_id": "...",
+  "total": 20,
+  "completed": 19,
+  "failed": 1,
+  "status": "partial"
+}
+```
+
+#### GET /teaching/submissions/{submission_id}
+
+返回提交、逐题答案、AI 建议和教师最终复核字段。仅作业所属班级的创建者可访问。
+
+#### POST /teaching/submissions/{submission_id}/analyze
+
+分析单个提交。辅助 Qwen 可用时生成受约束的结构化建议；服务不可用或输出无效时返回
+低置信度确定性结果，要求教师复核，不自动发布成绩。分析结果中的分数、错因、反馈、
+知识点和 `ai_confidence` 仅教师可见。
+
+#### POST /teaching/submissions/{submission_id}/review
+
+教师必须一次复核提交中的全部答案：
+
+```json
+{
+  "reviews": [
+    {
+      "answer_id": "...",
+      "score": 9,
+      "error_type": "procedural",
+      "feedback": "结论正确，请补充递推关系。",
+      "kp_id": "binary_search"
+    }
+  ]
+}
+```
+
+得分不能超过题目满分，知识点必须存在；校验失败返回 `422`。
+
+#### POST /teaching/submissions/{submission_id}/publish-feedback
+
+发布教师已复核的反馈。发布后学生才能看到最终分数、错因、评语和最终知识点。有关联
+知识点的答案会幂等写入 `homework` 学习证据，并更新该学生的个人掌握度；重复调用不会
+重复写入证据。
+
+#### GET /teaching/classes/{class_id}/dashboard
+
+实时聚合已发布反馈，返回知识点平均得分率、薄弱人数、前置根因候选和关注学生。当前
+Demo 没有预计算快照；无直接证据的前置点标记为 `needs_diagnosis`，不表示确定因果。
+
+#### GET /teaching/classes/{class_id}/students/{student_id}
+
+返回该学生在本班作业形成的受限摘要，并记录审计日志。该接口不会读取或返回学生私人
+对话、长期记忆、科研项目、无关附件或其他班级数据。
+
+### 学生接口
+
+#### GET /student/classes
+
+返回当前学生收到的班级邀请和成员状态，包括 `pending`、`active`、`declined`、
+`removed` 或 `left`。
+
+#### POST /student/invitations/{membership_id}/respond
+
+确认或拒绝待处理邀请：
+
+```json
+{ "accept": true }
+```
+
+只能由被邀请学生本人操作。邀请不存在、已处理或不属于当前学生返回 `404`。
+
+#### GET /student/assignments
+
+活动成员可查看班级全部已发布、已关闭或已归档作业。被移除或已退出成员只会看到本人
+已有提交且教师已发布反馈的历史作业，不会看到移除或退出后发布的新作业。
+
+#### GET /student/assignments/{assignment_id}
+
+返回学生可访问的作业和题目。学生响应始终移除 `reference_answer` 和 `rubric`，即使
+反馈已经发布也不会暴露。活动成员可访问开放作业；非活动成员仅可访问本人已有且反馈
+已发布的历史作业。
+
+#### POST /student/assignments/{assignment_id}/submissions
+
+活动成员向已发布作业提交全部题目答案：
+
+```json
+{
+  "answers": [
+    { "question_id": "...", "answer_text": "搜索区间每轮减半" }
+  ]
+}
+```
+
+成功返回 `201` 并生成递增版本。必须恰好覆盖全部题目，重复或缺失题目返回 `422`；非
+活动成员或不可访问作业返回 `404`。响应不会包含参考答案、评分细则或 AI 中间建议。
+
+#### GET /student/submissions/{submission_id}
+
+只允许读取本人提交。反馈发布前仅返回题目、本人答案和流程状态，`total_score` 为
+`null`；发布后增加教师最终分数、错因、评语和知识点。AI 中间建议、参考答案和评分
+细则始终不返回。非活动成员只能读取反馈已发布的本人历史提交。
+
+### 教学隐私与审计
+
+- 邀请、提交、AI 分析、教师复核、反馈发布、移除成员和学生详情访问会写入追加式审计
+  日志；摘要不保存完整答案或敏感凭证。
+- AI 分析只是教师决策支持，不能自动发布成绩或在教师确认前写入学生掌握度。
+- 教学班级关联是附加关系，不改变学生对原有全部知识点、个人课程和学习空间的访问。
+
 ## Web 部署约定
 
-推荐把 Flutter Web 编译时的 `ESA_API_BASE` 设置为 `/api`，再由 Nginx 反向代理到 `127.0.0.1:51024`。SSE 代理必须关闭缓冲：
+Flutter Web 默认使用同源 `/api`。Nginx 必须把 `/api` 前缀原样转发到后端；
+`proxy_pass` 末尾不能带 `/`，否则会剥离后端所需的 `/api`。SSE 代理必须关闭缓冲：
+
+Flutter Web 的 `main.dart.js` 和 CanvasKit WASM 必须启用 gzip；否则首屏需要原样下载
+约 11 MB。部署包已包含 `.gz` 预压缩文件，Nginx 应启用 `gzip_static on`。`index.html`、
+`flutter_bootstrap.js` 和 `main.dart.js` 使用 `no-cache`，浏览器会通过 ETag 复用未变化的
+版本；字体和图片可缓存 7 天。完整静态站点配置见
+`deploy/nginx/esa-web.conf.example`。
 
 ```nginx
-location /api/ {
-    proxy_pass http://127.0.0.1:51024/;
+# 运维指标不应通过公网前端域名暴露。
+location ^~ /api/internal/ {
+    return 404;
+}
+
+location ^~ /api/ {
+    proxy_pass http://115.29.197.244:51024;
     proxy_http_version 1.1;
+    client_max_body_size 200m;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
     proxy_buffering off;
     proxy_cache off;
     proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
 }
 ```

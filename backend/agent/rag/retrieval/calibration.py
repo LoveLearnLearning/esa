@@ -1,3 +1,5 @@
+# backend/agent/rag/retrieval/calibration.py
+
 """可复现的检索分数校准器，不依赖具体索引或模型实现。"""
 
 from __future__ import annotations
@@ -12,10 +14,13 @@ from typing import Protocol
 class ScoreCalibrator(Protocol):
     """把某一路原始分数映射到有限的 ``[0, 1]`` 区间。"""
 
-    def calibrate(self, score: float) -> float: ...
+    def calibrate(self, score: float) -> float:
+        """处理 `calibrate` 相关逻辑。"""
+        ...
 
 
 def _finite(score: float) -> float:
+    """处理 `_finite` 相关逻辑。"""
     value = float(score)
     if not math.isfinite(value):
         raise ValueError("score must be finite")
@@ -23,6 +28,7 @@ def _finite(score: float) -> float:
 
 
 def _unit(value: float) -> float:
+    """处理 `_unit` 相关逻辑。"""
     return min(1.0, max(0.0, value))
 
 
@@ -31,6 +37,7 @@ class IdentityScoreCalibrator:
     """保留已经处于 ``[0, 1]`` 的分数，并对边界做显式裁剪。"""
 
     def calibrate(self, score: float) -> float:
+        """处理 `calibrate` 相关逻辑。"""
         return _unit(_finite(score))
 
 
@@ -39,6 +46,7 @@ class CosineScoreCalibrator:
     """把 cosine 的 ``[-1, 1]`` 映射到 ``[0, 1]``。"""
 
     def calibrate(self, score: float) -> float:
+        """处理 `calibrate` 相关逻辑。"""
         return _unit((_finite(score) + 1.0) / 2.0)
 
 
@@ -50,12 +58,14 @@ class RobustMinMaxScoreCalibrator:
     upper: float
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if not math.isfinite(self.lower) or not math.isfinite(self.upper):
             raise ValueError("calibration bounds must be finite")
         if self.upper <= self.lower:
             raise ValueError("upper calibration bound must exceed lower bound")
 
     def calibrate(self, score: float) -> float:
+        """处理 `calibrate` 相关逻辑。"""
         return _unit((_finite(score) - self.lower) / (self.upper - self.lower))
 
     @classmethod
@@ -66,6 +76,16 @@ class RobustMinMaxScoreCalibrator:
         lower_quantile: float = 0.05,
         upper_quantile: float = 0.95,
     ) -> "RobustMinMaxScoreCalibrator":
+        """处理 `fit` 相关逻辑。
+
+        Args:
+            scores: Sequence[float] => `scores` 参数。
+            lower_quantile: float => `lower_quantile` 参数。
+            upper_quantile: float => `upper_quantile` 参数。
+
+        Returns:
+            'RobustMinMaxScoreCalibrator' => 处理结果。
+        """
         values = sorted(_finite(score) for score in scores)
         if len(values) < 2:
             raise ValueError("at least two scores are required")
@@ -87,15 +107,18 @@ class PercentileScoreCalibrator:
     reference_scores: tuple[float, ...]
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         values = tuple(_finite(value) for value in self.reference_scores)
         if len(values) < 2 or values != tuple(sorted(values)):
             raise ValueError("reference_scores must contain at least two sorted values")
 
     @classmethod
     def fit(cls, scores: Sequence[float]) -> "PercentileScoreCalibrator":
+        """处理 `fit` 相关逻辑。"""
         return cls(tuple(sorted(_finite(score) for score in scores)))
 
     def calibrate(self, score: float) -> float:
+        """处理 `calibrate` 相关逻辑。"""
         value = _finite(score)
         right = bisect.bisect_right(self.reference_scores, value)
         return right / len(self.reference_scores)
@@ -109,10 +132,12 @@ class LogisticScoreCalibrator:
     intercept: float
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if not math.isfinite(self.slope) or not math.isfinite(self.intercept):
             raise ValueError("logistic parameters must be finite")
 
     def calibrate(self, score: float) -> float:
+        """处理 `calibrate` 相关逻辑。"""
         logit = self.slope * _finite(score) + self.intercept
         if logit >= 0:
             return 1.0 / (1.0 + math.exp(-logit))
@@ -163,6 +188,7 @@ class IsotonicScoreCalibrator:
     values: tuple[float, ...]
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if not self.thresholds or len(self.thresholds) != len(self.values):
             raise ValueError("isotonic thresholds and values must be aligned")
         if self.thresholds != tuple(sorted(self.thresholds)):
@@ -173,6 +199,7 @@ class IsotonicScoreCalibrator:
             raise ValueError("isotonic values must be non-decreasing")
 
     def calibrate(self, score: float) -> float:
+        """处理 `calibrate` 相关逻辑。"""
         index = bisect.bisect_left(self.thresholds, _finite(score))
         return self.values[min(index, len(self.values) - 1)]
 
@@ -180,6 +207,15 @@ class IsotonicScoreCalibrator:
     def fit(
         cls, scores: Sequence[float], labels: Sequence[int]
     ) -> "IsotonicScoreCalibrator":
+        """处理 `fit` 相关逻辑。
+
+        Args:
+            scores: Sequence[float] => `scores` 参数。
+            labels: Sequence[int] => `labels` 参数。
+
+        Returns:
+            'IsotonicScoreCalibrator' => 处理结果。
+        """
         if len(scores) != len(labels) or not scores:
             raise ValueError("scores and labels must be non-empty and aligned")
         pairs = sorted(

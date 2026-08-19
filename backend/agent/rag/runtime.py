@@ -1,3 +1,7 @@
+# backend/agent/rag/runtime.py
+
+"""组装并管理运行时组件。"""
+
 import os
 from pathlib import Path
 
@@ -62,6 +66,7 @@ def create_retrieval_service(
             model_name=deployment.embedding_model_name,
             load_path=config.RAG_EMBEDDING_MODEL_PATH,
             device=config.RAG_EMBEDDING_DEVICE,
+            runtime_device=config.RAG_EMBEDDING_RUNTIME_DEVICE,
             dimension=generation.dense_dimension,
             max_length=config.RAG_EMBEDDING_MAX_LENGTH,
             batch_size=config.RAG_EMBEDDING_BATCH_SIZE,

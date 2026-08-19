@@ -1,3 +1,5 @@
+# backend/core/stores/migrations.py
+
 """SQLite schema migrations used by the backend stores."""
 
 from __future__ import annotations
@@ -48,10 +50,16 @@ CREATE TABLE {table} (
     user_id TEXT NOT NULL,
     title TEXT NOT NULL,
     group_id TEXT,
+    workspace_type TEXT NOT NULL DEFAULT 'learning',
+    research_project_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE SET NULL
+    FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE SET NULL,
+    FOREIGN KEY(research_project_id)
+        REFERENCES research_projects(project_id) ON DELETE SET NULL,
+    CHECK(workspace_type IN ('learning', 'teaching', 'research')),
+    CHECK(research_project_id IS NULL OR workspace_type = 'research')
 )
 """
 
@@ -62,6 +70,7 @@ CREATE TABLE {table} (
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     name TEXT,
+    attachments_json TEXT NOT NULL DEFAULT '[]',
     is_visible INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     FOREIGN KEY(conversation_id)
@@ -106,6 +115,7 @@ CREATE TABLE {table} (
 
 
 def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
+    """处理 `_table_exists` 相关逻辑。"""
     return (
         connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -116,10 +126,39 @@ def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
 
 
 def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
+    """处理 `_columns` 相关逻辑。"""
     return {
         str(row["name"])
         for row in connection.execute(f'PRAGMA table_info("{table}")').fetchall()
     }
+
+
+def _migrate_message_attachments(connection: sqlite3.Connection) -> None:
+    """Persist attachment metadata without failing on already-upgraded stores."""
+    if not _table_exists(connection, "messages"):
+        return
+    if "attachments_json" not in _columns(connection, "messages"):
+        connection.execute(
+            "ALTER TABLE messages ADD COLUMN attachments_json "
+            "TEXT NOT NULL DEFAULT '[]'"
+        )
+
+
+def _execute_script_atomically(
+    connection: sqlite3.Connection,
+    script: str,
+) -> None:
+    """Execute a SQL script without sqlite3.executescript's implicit commit."""
+    statement = ""
+    for line in script.splitlines():
+        statement += f"{line}\n"
+        if sqlite3.complete_statement(statement):
+            sql = statement.strip()
+            if sql:
+                connection.execute(sql)
+            statement = ""
+    if statement.strip():
+        raise sqlite3.OperationalError("incomplete SQL statement in migration")
 
 
 def _has_foreign_key(
@@ -130,6 +169,7 @@ def _has_foreign_key(
     target_column: str,
     on_delete: str,
 ) -> bool:
+    """判断是否存在 `foreign key` 相关数据。"""
     expected_delete = on_delete.upper()
     return any(
         row["from"] == source_column
@@ -141,6 +181,7 @@ def _has_foreign_key(
 
 
 def _ensure_quarantine_table(connection: sqlite3.Connection) -> None:
+    """确保 `quarantine table` 相关数据。"""
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS migration_orphans (
@@ -170,6 +211,7 @@ def _quarantine_rows(
     reason: str,
     query: str,
 ) -> int:
+    """处理 `_quarantine_rows` 相关逻辑。"""
     rows = connection.execute(query).fetchall()
     if not rows:
         return 0
@@ -214,6 +256,7 @@ def _replace_table(
     columns: tuple[str, ...],
     select_sql: str,
 ) -> None:
+    """替换 `table` 相关数据。"""
     replacement = f"__migration_{table}"
     connection.execute(f'DROP TABLE IF EXISTS "{replacement}"')
     connection.execute(ddl.format(table=replacement))
@@ -224,6 +267,7 @@ def _replace_table(
 
 
 def _migrate_sessions(connection: sqlite3.Connection) -> None:
+    """处理 `_migrate_sessions` 相关逻辑。"""
     if not _table_exists(connection, "sessions"):
         connection.execute(SESSIONS_DDL.format(table="sessions"))
         return
@@ -255,6 +299,7 @@ def _migrate_sessions(connection: sqlite3.Connection) -> None:
 
 
 def _migrate_groups(connection: sqlite3.Connection) -> None:
+    """处理 `_migrate_groups` 相关逻辑。"""
     if not _table_exists(connection, "groups"):
         connection.execute(GROUPS_DDL.format(table="groups"))
     elif not _has_foreign_key(
@@ -301,6 +346,7 @@ def _migrate_groups(connection: sqlite3.Connection) -> None:
 
 
 def _migrate_conversations(connection: sqlite3.Connection) -> None:
+    """处理 `_migrate_conversations` 相关逻辑。"""
     if not _table_exists(connection, "conversations"):
         connection.execute(CONVERSATIONS_DDL.format(table="conversations"))
     else:
@@ -387,6 +433,7 @@ def _migrate_conversations(connection: sqlite3.Connection) -> None:
 
 
 def _migrate_messages(connection: sqlite3.Connection) -> None:
+    """处理 `_migrate_messages` 相关逻辑。"""
     if not _table_exists(connection, "messages"):
         connection.execute(MESSAGES_DDL.format(table="messages"))
     else:
@@ -443,6 +490,7 @@ def _migrate_messages(connection: sqlite3.Connection) -> None:
 
 
 def _migrate_profile_tables(connection: sqlite3.Connection) -> None:
+    """处理 `_migrate_profile_tables` 相关逻辑。"""
     if not _table_exists(connection, "profile_audit_log"):
         connection.execute(PROFILE_AUDIT_DDL.format(table="profile_audit_log"))
     elif not _has_foreign_key(
@@ -529,6 +577,7 @@ def _migrate_profile_tables(connection: sqlite3.Connection) -> None:
 
 
 def _create_conversation_owner_triggers(connection: sqlite3.Connection) -> None:
+    """创建 `conversation owner triggers` 相关数据。"""
     connection.execute("DROP TRIGGER IF EXISTS conversations_group_owner_insert")
     connection.execute("DROP TRIGGER IF EXISTS conversations_group_owner_update")
     connection.execute(
@@ -606,6 +655,432 @@ def _migrate_schedule_tables(connection: sqlite3.Connection) -> None:
     from backend.core.stores.schedule_store import ensure_schedule_tables_schema
 
     ensure_schedule_tables_schema(connection)
+
+
+def _migrate_email_identity(connection: sqlite3.Connection) -> None:
+    """处理 `_migrate_email_identity` 相关逻辑。"""
+    columns = _columns(connection, "users")
+    if "email" not in columns:
+        connection.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    if "email_verified_at" not in columns:
+        connection.execute("ALTER TABLE users ADD COLUMN email_verified_at TEXT")
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique
+        ON users (email COLLATE NOCASE)
+        WHERE email IS NOT NULL
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS email_verification_codes (
+            verification_id TEXT PRIMARY KEY,
+            email TEXT NOT NULL COLLATE NOCASE,
+            purpose TEXT NOT NULL,
+            code_digest TEXT NOT NULL,
+            requested_ip TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            consumed_at TEXT,
+            CHECK(purpose IN ('register', 'bind'))
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_email_codes_email_created
+        ON email_verification_codes(email, purpose, created_at)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_email_codes_ip_created
+        ON email_verification_codes(requested_ip, created_at)
+        """
+    )
+
+
+def _migrate_research_capabilities(connection: sqlite3.Connection) -> None:
+    """Repair the V9 merge collision and install the complete research domain."""
+    # V9 existed independently on two branches. Re-running both halves here is
+    # intentional: each operation is idempotent and repairs databases that have
+    # already recorded either historical V9 variant.
+    _migrate_email_identity(connection)
+
+    user_columns = _columns(connection, "users")
+    if "account_role" not in user_columns:
+        connection.execute(
+            "ALTER TABLE users ADD COLUMN account_role TEXT NOT NULL DEFAULT 'student'"
+        )
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS research_projects (
+            project_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(status IN ('active', 'archived'))
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_research_projects_user "
+        "ON research_projects(user_id, status, updated_at)"
+    )
+
+    conversation_columns = _columns(connection, "conversations")
+    if "workspace_type" not in conversation_columns:
+        connection.execute(
+            "ALTER TABLE conversations ADD COLUMN workspace_type "
+            "TEXT NOT NULL DEFAULT 'learning'"
+        )
+    if "research_project_id" not in conversation_columns:
+        connection.execute(
+            "ALTER TABLE conversations ADD COLUMN research_project_id TEXT"
+        )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_conversations_workspace "
+        "ON conversations(user_id, workspace_type, updated_at)"
+    )
+    _execute_script_atomically(
+        connection,
+        """
+        CREATE TRIGGER IF NOT EXISTS conversations_workspace_insert
+        BEFORE INSERT ON conversations
+        FOR EACH ROW
+        WHEN NEW.workspace_type NOT IN ('learning', 'teaching', 'research')
+          OR (NEW.research_project_id IS NOT NULL AND NEW.workspace_type != 'research')
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid conversation workspace binding');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS conversations_research_project_insert
+        BEFORE INSERT ON conversations
+        FOR EACH ROW
+        WHEN NEW.research_project_id IS NOT NULL
+         AND NOT EXISTS (
+             SELECT 1 FROM research_projects
+             WHERE project_id = NEW.research_project_id
+               AND user_id = NEW.user_id
+         )
+        BEGIN
+            SELECT RAISE(ABORT, 'research project must belong to conversation user');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS conversations_workspace_update
+        BEFORE UPDATE OF workspace_type, research_project_id, user_id ON conversations
+        FOR EACH ROW
+        WHEN NEW.workspace_type NOT IN ('learning', 'teaching', 'research')
+          OR (NEW.research_project_id IS NOT NULL AND NEW.workspace_type != 'research')
+          OR (
+              NEW.research_project_id IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM research_projects
+                  WHERE project_id = NEW.research_project_id
+                    AND user_id = NEW.user_id
+              )
+          )
+        BEGIN
+            SELECT RAISE(ABORT, 'invalid conversation workspace binding');
+        END;
+
+        CREATE TABLE IF NOT EXISTS research_frontier_jobs (
+            job_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            query TEXT NOT NULL,
+            time_window_years INTEGER NOT NULL DEFAULT 5,
+            max_results INTEGER NOT NULL DEFAULT 20,
+            status TEXT NOT NULL DEFAULT 'queued',
+            result_json TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY(project_id) REFERENCES research_projects(project_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(status IN ('queued', 'running', 'succeeded', 'failed')),
+            CHECK(time_window_years BETWEEN 1 AND 20),
+            CHECK(max_results BETWEEN 5 AND 40)
+        );
+        CREATE INDEX IF NOT EXISTS idx_frontier_jobs_project
+        ON research_frontier_jobs(user_id, project_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS research_documents (
+            document_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            document_type TEXT NOT NULL,
+            content TEXT NOT NULL DEFAULT '',
+            version INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES research_projects(project_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(document_type IN ('outline', 'literature_review', 'paper', 'notes')),
+            CHECK(status IN ('active', 'archived'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_documents_project
+        ON research_documents(user_id, project_id, updated_at DESC);
+        CREATE TABLE IF NOT EXISTS research_document_versions (
+            document_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(document_id, version),
+            FOREIGN KEY(document_id) REFERENCES research_documents(document_id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS research_writing_jobs (
+            job_id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            instruction TEXT NOT NULL DEFAULT '',
+            source_text TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'queued',
+            error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY(document_id) REFERENCES research_documents(document_id) ON DELETE CASCADE,
+            FOREIGN KEY(project_id) REFERENCES research_projects(project_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(operation IN ('outline', 'literature_review', 'polish', 'format_check')),
+            CHECK(status IN ('queued', 'running', 'succeeded', 'failed'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_writing_jobs_document
+        ON research_writing_jobs(user_id, document_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS research_datasets (
+            dataset_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            row_count INTEGER NOT NULL DEFAULT 0,
+            column_count INTEGER NOT NULL DEFAULT 0,
+            profile_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'ready',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES research_projects(project_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(status IN ('ready', 'invalid', 'archived'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_datasets_project
+        ON research_datasets(user_id, project_id, created_at DESC);
+        CREATE TABLE IF NOT EXISTS research_analysis_jobs (
+            job_id TEXT PRIMARY KEY,
+            dataset_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            analysis_type TEXT NOT NULL,
+            parameters_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'queued',
+            result_json TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY(dataset_id) REFERENCES research_datasets(dataset_id) ON DELETE CASCADE,
+            FOREIGN KEY(project_id) REFERENCES research_projects(project_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(analysis_type IN ('descriptive', 'correlation', 'group_compare', 'text_frequency')),
+            CHECK(status IN ('queued', 'running', 'succeeded', 'failed'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_analysis_jobs_dataset
+        ON research_analysis_jobs(user_id, dataset_id, created_at DESC);
+        """,
+    )
+
+
+def _migrate_workspace_runtime_domains(connection: sqlite3.Connection) -> None:
+    """Install resource bindings, approvals, and CoreMemory V2 atomically."""
+    _execute_script_atomically(
+        connection,
+        """
+        CREATE TABLE IF NOT EXISTS classroom_conversation_bindings (
+            conversation_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            class_id TEXT NOT NULL,
+            assignment_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_classroom_bindings_user_class
+        ON classroom_conversation_bindings(user_id, class_id);
+
+        CREATE TABLE IF NOT EXISTS research_project_profiles (
+            project_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            agent_instructions TEXT NOT NULL DEFAULT '',
+            format_version INTEGER NOT NULL DEFAULT 1,
+            revision INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES research_projects(project_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(format_version >= 1),
+            CHECK(revision >= 1)
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_project_profiles_user
+        ON research_project_profiles(user_id, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS agent_action_requests (
+            action_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            workspace_type TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            arguments_json TEXT NOT NULL,
+            resource_snapshot_json TEXT NOT NULL DEFAULT '{}',
+            policy_id TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            result_json TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            decided_at TEXT,
+            executed_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+            UNIQUE(user_id, idempotency_key),
+            CHECK(workspace_type IN ('learning', 'teaching', 'research')),
+            CHECK(status IN ('pending','approved','executing','succeeded','failed','rejected','expired'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_actions_user_status
+        ON agent_action_requests(user_id, status, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS core_memories (
+            memory_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            memory_key TEXT NOT NULL,
+            content TEXT NOT NULL,
+            normalized_content_hash TEXT NOT NULL,
+            category TEXT NOT NULL,
+            scope_type TEXT NOT NULL,
+            workspace_type TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            source_type TEXT NOT NULL,
+            source_conversation_id TEXT,
+            revision INTEGER NOT NULL DEFAULT 1,
+            confirmed_at TEXT,
+            review_after TEXT,
+            expires_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(source_conversation_id) REFERENCES conversations(conversation_id) ON DELETE SET NULL,
+            UNIQUE(user_id, scope_type, workspace_type, memory_key),
+            CHECK(scope_type IN ('global','workspace')),
+            CHECK((scope_type='global' AND workspace_type IS NULL) OR
+                  (scope_type='workspace' AND workspace_type IN ('learning','teaching','research'))),
+            CHECK(status IN ('active','suppressed')),
+            CHECK(revision >= 1)
+        );
+        CREATE INDEX IF NOT EXISTS idx_core_memories_visible
+        ON core_memories(user_id, scope_type, workspace_type, status, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS core_memory_candidates (
+            candidate_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            memory_id TEXT,
+            memory_key TEXT NOT NULL,
+            proposed_content TEXT,
+            normalized_content_hash TEXT NOT NULL,
+            category TEXT NOT NULL,
+            scope_type TEXT NOT NULL,
+            workspace_type TEXT,
+            candidate_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            expected_revision INTEGER,
+            source_conversation_id TEXT,
+            resulting_memory_id TEXT,
+            created_at TEXT NOT NULL,
+            decided_at TEXT,
+            expires_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(memory_id) REFERENCES core_memories(memory_id) ON DELETE CASCADE,
+            FOREIGN KEY(resulting_memory_id) REFERENCES core_memories(memory_id) ON DELETE SET NULL,
+            FOREIGN KEY(source_conversation_id) REFERENCES conversations(conversation_id) ON DELETE SET NULL,
+            CHECK(scope_type IN ('global','workspace')),
+            CHECK((scope_type='global' AND workspace_type IS NULL) OR
+                  (scope_type='workspace' AND workspace_type IN ('learning','teaching','research'))),
+            CHECK(candidate_type IN ('create','update','replace')),
+            CHECK(status IN ('pending','accepted','rejected','expired'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_candidates_user_status
+        ON core_memory_candidates(user_id, status, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS core_memory_versions (
+            version_id TEXT PRIMARY KEY,
+            memory_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            category TEXT NOT NULL,
+            scope_type TEXT NOT NULL,
+            workspace_type TEXT,
+            change_type TEXT NOT NULL,
+            changed_via TEXT NOT NULL,
+            source_candidate_id TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(memory_id) REFERENCES core_memories(memory_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(memory_id, revision),
+            CHECK(change_type IN ('create','update','replace','restore','migration'))
+        );
+        CREATE TABLE IF NOT EXISTS core_memory_tombstones (
+            memory_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            deleted_at TEXT NOT NULL,
+            final_revision INTEGER NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS core_memory_audit_log (
+            event_id TEXT PRIMARY KEY,
+            memory_id TEXT,
+            user_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            scope_type TEXT,
+            workspace_type TEXT,
+            revision INTEGER,
+            content_hash TEXT,
+            request_id TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_audit_user_created
+        ON core_memory_audit_log(user_id, created_at DESC);
+        CREATE TABLE IF NOT EXISTS core_memory_user_revisions (
+            user_id TEXT PRIMARY KEY,
+            revision INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        """,
+    )
 
 
 MIGRATIONS: list[MigrationDef] = [
@@ -791,6 +1266,26 @@ MIGRATIONS: list[MigrationDef] = [
             ON conversation_summaries(updated_at)
             """,
         ],
+    ),
+    (
+    9,
+        "create_email_identity_and_verification_codes",
+        _migrate_email_identity,
+    ),
+    (
+        10,
+        "repair_v9_and_create_research_capabilities",
+        _migrate_research_capabilities,
+    ),
+    (
+        11,
+        "create_workspace_runtime_domains",
+        _migrate_workspace_runtime_domains,
+    ),
+    (
+        12,
+        "persist_message_attachments",
+        _migrate_message_attachments,
     ),
 ]
 

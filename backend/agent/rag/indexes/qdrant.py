@@ -41,6 +41,7 @@ class QdrantIndex:
     upsert_batch_size: int = 64
 
     def __post_init__(self) -> None:
+        """完成实例初始化后的校验与派生字段构建。"""
         if self.timeout <= 0:
             raise ValueError("timeout must be positive")
         if self.upsert_batch_size <= 0:
