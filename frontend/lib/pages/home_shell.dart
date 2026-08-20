@@ -19,15 +19,8 @@ import 'planner_page.dart';
 import 'research_project_page.dart';
 import 'research_workspace_page.dart';
 import 'student_assignments_page.dart';
-import 'teaching_workspace_page.dart';
 
-enum StudentSection {
-  home,
-  assignments,
-  schedule,
-  knowledge,
-  research,
-}
+enum StudentSection { home, assignments, schedule, knowledge, research }
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -64,8 +57,6 @@ class _HomeShellState extends State<HomeShell> {
     final app = AppScope.of(context);
     final target = section == StudentSection.research
         ? WorkspaceType.research
-        : section == StudentSection.assignments && app.accountRole == 'teacher'
-        ? WorkspaceType.teaching
         : WorkspaceType.learning;
     if (app.activeWorkspace != target) await app.switchWorkspace(target);
     if (section == StudentSection.home && app.activeId != null) {
@@ -103,10 +94,7 @@ class _HomeShellState extends State<HomeShell> {
           ? null
           : () => unawaited(_select(StudentSection.assignments)),
     ),
-    StudentSection.assignments =>
-      AppScope.of(context).accountRole == 'teacher'
-          ? TeachingWorkspacePage(onOpenChat: _showHome)
-          : StudentAssignmentsPage(onOpenChat: _showHome),
+    StudentSection.assignments => StudentAssignmentsPage(onOpenChat: _showHome),
     StudentSection.schedule => PlannerPage(
       initialTab: PlannerTab.schedule,
       onOpenAssignments: () => unawaited(_select(StudentSection.assignments)),
@@ -164,10 +152,7 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _startGroupConversation(ChatGroup group) async {
     final app = AppScope.of(context);
     final projectId = app.groupProjectId(group.id);
-    await app.newConversationInGroup(
-      group.id,
-      researchProjectId: projectId,
-    );
+    await app.newConversationInGroup(group.id, researchProjectId: projectId);
     if (!mounted) return;
     if (projectId != null) {
       _activeResearchProject = app.researchProjects
@@ -175,7 +160,9 @@ class _HomeShellState extends State<HomeShell> {
           .firstOrNull;
     }
     setState(() {
-      _section = projectId != null ? StudentSection.research : StudentSection.home;
+      _section = projectId != null
+          ? StudentSection.research
+          : StudentSection.home;
       _learningChatOpen = projectId == null;
       _researchProjectChatOpen = projectId != null;
       _selectedAttachments = const [];
@@ -269,7 +256,8 @@ class _HomeShellState extends State<HomeShell> {
     final app = AppScope.of(context);
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final conversationActive = _learningChatOpen || _researchProjectChatOpen;
-    final historyAvailable = conversationActive || _section == StudentSection.home;
+    final historyAvailable =
+        conversationActive || _section == StudentSection.home;
     final researchProjectActive =
         _section == StudentSection.research && _activeResearchProject != null;
     return Scaffold(

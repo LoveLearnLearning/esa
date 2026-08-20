@@ -40,8 +40,7 @@ class AppState extends ChangeNotifier {
   bool toolsOn = true;
   int codeEditorIndentSize = 2;
   String codeEditorTheme = 'vs-dark';
-  String accountRole = 'student';
-  List<WorkspaceDescriptor> availableWorkspaces = const [
+  static const _studentWorkspaces = [
     WorkspaceDescriptor(
       type: WorkspaceType.learning,
       name: '学习空间',
@@ -55,6 +54,9 @@ class AppState extends ChangeNotifier {
       capabilities: ['chat', 'research_projects'],
     ),
   ];
+
+  String accountRole = 'student';
+  List<WorkspaceDescriptor> availableWorkspaces = _studentWorkspaces;
   WorkspaceType activeWorkspace = WorkspaceType.learning;
   final List<ResearchProject> researchProjects = [];
   bool loadingResearchProjects = false;
@@ -97,6 +99,8 @@ class AppState extends ChangeNotifier {
 
   String get username => api.username ?? '';
   bool get isLoggedIn => api.isLoggedIn;
+  bool get isTeacher => accountRole == 'teacher';
+  bool get isStudent => accountRole == 'student';
 
   bool isGroupPinned(String groupId) => _pinnedGroupIds.contains(groupId);
 
@@ -176,9 +180,17 @@ class AppState extends ChangeNotifier {
     String username,
     String password, {
     bool rememberLogin = false,
+    String? expectedAccountRole,
   }) async {
     try {
       await api.login(username, password);
+      final signedInRole = api.accountRole;
+      if (expectedAccountRole != null && signedInRole != expectedAccountRole) {
+        await api.logout();
+        _clearSession();
+        final actualLabel = signedInRole == 'teacher' ? '教师' : '学生';
+        return '该账号是$actualLabel账号，请选择$actualLabel身份登录';
+      }
       email = api.email ?? '';
       await _afterLogin();
       if (rememberLogin) {
@@ -238,17 +250,18 @@ class AppState extends ChangeNotifier {
     api.accountRole = manifest.accountRole;
     role = accountRole == 'teacher' ? '教师' : '学生';
     availableWorkspaces = manifest.workspaces;
-    if (!availableWorkspaces.any((item) => item.type == activeWorkspace)) {
-      activeWorkspace = manifest.defaultWorkspace;
-    }
+    activeWorkspace = manifest.defaultWorkspace;
     final startupTasks = <Future<void>>[
       loadConversations(),
       loadGroups(),
       _loadGroupProjectBindings(),
       loadPreferencesAndProfile(),
-      loadLearningOverview(),
     ];
-    if (accountRole == 'student') startupTasks.add(loadStudentAssignments());
+    if (accountRole == 'student') {
+      startupTasks
+        ..add(loadLearningOverview())
+        ..add(loadStudentAssignments());
+    }
     await Future.wait(startupTasks);
     // 登录后先进入学习首页，不自动打开最近一条对话；历史对话仍由侧栏选择。
     activeId = null;
@@ -423,6 +436,7 @@ class AppState extends ChangeNotifier {
     api.username = null;
     api.email = null;
     api.sessionExpiresAt = null;
+    api.accountRole = 'student';
     unawaited(_forgetRememberedSession());
     conversations.clear();
     _messages.clear();
@@ -449,6 +463,13 @@ class AppState extends ChangeNotifier {
     masteryReport = null;
     loadingLearningOverview = false;
     learningOverviewError = null;
+    accountRole = 'student';
+    role = '学生';
+    availableWorkspaces = _studentWorkspaces;
+    activeWorkspace = WorkspaceType.learning;
+    researchProjects.clear();
+    loadingResearchProjects = false;
+    researchProjectsLoaded = false;
     email = '';
     notifyListeners();
   }

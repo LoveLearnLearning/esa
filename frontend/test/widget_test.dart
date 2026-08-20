@@ -40,6 +40,9 @@ void main() {
     expect(find.text('邮箱或用户名'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
     expect(find.text('记住登录'), findsOneWidget);
+    expect(find.text('登录身份'), findsOneWidget);
+    expect(find.text('学生'), findsOneWidget);
+    expect(find.text('教师'), findsOneWidget);
   });
 
   testWidgets('renders a startup page while the remembered session loads', (
@@ -159,6 +162,21 @@ void main() {
     expect(find.text('密码至少 8 位'), findsOneWidget);
   });
 
+  testWidgets('login requires an explicit account role selection', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const EsaApp());
+    await tester.pump();
+
+    final fields = find.byType(EditableText);
+    await tester.enterText(fields.at(0), 'feng');
+    await tester.enterText(fields.at(1), 'password123');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+
+    expect(find.text('请选择登录身份'), findsOneWidget);
+  });
+
   testWidgets('hides the input hint as soon as the field is focused', (
     tester,
   ) async {
@@ -192,6 +210,26 @@ void main() {
     expect(find.text('获取验证码'), findsOneWidget);
     expect(find.text('用户名'), findsOneWidget);
     expect(find.text('确认密码'), findsOneWidget);
+  });
+
+  testWidgets('registration requires an explicit account type selection', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const EsaApp());
+    await tester.pump();
+
+    await tester.tap(find.text('注册').first);
+    await tester.pump();
+    final fields = find.byType(EditableText);
+    await tester.enterText(fields.at(0), 'student@example.com');
+    await tester.enterText(fields.at(1), '123456');
+    await tester.enterText(fields.at(2), 'student');
+    await tester.enterText(fields.at(3), 'password123');
+    await tester.enterText(fields.at(4), 'password123');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+
+    expect(find.text('请选择注册账号类型'), findsOneWidget);
   });
 
   testWidgets('auth page renders without overflow on desktop', (tester) async {

@@ -42,7 +42,7 @@ class _LoginPageState extends State<LoginPage>
   late final ValueNotifier<Offset?> _graphPointer;
   late final _KnowledgeGraphPainter _graphPainter;
   AuthMode _mode = AuthMode.login;
-  String _accountRole = 'student';
+  String? _accountRole;
   bool _showPw = false;
   bool _rememberLogin = true;
   bool _loading = false;
@@ -194,6 +194,10 @@ class _LoginPageState extends State<LoginPage>
       setState(() => _error = '密码至少 8 位');
       return;
     }
+    if (_accountRole == null) {
+      setState(() => _error = _isRegister ? '请选择注册账号类型' : '请选择登录身份');
+      return;
+    }
     if (_isRegister && password != _password2.text) {
       setState(() => _error = '两次输入的密码不一致');
       return;
@@ -210,9 +214,14 @@ class _LoginPageState extends State<LoginPage>
             verificationCode,
             username,
             password,
-            _accountRole,
+            _accountRole!,
           )
-        : await app.login(username, password, rememberLogin: _rememberLogin);
+        : await app.login(
+            username,
+            password,
+            rememberLogin: _rememberLogin,
+            expectedAccountRole: _accountRole!,
+          );
     if (!mounted) return;
     if (err == null) TextInput.finishAutofillContext(shouldSave: true);
     setState(() {
@@ -365,11 +374,11 @@ class _LoginPageState extends State<LoginPage>
                   _guestLoginButton(),
                 ],
                 const SizedBox(height: 24),
+                _fieldLabel(_isRegister ? '账号类型' : '登录身份'),
+                const SizedBox(height: 8),
+                _roleSwitch(),
+                const SizedBox(height: 17),
                 if (_isRegister) ...[
-                  _fieldLabel('账号类型'),
-                  const SizedBox(height: 8),
-                  _roleSwitch(),
-                  const SizedBox(height: 17),
                   _field(
                     label: '邮箱',
                     hint: 'name@example.com',

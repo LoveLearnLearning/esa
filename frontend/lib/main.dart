@@ -6,8 +6,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'pages/home_shell.dart';
 import 'pages/login_page.dart';
+import 'pages/role_shell.dart';
 import 'state/app_state.dart';
 import 'theme/esa_theme.dart';
 
@@ -61,7 +61,7 @@ class _EsaAppState extends State<EsaApp> {
                 ? const _StartupPage()
                 : _app.username.isEmpty
                 ? const LoginPage()
-                : const HomeShell(),
+                : const RoleShell(),
           );
         },
       ),
