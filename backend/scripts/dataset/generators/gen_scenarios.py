@@ -52,7 +52,23 @@ BUDGET = {
     ("S002", "修改参数"): 40,
     ("S003", "指定课程"): 70,
     ("S003", "不指定课程"): 65,
-    ("S004", "仅提及未要求"): 105,
+    # 2026-08-17：从 105 减到 88。移走的 17 条是**疑问句**，它们其实在「查」记忆
+    # （「你还记得我…吗」「你那边存了我哪些信息呀」），线上规则允许甚至要求调只读工具，
+    # 判成负样本是错的 —— 见交接文档 5.23。它们已挪到 seeds/new_tools.yaml 的
+    # search_core_memories 正例 / 混淆_应调get_core_memories。
+    #
+    # 2026-08-19（5.29，第三次改这一组）：那 88 条又逐条对着线上规则判了一遍，
+    # 拆成 71 + 12 + 5：
+    #   71 条留作负样本，按「为什么这里不该调工具」分成下面三组
+    #   12 条带出了长期稳定信息 → `推断出稳定信息`，规则对它写的是「必须调 propose」，
+    #      由 gen_negatives.py 产出（语义参数在种子里，和 save/delete 正例同一处）
+    #    5 条点名了可检索的主题 → 移去 seeds/new_tools.yaml 的 search_core_memories 正例
+    #
+    # 拆成三组还有第二个理由：原来 88 条共用**同一个 template_id**，
+    # 占了主评测集 FPR 分母的 95%（5.27），宏平均等于只有一个模板。
+    ("S004", "仅提及_短期状态"): 23,
+    ("S004", "仅提及_重估既有安排"): 35,
+    ("S004", "仅提及_泛化自评"): 13,
 }
 
 # 每条样本的用户话术必须互不相同。
@@ -75,7 +91,9 @@ STATE_FACTS = {
     ("S002", "修改参数"): ["course", "weeks_to_exam"],
     ("S003", "指定课程"): ["course"],
     ("S003", "不指定课程"): [],
-    ("S004", "仅提及未要求"): [],
+    ("S004", "仅提及_短期状态"): [],
+    ("S004", "仅提及_重估既有安排"): [],
+    ("S004", "仅提及_泛化自评"): [],
 }
 
 
@@ -259,7 +277,17 @@ def _render(cfg, sid, state_key, c, idx, rng, all_names, version):
                 old_course = extra["_old"] if extra["_changed"] == "course" else vals["course"]
                 old_weeks = extra["_old"] if extra["_changed"] == "weeks_to_exam" else vals["weeks_to_exam"]
                 lead = f"我想复习{old_course}，期末考试还有 {old_weeks} 周。"
-                ack = "好的。需要我根据这个安排练习计划吗？"
+                # ⚠️ 这句原来是**是非问句**「需要我根据这个安排练习计划吗？」，
+                # 而本模板里用户的下一句只纠正参数、**从不回答这个问句**。
+                # 于是 31 条训练样本在教「用户没确认也直接调工具」，
+                # 而误触发率恰恰是我们最重要的指标；评测侧另有 9 道把模型的追问
+                # 判成漏调。2026-08-16 基线跑完才看出来（模型的 <think> 明写
+                # 「用户只是纠正信息，没有明确要求推荐」—— 它的读法是站得住的）。
+                #
+                # 数据集内部本来就打架：clarify 类教「模糊就追问」，这里却教「直接调」。
+                # 改成陈述句（对齐隔壁 `参数在历史轮` 分支的写法）之后，
+                # 用户的纠正就只有一种读法：同一个请求、换个参数 —— 这正是本模板要考的。
+                ack = "好的，我这就按这个帮你安排练习计划。"
             turns = [
                 Turn(role="user", content=lead),
                 Turn(role="assistant", content=ack),
@@ -296,9 +324,14 @@ def _render(cfg, sid, state_key, c, idx, rng, all_names, version):
         return mk([Turn(role="user", content=query), Turn(role="assistant", content=ask)],
                   [tool], "clarify", ask_for=ask_for)
 
-    # ---- gate 未满足 → DIRECT_ANSWER，不得动记忆 ----
-    if sid == "S004" and state_key == "仅提及未要求":
-        reply = rng.choice(body["refuse_templates"])
+    # ---- gate 未满足 → DIRECT_ANSWER，不得动写入/列全部类记忆工具 ----
+    #
+    # ⚠️ 回应按**组**取，不是一个池子随机取。三组话说的不是一回事：
+    # 「今天学不进去」收到「记忆我保留着没变」是答非所问，而这些台词
+    # 有一部分会进训练集（拆 template 之后不再整组落在评测集里）。
+    # 生成器里写死的助手台词同样是标注的一部分 —— 5.22 就是这么栽的。
+    if sid == "S004" and state_key.startswith("仅提及_"):
+        reply = rng.choice(body["refuse_templates"][state_key])
         return mk(
             [Turn(role="user", content=query), Turn(role="assistant", content=reply)],
             ["save_core_memory", "delete_core_memory", "get_core_memories"],

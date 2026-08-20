@@ -24,7 +24,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from esa.fixtures import WEB_SEARCH_ERRORS  # noqa: E402
+from esa import fixtures  # noqa: E402
 from esa.ir import Sample, ToolCall, ToolResult, Turn, dump_samples, load_schemas  # noqa: E402
 from esa.render import pick_tool_names  # noqa: E402
 from esa.system_prompt import system_for  # noqa: E402
@@ -191,10 +191,20 @@ def gen_weather(cfg, version, rng, all_names, out):
 
 
 def gen_web_search_errors(cfg, version, rng, all_names, out):
-    """只做错误恢复。报错文案逐字取自 backend/agent/tools/web_search.py。"""
+    """只做错误恢复。失败观测由 fixtures 按**实测**的执行器返回值产出。
+
+    ⚠️ 2026-08-15 重写。后端 `1b64473` 把 web_search 换成 You.com MCP 适配器：
+      · 原来那 5 条 SearXNG 文案在后端**一条都不剩**了
+      · 观测从字符串 `"[Error]: …"` 变成了 dict
+        `{"ok": false, "error": "tool_execution_error", "tool": "web_search", "detail": …}`
+        （`capability_runtime.py` 给 web_search 开了专用分支，RuntimeError 在 :165 被接住）
+
+    现在线上真实可达的只有「MCP 没配好」这一种，所以五条样本共用同一个失败观测，
+    靠不同的查询意图和不同的恢复话术保持多样性 —— 而不是编五种不同的报错。
+    """
     ws = cfg["web_search"]
+    result = fixtures.web_search_failed()
     for i, item in enumerate(ws["正例查询"]):
-        err = WEB_SEARCH_ERRORS[i % len(WEB_SEARCH_ERRORS)]
         tmpl = ws["恢复话术"][i % len(ws["恢复话术"])]
         args = {"query": item["query"]}
         out.append(mk(
@@ -202,11 +212,9 @@ def gen_web_search_errors(cfg, version, rng, all_names, out):
             ["web_search", "arxiv_search"],
             [Turn(role="user", content=item["zh"]),
              Turn(role="tool_call", calls=[ToolCall("web_search", args)]),
-             # 线上工具失败返回的是字符串 f"[Error]: {e}"（tool_register.call），
-             # 不是 {"error": ...} 这样的 dict。观测格式必须和线上一致。
              Turn(role="tool_result",
-                  results=[ToolResult("web_search", f"[Error]: {err}", is_error=True)]),
-             Turn(role="assistant", content=tmpl.format(err=err))],
+                  results=[ToolResult("web_search", result, is_error=True)]),
+             Turn(role="assistant", content=tmpl.format(err=result["detail"]))],
             version, rng, all_names))
 
 

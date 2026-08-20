@@ -94,6 +94,7 @@ class ChatPage extends StatefulWidget {
     this.onContinueLearning,
     this.onViewAssignments,
     this.onOpenConversation,
+    this.onStartChat,
   });
 
   /// The home shell owns global navigation and page chrome in embedded mode.
@@ -106,6 +107,9 @@ class ChatPage extends StatefulWidget {
   final VoidCallback? onContinueLearning;
   final VoidCallback? onViewAssignments;
   final ValueChanged<String>? onOpenConversation;
+
+  /// 首页（学习仪表盘）模式下用户开始发送消息时，通知外壳切回对话视图。
+  final VoidCallback? onStartChat;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -130,6 +134,8 @@ class _ChatPageState extends State<ChatPage> {
   _AttachmentSession? _attachmentSession;
   int _attachmentLoadRequest = 0;
   double _editorWidth = 0.46;
+  bool _pendingSend = false;
+  bool _chatTransitionScheduled = false;
 
   GlobalKey<ComposerState> get _composerKey =>
       widget.composerKey ?? _internalComposerKey;
@@ -436,6 +442,8 @@ class _ChatPageState extends State<ChatPage> {
       _codeSession = null;
       _attachmentSession = null;
       _attachmentLoadRequest++;
+      _chatTransitionScheduled = false;
+      if (app.activeId == null) _pendingSend = false;
       _setFollowOutput(true);
     }
     _scrollToBottom();
@@ -491,6 +499,7 @@ class _ChatPageState extends State<ChatPage> {
       onSend: (text, markdown) {
         _resumeFollowing();
         _clearComposerCodeDrafts();
+        setState(() => _pendingSend = true);
         app.send(
           _taskMode?.buildPrompt(text) ?? text,
           markdown: markdown,
@@ -500,6 +509,7 @@ class _ChatPageState extends State<ChatPage> {
       onSendWithAttachment: (text, markdown, attachment) {
         _resumeFollowing();
         _clearComposerCodeDrafts();
+        setState(() => _pendingSend = true);
         app.send(
           _taskMode?.buildPrompt(text) ?? text,
           markdown: markdown,
@@ -510,6 +520,21 @@ class _ChatPageState extends State<ChatPage> {
       },
     );
     final mobileLanding = narrow && app.messages.isEmpty;
+    // 首页（学习仪表盘）模式下用户从仪表盘发起发送后，一旦对话建立就自动切回对话视图。
+    final shouldStartChat = widget.homeMode &&
+        widget.onStartChat != null &&
+        app.activeWorkspace == WorkspaceType.learning &&
+        _pendingSend &&
+        app.activeId != null &&
+        app.messages.isNotEmpty;
+    if (shouldStartChat && !_chatTransitionScheduled) {
+      _chatTransitionScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.onStartChat?.call();
+        _chatTransitionScheduled = false;
+      });
+    }
     final messageArea = Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
@@ -518,7 +543,9 @@ class _ChatPageState extends State<ChatPage> {
           FocusManager.instance.primaryFocus?.unfocus();
         }
       },
-      child: widget.homeMode && app.activeWorkspace == WorkspaceType.learning
+      child: widget.homeMode &&
+              app.activeWorkspace == WorkspaceType.learning &&
+              (app.activeId == null || !_pendingSend)
           ? _LearningHome(
               mobileComposer: mobileLanding ? composer : null,
               onContinue: widget.onContinueLearning,

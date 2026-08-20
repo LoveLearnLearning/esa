@@ -193,9 +193,16 @@ def gen_wrong_tool(cfg, section, version, rng, all_names, out):
     for j, item in enumerate(cfg[section].get("混淆_应调其它工具", [])):
         tool, args = item["tool"], item["args"]
         result = execute(tool, args)
-        # 回答模板可以引用真实返回值，保证 grounding 检查过得去
-        fields = {"value": result.get("result"), **{k: v for k, v in result.items()
-                                                    if isinstance(v, (str, int, float))}}
+        # 回答模板可以引用真实返回值，保证 grounding 检查过得去。
+        # ⚠️ 返回值不一定是 dict —— `get_core_memories` 返回的是 **list**，
+        # 这里原来直接 `result.get(...)`，换个工具就 AttributeError。
+        # 列表型返回值没有可引用的标量字段，回答模板里也就不该有 ${...} 占位符。
+        if isinstance(result, dict):
+            fields = {"value": result.get("result"),
+                      **{k: v for k, v in result.items()
+                         if isinstance(v, (str, int, float))}}
+        else:
+            fields = {}
         out.append(mk(
             f"{section}_wrongtool_{j:02d}", f"{section}__应调其它工具__{j:02d}",
             "single_tool_call", [tool, item["lure"]],
@@ -220,7 +227,12 @@ def gen_rag(cfg, version, rng, all_names, out):
         "ok": False,
         "error": "tool_execution_error",
         "tool": "retrieve_knowledge",
-        "detail": "RAG retrieval service is not configured",
+        # ⚠️ 必须是后端**原文**（agent_api.py:78-81 那两行拼起来）。
+        # 上游写的是截断版「RAG retrieval service is not configured」，
+        # 少了后半句，`check_error_texts_registered` 当场判「未登记」——
+        # 这道闸门就是 5.20 之后加的：报错文案只能抄，不能凭印象写。
+        "detail": ("RAG retrieval service is not configured; "
+                   "configure it during the ESA application lifespan"),
     }
     for j, item in enumerate(cfg["rag"]["概念讲解_检索失败降级"]):
         out.append(mk(

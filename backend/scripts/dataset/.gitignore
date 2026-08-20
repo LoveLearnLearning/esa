@@ -1,0 +1,32 @@
+# 这个目录被放进 ESA 后端仓库的 backend/scripts/dataset/ 之后，
+# 仓库根的 .gitignore 管不到下面这些路径，于是它们会以 `??` 出现在 git status 里。
+#
+# ⚠️ **它们不是没清干净的垃圾，是要用的产物。别删。**
+#   data/out/            训练要喂给 LLaMA-Factory 的数据
+#                        （行数每轮都变，别写死；当前 965/54/49）
+#   data/eval/pred_*.jsonl   评测预测，一次全量要跑 4 小时
+#   data/eval/report_*.json  评测报告，微调对比的另一半
+#
+# 不入库的理由：都能由 IR 重新生成（data/out）或由一次评测重新产出（pred/report），
+# 而体积不小（data/out 13 MB、pred_base 6.6 MB）。入库只会让仓库变重、且容易过期。
+#
+# 真正该删的只有 __pycache__ 之类。
+
+# 渲染产物：由 IR 重新生成
+#   PYTHONPATH=. python -m esa.evalset
+#   PYTHONPATH=. python -m esa.split data/eval/train_ir.jsonl
+data/out/
+
+# 评测产物：由 esa.eval predict / score 重新产出
+data/eval/pred_*.jsonl
+data/eval/report_*.json
+
+# 编译与系统垃圾
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# 工具缓存（2026-08-19 补：`.ruff_cache` 曾被 make_publish_dir 一起发布出去）
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
