@@ -99,6 +99,12 @@ AppState _state({required bool teacher}) {
       ..role = '教师'
       ..availableWorkspaces = const [
         WorkspaceDescriptor(
+          type: WorkspaceType.learning,
+          name: '学习空间',
+          description: '',
+          capabilities: ['chat'],
+        ),
+        WorkspaceDescriptor(
           type: WorkspaceType.teaching,
           name: '教学空间',
           description: '',
@@ -156,20 +162,18 @@ void main() {
     expect(find.byKey(const ValueKey('teacher-global-rail')), findsOneWidget);
     expect(
       find.byKey(const ValueKey('teacher-research-destination')),
-      findsNothing,
+      findsOneWidget,
     );
     expect(find.byKey(const ValueKey('teacher-workbench')), findsOneWidget);
     expect(find.text('教学工作台'), findsWidgets);
-    expect(find.text('数据结构 1 班'), findsOneWidget);
+    expect(find.text('数据结构 1 班'), findsNWidgets(2));
     expect(find.byKey(const ValueKey('student-shell')), findsNothing);
     expect(find.byKey(const ValueKey('student-global-rail')), findsNothing);
     expect(find.text('日程'), findsNothing);
     expect(find.text('知识地图'), findsNothing);
     expect(find.text('作业中心'), findsNothing);
 
-    await tester.tap(
-      find.byKey(const ValueKey('teacher-assistant-destination')),
-    );
+    await tester.tap(find.text('教学助手'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('teacher-assistant')), findsOneWidget);
     expect(find.byKey(const ValueKey('composer-input')), findsOneWidget);
@@ -188,10 +192,20 @@ void main() {
     await tester.pumpWidget(_app(state));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('数据结构 1 班'));
+    await tester.tap(find.byKey(const ValueKey('teacher-class-class-1')));
     await tester.pumpAndSettle();
     expect(find.byTooltip('邀请学生'), findsOneWidget);
     expect(find.byTooltip('新建作业'), findsOneWidget);
+    await tester.tap(find.byTooltip('新建作业'));
+    await tester.pumpAndSettle();
+    expect(find.text('新建诊断作业'), findsOneWidget);
+    await tester.tap(find.text('添加题目'));
+    await tester.pumpAndSettle();
+    expect(find.text('题目 2 / 30'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('作业'));
+    await tester.pumpAndSettle();
     expect(find.text('图算法诊断'), findsOneWidget);
 
     await tester.tap(find.text('图算法诊断'));
@@ -219,10 +233,17 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('teacher-mobile-assistant')),
+      find.byKey(const ValueKey('teacher-mobile-learning')),
       findsOneWidget,
     );
-    expect(find.byKey(const ValueKey('teacher-mobile-research')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('teacher-mobile-research')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('teacher-mobile-profile')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey('student-learning-destination')),
       findsNothing,
@@ -230,7 +251,9 @@ void main() {
     expect(find.text('日程'), findsNothing);
     expect(find.text('知识地图'), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('teacher-mobile-assistant')));
+    await tester.tap(find.byTooltip('打开教学导航'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('教学助手'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('teacher-assistant')), findsOneWidget);
     expect(find.byKey(const ValueKey('composer-input')), findsOneWidget);

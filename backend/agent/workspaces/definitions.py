@@ -82,7 +82,7 @@ _DEFINITIONS = (
     WorkspaceDefinition(
         workspace_type="learning",
         definition_version=1,
-        allowed_roles=frozenset({"student"}),
+        allowed_roles=frozenset({"student", "teacher"}),
         display_name="\u5b66\u4e60\u7a7a\u95f4",
         description="\u8bfe\u7a0b\u5b66\u4e60\u3001\u7ec3\u4e60\u3001\u8bfe\u8868\u4e0e\u77e5\u8bc6\u638c\u63e1",
         manifest_capabilities=("chat", "schedule", "knowledge_map", "mastery"),

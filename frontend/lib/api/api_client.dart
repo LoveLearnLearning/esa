@@ -1793,6 +1793,26 @@ class ApiClient {
     return Map<String, dynamic>.from(_decode(response) as Map);
   }
 
+  Future<Map<String, dynamic>> getTeachingStudent(
+    String classId,
+    String studentId,
+  ) async {
+    final response = await http.get(
+      _uri('/teaching/classes/$classId/students/$studentId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return Map<String, dynamic>.from(_decode(response) as Map);
+  }
+
+  Future<void> removeTeachingStudent(String classId, String studentId) async {
+    final response = await http.delete(
+      _uri('/teaching/classes/$classId/members/$studentId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 204) _fail(response);
+  }
+
   Future<List<TeachingClass>> listStudentClasses() async {
     final response = await http.get(
       _uri('/student/classes'),

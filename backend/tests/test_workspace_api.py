@@ -93,8 +93,9 @@ def test_workspace_manifest_uses_backend_role_policy(tmp_path):
 
     assert teacher_manifest.status_code == 200
     assert [item["type"] for item in teacher_manifest.json()["workspaces"]] == [
-        "teaching",
+        "learning",
         "research",
+        "teaching",
     ]
     assert teacher_manifest.json()["default_workspace"] == "teaching"
 
