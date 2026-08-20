@@ -75,11 +75,24 @@ load_skill:
       args: { expression: "factorial(15)" }
       lure: load_skill
       a: "15 的阶乘是 ${value}$。这种算术直接用计算器算就行，不需要加载教学技能。"
+    # ⚠️ 2026-08-19 改：上游这条原本直接调 `delete_core_memory`，
+    # `memory_id` 写的是编出来的 `memory-learning-goal`。两个问题：
+    #   ① 我们的 fixtures 对不存在的 id **抛 KeyError**，那是故意复刻后端 P0-4
+    #      （id 不存在时 KeyError 穿透所有 except，整轮 run 崩掉）——生成器当场炸；
+    #   ② 更要紧的是**线上根本不成立**：`memory_id` 只能来自
+    #      `search_core_memories` / `get_core_memories` 的返回值，
+    #      system prompt 明写「只有用户明确要求忘掉某条**已列出或检索到**的记忆时」才删。
+    #      「把我的学习目标删掉」是**两步**动作，一步删是教模型做一件它做不到的事。
+    # 上游修掉了「什么都不做」那个错标（5.6 第四次），却引入了另一个错标。
+    # 改成合法的第一步：先列出来。教学意图（记忆管理不需要加载教学技能）一点没丢，
+    # 而且回答里把「为什么要两步」讲明白了。
     - q: "把我的学习目标删掉"
-      tool: delete_core_memory
-      args: { memory_id: "memory-learning-goal" }
+      tool: get_core_memories
+      args: {}
       lure: load_skill
-      a: "已经删除指定的长期记忆。这是记忆管理，不需要加载教学技能。"
+      # 回答必须引用真实返回值，否则 grounding 检查会红（列出来了却不说列到了什么，
+      # 等于模型没读工具返回值）。learning_goal 那条的正文来自 fixtures 的真实记录。
+      a: "列出来了，跟学习目标有关的是这条：「这学期把数据结构和算法吃透，准备考研」。删除要按记忆 id 来、没法凭名字直接删，所以你确认是它我再删。这是记忆管理，不需要加载教学技能。"
 
   # profile_personalization 是 autoload:true，已经在 system prompt 里，
   # 不该再用 load_skill 加载一次

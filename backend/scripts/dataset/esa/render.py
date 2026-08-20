@@ -39,7 +39,18 @@ ROLE_TO_SHAREGPT = {
     ROLE_ASSISTANT: "gpt",
 }
 
-# 抄自 LLaMA-Factory src/llamafactory/data/tool_utils.py:79-85，用于线上文本预览。
+# 工具区提示词，用于线上文本预览（render_wire）。
+#
+# ⚠️ 2026-08-16：下面这份 `QWEN_TOOL_PROMPT` 是 **0.9.4 `qwen` 系模板**用的，
+# 教模型产出 JSON 体。**我们实际要用的是 0.9.5 的 `qwen3_5` 模板**，
+# 它配的是 `QWEN35_TOOL_PROMPT`（教 XML），见下面第二个常量。
+#
+# 为什么两份都留着：`render_wire(tool_format=...)` 两种形状都要能预览 ——
+# `test_parser_compat.py` 正是靠"喂 JSON 给后端会静默失败"这条来钉住 P0-1 的。
+#
+# ⚠️ 提示词只出现在 system 段，`assistant_wire_segments()` 取的是
+# `<|im_start|>assistant\n` 之后的部分，所以**它不影响 parser 测试的结论**，
+# 只影响预览文本的保真度。
 QWEN_TOOL_PROMPT = (
     "\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\n"
     "You are provided with function signatures within <tools></tools> XML tags:\n<tools>{tool_text}"
@@ -47,6 +58,27 @@ QWEN_TOOL_PROMPT = (
     """<tool_call></tool_call> XML tags:\n<tool_call>\n{{"name": <function-name>, """
     """"arguments": <args-json-object>}}\n</tool_call>"""
 )
+
+
+# 抄自 LLaMA-Factory 0.9.5 src/llamafactory/data/tool_utils.py:88-101（QWEN35_TOOL_PROMPT）。
+# 这是 `qwen3_5` 模板真正用的那份 —— 它教模型产出 XML，和后端 parse_output 对齐。
+QWEN35_TOOL_PROMPT = (
+    "\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>{tool_text}"
+    "\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n"
+    "<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n"
+    "<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n"
+    "</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n"
+    "- Function calls MUST follow the specified format: "
+    "an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n"
+    "- Required parameters MUST be specified\n"
+    "- You may provide optional reasoning for your function call in natural language "
+    "BEFORE the function call, but NOT after\n"
+    "- If there is no function call available, answer the question like normal with your current knowledge "
+    "and do not tell the user about function calls\n</IMPORTANT>"
+)
+
+# tool_format → 该用哪份工具区提示词。预览要保真就得配对，不能混用。
+TOOL_PROMPTS = {"qwen": QWEN_TOOL_PROMPT, "xml": QWEN35_TOOL_PROMPT}
 
 
 def pick_tool_names(
@@ -203,7 +235,7 @@ def render_wire(
     tool_text = "".join(
         "\n" + json.dumps(by_name[n], ensure_ascii=False) for n in sample.tool_names if n in by_name
     )
-    system = sample.system + QWEN_TOOL_PROMPT.format(tool_text=tool_text)
+    system = sample.system + TOOL_PROMPTS[tool_format].format(tool_text=tool_text)
 
     out = [f"<|im_start|>system\n{system}<|im_end|>\n"]
     think = "<think>\n\n</think>\n\n" if with_empty_think else ""

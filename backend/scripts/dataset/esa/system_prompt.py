@@ -61,7 +61,42 @@ from .cache_contract import prompt_source_fingerprint, skill_source_hashes
 
 ROOT = Path(__file__).resolve().parents[2]
 CACHE = ROOT / "dataset/data/cache/system_prompts.json"
-REPO_ROOT = ROOT.parents[1]
+# ⚠️ 上游原本写的是 `REPO_ROOT = ROOT.parents[1]`，那只在
+# `<repo>/backend/scripts/dataset/` 这一种布局下成立；在独立工作副本
+# （`~/Desktop/项目/dataset/`）下会算出 `/Users/apple`，闸门直接抛
+# `FileNotFoundError`。改用 `paths.backend_repo()`，三种布局都认，
+# 找不到就返回 None（发布出去的独立仓库里本来就没有后端源码）。
+from .paths import backend_repo  # noqa: E402
+
+
+def _source_check(kind: str, expected, compute):
+    """比对缓存里记的源码指纹与当前后端源码。
+
+    三种结果，**区别对待**：
+      指纹一致        → 放行
+      指纹不一致      → 抛 SystemPromptCacheMiss（缓存过期了，必须重抓）
+      找不到后端源码  → **如实报「无法校验」并放行**
+
+    第三种是关键：发布出去的独立仓库里没有 `backend/`，那不是错误。
+    硬失败会让发布产物一跑就炸；静默放行又等于闸门不存在。
+    所以打一行警告 —— 一个说不出话的检查，至少要说自己说不出话。
+    """
+    repo = backend_repo()
+    if repo is None:
+        if not _source_check.warned:
+            print(f"⚠️  找不到后端源码，跳过{kind}缓存的过期校验。"
+                  "（设 $ESA_BACKEND 指向后端 clone 可启用）")
+            _source_check.warned = True
+        return
+    if not expected or expected != compute(repo):
+        raise SystemPromptCacheMiss(
+            f"{kind}缓存对应的生产源码已经变化。跑：\n"
+            f"  python3 dataset/tools/capture_{'system_prompts' if kind == 'system prompt' else 'skill_bodies'}.py\n"
+            "不要继续使用旧缓存。"
+        )
+
+
+_source_check.warned = False
 
 # 渲染时固定住的参数。它们进缓存的 _meta，改了就得重抓。
 USER_NAME = "同学"
@@ -117,14 +152,9 @@ def load_cache() -> dict:
                 "先跑：python3 dataset/tools/capture_system_prompts.py"
             )
         payload = json.loads(CACHE.read_text(encoding="utf-8"))
-        expected = payload.get("_meta", {}).get("prompt_source_fingerprint")
-        actual = prompt_source_fingerprint(REPO_ROOT)
-        if not expected or expected != actual:
-            raise SystemPromptCacheMiss(
-                "system prompt 缓存对应的生产源码已经变化。跑：\n"
-                "  python3 dataset/tools/capture_system_prompts.py\n"
-                "不要继续使用旧缓存。"
-            )
+        _source_check("system prompt",
+                      payload.get("_meta", {}).get("prompt_source_fingerprint"),
+                      prompt_source_fingerprint)
         _cache = payload
     return _cache
 
@@ -204,14 +234,9 @@ def skill_names() -> list[str]:
             "先跑：python3 dataset/tools/capture_skill_bodies.py"
         )
     payload = json.loads(path.read_text(encoding="utf-8"))
-    expected = payload.get("_meta", {}).get("source_sha256")
-    actual = skill_source_hashes(REPO_ROOT)
-    if not expected or expected != actual:
-        raise SystemPromptCacheMiss(
-            "Skill 正文缓存对应的源码已经变化。跑：\n"
-            "  python3 dataset/tools/capture_skill_bodies.py\n"
-            "不要继续使用旧缓存。"
-        )
+    _source_check("Skill 正文",
+                  payload.get("_meta", {}).get("source_sha256"),
+                  skill_source_hashes)
     return list(payload["_meta"]["skill_names"])
 
 
