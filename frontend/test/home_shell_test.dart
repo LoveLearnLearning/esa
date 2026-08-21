@@ -34,6 +34,10 @@ class _ScheduleApi extends ApiClient {
     settings = value;
     return value;
   }
+
+  @override
+  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase() async =>
+      const PersonalKnowledgeBase.empty();
 }
 
 void main() {
@@ -389,7 +393,7 @@ void main() {
     expect(find.text('晚上'), findsOneWidget);
   });
 
-  testWidgets('student mobile navigation only exposes learning and research', (
+  testWidgets('student mobile navigation exposes the personal knowledge base', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -408,6 +412,12 @@ void main() {
     );
     expect(
       find.byKey(const ValueKey('student-research-destination')),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('资料库'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('personal-knowledge-base-page')),
       findsOneWidget,
     );
     expect(find.text('教学'), findsNothing);

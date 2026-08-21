@@ -10,9 +10,10 @@ import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
 import '../widgets/profile_sheet.dart';
 import 'chat_page.dart';
+import 'personal_knowledge_base_page.dart';
 import 'teaching_workspace_page.dart';
 
-enum TeacherSection { learning, research, workbench, assistant }
+enum TeacherSection { learning, research, knowledgeBase, workbench, assistant }
 
 class TeacherShell extends StatefulWidget {
   const TeacherShell({super.key});
@@ -61,6 +62,7 @@ class _TeacherShellState extends State<TeacherShell> {
     final workspace = switch (section) {
       TeacherSection.learning => WorkspaceType.learning,
       TeacherSection.research => WorkspaceType.research,
+      TeacherSection.knowledgeBase => WorkspaceType.teaching,
       TeacherSection.workbench ||
       TeacherSection.assistant => WorkspaceType.teaching,
     };
@@ -215,6 +217,7 @@ class _TeacherShellState extends State<TeacherShell> {
         embedded: true,
         embeddedTitle: '科研空间',
       ),
+      TeacherSection.knowledgeBase => const PersonalKnowledgeBasePage(),
     };
   }
 
@@ -223,6 +226,7 @@ class _TeacherShellState extends State<TeacherShell> {
       MediaQuery.sizeOf(context).width >= 900 ? _desktop() : _mobile();
 
   Widget _desktop() {
+    final knowledgeBase = _section == TeacherSection.knowledgeBase;
     final showInspector = MediaQuery.sizeOf(context).width >= 1200;
     final showLearning = AppScope.of(
       context,
@@ -240,10 +244,10 @@ class _TeacherShellState extends State<TeacherShell> {
             ),
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              width: _sidebarCollapsed ? 0 : 272,
+              width: _sidebarCollapsed || knowledgeBase ? 0 : 272,
               clipBehavior: Clip.hardEdge,
               decoration: const BoxDecoration(),
-              child: _sidebarCollapsed
+              child: _sidebarCollapsed || knowledgeBase
                   ? const SizedBox.shrink()
                   : _TeacherSidebar(
                       section: _section,
@@ -263,7 +267,7 @@ class _TeacherShellState extends State<TeacherShell> {
                           setState(() => _sidebarCollapsed = true),
                     ),
             ),
-            if (_sidebarCollapsed)
+            if (_sidebarCollapsed && !knowledgeBase)
               SizedBox(
                 width: 40,
                 child: Align(
@@ -286,7 +290,7 @@ class _TeacherShellState extends State<TeacherShell> {
                 child: _page(),
               ),
             ),
-            if (showInspector)
+            if (showInspector && !knowledgeBase)
               SizedBox(
                 width: 292,
                 child: _TeacherInspector(
@@ -420,6 +424,13 @@ class _TeacherRail extends StatelessWidget {
               section == TeacherSection.workbench ||
               section == TeacherSection.assistant,
           onTap: () => onSelect(TeacherSection.workbench),
+        ),
+        _RailButton(
+          key: const ValueKey('teacher-knowledge-base-destination'),
+          icon: LucideIcons.database,
+          tooltip: '个人知识库',
+          active: section == TeacherSection.knowledgeBase,
+          onTap: () => onSelect(TeacherSection.knowledgeBase),
         ),
         const Spacer(),
         _RailButton(
@@ -964,6 +975,7 @@ class _TeacherBottomBar extends StatelessWidget {
     final sections = <TeacherSection>[
       if (showLearning) TeacherSection.learning,
       TeacherSection.research,
+      TeacherSection.knowledgeBase,
       TeacherSection.workbench,
     ];
     final selected = sections.indexWhere(
@@ -994,6 +1006,11 @@ class _TeacherBottomBar extends StatelessWidget {
           label: '科研',
         ),
         const NavigationDestination(
+          key: ValueKey('teacher-mobile-knowledge-base'),
+          icon: Icon(LucideIcons.database),
+          label: '资料库',
+        ),
+        const NavigationDestination(
           key: ValueKey('teacher-mobile-workbench'),
           icon: Icon(LucideIcons.bookOpen),
           label: '教学',
@@ -1011,6 +1028,7 @@ class _TeacherBottomBar extends StatelessWidget {
 String _sectionLabel(TeacherSection section) => switch (section) {
   TeacherSection.learning => '学习空间',
   TeacherSection.research => '科研空间',
+  TeacherSection.knowledgeBase => '个人知识库',
   TeacherSection.workbench => '教学工作台',
   TeacherSection.assistant => '教学助手',
 };

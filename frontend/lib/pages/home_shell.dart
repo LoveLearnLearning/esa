@@ -16,11 +16,19 @@ import '../widgets/composer.dart';
 import 'chat_page.dart';
 import 'knowledge_map_page.dart';
 import 'planner_page.dart';
+import 'personal_knowledge_base_page.dart';
 import 'research_project_page.dart';
 import 'research_workspace_page.dart';
 import 'student_assignments_page.dart';
 
-enum StudentSection { home, assignments, schedule, knowledge, research }
+enum StudentSection {
+  home,
+  assignments,
+  schedule,
+  knowledge,
+  knowledgeBase,
+  research,
+}
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -105,6 +113,7 @@ class _HomeShellState extends State<HomeShell> {
       onOpenChat: _showHome,
       onOpenSchedule: () => unawaited(_select(StudentSection.schedule)),
     ),
+    StudentSection.knowledgeBase => const PersonalKnowledgeBasePage(),
     StudentSection.research =>
       _activeResearchProject == null
           ? ResearchWorkspacePage(
@@ -196,7 +205,8 @@ class _HomeShellState extends State<HomeShell> {
 
   Widget _desktop() {
     final width = MediaQuery.sizeOf(context).width;
-    final showContext = width >= 1320;
+    final knowledgeBase = _section == StudentSection.knowledgeBase;
+    final showContext = width >= 1320 && !knowledgeBase;
     return Scaffold(
       body: SafeArea(
         child: Row(
@@ -210,8 +220,8 @@ class _HomeShellState extends State<HomeShell> {
             ),
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              width: _sidebarCollapsed ? 0 : 276,
-              child: _sidebarCollapsed
+              width: _sidebarCollapsed || knowledgeBase ? 0 : 276,
+              child: _sidebarCollapsed || knowledgeBase
                   ? const SizedBox.shrink()
                   : _WorkspaceSidebar(
                       section: _section,
@@ -232,7 +242,7 @@ class _HomeShellState extends State<HomeShell> {
                           setState(() => _sidebarCollapsed = true),
                     ),
             ),
-            if (_sidebarCollapsed)
+            if (_sidebarCollapsed && !knowledgeBase)
               _RevealSidebarButton(
                 onTap: () => setState(() => _sidebarCollapsed = false),
               ),
@@ -388,6 +398,13 @@ class _GlobalRail extends StatelessWidget {
           tooltip: '知识地图',
           active: section == StudentSection.knowledge,
           onTap: () => onSelect(StudentSection.knowledge),
+        ),
+        _RailButton(
+          key: const ValueKey('student-knowledge-base-destination'),
+          icon: LucideIcons.database,
+          tooltip: '个人知识库',
+          active: section == StudentSection.knowledgeBase,
+          onTap: () => onSelect(StudentSection.knowledgeBase),
         ),
         _RailButton(
           key: const ValueKey('student-research-destination'),
@@ -1566,6 +1583,7 @@ class _MobileHeader extends StatelessWidget {
             StudentSection.home => '首页',
             StudentSection.research => '研究空间',
             StudentSection.knowledge => '知识地图',
+            StudentSection.knowledgeBase => '个人知识库',
             StudentSection.assignments => '作业',
             StudentSection.schedule => '日程',
           }, style: context.texts.headlineSmall),
@@ -1651,6 +1669,7 @@ class _MobileLearningTabs extends StatelessWidget {
       (StudentSection.assignments, '作业'),
       (StudentSection.schedule, '日程'),
       (StudentSection.knowledge, '知识'),
+      (StudentSection.knowledgeBase, '资料库'),
     ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
