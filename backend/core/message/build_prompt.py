@@ -4,8 +4,10 @@
 
 from __future__ import annotations
 
-import backend.core.message.system as system_message
+from datetime import datetime, timezone
+
 import backend.core.message.style_tone as style_tone
+import backend.core.message.system as system_message
 from backend.core.utils.models import PromptContext
 from backend.core.workspaces import workspace_prompt
 
@@ -40,6 +42,7 @@ def build_system_prompt(
         f"# Current workspace\n\n{workspace_prompt(prompt_ctx.workspace_type)}",
         f"> 用户昵称: {user_name or '未提供'}",
         (
+            f"现在的时间: {datetime.now(timezone.utc).strftime('%D-%H:%M:%S')}"
             "# 输出风格\n\n"
             f"- 风格({resolved.style}): {resolved.style_rule}\n"
             f"- 语调({resolved.tone}): {resolved.tone_rule}"
@@ -93,12 +96,7 @@ def build_system_prompt(
 
     autoload_skills = _clean(prompt_ctx.autoload_skills_context)
     if autoload_skills:
-        sections.append(
-            "# 自动启用的策略 Skill\n\n"
-            f"{autoload_skills}"
-        )
+        sections.append(f"# 自动启用的策略 Skill\n\n{autoload_skills}")
 
-    sections.append(
-        f"# 可用 Skills\n\n{_clean(skills_context) or '暂无可用 skill'}"
-    )
+    sections.append(f"# 可用 Skills\n\n{_clean(skills_context) or '暂无可用 skill'}")
     return "\n\n".join(sections)

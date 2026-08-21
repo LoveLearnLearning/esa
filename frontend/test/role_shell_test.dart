@@ -76,6 +76,10 @@ class _RoleShellApi extends ApiClient {
 
   @override
   Future<List<ResearchProject>> listResearchProjects() async => const [];
+
+  @override
+  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase() async =>
+      const PersonalKnowledgeBase.empty();
 }
 
 Widget _app(AppState state) => AppScope(
@@ -143,6 +147,13 @@ void main() {
     expect(find.byKey(const ValueKey('teacher-shell')), findsNothing);
     expect(find.byKey(const ValueKey('teacher-global-rail')), findsNothing);
     expect(find.text('教学工作台'), findsNothing);
+
+    await tester.tap(find.byTooltip('个人知识库'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('personal-knowledge-base-page')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('teacher role renders only the teacher application shell', (
@@ -172,6 +183,16 @@ void main() {
     expect(find.text('日程'), findsNothing);
     expect(find.text('知识地图'), findsNothing);
     expect(find.text('作业中心'), findsNothing);
+
+    await tester.tap(find.byTooltip('个人知识库'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('personal-knowledge-base-page')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byTooltip('教学'));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('教学助手'));
     await tester.pumpAndSettle();
@@ -242,6 +263,10 @@ void main() {
     );
     expect(
       find.byKey(const ValueKey('teacher-mobile-profile')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('teacher-mobile-knowledge-base')),
       findsOneWidget,
     );
     expect(

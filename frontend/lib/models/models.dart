@@ -347,6 +347,135 @@ class DocumentAttachment {
       );
 }
 
+enum KnowledgeBaseBuildStatus { idle, queued, building, ready, failed }
+
+KnowledgeBaseBuildStatus knowledgeBaseBuildStatusFromString(String value) =>
+    switch (value) {
+      'queued' => KnowledgeBaseBuildStatus.queued,
+      'building' ||
+      'processing' ||
+      'indexing' => KnowledgeBaseBuildStatus.building,
+      'ready' => KnowledgeBaseBuildStatus.ready,
+      'failed' => KnowledgeBaseBuildStatus.failed,
+      _ => KnowledgeBaseBuildStatus.idle,
+    };
+
+class KnowledgeBaseFile {
+  const KnowledgeBaseFile({
+    required this.id,
+    required this.filename,
+    required this.mediaType,
+    required this.sizeBytes,
+    required this.status,
+    required this.progress,
+    required this.chunkCount,
+    required this.indexCount,
+    required this.uploadedAt,
+    this.error,
+  });
+
+  final String id;
+  final String filename;
+  final String mediaType;
+  final int sizeBytes;
+  final KnowledgeBaseBuildStatus status;
+  final double progress;
+  final int chunkCount;
+  final int indexCount;
+  final DateTime? uploadedAt;
+  final String? error;
+
+  String get extension {
+    final index = filename.lastIndexOf('.');
+    return index < 0 ? '' : filename.substring(index + 1).toLowerCase();
+  }
+
+  DocumentAttachment get previewAttachment => DocumentAttachment(
+    id: id,
+    filename: filename,
+    mode: status == KnowledgeBaseBuildStatus.ready ? 'rag' : 'pending',
+    tokenCount: 0,
+    elementCount: chunkCount,
+    pageCount: 0,
+    validationStatus: status.name,
+    qualityIssueCount: 0,
+    mediaType: mediaType,
+    sizeBytes: sizeBytes,
+  );
+
+  factory KnowledgeBaseFile.fromJson(Map<String, dynamic> json) =>
+      KnowledgeBaseFile(
+        id: json['id']?.toString() ?? '',
+        filename: json['filename']?.toString() ?? '未命名文件',
+        mediaType: json['media_type']?.toString() ?? 'application/octet-stream',
+        sizeBytes: (json['size_bytes'] as num?)?.toInt() ?? 0,
+        status: knowledgeBaseBuildStatusFromString(
+          json['status']?.toString() ?? '',
+        ),
+        progress: ((json['progress'] as num?)?.toDouble() ?? 0).clamp(0, 1),
+        chunkCount: (json['chunk_count'] as num?)?.toInt() ?? 0,
+        indexCount: (json['index_count'] as num?)?.toInt() ?? 0,
+        uploadedAt: DateTime.tryParse(json['uploaded_at']?.toString() ?? ''),
+        error: json['error']?.toString(),
+      );
+}
+
+class PersonalKnowledgeBase {
+  const PersonalKnowledgeBase({
+    required this.fileCount,
+    required this.chunkCount,
+    required this.indexCount,
+    required this.status,
+    required this.progress,
+    required this.files,
+    this.updatedAt,
+    this.error,
+  });
+
+  const PersonalKnowledgeBase.empty()
+    : fileCount = 0,
+      chunkCount = 0,
+      indexCount = 0,
+      status = KnowledgeBaseBuildStatus.idle,
+      progress = 0,
+      files = const [],
+      updatedAt = null,
+      error = null;
+
+  final int fileCount;
+  final int chunkCount;
+  final int indexCount;
+  final KnowledgeBaseBuildStatus status;
+  final double progress;
+  final List<KnowledgeBaseFile> files;
+  final DateTime? updatedAt;
+  final String? error;
+
+  bool get isBuilding =>
+      status == KnowledgeBaseBuildStatus.queued ||
+      status == KnowledgeBaseBuildStatus.building;
+
+  factory PersonalKnowledgeBase.fromJson(Map<String, dynamic> json) =>
+      PersonalKnowledgeBase(
+        fileCount: (json['file_count'] as num?)?.toInt() ?? 0,
+        chunkCount: (json['chunk_count'] as num?)?.toInt() ?? 0,
+        indexCount: (json['index_count'] as num?)?.toInt() ?? 0,
+        status: knowledgeBaseBuildStatusFromString(
+          json['status']?.toString() ?? '',
+        ),
+        progress: ((json['progress'] as num?)?.toDouble() ?? 0).clamp(0, 1),
+        files: (json['files'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  KnowledgeBaseFile.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
+        updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? ''),
+        error: json['error']?.toString(),
+      );
+}
+
 String formatClockMinutes(int totalMinutes) {
   final normalized = totalMinutes % (24 * 60);
   final hours = normalized ~/ 60;

@@ -64,7 +64,7 @@ case "${MM_ENABLED:-false}" in
 esac
 
 read -r \
-    main_model main_tp \
+    main_model main_tp main_lora main_lora_name \
     auxiliary_model auxiliary_name auxiliary_port auxiliary_dtype \
     auxiliary_gpu_memory auxiliary_max_length auxiliary_max_num_seqs \
     auxiliary_max_images rag_enabled rag_embedding_backend \
@@ -81,6 +81,8 @@ from backend.core.utils.config import (
     AUXILIARY_MODEL_PATH,
     AUXILIARY_MODEL_PORT,
     MODEL_PATH,
+    MODEL_LORA_NAME,
+    MODEL_LORA_PATH,
     MODEL_TENSOR_PARALLEL_SIZE,
     MCP_ENABLED,
     RAG_EMBEDDING_BACKEND,
@@ -93,6 +95,8 @@ from backend.core.utils.config import (
 print(
     MODEL_PATH,
     MODEL_TENSOR_PARALLEL_SIZE,
+    MODEL_LORA_PATH or "disabled",
+    MODEL_LORA_NAME,
     AUXILIARY_MODEL_PATH,
     AUXILIARY_MODEL_NAME,
     AUXILIARY_MODEL_PORT,
@@ -198,6 +202,7 @@ trap cleanup EXIT INT TERM
 echo "Node=$(hostname)"
 echo "AllocatedGPUs=${CUDA_VISIBLE_DEVICES:-all}"
 echo "MainModel=$main_model MainGPUs=$main_devices TP=$main_tp"
+echo "MainLoRA=$main_lora LoRAName=$main_lora_name"
 echo "AuxiliaryModel=$auxiliary_model AuxiliaryGPU=$auxiliary_device"
 echo "AuxiliaryEndpoint=http://127.0.0.1:${auxiliary_port}/v1"
 echo "MinerUEndpoint=$mineru_api_url"

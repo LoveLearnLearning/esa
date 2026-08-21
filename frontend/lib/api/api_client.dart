@@ -48,6 +48,18 @@ class AttachmentContent {
   final String filename;
 }
 
+class KnowledgeBaseUploadFile {
+  const KnowledgeBaseUploadFile({
+    required this.filename,
+    required this.stream,
+    required this.length,
+  });
+
+  final String filename;
+  final Stream<List<int>> stream;
+  final int length;
+}
+
 class ApiClient {
   ApiClient({String? baseUrl})
     : baseUrl = _normalizeBaseUrl(baseUrl ?? _defaultBaseUrl);
@@ -1515,6 +1527,96 @@ class ApiClient {
       headers: _headers(auth: true),
     );
     if (r.statusCode != 204 && r.statusCode != 404) _fail(r);
+  }
+
+  // ---------- 个人知识库 ----------
+  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase() async {
+    if (kOfflineMode) return const PersonalKnowledgeBase.empty();
+    final response = await http.get(
+      _uri('/me/knowledge-base'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return PersonalKnowledgeBase.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<PersonalKnowledgeBase> uploadPersonalKnowledgeBaseFiles(
+    List<KnowledgeBaseUploadFile> files,
+  ) async {
+    if (files.isEmpty) return getPersonalKnowledgeBase();
+    if (kOfflineMode) return const PersonalKnowledgeBase.empty();
+    final request = http.MultipartRequest(
+      'POST',
+      _uri('/me/knowledge-base/files'),
+    );
+    if (sessionId != null) {
+      request.headers['Authorization'] = 'Bearer $sessionId';
+    }
+    for (final file in files) {
+      request.files.add(
+        http.MultipartFile(
+          'files',
+          file.stream,
+          file.length,
+          filename: file.filename,
+          contentType: MediaType.parse(_mimeFor(file.filename, Uint8List(0))),
+        ),
+      );
+    }
+    try {
+      final streamed = await request.send().timeout(
+        const Duration(minutes: 15),
+      );
+      final response = await http.Response.fromStream(
+        streamed,
+      ).timeout(const Duration(minutes: 2));
+      if (response.statusCode != 202) _fail(response);
+      return PersonalKnowledgeBase.fromJson(
+        Map<String, dynamic>.from(_decode(response) as Map),
+      );
+    } on TimeoutException {
+      throw ApiException(0, '文件上传超时，请稍后重试');
+    } on http.ClientException {
+      throw ApiException(0, '网络异常，请检查网络后重试');
+    }
+  }
+
+  Future<AttachmentContent> fetchPersonalKnowledgeBaseFile(
+    KnowledgeBaseFile file,
+  ) async {
+    final response = await http.get(
+      _uri('/me/knowledge-base/files/${Uri.encodeComponent(file.id)}/content'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return AttachmentContent(
+      bytes: response.bodyBytes,
+      mediaType: response.headers['content-type'] ?? file.mediaType,
+      filename: file.filename,
+    );
+  }
+
+  Future<void> deletePersonalKnowledgeBaseFile(String fileId) async {
+    final response = await http.delete(
+      _uri('/me/knowledge-base/files/${Uri.encodeComponent(fileId)}'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 204 && response.statusCode != 404) {
+      _fail(response);
+    }
+  }
+
+  Future<PersonalKnowledgeBase> rebuildPersonalKnowledgeBase() async {
+    final response = await http.post(
+      _uri('/me/knowledge-base/rebuild'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 202) _fail(response);
+    return PersonalKnowledgeBase.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
   }
 
   Stream<ChatStreamEvent> streamMessage(String id, String content) async* {

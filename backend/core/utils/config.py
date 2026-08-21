@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from pathlib import Path
@@ -36,6 +37,20 @@ MODEL_MAX_OUTPUT_TOKENS: int = 8192
 MODEL_MAX_NUM_SEQS: int = 16
 MODEL_QUANTIZATION: QuantizationMethods | None = None
 MODEL_TENSOR_PARALLEL_SIZE: int = 4
+MODEL_LORA_PATH: str | None = (
+    os.environ.get("ESA_MODEL_LORA_PATH", "").strip() or None
+)
+MODEL_LORA_NAME: str = os.environ.get("ESA_MODEL_LORA_NAME", "esa-agent").strip()
+if not MODEL_LORA_NAME:
+    raise ValueError("ESA_MODEL_LORA_NAME cannot be blank")
+try:
+    MODEL_LORA_MAX_RANK: int = int(
+        os.environ.get("ESA_MODEL_LORA_MAX_RANK", "16")
+    )
+except ValueError as exc:
+    raise ValueError("ESA_MODEL_LORA_MAX_RANK must be an integer") from exc
+if MODEL_LORA_MAX_RANK <= 0:
+    raise ValueError("ESA_MODEL_LORA_MAX_RANK must be greater than zero")
 
 # Auxiliary model: dedicated to document parsing and offline context compression.
 # It is served by the local vLLM sidecar and is never exposed publicly.
@@ -452,6 +467,44 @@ def validate_startup_config() -> None:
         candidate = Path(value).expanduser()
         if candidate.is_absolute() and not candidate.exists():
             raise RuntimeError(f"{name} points to a missing local path: {candidate}")
+    if MODEL_LORA_PATH:
+        lora_path = Path(MODEL_LORA_PATH).expanduser()
+        if not lora_path.is_dir():
+            raise RuntimeError(
+                f"ESA_MODEL_LORA_PATH points to a missing directory: {lora_path}"
+            )
+        required_lora_files = (
+            lora_path / "adapter_config.json",
+            lora_path / "adapter_model.safetensors",
+        )
+        missing_lora_files = [path for path in required_lora_files if not path.is_file()]
+        if missing_lora_files:
+            values = ", ".join(str(path) for path in missing_lora_files)
+            raise RuntimeError(f"LoRA adapter files are missing: {values}")
+        try:
+            adapter_config = json.loads(required_lora_files[0].read_text("utf-8"))
+            adapter_rank = int(adapter_config["r"])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                f"Invalid LoRA adapter config: {required_lora_files[0]}"
+            ) from exc
+        if adapter_rank > MODEL_LORA_MAX_RANK:
+            raise RuntimeError(
+                f"LoRA rank {adapter_rank} exceeds ESA_MODEL_LORA_MAX_RANK "
+                f"{MODEL_LORA_MAX_RANK}"
+            )
+        adapter_base = adapter_config.get("base_model_name_or_path")
+        configured_base = Path(MODEL_PATH).expanduser()
+        if (
+            isinstance(adapter_base, str)
+            and Path(adapter_base).is_absolute()
+            and configured_base.is_absolute()
+            and Path(adapter_base).resolve() != configured_base.resolve()
+        ):
+            raise RuntimeError(
+                f"LoRA base model {adapter_base} does not match "
+                f"ESA_MODEL_PATH {configured_base}"
+            )
     if MCP_ENABLED:
         if not MCP_YOU_API_KEY:
             raise RuntimeError(

@@ -122,6 +122,9 @@ from backend.core.utils.config import (
     MODEL_DTYPE,
     MODEL_GPU_MEMORY_UTILIZATION,
     MODEL_KV_CACHE_DTYPE,
+    MODEL_LORA_MAX_RANK,
+    MODEL_LORA_NAME,
+    MODEL_LORA_PATH,
     MODEL_MAX_MODEL_LENGTH,
     MODEL_MAX_NUM_SEQS,
     MODEL_MAX_OUTPUT_TOKENS,
@@ -369,6 +372,9 @@ async def lifespan(app: FastAPI):
         max_num_seqs=MODEL_MAX_NUM_SEQS,
         quantization=MODEL_QUANTIZATION,
         tensor_parallel_size=MODEL_TENSOR_PARALLEL_SIZE,
+        lora_path=MODEL_LORA_PATH,
+        lora_name=MODEL_LORA_NAME,
+        lora_max_rank=MODEL_LORA_MAX_RANK,
     )
     app.state.mcp_client_manager = None
     if MCP_ENABLED:

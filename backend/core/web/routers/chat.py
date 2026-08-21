@@ -158,6 +158,41 @@ def _attachment_inventory(
     )
 
 
+def _conversation_attachment_inventory(
+    request: Request,
+    user_id: str,
+    conversation_id: str,
+    attachment_ids: list[str],
+) -> tuple[tuple[dict, ...], list[dict]]:
+    """Authorize explicit files or restore the latest files used in this chat."""
+    if attachment_ids:
+        return _attachment_inventory(
+            request,
+            user_id,
+            conversation_id,
+            attachment_ids,
+        )
+
+    chat_store: ChatStore = request.app.state.chat_store
+    inherited_ids = list(chat_store.get_latest_attachment_ids(conversation_id))
+    if not inherited_ids:
+        return (), []
+    try:
+        authorized, _ = _attachment_inventory(
+            request,
+            user_id,
+            conversation_id,
+            inherited_ids,
+        )
+    except HTTPException as error:
+        # A previously used file may have been removed from durable storage.
+        # That must not make every later text-only message fail with a 404.
+        if error.status_code == status.HTTP_404_NOT_FOUND:
+            return (), []
+        raise
+    return authorized, []
+
+
 def _turn_coordinator(request: Request) -> ConversationTurnCoordinator:
     """处理 `_turn_coordinator` 相关逻辑。"""
     coordinator = getattr(
@@ -1078,7 +1113,7 @@ async def send_message(
     _ensure_message_allowed(request, conversation, session)
     lease = await _acquire_turn(request, conversation_id)
     async with lease:
-        authorized_attachments, attachments = _attachment_inventory(
+        authorized_attachments, attachments = _conversation_attachment_inventory(
             request,
             session.user_id,
             conversation_id,
@@ -1144,7 +1179,7 @@ async def stream_message(
     _ensure_message_allowed(request, conversation, session)
     lease = await _acquire_turn(request, conversation_id)
     try:
-        authorized_attachments, attachments = _attachment_inventory(
+        authorized_attachments, attachments = _conversation_attachment_inventory(
             request,
             session.user_id,
             conversation_id,
