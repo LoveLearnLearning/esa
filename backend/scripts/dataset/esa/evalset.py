@@ -303,6 +303,9 @@ def gold_of(s: Sample, layer: str | None = None) -> dict:
         "expected_arguments": [c.arguments for c in calls],
         "n_turns_given": n,
         "layer": layer,
+        # 声明式作废（见 ir.Sample.score_exclude）。没有作废项时不落这个键，
+        # 免得 443 道题里每一条都多一个空字典 —— 评测集要保持可 diff。
+        **({"score_exclude": dict(s.score_exclude)} if s.score_exclude else {}),
     }
 
 
@@ -514,9 +517,27 @@ def write(eval_set, train_set, stats, by_name, out_dir: Path,
         stats["supp_questions"] = len(supp_records)
 
     # 训练集的 IR，供 split.py 继续切 train/validation
+    #
+    # ⚠️ 这里用的是 `asdict`（不是 ir._sample_dict），它会把**每一个**字段都落盘，
+    # 空的也落。所以 Sample 上新增一个字段 = 1068 条训练 IR 全部产生差异 ——
+    # 内容一个字没变，`git diff` 却是一整片。评测集那边为此立过规矩
+    # （「每次重跑都是一大片假差异，真改动淹在里面」），训练 IR 同理。
+    #
+    # `score_exclude` 只有补充集那 5 条用得上，而补充集**根本不进训练集**，
+    # 所以这里它永远是空的。空就不落，让既有 1068 条保持逐字节不变。
+    def _drop_empty_exclude(pairs):
+        """asdict 的 dict_factory：只丢掉空的 score_exclude，别的一律照旧。
+
+        dict_factory 只作用于 dataclass 实例（Sample/Turn/ToolCall/ToolResult），
+        `ToolCall.arguments` 那种普通 dict 不走这里 —— 观测内容不会被碰到
+        （`_turn_dict` 那条「绝不递归进 arguments」的规矩在这里同样成立）。
+        """
+        return {k: v for k, v in pairs if not (k == "score_exclude" and not v)}
+
     with (out_dir / "train_ir.jsonl").open("w", encoding="utf-8") as fh:
         for s in train_set:
-            fh.write(json.dumps(asdict(s), ensure_ascii=False) + "\n")
+            fh.write(json.dumps(asdict(s, dict_factory=_drop_empty_exclude),
+                                ensure_ascii=False) + "\n")
 
     (out_dir / "eval_stats.json").write_text(
         json.dumps(stats, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

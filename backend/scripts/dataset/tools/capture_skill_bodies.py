@@ -123,7 +123,7 @@ def main() -> int:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    print(f"\n抓到 {len(bodies)} 份 Skill 正文 → {out_path.relative_to(ROOT)}")
+    print(f"\n抓到 {len(bodies)} 份 Skill 正文 → {backend_repo.display_path(out_path, ROOT)}")
     print(f"  来源：{backend.describe()}")
     print(f"  未知 skill 的失败文案：{not_found_template!r}")
     return 0

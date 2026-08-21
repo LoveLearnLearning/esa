@@ -166,7 +166,7 @@ def main() -> int:
         out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
     n_calls = sum(len(c["expected"]["tool_calls"]) for c in cases)
-    print(f"\n抓到 {len(cases)} 条黄金样例（共 {n_calls} 次工具调用）→ {out_path.relative_to(ROOT)}")
+    print(f"\n抓到 {len(cases)} 条黄金样例（共 {n_calls} 次工具调用）→ {backend_repo.display_path(out_path, ROOT)}")
     print(f"  来源：{backend.describe()}")
     for rel, h in fingerprint.items():
         print(f"  {h}  {rel}")

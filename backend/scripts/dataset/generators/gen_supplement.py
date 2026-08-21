@@ -90,7 +90,8 @@ def main() -> int:
             add(f"supp_refuse_{group}_{i:02d}",
                 f"{PREFIX}refuse__{group}__{i:02d}", "refusal", body["lures"],
                 [Turn(role="user", content=item["q"]),
-                 Turn(role="assistant", content=item["a"].strip())])
+                 Turn(role="assistant", content=item["a"].strip())],
+                score_exclude=dict(item.get("score_exclude") or {}))
 
     # ---- 二、ASK_USER ----
     for item in cfg["ask"]:
@@ -146,7 +147,40 @@ def main() -> int:
             [Turn(role="user", content=item["q"]),
              Turn(role="tool_call", calls=[ToolCall(tool, args)]),
              Turn(role="tool_result", results=[ToolResult(tool, result)]),
-             Turn(role="assistant", content=item["a"].strip())])
+             Turn(role="assistant", content=item["a"].strip())],
+            score_exclude=dict(item.get("score_exclude") or {}))
+
+    # ---- 反向检查：种子里声明的作废，必须条条落进样本 ----
+    #
+    # `score_exclude` 是靠各段自己传进 add() 的。哪天有人把它写进
+    # ask / negative 那两段（现在没接线），YAML 看着标了、产出里其实没有 ——
+    # 那正是「以为标了、其实没标」的假绿灯。所以两边数一遍，对不上就炸。
+    def declared(node) -> int:
+        """递归数一数种子里写了几处 score_exclude。"""
+        if isinstance(node, dict):
+            n = 1 if node.get("score_exclude") else 0
+            return n + sum(declared(v) for k, v in node.items() if k != "score_exclude")
+        if isinstance(node, list):
+            return sum(declared(v) for v in node)
+        return 0
+
+    # 指标名也在这里核一遍。判分器里那道 ValueError 当然也拦得住，
+    # 但它要等到**超算上判分**才会响；在本机生成这一步炸掉，早得多。
+    # （`esa.validate` 里做不了：`eval` 用着 `validate.is_refusal`，反向 import 会成环。
+    #  所以照本文件已有的惯例走局部 import。）
+    from esa.eval import METRIC_KEYS  # noqa: PLC0415
+    for x in out:
+        for metric in x.score_exclude:
+            assert metric in METRIC_KEYS, (
+                f"{x.id}: score_exclude 里的 {metric!r} 不是已知指标名 —— "
+                f"写错的指标名什么也不会作废，是个假绿灯")
+
+    want_exc, got_exc = declared(cfg), sum(1 for x in out if x.score_exclude)
+    assert want_exc == got_exc, (
+        f"种子里声明了 {want_exc} 处 score_exclude，只有 {got_exc} 处落进样本 —— "
+        f"多半是写在了还没接线的那一段（现在只有 refuse / boundary 接了）")
+    if got_exc:
+        print(f"  声明作废 {got_exc} 条（理由随评测集落盘，报告里会逐条印出来）")
 
     dump_samples(out, OUT)
     print(f"生成 {len(out)} 条 → {OUT.relative_to(ROOT)}")

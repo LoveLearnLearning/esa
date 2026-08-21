@@ -344,9 +344,33 @@ def main() -> int:
         #
         # ⚠️ 而且这直接关系到发布：我们是**整目录拖到网页上传**的，
         # 不合并就会把别人的改动静默覆盖掉（交接文档第十节记过一次）。
-        our_files = sorted(f for f in files if f.startswith(OUR_FILES_PREFIX))
+        touched = sorted(f for f in files if f.startswith(OUR_FILES_PREFIX))
+        # ⚠️ 「上游动了这个文件」和「上游改成了跟我们不一样的东西」是两件事。
+        #
+        # 2026-08-21 实测：上游合并了我们自己的 PR #8，于是 57 个文件全部
+        # 「被上游改过」——而它们逐字节就是我们传上去的那份。本工具当时
+        # 照旧喊「🔴 上游改了 57 个我们自己的文件，必须逐个三方合并」，
+        # 那是 57 条纯噪声。更糟的是：**真有一处外人改动时，它会淹在里面**。
+        #
+        # 所以判据改成「拿上游那版和**我们当前的工作副本**逐字节比」：
+        #   一样  → 是我们自己的上传绕了一圈回来，什么都不用做
+        #   不一样 → 才是真的分叉，需要人来三方合并
+        our_files, echoed = [], []
+        for f in touched:
+            # 上游路径是 backend/scripts/dataset/x，本机是 <ROOT>/dataset/x
+            ours = ROOT / "dataset" / f[len(OUR_FILES_PREFIX):]
+            theirs = subprocess.run(["git", "show", f"{remote}:{f}"], cwd=repo,
+                                    capture_output=True)
+            if (ours.exists() and theirs.returncode == 0
+                    and ours.read_bytes() == theirs.stdout):
+                echoed.append(f)
+            else:
+                our_files.append(f)
+        if echoed:
+            say(f"ℹ️ 其中 {len(echoed)} 个与我们的工作副本**逐字节相同** —— "
+                f"是我们自己上传的那份被合了回来，无需处理。")
         if our_files:
-            say(f"🔴 上游改了 {len(our_files)} 个**我们自己的文件**：")
+            say(f"🔴 上游把 {len(our_files)} 个**我们自己的文件**改成了不一样的内容：")
             for f in our_files:
                 say(f"    {f[len(OUR_FILES_PREFIX):]}")
             say()
@@ -356,6 +380,11 @@ def main() -> int:
             say(f"     git -C {repo} show {remote}:<路径>    > /tmp/theirs")
             say("     git merge-file -p dataset/<路径> /tmp/base /tmp/theirs > /tmp/merged")
             say("   合完再跑本工具确认缓存，然后才谈上传。")
+            say()
+            say("   ⚠️ 但先分清是「上游分叉」还是「我们自己往前走了」——")
+            say("      字节比不出这个差别。看一眼本地最后一次改动：")
+            say("        git log --oneline -1 -- dataset/<路径>")
+            say("      晚于上游那次合并我们 PR 的时间，就是我们更新，不用合。")
             say()
 
         # 临时 worktree 检出 origin/main，不动用户的工作区
@@ -370,6 +399,7 @@ def main() -> int:
             say()
 
             changed: list[str] = []
+            failed: list[str] = []      # 跑不起来 ≠ 有变化，两个桶分开
             for name, (script, relpath, actions) in CAPTURES.items():
                 target = capdir / f"{name}.json"
                 r = subprocess.run(
@@ -378,9 +408,16 @@ def main() -> int:
                     capture_output=True, text=True,
                 )
                 if r.returncode != 0 or not target.exists():
-                    say(f"  {name:16} ❌ capture 失败")
+                    # ⚠️ 「抓不起来」和「抓到了但变了」是两件事，别混。
+                    # 原来这里 `changed.append(name)`，于是结论会印成
+                    # 「另有 3 份缓存也变了」—— 而它们其实一次都没被比过。
+                    # 把「无法比对」说成「变了」，和把「无法比对」说成「没变」
+                    # 一样糟：两种都让人对着一个假信号做决定。
+                    # （2026-08-21 实测踩到：三个 capture 因为 display_path
+                    #   没落实到位而崩，结论就是这么印出来的。）
+                    say(f"  {name:16} ⚠️ 无法比对（capture 跑不起来）")
                     say("     " + (r.stderr.strip().splitlines() or ["(无输出)"])[-1])
-                    changed.append(name)
+                    failed.append(name)
                     continue
                 same = diff_cache(ROOT / relpath, target)
                 say(f"  {name:16} {'相同 ✅' if same else '有变化 ❌'}")
@@ -394,14 +431,25 @@ def main() -> int:
             shutil.rmtree(tmp, ignore_errors=True)
 
         say()
+        if failed:
+            say(f"⚠️ 有 {len(failed)} 份缓存**无法比对**（capture 跑不起来）："
+                f"{', '.join(failed)}")
+            say("   这不是「没变」，也不是「变了」，是**不知道**。")
+            say("   先把 capture 修好再判 —— 带着未知去决定要不要重生成，")
+            say("   就是这个项目栽过十四次的「数据错、仪表盘绿」。")
+            say()
         if our_files:
             say("结论：**上游改了我们的文件，必须人来合**（见上）。")
             if changed:
-                say(f"        另有 {len(changed)} 份缓存也变了：{', '.join(changed)}")
-            else:
+                say(f"        另有 {len(changed)} 份缓存变了：{', '.join(changed)}")
+            elif not failed:
                 say("        缓存本身没变 —— 但这**不代表**没事，理由见上面那段。")
             print("\n".join(out))
             return 1
+        if failed:
+            say("结论：**判不了**。先修 capture，再重跑本工具。")
+            print("\n".join(out))
+            return 2
         if not changed:
             say("结论：**零影响**，不需要重新生成数据。")
             say(f"把基线推到 {head}（只更新 _meta，内容不变）：")
