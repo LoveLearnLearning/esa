@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def get_current_session(
     request: Request,
-    authorization: str = Header(...),
+    authorization: str | None = Header(default=None),
 ) -> SessionPrincipal:
     """获取 `current session` 相关数据。
 
@@ -31,7 +31,7 @@ def get_current_session(
     Returns:
         SessionPrincipal => 处理结果。
     """
-    if not authorization.startswith("Bearer "):
+    if authorization is None or not authorization.startswith("Bearer "):
         raise HTTPException(401, "格式错误")
 
     token = authorization.removeprefix("Bearer ").strip()

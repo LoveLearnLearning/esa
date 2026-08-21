@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -10,7 +11,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
-import '../widgets/attachment_preview/attachment_preview.dart';
+import '../widgets/attachment_preview/pdf_attachment_viewer.dart';
 
 class PersonalKnowledgeBasePage extends StatefulWidget {
   const PersonalKnowledgeBasePage({super.key});
@@ -23,14 +24,15 @@ class PersonalKnowledgeBasePage extends StatefulWidget {
 class _PersonalKnowledgeBasePageState extends State<PersonalKnowledgeBasePage> {
   PersonalKnowledgeBase _snapshot = const PersonalKnowledgeBase.empty();
   KnowledgeBaseFile? _selected;
-  AttachmentContent? _preview;
   Timer? _pollTimer;
   bool _loading = true;
   bool _uploading = false;
-  bool _previewLoading = false;
   String? _error;
-  String? _previewError;
   String _query = '';
+  AttachmentContent? _previewContent;
+  RequestCancellation? _previewCancellation;
+  bool _previewLoading = false;
+  String? _previewError;
 
   @override
   void didChangeDependencies() {
@@ -41,6 +43,7 @@ class _PersonalKnowledgeBasePageState extends State<PersonalKnowledgeBasePage> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _previewCancellation?.cancel();
     super.dispose();
   }
 
@@ -142,29 +145,69 @@ class _PersonalKnowledgeBasePageState extends State<PersonalKnowledgeBasePage> {
     }
   }
 
-  Future<void> _selectFile(KnowledgeBaseFile file) async {
+  void _selectFile(KnowledgeBaseFile file) {
+    _previewCancellation?.cancel();
+    final cancellation = RequestCancellation();
     setState(() {
       _selected = file;
-      _preview = null;
+      _previewContent = null;
       _previewError = null;
       _previewLoading = true;
+      _previewCancellation = cancellation;
     });
+    unawaited(_loadPreview(file, cancellation));
+  }
+
+  Future<void> _loadPreview(
+    KnowledgeBaseFile file,
+    RequestCancellation cancellation,
+  ) async {
     try {
       final content = await AppScope.of(
         context,
-      ).api.fetchPersonalKnowledgeBaseFile(file);
-      if (!mounted || _selected?.id != file.id) return;
+      ).api.fetchPersonalKnowledgeBasePreview(file, cancellation: cancellation);
+      if (!mounted || cancellation.isCancelled || _selected?.id != file.id) {
+        return;
+      }
       setState(() {
-        _preview = content;
+        _previewContent = content;
         _previewLoading = false;
+        _previewError = null;
       });
     } on ApiException catch (error) {
-      if (!mounted || _selected?.id != file.id) return;
+      if (!mounted || cancellation.isCancelled || _selected?.id != file.id) {
+        return;
+      }
       setState(() {
-        _previewError = error.detail;
         _previewLoading = false;
+        _previewError = error.detail;
+      });
+    } catch (_) {
+      if (!mounted || cancellation.isCancelled || _selected?.id != file.id) {
+        return;
+      }
+      setState(() {
+        _previewLoading = false;
+        _previewError = '文件预览加载失败，请重试';
       });
     }
+  }
+
+  void _closePreview() {
+    _previewCancellation?.cancel();
+    setState(() {
+      _selected = null;
+      _previewContent = null;
+      _previewError = null;
+      _previewLoading = false;
+      _previewCancellation = null;
+    });
+  }
+
+  void _retryPreview() {
+    final selected = _selected;
+    if (selected == null) return;
+    _selectFile(selected);
   }
 
   Future<void> _deleteFile(KnowledgeBaseFile file) async {
@@ -190,9 +233,12 @@ class _PersonalKnowledgeBasePageState extends State<PersonalKnowledgeBasePage> {
       await AppScope.of(context).api.deletePersonalKnowledgeBaseFile(file.id);
       if (!mounted) return;
       if (_selected?.id == file.id) {
+        _previewCancellation?.cancel();
         setState(() {
           _selected = null;
-          _preview = null;
+          _previewContent = null;
+          _previewLoading = false;
+          _previewError = null;
         });
       }
       await _load(quiet: true);
@@ -273,10 +319,7 @@ class _PersonalKnowledgeBasePageState extends State<PersonalKnowledgeBasePage> {
               border: Border(bottom: BorderSide(color: context.n.divider)),
             ),
             child: TextButton.icon(
-              onPressed: () => setState(() {
-                _selected = null;
-                _preview = null;
-              }),
+              onPressed: _closePreview,
               icon: const Icon(LucideIcons.chevronLeft, size: 17),
               label: const Text('返回文件列表'),
             ),
@@ -337,19 +380,148 @@ class _PersonalKnowledgeBasePageState extends State<PersonalKnowledgeBasePage> {
   Widget _previewPane() {
     final selected = _selected;
     if (selected == null) return const _PreviewPlaceholder();
-    return AttachmentPreviewPane(
+    return _PersonalPreviewPane(
       key: ValueKey('knowledge-preview-${selected.id}'),
-      attachment: selected.previewAttachment,
-      content: _preview,
+      file: selected,
+      content: _previewContent,
       loading: _previewLoading,
       error: _previewError,
-      onClose: () => setState(() {
-        _selected = null;
-        _preview = null;
-      }),
-      onRetry: () => _selectFile(selected),
+      onRetry: _retryPreview,
+      onClose: _closePreview,
     );
   }
+}
+
+class _PersonalPreviewPane extends StatelessWidget {
+  const _PersonalPreviewPane({
+    super.key,
+    required this.file,
+    required this.content,
+    required this.loading,
+    required this.error,
+    required this.onRetry,
+    required this.onClose,
+  });
+
+  final KnowledgeBaseFile file;
+  final AttachmentContent? content;
+  final bool loading;
+  final String? error;
+  final VoidCallback onRetry;
+  final VoidCallback onClose;
+
+  Widget _body(BuildContext context) {
+    if (loading) return const Center(child: CircularProgressIndicator());
+    if (error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(LucideIcons.triangleAlert, size: 30),
+              const SizedBox(height: 12),
+              Text(error!, textAlign: TextAlign.center),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(LucideIcons.rotateCw, size: 16),
+                label: const Text('重新加载'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    final value = content;
+    if (value == null) return const SizedBox.shrink();
+    if (value.mediaType.startsWith('image/')) {
+      return InteractiveViewer(
+        minScale: .5,
+        maxScale: 4,
+        child: Center(
+          child: Image.memory(
+            value.bytes,
+            key: const ValueKey('knowledge-base-image-preview'),
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => const Center(child: Text('图片预览无法解码')),
+          ),
+        ),
+      );
+    }
+    if (value.mediaType.startsWith('application/pdf')) {
+      return PdfAttachmentViewer(
+        bytes: value.bytes,
+        mediaType: value.mediaType,
+      );
+    }
+    final text = utf8.decode(value.bytes, allowMalformed: true);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!const {'txt', 'md', 'csv', 'json'}.contains(file.extension))
+          Container(
+            key: const ValueKey('knowledge-base-derived-preview-label'),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            color: context.n.n100,
+            child: Text(
+              '${file.extension.toUpperCase()} 解析文本预览',
+              style: TextStyle(fontSize: 11, color: context.n.n600),
+            ),
+          ),
+        Expanded(
+          child: SelectionArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(18),
+              child: SelectableText(
+                text,
+                key: const ValueKey('knowledge-base-text-preview'),
+                style: const TextStyle(
+                  fontFamily: 'JetBrainsMono',
+                  fontSize: 12.5,
+                  height: 1.55,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Container(
+        height: 52,
+        padding: const EdgeInsets.only(left: 14, right: 6),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: context.n.divider)),
+        ),
+        child: Row(
+          children: [
+            Icon(_fileIcon(file), size: 18, color: EsaColors.accent),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                file.filename,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.texts.titleSmall,
+              ),
+            ),
+            IconButton(
+              tooltip: '关闭',
+              onPressed: onClose,
+              icon: const Icon(LucideIcons.x, size: 18),
+            ),
+          ],
+        ),
+      ),
+      Expanded(child: _body(context)),
+    ],
+  );
 }
 
 class _KnowledgeBaseHeader extends StatelessWidget {

@@ -11,6 +11,7 @@
 
 from .errors import CollectionNotFound, IndexGenerationConflict, IndexUnavailable
 from .qdrant import QdrantIndex
+from .personal_qdrant import PersonalQdrantIndex
 from .reference import ReferenceIndex, reference_tokens
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "IndexGenerationConflict",
     "IndexUnavailable",
     "QdrantIndex",
+    "PersonalQdrantIndex",
     "ReferenceIndex",
     "reference_tokens",
 ]

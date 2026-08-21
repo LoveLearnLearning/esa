@@ -12,6 +12,8 @@
 from __future__ import annotations
 
 import math
+import re
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 
@@ -83,6 +85,7 @@ class Locator(StrictModel):
 
     locator_id: str = Field(min_length=1)
     kind: str = Field(min_length=1)
+    schema_version: Literal["personal-locator-0.1"] | None = None
     container_id: str | None = None
     container_index: int | None = Field(default=None, ge=0)
     label: str | None = None
@@ -90,6 +93,18 @@ class Locator(StrictModel):
     bbox: NormalizedBox | None = None
     polygon: tuple[Point, ...] | None = None
     source_geometry: SourceGeometry | None = None
+    start_line: int | None = Field(default=None, ge=1)
+    end_line: int | None = Field(default=None, ge=1)
+    heading_path: tuple[str, ...] | None = None
+    start_row: int | None = Field(default=None, ge=1)
+    end_row: int | None = Field(default=None, ge=1)
+    columns: tuple[str, ...] | None = None
+    pointer: str | None = None
+    page: int | None = Field(default=None, ge=1)
+    asset_id: str | None = None
+    ocr_region: str | None = None
+    group_id: str | None = None
+    section_path: tuple[str, ...] | None = None
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
     @field_validator("polygon")
@@ -99,6 +114,55 @@ class Locator(StrictModel):
         if value is not None and len(value) < 3:
             raise ValueError("polygon 至少需要三个点")
         return value
+
+    @model_validator(mode="after")
+    def personal_locator_contract(self) -> "Locator":
+        """Enforce every format-specific personal Evidence locator."""
+
+        if self.schema_version is None:
+            return self
+        if self.kind == "text_lines":
+            self._ordered(self.start_line, self.end_line, "line")
+        elif self.kind == "markdown_section":
+            self._ordered(self.start_line, self.end_line, "line")
+            if self.heading_path is None:
+                raise ValueError("markdown_section requires heading_path")
+        elif self.kind == "csv_rows":
+            self._ordered(self.start_row, self.end_row, "row")
+            if not self.columns:
+                raise ValueError("csv_rows requires columns")
+        elif self.kind == "json_pointer":
+            if self.pointer is None or not _valid_json_pointer(self.pointer):
+                raise ValueError("json_pointer requires an RFC 6901 pointer")
+        elif self.kind == "pdf_region":
+            if self.page is None or self.bbox is None:
+                raise ValueError("pdf_region requires page and bbox")
+        elif self.kind == "image_region":
+            if not self.asset_id or not self.ocr_region or self.bbox is None:
+                raise ValueError("image_region requires asset_id, ocr_region and bbox")
+        elif self.kind == "mineru_section":
+            if not self.group_id or self.section_path is None:
+                raise ValueError("mineru_section requires group_id and section_path")
+        else:
+            raise ValueError("unsupported personal locator kind")
+        return self
+
+    @staticmethod
+    def _ordered(start: int | None, end: int | None, label: str) -> None:
+        if start is None or end is None or end < start:
+            raise ValueError(f"{label} range must be present and ordered")
+
+
+_JSON_POINTER_TOKEN = re.compile(r"(?:[^~/]|~[01])*")
+
+
+def _valid_json_pointer(value: str) -> bool:
+    if value == "":
+        return True
+    return value.startswith("/") and all(
+        _JSON_POINTER_TOKEN.fullmatch(token) is not None
+        for token in value[1:].split("/")
+    )
 
 
 def normalize_bbox(raw: list[float] | tuple[float, ...], width: float, height: float) -> NormalizedBox:

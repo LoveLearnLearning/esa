@@ -5,6 +5,7 @@
 // 当 config.dart 里 kOfflineMode == true 时 所有方法走本地假数据 完全不发网络请求
 
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -48,6 +49,65 @@ class AttachmentContent {
   final String filename;
 }
 
+class RequestCancellation {
+  bool _cancelled = false;
+  void Function()? _activeCancel;
+
+  bool get isCancelled => _cancelled;
+
+  void cancel() {
+    if (_cancelled) return;
+    _cancelled = true;
+    _activeCancel?.call();
+    _activeCancel = null;
+  }
+
+  void attach(void Function() callback) {
+    if (_cancelled) {
+      callback();
+    } else {
+      _activeCancel = callback;
+    }
+  }
+
+  void detach() => _activeCancel = null;
+}
+
+class AttachmentTransfer {
+  AttachmentTransfer._({
+    required http.Client client,
+    required http.StreamedResponse response,
+    required this.mediaType,
+    required this.filename,
+  }) : contentLength = response.contentLength {
+    _client = client;
+    chunks = _closeAfter(response.stream);
+  }
+
+  late final http.Client _client;
+  late final Stream<List<int>> chunks;
+  final int? contentLength;
+  final String mediaType;
+  final String filename;
+  bool _closed = false;
+
+  Stream<List<int>> _closeAfter(Stream<List<int>> source) async* {
+    try {
+      await for (final chunk in source) {
+        yield chunk;
+      }
+    } finally {
+      cancel();
+    }
+  }
+
+  void cancel() {
+    if (_closed) return;
+    _closed = true;
+    _client.close();
+  }
+}
+
 class KnowledgeBaseUploadFile {
   const KnowledgeBaseUploadFile({
     required this.filename,
@@ -61,8 +121,9 @@ class KnowledgeBaseUploadFile {
 }
 
 class ApiClient {
-  ApiClient({String? baseUrl})
-    : baseUrl = _normalizeBaseUrl(baseUrl ?? _defaultBaseUrl);
+  ApiClient({String? baseUrl, http.Client Function()? clientFactory})
+    : baseUrl = _normalizeBaseUrl(baseUrl ?? _defaultBaseUrl),
+      _clientFactory = clientFactory ?? http.Client.new;
 
   static const String _configuredBaseUrl = String.fromEnvironment(
     'ESA_API_BASE',
@@ -78,6 +139,14 @@ class ApiClient {
       value.endsWith('/') ? value.substring(0, value.length - 1) : value;
 
   final String baseUrl;
+  final http.Client Function() _clientFactory;
+
+  static const int _personalPreviewMaxBytes = 8 * 1024 * 1024;
+  static const int _personalPreviewCacheMaxBytes = 24 * 1024 * 1024;
+  final LinkedHashMap<String, AttachmentContent> _personalPreviewCache =
+      LinkedHashMap<String, AttachmentContent>();
+  int _personalPreviewCacheBytes = 0;
+  String? _personalPreviewCacheOwner;
 
   String? sessionId;
   String? userId;
@@ -230,9 +299,13 @@ class ApiClient {
       username = null;
       email = null;
       sessionExpiresAt = null;
+      clearPersonalKnowledgeBasePreviewCache();
       return;
     }
-    if (sessionId == null) return;
+    if (sessionId == null) {
+      clearPersonalKnowledgeBasePreviewCache();
+      return;
+    }
     try {
       await http.post(_uri('/auth/logout'), headers: _headers(auth: true));
     } catch (_) {
@@ -243,6 +316,7 @@ class ApiClient {
       username = null;
       email = null;
       sessionExpiresAt = null;
+      clearPersonalKnowledgeBasePreviewCache();
     }
   }
 
@@ -503,10 +577,17 @@ class ApiClient {
       'tif' || 'tiff' => 'image/tiff',
       'docx' =>
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'doc' => 'application/msword',
       'pptx' =>
         'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'ppt' => 'application/vnd.ms-powerpoint',
       'xlsx' =>
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'xls' => 'application/vnd.ms-excel',
+      'csv' => 'text/csv',
+      'txt' => 'text/plain',
+      'md' => 'text/markdown',
+      'json' => 'application/json',
       'html' || 'htm' => 'text/html',
       _ => 'application/octet-stream',
     };
@@ -1583,19 +1664,165 @@ class ApiClient {
     }
   }
 
-  Future<AttachmentContent> fetchPersonalKnowledgeBaseFile(
-    KnowledgeBaseFile file,
-  ) async {
-    final response = await http.get(
-      _uri('/me/knowledge-base/files/${Uri.encodeComponent(file.id)}/content'),
-      headers: _headers(auth: true),
+  Future<AttachmentTransfer> fetchPersonalKnowledgeBaseFile(
+    KnowledgeBaseFile file, {
+    bool download = false,
+    String? range,
+    RequestCancellation? cancellation,
+  }) => _openPersonalKnowledgeBaseTransfer(
+    file,
+    endpoint: download ? 'download' : 'content',
+    range: range,
+    cancellation: cancellation,
+  );
+
+  Future<AttachmentContent> fetchPersonalKnowledgeBasePreview(
+    KnowledgeBaseFile file, {
+    RequestCancellation? cancellation,
+  }) async {
+    final owner = userId ?? '';
+    if (_personalPreviewCacheOwner != owner) {
+      clearPersonalKnowledgeBasePreviewCache();
+      _personalPreviewCacheOwner = owner;
+    }
+    final cacheKey = '$owner:${file.id}';
+    final cached = _personalPreviewCache.remove(cacheKey);
+    if (cached != null) {
+      _personalPreviewCache[cacheKey] = cached;
+      return cached;
+    }
+    final transfer = await _openPersonalKnowledgeBaseTransfer(
+      file,
+      endpoint: 'preview',
+      cancellation: cancellation,
     );
-    if (response.statusCode != 200) _fail(response);
-    return AttachmentContent(
-      bytes: response.bodyBytes,
-      mediaType: response.headers['content-type'] ?? file.mediaType,
-      filename: file.filename,
+    cancellation?.attach(transfer.cancel);
+    if (cancellation?.isCancelled ?? false) {
+      throw ApiException(0, '预览请求已取消');
+    }
+    final declared = transfer.contentLength;
+    if (declared != null && declared > _personalPreviewMaxBytes) {
+      transfer.cancel();
+      cancellation?.detach();
+      throw ApiException(413, '预览派生文件超过客户端安全限制');
+    }
+    final builder = BytesBuilder(copy: false);
+    var received = 0;
+    try {
+      await for (final chunk in transfer.chunks) {
+        received += chunk.length;
+        if (received > _personalPreviewMaxBytes) {
+          transfer.cancel();
+          throw ApiException(413, '预览派生文件超过客户端安全限制');
+        }
+        builder.add(chunk);
+      }
+    } on http.ClientException {
+      if (cancellation?.isCancelled ?? false) {
+        throw ApiException(0, '预览请求已取消');
+      }
+      throw ApiException(0, '预览传输中断，请重试');
+    } finally {
+      cancellation?.detach();
+      transfer.cancel();
+    }
+    if (cancellation?.isCancelled ?? false) {
+      throw ApiException(0, '预览请求已取消');
+    }
+    final content = AttachmentContent(
+      bytes: builder.takeBytes(),
+      mediaType: transfer.mediaType,
+      filename: transfer.filename,
     );
+    _personalPreviewCache[cacheKey] = content;
+    _personalPreviewCacheBytes += content.bytes.length;
+    while (_personalPreviewCacheBytes > _personalPreviewCacheMaxBytes &&
+        _personalPreviewCache.isNotEmpty) {
+      final oldest = _personalPreviewCache.keys.first;
+      _personalPreviewCacheBytes -= _personalPreviewCache
+          .remove(oldest)!
+          .bytes
+          .length;
+    }
+    return content;
+  }
+
+  Future<AttachmentTransfer> _openPersonalKnowledgeBaseTransfer(
+    KnowledgeBaseFile file, {
+    required String endpoint,
+    String? range,
+    RequestCancellation? cancellation,
+  }) async {
+    final client = _clientFactory();
+    cancellation?.attach(client.close);
+    if (cancellation?.isCancelled ?? false) {
+      throw ApiException(0, '文件请求已取消');
+    }
+    final request = http.Request(
+      'GET',
+      _uri(
+        '/me/knowledge-base/files/${Uri.encodeComponent(file.id)}/$endpoint',
+      ),
+    );
+    if (sessionId != null) {
+      request.headers['Authorization'] = 'Bearer $sessionId';
+    }
+    if (range != null && range.trim().isNotEmpty) {
+      request.headers['Range'] = range.trim();
+    }
+    try {
+      final response = await client
+          .send(request)
+          .timeout(const Duration(seconds: 30));
+      if (response.statusCode != 200 && response.statusCode != 206) {
+        final body = BytesBuilder(copy: false);
+        var total = 0;
+        await for (final chunk in response.stream) {
+          if (total < 64 * 1024) {
+            final retained = chunk.take(64 * 1024 - total).toList();
+            body.add(retained);
+            total += retained.length;
+          }
+          if (total >= 64 * 1024) break;
+        }
+        _fail(
+          http.Response.bytes(
+            body.takeBytes(),
+            response.statusCode,
+            headers: response.headers,
+          ),
+        );
+      }
+      final transfer = AttachmentTransfer._(
+        client: client,
+        response: response,
+        mediaType: response.headers['content-type'] ?? file.mediaType,
+        filename: file.filename,
+      );
+      cancellation?.attach(transfer.cancel);
+      return transfer;
+    } on TimeoutException {
+      client.close();
+      cancellation?.detach();
+      throw ApiException(0, '文件请求超时，请重试');
+    } on http.ClientException {
+      client.close();
+      cancellation?.detach();
+      if (cancellation?.isCancelled ?? false) {
+        throw ApiException(0, '文件请求已取消');
+      }
+      throw ApiException(0, '网络异常，请检查网络后重试');
+    } catch (_) {
+      client.close();
+      cancellation?.detach();
+      rethrow;
+    }
+  }
+
+  void clearPersonalKnowledgeBasePreviewCache() {
+    _personalPreviewCache.clear();
+    _personalPreviewCacheBytes = 0;
+    _personalPreviewCacheOwner = null;
   }
 
   Future<void> deletePersonalKnowledgeBaseFile(String fileId) async {

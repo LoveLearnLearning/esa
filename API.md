@@ -1066,6 +1066,59 @@ Demo 没有预计算快照；无直接证据的前置点标记为 `needs_diagnos
 - AI 分析只是教师决策支持，不能自动发布成绩或在教师确认前写入学生掌握度。
 - 教学班级关联是附加关系，不改变学生对原有全部知识点、个人课程和学习空间的访问。
 
+## 个人知识库接口
+
+学生与教师共用以下接口。身份只取自 `Authorization: Bearer <session_id>`，请求不得
+提交 `user_id`。完整字段、配额、状态机与删除恢复要求以
+`PERSONAL_KNOWLEDGE_BASE_API.md` 为准。
+
+### GET /me/knowledge-base
+
+返回当前用户的完整知识库快照；空库也返回 `200`。快照包含
+`file_count/chunk_count/index_count/status/progress/updated_at/error/files`，并保证
+`file_count == files.length`。`queued/building` 时客户端每 2 秒轮询。
+
+### POST /me/knowledge-base/files
+
+使用 `multipart/form-data` 的重复 `files` 字段批量上传，成功保存并持久化异步任务后
+返回 `202` 和完整快照。MVP 支持 `pdf, doc, docx, ppt, pptx, xls, xlsx, csv, txt,
+md, json, png, jpg, jpeg, webp`。限制为单文件 200 MB、单批 20 个/1 GB、单用户
+1000 个/10 GB；相同用户内按 SHA-256 去重。
+
+缺少 `files` 返回 `422`，空文件返回 `400`，格式或内容不匹配返回 `415`/`400`，配额
+超限返回 `413`，同用户已有上传或重建任务返回 `409`，功能或依赖不可用返回 `503`。
+
+### DELETE /me/knowledge-base/files/{file_id}
+
+同步隐藏当前用户文件并持久化异步清理任务，成功返回 `204`。清理完成前重复删除同一
+tombstone 仍返回 `204`；不存在、已清理或属于其他用户统一返回 `404`。
+
+### POST /me/knowledge-base/rebuild
+
+空 JSON 请求体。保留原文件并排队全量重建，返回 `202` 和完整快照；空库返回 `400`，
+互斥任务冲突返回 `409`。
+
+### GET/HEAD /me/knowledge-base/files/{file_id}/content
+
+返回当前用户原始文件。支持单段 byte Range、`If-Range`、`206/416`、ETag、准确长度、
+inline 文件名和安全响应头；跨用户、已删除及不存在统一 `404`。响应从已授权文件描述符
+按 64 KiB 流式发送。
+
+### GET/HEAD /me/knowledge-base/files/{file_id}/preview
+
+返回有界派生预览：图片缩略图、文本/CSV/JSON、PDF 的 DocIR 文本，以及 Office 的
+隔离转换 PDF 或文本降级。派生物尚未生成返回 `409`。
+
+### GET/HEAD /me/knowledge-base/files/{file_id}/download
+
+与 content 使用相同认证、Range 和流式边界，响应文件名 disposition 为 attachment。
+
+### GET /internal/metrics/personal-knowledge-base
+
+返回个人库 SQLite 侧运行指标：按状态和阶段的任务数、队列/活动/成功/失败数、
+各阶段持久耗时统计、待清理文件与 generation、collection readiness，以及 Qdrant
+mutation/snapshot sequence。该接口不读取文档正文或 Qdrant 查询结果。
+
 ## Web 部署约定
 
 Flutter Web 默认使用同源 `/api`。Nginx 必须把 `/api` 前缀原样转发到后端；

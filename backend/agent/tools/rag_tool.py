@@ -79,3 +79,36 @@ def get_knowledge_base_stats() -> dict[str, Any]:
     """返回当前注入检索服务的只读状态。"""
 
     return knowledge_base_stats()
+
+
+@tr.register(
+    {
+        "type": "function",
+        "function": {
+            "name": "retrieve_personal_knowledge",
+            "description": (
+                "检索当前登录用户主动上传的个人知识库，并返回文件名和可回查证据。"
+                "用户身份由服务端会话绑定，参数中不接受 user_id。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "需要从个人资料中检索的自然语言问题",
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "最多返回多少条结果，范围 1 到 20，默认 5",
+                        "default": 5,
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    }
+)
+def retrieve_personal_knowledge(query: str, top_k: int = 5) -> dict[str, Any]:
+    """Contextual tools are executed only by ``BoundToolExecutor``."""
+
+    raise RuntimeError("personal knowledge tool requires BoundToolExecutor")

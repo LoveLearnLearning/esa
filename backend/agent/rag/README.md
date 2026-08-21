@@ -130,6 +130,11 @@ SearchResponse
 
 `evidence_text` 与 `context_text` 的语义不同：前者来自不可变 Evidence 映射，用于回查；后者是受章节边界限制的上下文拼接，不能自动视为逐字引用。
 
+Agent 工具适配层会在不修改 Evidence 的前提下，对 `results[].content` 和顶层
+`context_text` 做确定性摘录：所有结果合计不超过 2048 个估算 token，单条不超过
+512 个估算 token；被裁剪的内容以 `…` 标记。检索服务自身的上下文预算仍由
+`RAG_MAX_CONTEXT_TOKENS` 控制。
+
 当前真实 Evidence 的来源均为 `native_or_ocr_unverified`，因此 `quote_eligible=false`。上层只能表述为“解析或 OCR 风险文字”，不能声称已证明为 PDF 原生文字。
 
 ### 3.2 ChunkCollection 输出
@@ -239,6 +244,18 @@ Embedding/Reranker 后端及模型、超时、批大小和检索候选数量。C
 ESA 仍通过 `ToolRegistry` 调用 `retrieve_knowledge`。应用生命周期先创建
 `RetrievalService`，再调用 `configure_retrieval_service(service)`；模块导入本身不会连接
 Qdrant、加载模型或隐式建库。Agent 侧只暴露检索和状态读取，索引构建继续使用独立 CLI。
+
+### 个人库隔离边界
+
+个人知识库不复用上述冻结的全局 collection 或 `QdrantIndex`。启用
+`PERSONAL_KB_ENABLED` 后，应用使用独立 collection、`PersonalQdrantIndex` 和持久化
+SQLite revision/job/outbox；原文件与 DocIR/Chunk 工件位于 `PERSONAL_KB_ROOT`，Qdrant
+活动 storage 可位于 Job 本地盘，但恢复 snapshot 必须位于持久目录。
+
+Agent 通过独立的 `retrieve_personal_knowledge` 读取个人库。其 schema 不接受
+`user_id`；`BoundToolExecutor` 只注入当前 `ToolExecutionContext.user_id`，索引底层同时
+强制 `user_id + active_generation + visible + SQLite live-file allowlist`。冻结的
+`retrieve_knowledge` / `get_knowledge_base_stats` B1/B2 契约未修改。
 
 ## 5. 证明边界
 

@@ -119,6 +119,24 @@ class BoundToolExecutor:
 
                 service = self.context.runtime_dependencies.rag_service
                 return retrieve_knowledge_payload(service=service, **normalized)
+            if name == "retrieve_personal_knowledge":
+                service = (
+                    self.context.runtime_dependencies
+                    .personal_knowledge_retrieval_service
+                )
+                if service is None:
+                    return {
+                        "query": normalized["query"],
+                        "result_count": 0,
+                        "results": [],
+                        "degraded": ["personal_knowledge_base_unavailable"],
+                        "rankings": {},
+                    }
+                return await service.search(
+                    user_id=self.context.user_id,
+                    query=normalized["query"],
+                    top_k=normalized.get("top_k", 5),
+                )
             if name == "get_knowledge_base_stats":
                 from backend.agent.rag.agent_api import knowledge_base_stats
 

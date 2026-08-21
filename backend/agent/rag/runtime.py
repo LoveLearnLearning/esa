@@ -17,8 +17,49 @@ from backend.agent.rag.inference import (
     VLLMReranker,
 )
 from backend.agent.rag.retrieval.contracts import RetrievalConfig
+from backend.agent.rag.retrieval.contracts import EmbeddingProvider
 from backend.agent.rag.retrieval.service import RetrievalService
 from backend.core.utils import config
+
+
+def create_embedding_provider(
+    *,
+    backend: str | None = None,
+    model_name: str | None = None,
+    dense_dimension: int | None = None,
+    base_url: str | None = None,
+) -> EmbeddingProvider:
+    """Create the one configured document/query embedding implementation."""
+
+    selected_backend = backend or config.RAG_EMBEDDING_BACKEND
+    selected_model = model_name or config.RAG_EMBEDDING_MODEL_PATH
+    dimension = dense_dimension or config.RAG_EMBEDDING_DIMENSION
+    if selected_backend == "reference":
+        return HashingEmbeddingProvider(
+            dimensions=dimension,
+            model_name=selected_model,
+        )
+    if selected_backend == "transformers":
+        return TransformersEmbeddingProvider(
+            model_name=selected_model,
+            load_path=config.RAG_EMBEDDING_MODEL_PATH,
+            device=config.RAG_EMBEDDING_DEVICE,
+            runtime_device=config.RAG_EMBEDDING_RUNTIME_DEVICE,
+            dimension=dimension,
+            max_length=config.RAG_EMBEDDING_MAX_LENGTH,
+            batch_size=config.RAG_EMBEDDING_BATCH_SIZE,
+        )
+    if selected_backend == "vllm":
+        selected_url = base_url or config.RAG_EMBEDDING_BASE_URL
+        if not selected_url:
+            raise RuntimeError("vLLM embedding deployment requires a base URL")
+        return VLLMEmbeddingProvider(
+            base_url=selected_url,
+            model_name=selected_model,
+            api_key=os.environ.get("VLLM_API_KEY"),
+            timeout=config.RAG_EMBEDDING_TIMEOUT,
+        )
+    raise RuntimeError(f"unsupported embedding backend: {selected_backend}")
 
 
 def create_retrieval_service(
@@ -56,31 +97,12 @@ def create_retrieval_service(
         raise RuntimeError(
             "RAG_EMBEDDING_BACKEND does not match the frozen deployment manifest"
         )
-    if deployment.embedding_backend == "reference":
-        embedding = HashingEmbeddingProvider(
-            dimensions=generation.dense_dimension,
-            model_name=deployment.embedding_model_name,
-        )
-    elif deployment.embedding_backend == "transformers":
-        embedding = TransformersEmbeddingProvider(
-            model_name=deployment.embedding_model_name,
-            load_path=config.RAG_EMBEDDING_MODEL_PATH,
-            device=config.RAG_EMBEDDING_DEVICE,
-            runtime_device=config.RAG_EMBEDDING_RUNTIME_DEVICE,
-            dimension=generation.dense_dimension,
-            max_length=config.RAG_EMBEDDING_MAX_LENGTH,
-            batch_size=config.RAG_EMBEDDING_BATCH_SIZE,
-        )
-    else:
-        base_url = config.RAG_EMBEDDING_BASE_URL or deployment.embedding_base_url
-        if not base_url:
-            raise RuntimeError("vLLM embedding deployment requires a base URL")
-        embedding = VLLMEmbeddingProvider(
-            base_url=base_url,
-            model_name=deployment.embedding_model_name,
-            api_key=os.environ.get("VLLM_API_KEY"),
-            timeout=config.RAG_EMBEDDING_TIMEOUT,
-        )
+    embedding = create_embedding_provider(
+        backend=deployment.embedding_backend,
+        model_name=deployment.embedding_model_name,
+        dense_dimension=generation.dense_dimension,
+        base_url=config.RAG_EMBEDDING_BASE_URL or deployment.embedding_base_url,
+    )
     embedding_fingerprint = backend_fingerprint(
         embedding,
         {

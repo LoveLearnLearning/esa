@@ -7,6 +7,8 @@ from __future__ import annotations
 import hashlib
 import json
 import mimetypes
+import os
+import socket
 import shutil
 import subprocess
 import tempfile
@@ -14,6 +16,7 @@ import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 
@@ -56,6 +59,27 @@ class MinerUDocumentParser:
             separators=(",", ":"),
         )
         return hashlib.sha256(payload.encode()).hexdigest()
+
+    def check_available(self, timeout_seconds: float = 5.0) -> None:
+        """Fail early when the configured MinerU process is not reachable."""
+
+        if self.api_url is None:
+            if not self.command.is_file() or not os.access(self.command, os.X_OK):
+                raise FileNotFoundError(
+                    f"MinerU command is missing or not executable: {self.command}"
+                )
+            return
+        parsed = urlparse(self.api_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("MinerU API URL must be an http(s) origin")
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        try:
+            with socket.create_connection(
+                (parsed.hostname, port), timeout=timeout_seconds
+            ):
+                pass
+        except OSError as exc:
+            raise RuntimeError("MinerU API is not reachable") from exc
 
     def parse(self, source: Path, document_root: Path) -> ParsedAttachment:
         """解析 `parse` 相关数据。

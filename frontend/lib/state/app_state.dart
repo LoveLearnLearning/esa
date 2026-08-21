@@ -431,6 +431,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _clearSession() {
+    api.clearPersonalKnowledgeBasePreviewCache();
     api.sessionId = null;
     api.userId = null;
     api.username = null;
