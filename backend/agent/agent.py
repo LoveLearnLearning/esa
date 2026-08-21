@@ -113,6 +113,9 @@ class Agent:
         max_output_tokens: int = 8192,
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
+        lora_path: str | Path | None = None,
+        lora_name: str = "esa-agent",
+        lora_max_rank: int = 16,
         stream_heartbeat_seconds: float = AGENT_STREAM_HEARTBEAT_SECONDS,
     ) -> None:
         """初始化 `Agent` 实例。"""
@@ -139,6 +142,9 @@ class Agent:
             max_output_tokens=max_output_tokens,
             max_num_seqs=max_num_seqs,
             tensor_parallel_size=tensor_parallel_size,
+            lora_path=lora_path,
+            lora_name=lora_name,
+            lora_max_rank=lora_max_rank,
         )
 
     async def run(self, run_spec: ExecutableAgentRun) -> list[dict]:

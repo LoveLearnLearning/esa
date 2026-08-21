@@ -14,6 +14,7 @@ from vllm import SamplingParams
 from vllm.config.cache import CacheDType
 from vllm.config.model import ModelDType
 from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.lora.request import LoRARequest
 from vllm.model_executor.layers.quantization import QuantizationMethods
 from vllm.sampling_params import RequestOutputKind
 from vllm.v1.engine.async_llm import AsyncLLM
@@ -37,15 +38,44 @@ class LLMProvider:
         kv_cache_dtype: CacheDType = "auto",
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
+        lora_path: str | Path | None = None,
+        lora_name: str = "esa-agent",
+        lora_max_rank: int = 16,
     ) -> None:
         """初始化 `LLMProvider` 实例。"""
         self.model_path = Path(model_path)
         if max_output_tokens <= 0:
             raise ValueError("max_output_tokens 必须大于 0")
+        if lora_max_rank <= 0:
+            raise ValueError("lora_max_rank 必须大于 0")
         self.max_output_tokens = max_output_tokens
+        self.lora_request: LoRARequest | None = None
+        if lora_path is not None:
+            resolved_lora_path = Path(lora_path).expanduser().resolve()
+            if not resolved_lora_path.is_dir():
+                raise FileNotFoundError(f"LoRA 目录不存在：{resolved_lora_path}")
+            if not (resolved_lora_path / "adapter_config.json").is_file():
+                raise FileNotFoundError(
+                    f"LoRA 配置不存在：{resolved_lora_path / 'adapter_config.json'}"
+                )
+            if not (resolved_lora_path / "adapter_model.safetensors").is_file():
+                raise FileNotFoundError(
+                    "LoRA 权重不存在："
+                    f"{resolved_lora_path / 'adapter_model.safetensors'}"
+                )
+            if not lora_name.strip():
+                raise ValueError("lora_name 不能为空")
+            self.lora_request = LoRARequest(
+                lora_name=lora_name,
+                lora_int_id=1,
+                lora_path=str(resolved_lora_path),
+                base_model_name=str(self.model_path),
+            )
         logger.info(
-            "正在加载千问模型：path=%s，TP=%s，max_model_len=%s，max_output_tokens=%s",
+            "正在加载千问模型：path=%s，LoRA=%s，TP=%s，"
+            "max_model_len=%s，max_output_tokens=%s",
             self.model_path,
+            self.lora_request.lora_path if self.lora_request else "disabled",
             tensor_parallel_size,
             max_model_len,
             max_output_tokens,
@@ -61,6 +91,9 @@ class LLMProvider:
             quantization=quantization,
             dtype=dtype,
             kv_cache_dtype=kv_cache_dtype,
+            enable_lora=self.lora_request is not None,
+            max_loras=1,
+            max_lora_rank=lora_max_rank,
         )
 
         self.engine = AsyncLLM.from_engine_args(engine_args)
@@ -153,6 +186,7 @@ class LLMProvider:
             request_id=request_id,
             prompt=prompt,
             sampling_params=sampling_params,
+            lora_request=self.lora_request,
         ):
             for completion in output.outputs:
                 if completion.text:
