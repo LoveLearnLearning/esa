@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -32,6 +32,24 @@ from backend.core.utils.models import (
 
 
 logger = logging.getLogger(__name__)
+
+_TERMINAL_TOOL_ERRORS = frozenset(
+    {"tool_not_available", "resource_capability_required"}
+)
+
+
+def _terminal_tool_error(result: object) -> str | None:
+    """Return an error that cannot be fixed by retrying tool arguments."""
+    if not isinstance(result, Mapping) or result.get("ok") is not False:
+        return None
+    error = result.get("error")
+    return error if isinstance(error, str) and error in _TERMINAL_TOOL_ERRORS else None
+
+
+def _tool_unavailable_message(name: str, error: str) -> str:
+    if error == "resource_capability_required":
+        return f"当前请求没有使用工具 `{name}` 所需的资源权限，请重新选择相关附件或资源后再试。"
+    return f"当前上下文无法使用工具 `{name}`，请重新选择相关附件或调整问题后再试。"
 
 
 def _observed_tools_and_actions(
@@ -178,6 +196,8 @@ class Agent:
     ) -> list[dict]:
         """执行 `loop` 相关数据。"""
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
+        terminal_tool_errors: dict[str, str] = {}
+        stop_loop = False
         for _ in range(run_spec.loop_policy.max_iterations):
             response = await self.llm_provider.generate(
                 messages,
@@ -227,6 +247,24 @@ class Agent:
             )
 
             for tool_call in tool_calls:
+                previous_error = terminal_tool_errors.get(tool_call.name)
+                if previous_error is not None:
+                    assistant_content = _tool_unavailable_message(
+                        tool_call.name,
+                        previous_error,
+                    )
+                    messages.append(
+                        {"role": "assistant", "content": assistant_content}
+                    )
+                    new_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": assistant_content,
+                            "is_visible": True,
+                        }
+                    )
+                    stop_loop = True
+                    break
                 result = await asyncio.wait_for(
                     run_spec.tool_executor.execute(
                         tool_call.name,
@@ -251,6 +289,12 @@ class Agent:
                         "is_visible": True,
                     }
                 )
+                terminal_error = _terminal_tool_error(result)
+                if terminal_error is not None:
+                    terminal_tool_errors[tool_call.name] = terminal_error
+
+            if stop_loop:
+                break
 
         return new_messages
 
@@ -303,6 +347,8 @@ class Agent:
     ) -> AsyncIterator[AgentStreamEvent]:
         """执行 `stream loop` 相关数据。"""
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
+        terminal_tool_errors: dict[str, str] = {}
+        stop_loop = False
         for _ in range(run_spec.loop_policy.max_iterations):
             stream_parser = self.llm_provider.create_stream_parser()
             generation = self.llm_provider.generate_stream(
@@ -422,6 +468,28 @@ class Agent:
             )
 
             for tool_call in tool_calls:
+                previous_error = terminal_tool_errors.get(tool_call.name)
+                if previous_error is not None:
+                    assistant_content = _tool_unavailable_message(
+                        tool_call.name,
+                        previous_error,
+                    )
+                    messages.append(
+                        {"role": "assistant", "content": assistant_content}
+                    )
+                    new_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": assistant_content,
+                            "is_visible": True,
+                        }
+                    )
+                    yield AgentStreamEvent(
+                        event="content",
+                        data={"delta": assistant_content},
+                    )
+                    stop_loop = True
+                    break
                 tool_call_id = f"tool-{uuid4().hex}"
                 yield AgentStreamEvent(
                     event="tool_start",
@@ -477,6 +545,12 @@ class Agent:
                         "content": result_text,
                     },
                 )
+                terminal_error = _terminal_tool_error(result)
+                if terminal_error is not None:
+                    terminal_tool_errors[tool_call.name] = terminal_error
+
+            if stop_loop:
+                break
 
         yield AgentStreamEvent(
             event="complete",

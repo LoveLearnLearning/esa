@@ -32,7 +32,7 @@ from backend.core.router.workspace_profiles import build_workspace_route
 from backend.core.router.workspace_registry import resolve_workspace
 from backend.core.services.teaching_context_adapter import TeachingContextAdapter
 from backend.core.workspaces import WORKSPACE_CATALOG, WorkspaceAccessPolicy
-from backend.core.utils.models import ParsedOutput
+from backend.core.utils.models import ParsedOutput, ToolCall
 
 
 @pytest.mark.parametrize("definition", WORKSPACE_DEFINITIONS.values())
@@ -585,3 +585,71 @@ def test_stream_emits_heartbeat_while_model_has_no_visible_output():
     assert "heartbeat" in event_names
     assert event_names.index("heartbeat") < event_names.index("content")
     assert event_names[-1] == "complete"
+
+
+def test_stream_stops_repeating_a_tool_that_is_not_available():
+    """An unavailable tool is emitted once, then a repeated call is stopped."""
+
+    class StreamParser:
+        raw_text = ""
+
+        def feed(self, chunk):
+            self.raw_text += chunk
+            return []
+
+        def finish(self):
+            return []
+
+    class RepeatingProvider:
+        async def generate(self, _messages, _schemas):
+            return "tool call"
+
+        async def generate_stream(self, _messages, _schemas):
+            yield "tool call"
+
+        def create_stream_parser(self):
+            return StreamParser()
+
+        def parse_output(self, _response, _schemas):
+            return ParsedOutput(
+                tool_calls=[
+                    ToolCall(
+                        "parse_pdf_attachment",
+                        {"attachment_id": "missing", "query": "summary"},
+                    )
+                ]
+            )
+
+    identity = TrustedIdentity("u1", "student", "student")
+    registration = resolve_workspace(identity, "learning")
+    route = build_workspace_route(registration, ResourceScope())
+    executable = WorkspaceRuntime(AgentRuntimeDependencies()).prepare(
+        AgentTurnInput(
+            route=route,
+            identity=identity,
+            conversation_id="c1",
+            current_message="summarize the PDF",
+            request_metadata={"request_id": "r1"},
+        )
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = RepeatingProvider()
+
+    messages = asyncio.run(agent.run(executable))
+    assert sum(message.get("role") == "tool" for message in messages) == 1
+    assert messages[-1]["role"] == "assistant"
+    assert "parse_pdf_attachment" in messages[-1]["content"]
+
+    async def collect_stream():
+        return [event async for event in agent.run_stream(executable)]
+
+    events = asyncio.run(collect_stream())
+    assert [event.event for event in events].count("tool_start") == 1
+    assert [event.event for event in events].count("tool") == 1
+    content = "".join(
+        str(event.data.get("delta", ""))
+        for event in events
+        if event.event == "content"
+    )
+    assert "parse_pdf_attachment" in content
+    assert events[-1].event == "complete"

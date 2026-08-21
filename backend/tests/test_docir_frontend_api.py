@@ -231,6 +231,48 @@ def test_selected_attachment_is_exposed_as_unparsed_tool_context(tmp_path):
     assert "二叉树课程讲义" not in stored[0]["content"]
 
 
+def test_follow_up_reuses_latest_conversation_attachment_authorization(tmp_path):
+    """A text-only follow-up can keep discussing the latest selected file."""
+    state, agent, chat_store, conversation_id = _state(tmp_path)
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+    session = SessionPrincipal(session_id="s1", user_id="u1")
+    stored = asyncio.run(
+        state.user_attachment_store.save(
+            user_id="u1",
+            conversation_id=conversation_id,
+            filename="notes.pdf",
+            media_type="application/pdf",
+            read=_reader(b"pdf-content"),
+        )
+    )
+
+    asyncio.run(
+        chat.send_message(
+            conversation_id,
+            SendMessageRequest(
+                content="先总结附件",
+                attachment_ids=[stored.attachment_id],
+            ),
+            request,
+            session,
+        )
+    )
+    asyncio.run(
+        chat.send_message(
+            conversation_id,
+            SendMessageRequest(content="展开刚才重建的部分"),
+            request,
+            session,
+        )
+    )
+
+    context = agent.run_spec.execution_context
+    assert context.authorized_resources.attachment_ids == (stored.attachment_id,)
+    history = chat_store.get_history(conversation_id)
+    follow_up = next(item for item in history if item["content"] == "展开刚才重建的部分")
+    assert follow_up["attachments"] == []
+
+
 def _reader(payload: bytes):
     """处理 `_reader` 相关逻辑。"""
     sent = False

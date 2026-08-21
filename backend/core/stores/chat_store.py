@@ -568,6 +568,48 @@ class ChatStore(BaseSQLiteStore):
             history.append(message)
         return history
 
+    def get_latest_attachment_ids(
+        self,
+        conversation_id: str,
+        *,
+        limit: int = 3,
+    ) -> tuple[str, ...]:
+        """Return attachment ids from the latest user message that has files."""
+        if limit < 1:
+            return ()
+        rows = self.query_all(
+            """
+            SELECT attachments_json
+            FROM messages
+            WHERE conversation_id = ?
+              AND role = 'user'
+              AND attachments_json != '[]'
+            ORDER BY id DESC
+            """,
+            (conversation_id,),
+        )
+        for row in rows:
+            try:
+                attachments = json.loads(row["attachments_json"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(attachments, list):
+                continue
+            attachment_ids: list[str] = []
+            for attachment in attachments:
+                if isinstance(attachment, dict):
+                    value = attachment.get("id") or attachment.get("attachment_id")
+                else:
+                    value = attachment
+                if not isinstance(value, str) or not value or value in attachment_ids:
+                    continue
+                attachment_ids.append(value)
+                if len(attachment_ids) >= limit:
+                    break
+            if attachment_ids:
+                return tuple(attachment_ids)
+        return ()
+
     def latest_message_id(self, conversation_id: str) -> int | None:
         """处理 `latest_message_id` 相关逻辑。"""
         row = self.query_one(

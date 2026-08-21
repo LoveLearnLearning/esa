@@ -1368,6 +1368,7 @@ class AppState extends ChangeNotifier {
     String? titleInput,
   }) async {
     var completed = false;
+    final terminalToolFailures = <String>{};
     final reasoningQueue = Queue<String>();
     final contentQueue = Queue<String>();
     Timer? typewriterTimer;
@@ -1508,14 +1509,35 @@ class AppState extends ChangeNotifier {
             break;
           case 'tool':
             final toolId = event.data['id']?.toString();
+            final toolName = event.data['name']?.toString() ?? '';
+            final toolContent = event.data['content']?.toString() ?? '';
+            String? terminalFailureKey;
+            try {
+              final payload = jsonDecode(toolContent);
+              if (payload is Map && payload['ok'] == false) {
+                final error = payload['error']?.toString();
+                if (error == 'tool_not_available' ||
+                    error == 'resource_capability_required') {
+                  terminalFailureKey = '$toolName\u0000$error';
+                }
+              }
+            } on FormatException {
+              // Normal tool output does not have to be JSON.
+            }
             final toolIndex = toolId == null
                 ? -1
                 : list.lastIndexWhere(
                     (message) => message.isTool && message.id == toolId,
                   );
+            if (terminalFailureKey != null &&
+                !terminalToolFailures.add(terminalFailureKey)) {
+              if (toolIndex >= 0) list.removeAt(toolIndex);
+              notifyListeners();
+              break;
+            }
             if (toolIndex >= 0) {
               final tool = list[toolIndex];
-              tool.text = event.data['content']?.toString() ?? '';
+              tool.text = toolContent;
               tool.toolRunning = false;
               tool.notifyListeners();
             } else {
@@ -1527,8 +1549,8 @@ class AppState extends ChangeNotifier {
                       toolId ??
                       DateTime.now().microsecondsSinceEpoch.toString(),
                   role: MessageRole.tool,
-                  name: event.data['name'] as String?,
-                  text: event.data['content']?.toString() ?? '',
+                  name: toolName,
+                  text: toolContent,
                 ),
               );
               list.add(assistant);
