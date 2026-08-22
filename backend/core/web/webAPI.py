@@ -704,15 +704,13 @@ async def lifespan(app: FastAPI):
         app.state.personal_knowledge_base_service.notify_worker = (
             app.state.personal_knowledge_base_worker.notify
         )
-        _recovered_jobs, revision_reconciled = await (
-            app.state.personal_knowledge_base_worker.reconcile_startup()
-        )
-        if not revision_reconciled:
-            logger.error(
-                "personal knowledge-base startup revision reconcile did not "
-                "complete; retrieval remains unavailable until explicit retry"
+        recovered_jobs = app.state.personal_knowledge_base_worker.start()
+        if recovered_jobs:
+            logger.warning(
+                "personal knowledge-base recovered %s interrupted job(s); "
+                "reconciliation continues in the background",
+                recovered_jobs,
             )
-        app.state.personal_knowledge_base_worker.start()
     app.state.mm_sessions = (
         MultimodalSessionService(MultimodalIngestionService(mm_config))
         if mm_config.enabled

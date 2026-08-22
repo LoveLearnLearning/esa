@@ -440,8 +440,11 @@ def test_concept_explanation_runtime_exposes_rag_and_direct_answer_policy():
     )
 
     system_prompt = spec.messages[0]["content"]
+    assert "retrieve_federated_knowledge" in spec.run_metadata["tool_names"]
+    assert "retrieve_personal_knowledge" in spec.run_metadata["tool_names"]
     assert "retrieve_knowledge" in spec.run_metadata["tool_names"]
-    assert "先调用 `retrieve_knowledge`" in system_prompt
+    assert "默认调用 `retrieve_federated_knowledge`" in system_prompt
+    assert "同时检索" in system_prompt
     assert "本轮直接回答" in system_prompt
     assert "正式讲解前，先问" not in system_prompt
 
@@ -490,6 +493,58 @@ def test_bound_rag_tool_uses_the_turn_runtime_dependency(monkeypatch):
     assert result == {"query": "binary search", "result_count": 0}
     assert captured["service"] is sentinel
     assert captured["top_k"] == 3
+
+
+def test_bound_federated_rag_uses_both_turn_dependencies(monkeypatch):
+    """联合检索必须绑定可信用户，并使用本轮注入的两个检索服务。"""
+    register_builtin_tools()
+    route = _route()
+    public_service = object()
+    personal_service = object()
+    captured = {}
+
+    async def fake_federated(**values):
+        captured.update(values)
+        return {"query": values["query"], "result_count": 0}
+
+    monkeypatch.setattr(
+        "backend.agent.rag.federated.retrieve_federated_knowledge_payload",
+        fake_federated,
+    )
+    context = ToolExecutionContext(
+        user_id="trusted-user",
+        conversation_id="c1",
+        workspace_route=route,
+        authorized_resources=route.resource_scope,
+        conversation_mode="normal",
+        runtime_dependencies=AgentRuntimeDependencies(
+            rag_service=public_service,
+            personal_knowledge_retrieval_service=personal_service,
+        ),
+        request_id="r1",
+    )
+    compiled = CapabilityRuntime().compile(
+        skill_scopes=route.skill_scopes,
+        tool_scopes=route.tool_scopes,
+        profile_fingerprint="learning:1",
+        policy_versions=("p1",),
+    )
+
+    result = asyncio.run(
+        compiled.bind(context).execute(
+            "retrieve_federated_knowledge",
+            {"query": "Rust lifetimes", "top_k": 4},
+        )
+    )
+
+    assert result == {"query": "Rust lifetimes", "result_count": 0}
+    assert captured == {
+        "user_id": "trusted-user",
+        "public_service": public_service,
+        "personal_service": personal_service,
+        "query": "Rust lifetimes",
+        "top_k": 4,
+    }
 
 
 def test_personal_knowledge_tool_uses_context_identity_not_model_argument():

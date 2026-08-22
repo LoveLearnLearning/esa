@@ -42,11 +42,20 @@ class PersonalKnowledgeBaseWorker:
         self._tasks: list[asyncio.Task[None]] = []
 
     def start(self) -> int:
-        """Recover interrupted claims and start each configured consumer."""
+        """Recover interrupted claims and start consumers in the background."""
 
         if self._tasks:
             return 0
         recovered = self.store.recover_running_jobs()
+        revision_lag = self.store.has_revision_lag()
+        self.store.mark_collection_ready(
+            ready=not revision_lag,
+            error=(
+                "personal revision reconciliation is in progress"
+                if revision_lag
+                else None
+            ),
+        )
         self._stopping = False
         self._tasks = [
             asyncio.create_task(self._run(), name=f"personal-kb-worker-{index}")
@@ -109,7 +118,10 @@ class PersonalKnowledgeBaseWorker:
                 self._wake.clear()
                 try:
                     await asyncio.wait_for(self._wake.wait(), timeout=1.0)
-                except TimeoutError:
+                # Python 3.10 keeps asyncio.TimeoutError distinct from the
+                # builtin TimeoutError.  Catch the asyncio exception so an
+                # idle poll does not permanently kill every queue consumer.
+                except asyncio.TimeoutError:
                     pass
                 continue
             await self._process_claimed_job(job)

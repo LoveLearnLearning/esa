@@ -119,6 +119,20 @@ class BoundToolExecutor:
 
                 service = self.context.runtime_dependencies.rag_service
                 return retrieve_knowledge_payload(service=service, **normalized)
+            if name == "retrieve_federated_knowledge":
+                from backend.agent.rag.federated import (
+                    retrieve_federated_knowledge_payload,
+                )
+
+                dependencies = self.context.runtime_dependencies
+                return await retrieve_federated_knowledge_payload(
+                    user_id=self.context.user_id,
+                    public_service=dependencies.rag_service,
+                    personal_service=(
+                        dependencies.personal_knowledge_retrieval_service
+                    ),
+                    **normalized,
+                )
             if name == "retrieve_personal_knowledge":
                 service = (
                     self.context.runtime_dependencies

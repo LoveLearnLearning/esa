@@ -97,6 +97,32 @@ def test_startup_reconcile_keeps_not_ready_after_terminal_failure() -> None:
     assert "explicit retry" in str(store.ready_updates[-1][1])
 
 
+def test_start_returns_before_recovered_jobs_are_processed() -> None:
+    async def scenario() -> None:
+        store = _Store(
+            [{"user_id": "u1", "job_id": "j1", "attempts": 1}]
+        )
+        processor = _Processor(store)
+        worker = PersonalKnowledgeBaseWorker(
+            store,  # type: ignore[arg-type]
+            processor,
+            worker_count=1,
+            max_retries=1,
+        )
+
+        recovered = worker.start()
+
+        assert recovered == 2
+        assert processor.seen == []
+        assert store.ready_updates[-1] == (
+            False,
+            "personal revision reconciliation is in progress",
+        )
+        await worker.stop()
+
+    asyncio.run(scenario())
+
+
 class _ConcurrentProcessor:
     job_types = ("upload", "delete")
 
