@@ -91,10 +91,35 @@ L3_HOLDOUT_PREFIXES = ("get_review_timing__",)
 # 单独一张表报，不拿它讲「微调带来了多少提升」。
 SUPPLEMENT_PREFIXES = ("supp__",)
 
+# 只进训练集、永不进任何评测集的 template。
+#
+# 为什么需要这个口子（2026-08-21 加）
+# ----------------------------------
+# 想定向补几条训练样本修某个已知缺口时，会撞上一个结构性问题：
+# 下面 L1/L2 挑题用的是「按类别配额 + rng.shuffle(pool)」，而 shuffle 消耗的
+# 随机数与 pool 长度成正比 —— **往某个类别加哪怕 1 个 template，该类别抽到的
+# 评测模板就会重排**。实测：往 refusal 加 1 条种子，主评测集移出 3 个模板、
+# 移入 3 个；加 5 条则各 6 个。
+#
+# 后果不是"评测集小变一下"，而是**考卷换了**：base 那一轮的成绩（作业 79039）
+# 不再适用于新考卷，必须连 base 一起重评。于是"补 3 条样本"的真实代价从
+# 1 次重训变成 1 次重训 + 2 次重评。
+#
+# 走这个前缀的 template 在建 pool **之前**就被摘出去（和补充集同一个位置、
+# 同一个理由），主评测集因此逐字节不变，只需重训 + 重评 lora。
+# 代价说清楚：这些样本**没有留出对照**，它们修没修好只能靠已有评测题去看，
+# 不能拿它们自己证明自己。
+TRAIN_ONLY_PREFIXES = ("trainonly__",)
+
 
 def is_supplement(template_id: str) -> bool:
     """这个 template 属于补充评测集吗。"""
     return template_id.startswith(SUPPLEMENT_PREFIXES)
+
+
+def is_train_only(template_id: str) -> bool:
+    """这个 template 只进训练集吗（不参与评测集抽样）。"""
+    return template_id.startswith(TRAIN_ONLY_PREFIXES)
 
 
 def expected_action(s: Sample) -> str:
@@ -323,6 +348,12 @@ def build(
                       key=lambda x: (x.template_id, x.id))
     main_samples = [s for s in samples if not is_supplement(s.template_id)]
 
+    # ⚠️ 和补充集同理，必须在**这里**摘掉 —— 早于 by_tpl，也就早于下面的
+    # rng.shuffle。晚一步摘，主评测集的抽样就整个重排了（见 TRAIN_ONLY_PREFIXES）。
+    train_only_set = sorted((s for s in main_samples if is_train_only(s.template_id)),
+                            key=lambda x: (x.template_id, x.id))
+    main_samples = [s for s in main_samples if not is_train_only(s.template_id)]
+
     by_tpl: dict[str, list[Sample]] = defaultdict(list)
     for s in main_samples:
         by_tpl[s.template_id].append(s)
@@ -367,6 +398,8 @@ def build(
     # 赛题《03—技术方案说明》也明确要求可复现。
     eval_set = [s for tpl in sorted(eval_tpls) for s in by_tpl[tpl]]
     train_pool = [s for tpl in sorted(by_tpl) if tpl not in eval_tpls for s in by_tpl[tpl]]
+    # 只进训练的那批并回来（已按 (template_id, id) 排过序，行序稳定）
+    train_pool += train_only_set
 
     # ---- 未经人工复核的样本不进训练集（组长 2026-08-11 明确要求）----
     #
@@ -393,6 +426,10 @@ def build(
     supp_tpls = {s.template_id for s in supp_set}
     bad = supp_tpls & ({s.template_id for s in eval_set} | {s.template_id for s in train_set})
     assert not bad, f"补充集的 template 漏进了主评测集或训练集：{sorted(bad)[:5]}"
+    # trainonly__ 只能出现在训练集里 —— 漏进任何一份评测集都等于自己给自己出题
+    leaked = {s.template_id for s in eval_set if is_train_only(s.template_id)} | \
+             {s.template_id for s in supp_set if is_train_only(s.template_id)}
+    assert not leaked, f"trainonly__ 的 template 漏进了评测集：{sorted(leaked)[:5]}"
 
     def no_call_ratio(items: list[Sample]) -> float:
         """「不调用类」占比 —— 整条样本一次工具都没调。
