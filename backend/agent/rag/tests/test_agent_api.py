@@ -12,6 +12,7 @@ ESA Agent 与正式 RetrievalService 之间的接口回归测试。
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import cast
 
@@ -19,6 +20,8 @@ import pytest
 
 from backend.agent.rag.agent_api import (
     B1_TOP_LEVEL_KEYS,
+    B2_CONTEXT_TOKEN_BUDGET,
+    B2_RESULT_CONTEXT_TOKEN_LIMIT,
     B2_RESULT_KEYS,
     B2_TOP_LEVEL_KEYS,
     configure_retrieval_service,
@@ -27,6 +30,7 @@ from backend.agent.rag.agent_api import (
     reset_retrieval_service,
     retrieve_knowledge_payload,
 )
+from backend.agent.rag.retrieval.context import estimate_tokens
 from backend.agent.rag.retrieval.contracts import (
     ContextLevel,
     Evidence,
@@ -140,6 +144,36 @@ def test_retrieve_knowledge_preserves_old_shape_and_adds_evidence() -> None:
     assert result["source"] == "测试文档.pdf"
     assert result["score_type"] == "reranker"
     assert result["evidence"][0]["element_id"] == "element_1"
+
+
+def test_retrieve_knowledge_compacts_context_with_a_global_budget() -> None:
+    """长 chunk 按结果公平裁剪，且不突破 Agent 工具的总预算。"""
+
+    original = _response()
+    base_hit = original.hits[0]
+    long_context = "TCP先发送SYN。服务器再返回SYNACK。客户端最后确认。" * 200
+    hits = tuple(
+        replace(
+            base_hit,
+            chunk_id=f"chunk_{index}",
+            context_chunk_ids=(f"chunk_{index}",),
+            context_text=long_context,
+        )
+        for index in range(5)
+    )
+    _configure(replace(original, hits=hits))
+
+    payload = retrieve_knowledge_payload("什么是测试？", top_k=5)
+    contents = [result["content"] for result in payload["results"]]
+
+    assert payload["result_count"] == 5
+    assert all(content.endswith("…") for content in contents)
+    assert all(
+        estimate_tokens(content) <= B2_RESULT_CONTEXT_TOKEN_LIMIT
+        for content in contents
+    )
+    assert estimate_tokens(payload["context_text"]) <= B2_CONTEXT_TOKEN_BUDGET
+    assert payload["context_text"] == "\n\n".join(contents)
 
 
 def test_group_locator_and_missing_locator_do_not_assume_page() -> None:

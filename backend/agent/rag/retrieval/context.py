@@ -120,12 +120,47 @@ class ContextBuilder:
 
 
 _TOKEN = re.compile(r"[\u3400-\u9fff]|[A-Za-z0-9_]+|[^\s]")
+_SAFE_BREAK = re.compile(r"\n{2,}|[。！？!?；;]")
+_TRUNCATION_MARKER = "…"
 
 
 def estimate_tokens(text: str) -> int:
     """无模型依赖的保守 token 估算；CJK、词和标点分别计数。"""
 
     return len(_TOKEN.findall(text))
+
+
+def truncate_text_to_token_budget(text: str, max_tokens: int) -> str:
+    """按估算 token 预算做确定性摘录，并尽量停在自然边界。"""
+
+    if max_tokens < 0:
+        raise ValueError("max_tokens cannot be negative")
+
+    value = text.strip()
+    if not value or max_tokens == 0:
+        return ""
+    if estimate_tokens(value) <= max_tokens:
+        return value
+
+    marker_tokens = estimate_tokens(_TRUNCATION_MARKER)
+    content_budget = max_tokens - marker_tokens
+    if content_budget <= 0:
+        return _TRUNCATION_MARKER if marker_tokens <= max_tokens else ""
+
+    tokens = list(_TOKEN.finditer(value))
+    cutoff = tokens[content_budget - 1].end()
+    prefix = value[:cutoff].rstrip()
+
+    # 不为了句末回退过多内容；后 40% 中存在自然边界时才采用。
+    minimum_break = int(len(prefix) * 0.6)
+    safe_ends = [
+        match.end()
+        for match in _SAFE_BREAK.finditer(prefix)
+        if match.end() >= minimum_break
+    ]
+    if safe_ends:
+        prefix = prefix[: safe_ends[-1]].rstrip()
+    return f"{prefix}{_TRUNCATION_MARKER}"
 
 
 class EvidenceAssembler:

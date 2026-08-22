@@ -13,6 +13,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+from .retrieval.context import estimate_tokens, truncate_text_to_token_budget
 from .retrieval.contracts import Evidence, SearchHit, SearchResponse
 from .retrieval.service import RetrievalService
 
@@ -31,6 +32,8 @@ B1_TOP_LEVEL_KEYS = (
     "config",
 )
 B2_CONTRACT_VERSION = "retrieve_knowledge.v1"
+B2_CONTEXT_TOKEN_BUDGET = 2048
+B2_RESULT_CONTEXT_TOKEN_LIMIT = 512
 B2_TOP_LEVEL_KEYS = (
     "query",
     "result_count",
@@ -97,14 +100,16 @@ def retrieve_knowledge_payload(
 
     response = (service or get_retrieval_service()).search(query)
     hits = _apply_rerank_threshold(response, similarity_threshold)[:top_k]
+    contexts = _compact_contexts(hits)
     return {
         "query": response.query,
         "result_count": len(hits),
         "results": [
-            _result_payload(hit, rank) for rank, hit in enumerate(hits, start=1)
+            _result_payload(hit, rank, content=contexts[rank - 1])
+            for rank, hit in enumerate(hits, start=1)
         ],
         "sources": [_source_label(hit, rank) for rank, hit in enumerate(hits, start=1)],
-        "context_text": "\n\n".join(hit.context_text for hit in hits),
+        "context_text": "\n\n".join(contexts),
         "degraded": list(response.trace.degraded),
         "rankings": {
             name: list(chunk_ids) for name, chunk_ids in response.trace.rankings.items()
@@ -150,7 +155,27 @@ def _apply_rerank_threshold(
     ]
 
 
-def _result_payload(hit: SearchHit, rank: int) -> dict[str, Any]:
+def _compact_contexts(hits: list[SearchHit]) -> list[str]:
+    """Allocate the tool-level context budget fairly in ranking order."""
+
+    remaining = B2_CONTEXT_TOKEN_BUDGET
+    contexts: list[str] = []
+    for position, hit in enumerate(hits):
+        remaining_results = len(hits) - position
+        fair_share = remaining // remaining_results
+        limit = min(B2_RESULT_CONTEXT_TOKEN_LIMIT, fair_share)
+        content = truncate_text_to_token_budget(hit.context_text, limit)
+        contexts.append(content)
+        remaining -= estimate_tokens(content)
+    return contexts
+
+
+def _result_payload(
+    hit: SearchHit,
+    rank: int,
+    *,
+    content: str | None = None,
+) -> dict[str, Any]:
     """把一个正式 SearchHit 转换为 Agent 工具结果。"""
 
     primary = hit.evidence[0]
@@ -163,7 +188,7 @@ def _result_payload(hit: SearchHit, rank: int) -> dict[str, Any]:
         else None
     )
     return {
-        "content": hit.context_text,
+        "content": hit.context_text if content is None else content,
         "score": hit.rerank_score if hit.rerank_score is not None else hit.rrf_score,
         "score_type": "reranker" if hit.rerank_score is not None else "rrf",
         "rank": rank,

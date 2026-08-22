@@ -63,13 +63,34 @@ case "${MM_ENABLED:-false}" in
     *) mm_enabled=0 ;;
 esac
 
+case "${PERSONAL_KB_ENABLED:-false}" in
+    1|true|TRUE|yes|YES|on|ON) personal_kb_enabled=1 ;;
+    *) personal_kb_enabled=0 ;;
+esac
+
+case "${ESA_SHARED_COMPUTE_NODE:-false}" in
+    1|true|TRUE|yes|YES|on|ON) shared_compute_node=1 ;;
+    *) shared_compute_node=0 ;;
+esac
+if (( shared_compute_node == 1 )) && {
+    [[ -z "${RAG_QDRANT_BASE_URL:-}" ]] ||
+    [[ "${RAG_QDRANT_BASE_URL}" == "http://127.0.0.1:6333" ]] ||
+    [[ "${RAG_QDRANT_BASE_URL}" == "http://localhost:6333" ]];
+}; then
+    if [[ -z "${ESA_QDRANT_HTTP_PORT:-}" ]]; then
+        ESA_QDRANT_HTTP_PORT="$(python -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
+        export ESA_QDRANT_HTTP_PORT
+    fi
+    export RAG_QDRANT_BASE_URL="http://127.0.0.1:${ESA_QDRANT_HTTP_PORT}"
+fi
+
 read -r \
     main_model main_tp main_lora main_lora_name \
     auxiliary_model auxiliary_name auxiliary_port auxiliary_dtype \
     auxiliary_gpu_memory auxiliary_max_length auxiliary_max_num_seqs \
     auxiliary_max_images rag_enabled rag_embedding_backend \
     rag_embedding_device rag_qdrant_url rag_qdrant_collection \
-    mcp_enabled < <(
+    mcp_enabled personal_kb_config_enabled < <(
     python - <<'PY'
 from backend.core.utils.config import (
     AUXILIARY_MODEL_DTYPE,
@@ -85,6 +106,7 @@ from backend.core.utils.config import (
     MODEL_LORA_PATH,
     MODEL_TENSOR_PARALLEL_SIZE,
     MCP_ENABLED,
+    PERSONAL_KB_ENABLED,
     RAG_EMBEDDING_BACKEND,
     RAG_EMBEDDING_DEVICE,
     RAG_ENABLED,
@@ -111,9 +133,17 @@ print(
     RAG_QDRANT_BASE_URL,
     RAG_QDRANT_COLLECTION,
     "1" if MCP_ENABLED else "0",
+    "1" if PERSONAL_KB_ENABLED else "0",
 )
 PY
 )
+
+# The environment switch and parsed application config must agree. This catches
+# misspelled boolean values before allocating model/Qdrant processes.
+if [[ "$personal_kb_enabled" != "$personal_kb_config_enabled" ]]; then
+    echo "ERROR: PERSONAL_KB_ENABLED could not be parsed consistently." >&2
+    exit 1
+fi
 
 if [[ "$mcp_enabled" == "1" ]]; then
     if [[ -z "${YDC_API_KEY:-}" ]]; then
@@ -143,8 +173,12 @@ else
     )
 fi
 
+retrieval_enabled=0
+if [[ "$rag_enabled" == "1" || "$personal_kb_enabled" == "1" ]]; then
+    retrieval_enabled=1
+fi
 rag_gpu_count=0
-if [[ "$rag_enabled" == "1" && "$rag_embedding_backend" == "transformers" && "$rag_embedding_device" == cuda* ]]; then
+if [[ "$retrieval_enabled" == "1" && "$rag_embedding_backend" == "transformers" && "$rag_embedding_device" == cuda* ]]; then
     rag_gpu_count=1
 fi
 
@@ -186,7 +220,16 @@ cleanup() {
         return
     fi
     cleanup_started=1
-    for pid in "$backend_pid" "$auxiliary_pid" "$mineru_api_pid" "$qdrant_pid"; do
+    # Qdrant must outlive the backend's graceful shutdown so the personal
+    # snapshot manager can flush its final dirty sequence.
+    if [[ -n "$backend_pid" ]] && kill -0 "$backend_pid" 2>/dev/null; then
+        kill "$backend_pid" 2>/dev/null || true
+        for _ in $(seq 1 "${ESA_BACKEND_SHUTDOWN_GRACE_SECONDS:-120}"); do
+            kill -0 "$backend_pid" 2>/dev/null || break
+            sleep 1
+        done
+    fi
+    for pid in "$auxiliary_pid" "$mineru_api_pid" "$qdrant_pid"; do
         if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
             kill "$pid" 2>/dev/null || true
         fi
@@ -210,14 +253,32 @@ if (( rag_gpu_count == 1 )); then
     echo "RAGEmbeddingGPU=$rag_device RuntimeDevice=$RAG_EMBEDDING_RUNTIME_DEVICE"
 fi
 
-if [[ "$rag_enabled" == "1" ]]; then
+if [[ "$retrieval_enabled" == "1" ]]; then
     qdrant_binary="${ESA_QDRANT_BINARY:-$PROJECT_ROOT/runtime/qdrant/bin/qdrant}"
     qdrant_storage="${ESA_QDRANT_STORAGE_PATH:-$runtime_root/qdrant-storage}"
     qdrant_snapshots="${ESA_QDRANT_SNAPSHOTS_PATH:-$runtime_root/qdrant-snapshots}"
     qdrant_temp="${ESA_QDRANT_TEMP_PATH:-$runtime_root/qdrant-temp}"
-    if ! curl -q --noproxy '*' --silent --show-error --fail \
+    qdrant_http_port="${ESA_QDRANT_HTTP_PORT:-6333}"
+    qdrant_grpc_port="${ESA_QDRANT_GRPC_PORT:-$((qdrant_http_port + 1))}"
+    qdrant_auth_args=()
+    if [[ -n "${QDRANT_API_KEY:-}" ]]; then
+        qdrant_auth_args=(--header "api-key: ${QDRANT_API_KEY}")
+    fi
+    qdrant_reachable=0
+    if curl -q --noproxy '*' --silent --show-error --fail "${qdrant_auth_args[@]}" \
         --max-time 2 "${rag_qdrant_url%/}/healthz" >/dev/null 2>&1; then
-        if [[ "$rag_qdrant_url" != "http://127.0.0.1:6333" && "$rag_qdrant_url" != "http://localhost:6333" ]]; then
+        qdrant_reachable=1
+    fi
+    is_local_qdrant=0
+    if [[ "$rag_qdrant_url" == "http://127.0.0.1:${qdrant_http_port}" || "$rag_qdrant_url" == "http://localhost:${qdrant_http_port}" ]]; then
+        is_local_qdrant=1
+    fi
+    if (( qdrant_reachable == 1 && is_local_qdrant == 1 && personal_kb_enabled == 1 )); then
+        echo "ERROR: 本地 Qdrant 已在运行，无法证明它属于当前 Slurm Job。" >&2
+        exit 1
+    fi
+    if (( qdrant_reachable == 0 )); then
+        if (( is_local_qdrant == 0 )); then
             echo "ERROR: 外部 Qdrant 不可用：$rag_qdrant_url" >&2
             exit 1
         fi
@@ -233,12 +294,21 @@ if [[ "$rag_enabled" == "1" ]]; then
                 exit 1
             fi
         done
-        echo "===== Starting local Qdrant ====="
+        expected_qdrant_url="http://127.0.0.1:${qdrant_http_port}"
+        if [[ "$rag_qdrant_url" != "$expected_qdrant_url" && "$rag_qdrant_url" != "http://localhost:${qdrant_http_port}" ]]; then
+            echo "ERROR: 本地 Qdrant 端口与 RAG_QDRANT_BASE_URL 不一致。" >&2
+            exit 1
+        fi
+        export QDRANT_API_KEY
+        QDRANT_API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+        qdrant_auth_args=(--header "api-key: ${QDRANT_API_KEY}")
+        echo "===== Starting authenticated local Qdrant ====="
         (
             cd "$(dirname "$qdrant_binary")/.."
             export QDRANT__SERVICE__HOST=127.0.0.1
-            export QDRANT__SERVICE__HTTP_PORT=6333
-            export QDRANT__SERVICE__GRPC_PORT=6334
+            export QDRANT__SERVICE__HTTP_PORT="$qdrant_http_port"
+            export QDRANT__SERVICE__GRPC_PORT="$qdrant_grpc_port"
+            export QDRANT__SERVICE__API_KEY="$QDRANT_API_KEY"
             export QDRANT__STORAGE__STORAGE_PATH="$qdrant_storage"
             export QDRANT__STORAGE__SNAPSHOTS_PATH="$qdrant_snapshots"
             export QDRANT__STORAGE__TEMP_PATH="$qdrant_temp"
@@ -251,20 +321,24 @@ if [[ "$rag_enabled" == "1" ]]; then
                 tail -n 80 logs/qdrant.log >&2 || true
                 exit 1
             fi
-            if curl -q --noproxy '*' --silent --show-error --fail \
+            if curl -q --noproxy '*' --silent --show-error --fail "${qdrant_auth_args[@]}" \
                 --max-time 2 "${rag_qdrant_url%/}/healthz" >/dev/null 2>&1; then
                 break
             fi
             sleep 1
         done
     fi
-    if ! curl -q --noproxy '*' --silent --show-error --fail \
+    qdrant_auth_args=()
+    if [[ -n "${QDRANT_API_KEY:-}" ]]; then
+        qdrant_auth_args=(--header "api-key: ${QDRANT_API_KEY}")
+    fi
+    if ! curl -q --noproxy '*' --silent --show-error --fail "${qdrant_auth_args[@]}" \
         --max-time 2 "${rag_qdrant_url%/}/healthz" >/dev/null 2>&1; then
         echo "ERROR: Qdrant 在等待期内未就绪：$rag_qdrant_url" >&2
         exit 1
     fi
     qdrant_snapshot="${ESA_QDRANT_SNAPSHOT_PATH:-}"
-    if ! curl -q --noproxy '*' --silent --show-error --fail \
+    if [[ "$rag_enabled" == "1" ]] && ! curl -q --noproxy '*' --silent --show-error --fail "${qdrant_auth_args[@]}" \
         --max-time 5 "${rag_qdrant_url%/}/collections/${rag_qdrant_collection}" \
         >/dev/null 2>&1; then
         if [[ -z "$qdrant_snapshot" ]]; then
@@ -296,7 +370,7 @@ if [[ "$rag_enabled" == "1" ]]; then
             --qdrant-url "$rag_qdrant_url" \
             --timeout "${ESA_QDRANT_RESTORE_TIMEOUT:-1800}" \
             --wait-seconds "${ESA_QDRANT_RESTORE_WAIT_SECONDS:-300}"
-        if ! curl -q --noproxy '*' --silent --show-error --fail \
+        if ! curl -q --noproxy '*' --silent --show-error --fail "${qdrant_auth_args[@]}" \
             --max-time 10 "${rag_qdrant_url%/}/collections/${rag_qdrant_collection}" \
             >/dev/null 2>&1; then
             echo "ERROR: 恢复脚本返回成功，但目标 Collection 仍不存在：$rag_qdrant_collection" >&2
@@ -348,7 +422,7 @@ if (( auxiliary_ready == 0 )); then
     exit 1
 fi
 
-if [[ "$mm_enabled" == "1" ]]; then
+if [[ "$mm_enabled" == "1" || "$personal_kb_enabled" == "1" ]]; then
     if [[ ! -x "$mineru_api_bin" ]]; then
         echo "ERROR: MM enabled but MinerU API executable not found: $mineru_api_bin" >&2
         exit 1
@@ -404,6 +478,7 @@ if [[ "$mm_enabled" == "1" ]]; then
     fi
     echo "===== Resident MinerU pipeline ready ====="
     export MM_MINERU_API_URL="$mineru_api_url"
+    export PERSONAL_KB_MINERU_API_URL="$mineru_api_url"
 fi
 
 echo "===== Starting ESA backend ====="

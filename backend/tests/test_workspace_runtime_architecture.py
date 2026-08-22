@@ -490,3 +490,54 @@ def test_bound_rag_tool_uses_the_turn_runtime_dependency(monkeypatch):
     assert result == {"query": "binary search", "result_count": 0}
     assert captured["service"] is sentinel
     assert captured["top_k"] == 3
+
+
+def test_personal_knowledge_tool_uses_context_identity_not_model_argument():
+    register_builtin_tools()
+    route = _route()
+    captured = {}
+
+    class PersonalRetrieval:
+        async def search(self, *, user_id, query, top_k):
+            captured.update(user_id=user_id, query=query, top_k=top_k)
+            return {"query": query, "result_count": 0}
+
+    context = ToolExecutionContext(
+        user_id="trusted-user",
+        conversation_id="c1",
+        workspace_route=route,
+        authorized_resources=route.resource_scope,
+        conversation_mode="normal",
+        runtime_dependencies=AgentRuntimeDependencies(
+            personal_knowledge_retrieval_service=PersonalRetrieval()
+        ),
+        request_id="r1",
+    )
+    compiled = CapabilityRuntime().compile(
+        skill_scopes=route.skill_scopes,
+        tool_scopes=route.tool_scopes,
+        profile_fingerprint="learning:1",
+        policy_versions=("p1",),
+    )
+
+    rejected = asyncio.run(
+        compiled.bind(context).execute(
+            "retrieve_personal_knowledge",
+            {"query": "my notes", "top_k": 3, "user_id": "attacker"},
+        )
+    )
+    result = asyncio.run(
+        compiled.bind(context).execute(
+            "retrieve_personal_knowledge",
+            {"query": "my notes", "top_k": 3},
+        )
+    )
+
+    assert rejected["error"] == "invalid_tool_arguments"
+    assert "user_id" in rejected["detail"]
+    assert result == {"query": "my notes", "result_count": 0}
+    assert captured == {
+        "user_id": "trusted-user",
+        "query": "my notes",
+        "top_k": 3,
+    }

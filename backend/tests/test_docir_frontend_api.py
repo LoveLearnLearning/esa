@@ -5,11 +5,13 @@
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
+import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
-from fastapi.testclient import TestClient
 
+from backend.agent.mm import AttachmentPreparationStatus
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.migrations import run_migrations
@@ -20,6 +22,29 @@ from backend.core.web.concurrency import ConversationTurnCoordinator
 from backend.core.web.deps import get_current_session
 from backend.core.web.routers import chat
 from backend.core.web.schemas import SendMessageRequest
+
+
+class _ASGIClient:
+    """Thread-free HTTP client for restricted test executors."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    def request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        async def send() -> httpx.Response:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=self.app),
+                base_url="http://testserver",
+            ) as client:
+                return await client.request(method, path, **kwargs)
+
+        return asyncio.run(send())
+
+    def get(self, path: str, **kwargs: Any) -> httpx.Response:
+        return self.request("GET", path, **kwargs)
+
+    def post(self, path: str, **kwargs: Any) -> httpx.Response:
+        return self.request("POST", path, **kwargs)
 
 
 class _ProfileBuilder:
@@ -35,6 +60,32 @@ class _MMSessions:
         """初始化 `_MMSessions` 实例。"""
         self.conversation_id = conversation_id
         self.prepare_calls = 0
+        self._status = {}
+
+    def register_stored(self, session_id, attachment_id):
+        self._status[(session_id, attachment_id)] = AttachmentPreparationStatus(
+            attachment_id=attachment_id
+        )
+
+    async def start_prepare(self, session_id, attachment_id, path):
+        self.prepare_calls += 1
+        self._status[(session_id, attachment_id)] = AttachmentPreparationStatus(
+            attachment_id=attachment_id,
+            state="ready",
+            document_id="doc-1",
+            mode="direct",
+            token_count=32,
+            page_count=2,
+            element_count=2,
+            visual_asset_count=1,
+        )
+        return self._status[(session_id, attachment_id)]
+
+    def status(self, session_id, attachment_id):
+        return self._status.get(
+            (session_id, attachment_id),
+            AttachmentPreparationStatus(attachment_id=attachment_id),
+        )
 
     async def prepare(self, session_id, paths):
         """准备 `prepare` 相关数据。
@@ -162,7 +213,7 @@ def test_upload_attachment_returns_docir_frontend_contract(tmp_path):
         session_id="s1", user_id="u1"
     )
 
-    response = TestClient(app).post(
+    response = _ASGIClient(app).post(
         f"/conversations/{conversation_id}/attachments",
         files={"file": ("notes.pdf", b"pdf-content", "application/pdf")},
     )
@@ -189,6 +240,35 @@ def test_upload_attachment_returns_docir_frontend_contract(tmp_path):
     assert stored is not None
     assert stored.source_path.read_bytes() == b"pdf-content"
     assert state.mm_sessions.prepare_calls == 0
+
+
+def test_attachment_prepare_and_status_endpoints(tmp_path):
+    """验证显式 prepare 与状态查询复用现有附件授权边界。"""
+    state, _agent, _chat_store, conversation_id = _state(tmp_path)
+    app = FastAPI()
+    for key, value in state.__dict__.items():
+        setattr(app.state, key, value)
+    app.include_router(chat.router)
+    app.dependency_overrides[get_current_session] = lambda: SessionPrincipal(
+        session_id="s1", user_id="u1"
+    )
+    uploaded = _ASGIClient(app).post(
+        f"/conversations/{conversation_id}/attachments",
+        files={"file": ("notes.pdf", b"pdf-content", "application/pdf")},
+    ).json()
+    attachment_id = uploaded["id"]
+
+    client = _ASGIClient(app)
+    prepared = client.post(
+        f"/conversations/{conversation_id}/attachments/{attachment_id}/prepare"
+    )
+    assert prepared.status_code == 202
+    assert prepared.json()["status"] == "ready"
+    current = client.get(
+        f"/conversations/{conversation_id}/attachments/{attachment_id}/status"
+    )
+    assert current.status_code == 200
+    assert current.json()["document_id"] == "doc-1"
 
 
 def test_selected_attachment_is_exposed_as_unparsed_tool_context(tmp_path):

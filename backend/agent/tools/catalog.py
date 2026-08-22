@@ -35,7 +35,7 @@ COMMON_TOOLS = frozenset(
         "math_solver", "bitwise_calculator", "load_skill",
         "parse_pdf_attachment", "parse_word_attachment",
         "parse_presentation_attachment", "parse_spreadsheet_attachment",
-        "parse_image_attachment",
+        "parse_image_attachment", "retrieve_personal_knowledge",
     }
 ) | MEMORY_READ_TOOLS | MEMORY_WRITE_TOOLS
 

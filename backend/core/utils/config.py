@@ -291,6 +291,111 @@ USER_ATTACHMENT_MAX_BYTES: int = _int_from_env(
     200 * 1024 * 1024,
 )
 
+# Personal knowledge bases are an independently deployable RAG subsystem.  Its
+# durable root must live across Slurm jobs; only transient work belongs under
+# SLURM_TMPDIR.
+PERSONAL_KB_ENABLED: bool = _bool_from_env("PERSONAL_KB_ENABLED", False)
+PERSONAL_KB_ROOT: Path = _path_from_env(
+    "PERSONAL_KB_ROOT",
+    Path("/persist_data/home/chenxuzhao/esa-personal-knowledge-base"),
+)
+_personal_kb_temp_override = _optional_str_from_env("PERSONAL_KB_TEMP_ROOT")
+PERSONAL_KB_TEMP_ROOT: Path = Path(
+    _personal_kb_temp_override
+    or (Path(os.environ.get("SLURM_TMPDIR", "/tmp")) / "esa-personal-kb")
+).expanduser().resolve()
+PERSONAL_KB_SNAPSHOT_ROOT: Path = _path_from_env(
+    "PERSONAL_KB_SNAPSHOT_ROOT",
+    PERSONAL_KB_ROOT / "qdrant-snapshots",
+)
+PERSONAL_KB_MAX_FILE_BYTES: int = _int_from_env(
+    "PERSONAL_KB_MAX_FILE_BYTES", 200 * 1024 * 1024
+)
+PERSONAL_KB_MAX_BATCH_FILES: int = _int_from_env(
+    "PERSONAL_KB_MAX_BATCH_FILES", 20
+)
+PERSONAL_KB_MAX_BATCH_BYTES: int = _int_from_env(
+    "PERSONAL_KB_MAX_BATCH_BYTES", 1024 * 1024 * 1024
+)
+PERSONAL_KB_MAX_REQUEST_BYTES: int = _int_from_env(
+    "PERSONAL_KB_MAX_REQUEST_BYTES",
+    PERSONAL_KB_MAX_BATCH_BYTES + 16 * 1024 * 1024,
+)
+PERSONAL_KB_MAX_USER_BYTES: int = _int_from_env(
+    "PERSONAL_KB_MAX_USER_BYTES", 10 * 1024 * 1024 * 1024
+)
+PERSONAL_KB_MAX_USER_FILES: int = _int_from_env(
+    "PERSONAL_KB_MAX_USER_FILES", 1000
+)
+PERSONAL_KB_QDRANT_COLLECTION: str = _str_from_env(
+    "PERSONAL_KB_QDRANT_COLLECTION", "esa_personal_kb_qwen3_4b"
+)
+PERSONAL_KB_SNAPSHOT_MAX_DELAY_SECONDS: int = _int_from_env(
+    "PERSONAL_KB_SNAPSHOT_MAX_DELAY_SECONDS", 600
+)
+PERSONAL_KB_SNAPSHOT_RETENTION: int = _int_from_env(
+    "PERSONAL_KB_SNAPSHOT_RETENTION", 3
+)
+PERSONAL_KB_RESTORE_ON_STARTUP: bool = _bool_from_env(
+    "PERSONAL_KB_RESTORE_ON_STARTUP", True
+)
+PERSONAL_KB_MINERU_API_URL: str = _str_from_env(
+    "PERSONAL_KB_MINERU_API_URL", "http://127.0.0.1:51026"
+)
+PERSONAL_KB_MINERU_COMMAND: Path = _path_from_env(
+    "PERSONAL_KB_MINERU_COMMAND", RAG_WORKSPACE_ROOT / "bin/run-mineru"
+)
+PERSONAL_KB_MINERU_TIMEOUT_SECONDS: int = _int_from_env(
+    "PERSONAL_KB_MINERU_TIMEOUT_SECONDS", 7200
+)
+PERSONAL_KB_MINERU_ATTEMPTS: int = _int_from_env(
+    "PERSONAL_KB_MINERU_ATTEMPTS", 2
+)
+_personal_kb_libreoffice_value = os.environ.get(
+    "PERSONAL_KB_LIBREOFFICE_BIN", ""
+).strip()
+PERSONAL_KB_LIBREOFFICE_BIN: Path | None = (
+    Path(_personal_kb_libreoffice_value).expanduser().resolve()
+    if _personal_kb_libreoffice_value
+    else None
+)
+PERSONAL_KB_OFFICE_PREVIEW_TIMEOUT_SECONDS: int = _int_from_env(
+    "PERSONAL_KB_OFFICE_PREVIEW_TIMEOUT_SECONDS", 120
+)
+PERSONAL_KB_OFFICE_PREVIEW_MAX_BYTES: int = _int_from_env(
+    "PERSONAL_KB_OFFICE_PREVIEW_MAX_BYTES", 64 * 1024 * 1024
+)
+PERSONAL_KB_VISION_ENABLED: bool = _bool_from_env(
+    "PERSONAL_KB_VISION_ENABLED", False
+)
+PERSONAL_KB_WORKERS: int = _int_from_env("PERSONAL_KB_WORKERS", 2)
+PERSONAL_KB_EMBEDDING_CONCURRENCY: int = _int_from_env(
+    "PERSONAL_KB_EMBEDDING_CONCURRENCY", 1
+)
+PERSONAL_KB_JOB_TIMEOUT_SECONDS: int = _int_from_env(
+    "PERSONAL_KB_JOB_TIMEOUT_SECONDS", 3600
+)
+PERSONAL_KB_MAX_RETRIES: int = _int_from_env(
+    "PERSONAL_KB_MAX_RETRIES", 3, minimum=0
+)
+PERSONAL_KB_MAX_EXPANDED_BYTES: int = _int_from_env(
+    "PERSONAL_KB_MAX_EXPANDED_BYTES", 1024 * 1024 * 1024
+)
+PERSONAL_KB_MAX_PAGES: int = _int_from_env("PERSONAL_KB_MAX_PAGES", 5000)
+PERSONAL_KB_MAX_IMAGES: int = _int_from_env("PERSONAL_KB_MAX_IMAGES", 10000)
+PERSONAL_KB_MAX_IMAGE_PIXELS: int = _int_from_env(
+    "PERSONAL_KB_MAX_IMAGE_PIXELS", 100_000_000
+)
+PERSONAL_KB_MIN_FREE_BYTES: int = _int_from_env(
+    "PERSONAL_KB_MIN_FREE_BYTES", 1024 * 1024 * 1024, minimum=0
+)
+PERSONAL_KB_ORPHAN_RETENTION_SECONDS: int = _int_from_env(
+    "PERSONAL_KB_ORPHAN_RETENTION_SECONDS", 86400, minimum=0
+)
+PERSONAL_KB_AUDIT_RETENTION_DAYS: int = _int_from_env(
+    "PERSONAL_KB_AUDIT_RETENTION_DAYS", 90, minimum=1
+)
+
 # Email verification on the supercomputer. Fill these constants in the private
 # deployment copy of this file; the standalone mail server has its own config.
 EMAIL_PROVIDER: Literal["disabled", "service"] = "service"
@@ -457,6 +562,35 @@ RAG_INDEX_DEPLOYMENT_MANIFEST_PATH: Path = _path_from_env(
 )
 
 
+def validate_private_storage_capacity(
+    name: str, path: Path, required_bytes: int
+) -> None:
+    """Validate one private persistent or multipart-spool directory."""
+
+    if not path.is_dir() or not os.access(path, os.R_OK | os.W_OK | os.X_OK):
+        raise RuntimeError(f"{name} is not an accessible directory: {path}")
+    stat = path.stat()
+    if stat.st_uid != os.geteuid():
+        raise RuntimeError(f"{name} is not owned by the ESA service account")
+    if stat.st_mode & 0o077:
+        raise RuntimeError(f"{name} permissions must not allow group/other access")
+    if shutil.disk_usage(path).free < required_bytes:
+        raise RuntimeError(f"{name} does not have the configured safe free space")
+
+
+def validate_durable_path(name: str, path: Path) -> None:
+    """Reject authority or sole-backup paths inside Job-local temporary trees."""
+
+    resolved = path.expanduser().resolve()
+    temporary_roots = {Path("/tmp").resolve()}
+    slurm_temp = os.environ.get("SLURM_TMPDIR")
+    if slurm_temp:
+        temporary_roots.add(Path(slurm_temp).expanduser().resolve())
+    for temporary in temporary_roots:
+        if resolved == temporary or resolved.is_relative_to(temporary):
+            raise RuntimeError(f"{name} must not be stored under {temporary}")
+
+
 def validate_startup_config() -> None:
     """Fail early for enabled optional subsystems and local model paths."""
 
@@ -505,6 +639,46 @@ def validate_startup_config() -> None:
                 f"LoRA base model {adapter_base} does not match "
                 f"ESA_MODEL_PATH {configured_base}"
             )
+    if PERSONAL_KB_ENABLED:
+        if PERSONAL_KB_QDRANT_COLLECTION == RAG_QDRANT_COLLECTION:
+            raise RuntimeError(
+                "PERSONAL_KB_QDRANT_COLLECTION must not reuse the global RAG collection"
+            )
+        if not PERSONAL_KB_ROOT.is_dir():
+            raise RuntimeError(
+                f"PERSONAL_KB_ROOT is not an existing directory: {PERSONAL_KB_ROOT}"
+            )
+        if not os.access(PERSONAL_KB_ROOT, os.R_OK | os.W_OK | os.X_OK):
+            raise RuntimeError(
+                f"PERSONAL_KB_ROOT is not readable and writable: {PERSONAL_KB_ROOT}"
+            )
+        validate_durable_path("PERSONAL_KB_ROOT", PERSONAL_KB_ROOT)
+        validate_durable_path(
+            "PERSONAL_KB_SNAPSHOT_ROOT", PERSONAL_KB_SNAPSHOT_ROOT
+        )
+        try:
+            PERSONAL_KB_SNAPSHOT_ROOT.relative_to(PERSONAL_KB_ROOT)
+        except ValueError as exc:
+            raise RuntimeError(
+                "PERSONAL_KB_SNAPSHOT_ROOT must be inside PERSONAL_KB_ROOT"
+            ) from exc
+        if PERSONAL_KB_MAX_BATCH_BYTES < PERSONAL_KB_MAX_FILE_BYTES:
+            raise RuntimeError(
+                "PERSONAL_KB_MAX_BATCH_BYTES must be at least PERSONAL_KB_MAX_FILE_BYTES"
+            )
+        for name, path, required in (
+            (
+                "PERSONAL_KB_ROOT",
+                PERSONAL_KB_ROOT,
+                PERSONAL_KB_MAX_BATCH_BYTES + PERSONAL_KB_MIN_FREE_BYTES,
+            ),
+            (
+                "PERSONAL_KB_TEMP_ROOT",
+                PERSONAL_KB_TEMP_ROOT,
+                PERSONAL_KB_MAX_REQUEST_BYTES + PERSONAL_KB_MIN_FREE_BYTES,
+            ),
+        ):
+            validate_private_storage_capacity(name, path, required)
     if MCP_ENABLED:
         if not MCP_YOU_API_KEY:
             raise RuntimeError(
