@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import shutil
@@ -11,6 +12,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar, cast
 
 from backend.agent.rag.paths import workspace_root
+
+try:
+    _private_config = importlib.import_module("backend.core.utils.config_private")
+except ModuleNotFoundError as exc:
+    if exc.name != "backend.core.utils.config_private":
+        raise
+    _private_config = None
 
 if TYPE_CHECKING:
     # debug
@@ -396,16 +404,41 @@ PERSONAL_KB_AUDIT_RETENTION_DAYS: int = _int_from_env(
     "PERSONAL_KB_AUDIT_RETENTION_DAYS", 90, minimum=1
 )
 
-# Email verification on the supercomputer. Fill these constants in the private
-# deployment copy of this file; the standalone mail server has its own config.
-EMAIL_PROVIDER: Literal["disabled", "service"] = "service"
-EMAIL_SERVICE_URL: str = "https://mail-api.lovelearnlearning.cn"
-EMAIL_SERVICE_TOKEN: str = (
-    "e9493dca7a911f60226ec698e90678add37d8d28eb3f02271706026d7ba491d5"
+# Email verification on the supercomputer. Secrets live in the ignored
+# config_private.py module, so deployments do not need a .env file and Git
+# never becomes the credential store. ESA_* environment values remain useful
+# for container deployments and take precedence when present.
+EMAIL_PROVIDER: Literal["disabled", "service"] = cast(
+    Literal["disabled", "service"],
+    os.environ.get(
+        "ESA_EMAIL_PROVIDER",
+        getattr(_private_config, "EMAIL_PROVIDER", "service"),
+    ).strip(),
 )
-EMAIL_VERIFICATION_SECRET: str = (
-    "22d6394ed15a7dec1b3bac78e3f5cf2739386483aeca3c88d4cafad40e4d0da2"
-)
+EMAIL_SERVICE_URL: str = os.environ.get(
+    "ESA_EMAIL_SERVICE_URL",
+    getattr(
+        _private_config,
+        "EMAIL_SERVICE_URL",
+        "https://mail-api.lovelearnlearning.cn",
+    ),
+).strip()
+EMAIL_SERVICE_TOKEN: str = os.environ.get(
+    "ESA_EMAIL_SERVICE_TOKEN",
+    getattr(
+        _private_config,
+        "EMAIL_SERVICE_TOKEN",
+        "e9493dca7a911f60226ec698e90678add37d8d28eb3f02271706026d7ba491d5",
+    ),
+).strip()
+EMAIL_VERIFICATION_SECRET: str = os.environ.get(
+    "ESA_EMAIL_VERIFICATION_SECRET",
+    getattr(
+        _private_config,
+        "EMAIL_VERIFICATION_SECRET",
+        "22d6394ed15a7dec1b3bac78e3f5cf2739386483aeca3c88d4cafad40e4d0da2",
+    ),
+).strip()
 EMAIL_CODE_TTL_SECONDS: int = 600
 EMAIL_CODE_COOLDOWN_SECONDS: int = 60
 EMAIL_CODE_MAX_ATTEMPTS: int = 5
@@ -694,11 +727,11 @@ def validate_startup_config() -> None:
             raise RuntimeError("EMAIL_SERVICE_URL must be an https URL")
         if not EMAIL_SERVICE_TOKEN or len(EMAIL_SERVICE_TOKEN) < 32:
             raise RuntimeError(
-                "EMAIL_SERVICE_TOKEN in config.py must contain at least 32 characters"
+                "EMAIL_SERVICE_TOKEN in config_private.py must contain at least 32 characters"
             )
         if not EMAIL_VERIFICATION_SECRET or len(EMAIL_VERIFICATION_SECRET) < 32:
             raise RuntimeError(
-                "EMAIL_VERIFICATION_SECRET in config.py must contain at least 32 characters"
+                "EMAIL_VERIFICATION_SECRET in config_private.py must contain at least 32 characters"
             )
         numeric_email_settings = {
             "EMAIL_CODE_TTL_SECONDS": EMAIL_CODE_TTL_SECONDS,

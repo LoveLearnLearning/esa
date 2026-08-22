@@ -235,8 +235,16 @@ async def upload_personal_knowledge_base_files(
             await item.close()
 
 
-@router.api_route("/files/{file_id}/download", methods=["GET", "HEAD"])
-@router.api_route("/files/{file_id}/content", methods=["GET", "HEAD"])
+@router.get(
+    "/files/{file_id}/download",
+    operation_id="download_personal_knowledge_base_file",
+)
+@router.head("/files/{file_id}/download", include_in_schema=False)
+@router.get(
+    "/files/{file_id}/content",
+    operation_id="get_personal_knowledge_base_file_content",
+)
+@router.head("/files/{file_id}/content", include_in_schema=False)
 def get_personal_knowledge_base_file_content(
     file_id: str,
     request: Request,
@@ -268,7 +276,11 @@ def get_personal_knowledge_base_file_content(
         raise
 
 
-@router.api_route("/files/{file_id}/preview", methods=["GET", "HEAD"])
+@router.get(
+    "/files/{file_id}/preview",
+    operation_id="get_personal_knowledge_base_file_preview",
+)
+@router.head("/files/{file_id}/preview", include_in_schema=False)
 def get_personal_knowledge_base_file_preview(
     file_id: str,
     request: Request,

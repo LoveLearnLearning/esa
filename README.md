@@ -139,14 +139,15 @@ docker build -t esa-mail-service .
 docker run --env-file .env -p 127.0.0.1:8080:8080 esa-mail-service
 ```
 
-超算不需要 `.env`。在 `backend/core/utils/config.py` 的邮件配置区填写：
+超算不需要 `.env`。复制只在服务器本地存在、已被 Git 忽略的私有配置：
 
-```python
-EMAIL_PROVIDER = "service"
-EMAIL_SERVICE_URL = "https://mail-api.lovelearnlearning.cn"
-EMAIL_SERVICE_TOKEN = "与邮件服务器 MAIL_SERVICE_TOKEN 完全相同"
-EMAIL_VERIFICATION_SECRET = "另一个 openssl rand -hex 32 生成值"
+```bash
+cp backend/core/utils/config_private.example.py backend/core/utils/config_private.py
+chmod 600 backend/core/utils/config_private.py
 ```
+
+然后在 `config_private.py` 中填写邮件服务地址、服务令牌和验证码 Secret。
+不要修改受 Git 跟踪的 `config.py` 来保存密钥。
 
 `EMAIL_VERIFICATION_SECRET` 和服务令牌必须使用两个不同的随机值。Resend API Key
 只放在独立邮件服务器，不能放在超算或前端。未配置时验证码接口返回 `503`；投递失败

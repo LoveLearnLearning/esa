@@ -54,6 +54,7 @@ __pypackages__/
 .env.*
 !.env.example
 !.env.*.example
+/backend/core/utils/config_private.py
 .envrc
 .direnv/
 *.local

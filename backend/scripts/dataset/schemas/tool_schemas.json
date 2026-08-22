@@ -603,6 +603,30 @@
   {
     "type": "function",
     "function": {
+      "name": "retrieve_personal_knowledge",
+      "description": "检索当前登录用户主动上传的个人知识库，并返回文件名和可回查证据。用户身份由服务端会话绑定，参数中不接受 user_id。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "需要从个人资料中检索的自然语言问题"
+          },
+          "top_k": {
+            "type": "integer",
+            "description": "最多返回多少条结果，范围 1 到 20，默认 5",
+            "default": 5
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "save_core_memory",
       "description": "应用户本轮明确提出的记住、保存或长期保留请求，保存一条正式核心记忆。不得仅因信息看似稳定就调用；从对话中推断出的稳定信息必须使用 propose_core_memory，等待用户确认。不要保存密码、API Key、访问令牌或其他认证秘密。",
       "parameters": {
