@@ -87,6 +87,19 @@ class Sample:
     # 「不得猜测缺失参数」这三条行为契约**一条都没法机器验证**，
     # 157 条 clarify（全库 14%）只被验证了"没有调用工具"。
     ask_for: list[str] = field(default_factory=list)
+    # 这道题**某个指标量不了**时的声明式作废：{指标名: 理由}。
+    #
+    # 为什么要显式声明、而不是在判分器里写 if：判分器里的 if 是看不见的。
+    # 本项目栽过的形状是「分母悄悄缩水而报表全绿」（5.26/5.28），
+    # 所以作废必须满足三条，缺一条就是在造假绿灯：
+    #   ① 写在**数据**里，不写在判分器里 —— 它是题的属性，base 和 lora 必然一致；
+    #   ② **必须带理由**，空理由由 validate 当场拒绝；
+    #   ③ 报告里**逐条印出来**，绝不允许静悄悄地从分母里消失。
+    #
+    # 已知的两种用法（2026-08-21）：
+    #   自由文本参数   → 作废「参数完全匹配率」「工具调用完全正确率」
+    #   标注自相矛盾   → 作废该题所在的那一项（例：拒绝命中率）
+    score_exclude: dict[str, str] = field(default_factory=dict)
 
     def user_queries(self) -> list[str]:
         """处理 `user_queries` 相关逻辑。"""
@@ -149,6 +162,7 @@ def sample_from_dict(d: dict[str, Any]) -> Sample:
         topic=d.get("topic", ""),
         needs_review=bool(d.get("needs_review", False)),
         ask_for=list(d.get("ask_for", [])),
+        score_exclude=dict(d.get("score_exclude", {})),
     )
 
 
@@ -194,6 +208,8 @@ def _sample_dict(s: Sample) -> dict[str, Any]:
         d["needs_review"] = True
     if s.ask_for:
         d["ask_for"] = list(s.ask_for)
+    if s.score_exclude:
+        d["score_exclude"] = dict(s.score_exclude)
     return d
 
 

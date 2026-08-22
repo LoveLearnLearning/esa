@@ -649,6 +649,8 @@ def score(recs: list[dict], preds: dict[str, str], parser_name: str,
     confusion: dict[tuple[str, str], int] = defaultdict(int)
     failures: list[dict] = []
     faith_skipped = 0
+    # 声明式作废：{指标名: [(题号, 理由)]}。**只从数据里来**，判分器自己不做判断。
+    excluded: dict[str, list[tuple[str, str]]] = defaultdict(list)
 
     for rec in recs:
         g = rec["gold"]
@@ -808,6 +810,29 @@ def score(recs: list[dict], preds: dict[str, str], parser_name: str,
                         failures.append({"id": rid, "tpl": group_of[rid],
                                          "why": "该追问，但既没提问也没索要信息"})
 
+        # ---- 声明式作废的**统一出口**（2026-08-21）----
+        #
+        # 放在这里而不是分散到上面二十来个写入点，是因为分散写 `if` 有两个问题：
+        # ① 漏掉一处就成了「这一项作废了、那一项没作废」的半吊子状态；
+        # ② 判分器里的 `if` 看不见，而这正是本项目最贵那类错误的温床。
+        # 统一出口的语义很干净：**上面照常判，判完把该作废的那几项摘掉并登记。**
+        #
+        # ⚠️ 摘的是「这道题在这一项里的记录」，所以分母跟着减 1 ——
+        # 这正是想要的（「量不了」不等于「量了个 0 分」）。而它安全的前提是
+        # 作废写在数据里：同一套题喂给 base 和 lora，摘掉的必然是同一批，
+        # 不会重演 5.26 那种「分母随模型行为缩水」。
+        for metric, reason in (g.get("score_exclude") or {}).items():
+            if metric not in METRIC_KEYS:
+                # 指标名写错时**当场炸**，不能静悄悄地什么也不作废 ——
+                # 那会造出一个「以为标了、其实没标」的假绿灯。
+                raise ValueError(
+                    f"{rid}: score_exclude 里的 {metric!r} 不是已知指标。"
+                    f"可用的是 {', '.join(METRIC_KEYS)}")
+            if not str(reason).strip():
+                raise ValueError(f"{rid}: score_exclude[{metric!r}] 的理由是空的")
+            ok[metric].pop(rid, None)
+            excluded[metric].append((rid, str(reason)))
+
     out: dict = {"样本数": len(recs)}
     stats_out: dict[str, dict] = {}
     for k in METRIC_KEYS:
@@ -852,6 +877,8 @@ def score(recs: list[dict], preds: dict[str, str], parser_name: str,
     out["_n_faith_skipped"] = faith_skipped
     out["_failures"] = kept
     out["_failures_by_template"] = dict(sorted(per_tpl.items(), key=lambda x: -x[1]))
+    # 作废清单必须跟着报告走：报表上看不见的作废，等于偷偷改了分母。
+    out["_excluded"] = {k: [list(t) for t in v] for k, v in sorted(excluded.items())}
     return out
 
 
@@ -922,12 +949,17 @@ def print_report(name: str, r: dict) -> None:
         s = st.get(k, {})
         num, den = s.get("num", 0), s.get("den", 0)
         lo, hi = s.get("ci", [0.0, 100.0])
-        ok = v >= target if direction == "ge" else v <= target
+        # 分母为 0 有两种来源：这一层根本没有这类题，或者这类题全被声明作废。
+        # 两种都**不是「没达标」** —— 印 ❌ 会让人以为模型考砸了。
+        hit = v >= target if direction == "ge" else v <= target
         sign = "≥" if direction == "ge" else "≤"
-        line = (f"  {'✅' if ok else '❌'} {_pad(k, 22)}{_pct(v, den)}  目标{sign}{target:<5.0f}"
+        mark = "➖" if den == 0 else ("✅" if hit else "❌")
+        line = (f"  {mark} {_pad(k, 22)}{_pct(v, den)}  目标{sign}{target:<5.0f}"
                 f"{num:>4d}/{den:<4d} {_pad(f'CI[{lo:.1f}–{hi:.1f}]', 18)}"
                 f"宏{_pct(s.get('macro', 0.0), den):>7s} × {s.get('n_templates', 0):>2d} 模板")
-        if 0 < den < SMALL_N:
+        if den == 0:
+            line += "  ➖不适用（无此类题或全部作废，别按目标读）"
+        elif den < SMALL_N:
             line += "  ⚠️小样本"
         print(line)
     print("  ── 宏平均 = 先按模板算比率再对模板取平均。它和微平均差得远，"
@@ -950,6 +982,18 @@ def print_report(name: str, r: dict) -> None:
         for k in legacy:
             v = st[k]
             print(f"    {_pad(k, 26)}{_pct(r[k], v['den'])}   {v['num']}/{v['den']}")
+
+    # 作废清单：**必须印**。分母少了几道题而报表上看不出来，
+    # 就是本项目最贵那类错误的原型（数据/口径是错的，仪表盘是绿的）。
+    exc = r.get("_excluded") or {}
+    if exc:
+        print("\n  🔻 本表声明作废的题（已从对应指标的分母里剔除，逐条列出）：")
+        for k, rows in exc.items():
+            print(f"    {_pad(k, 26)}作废 {len(rows)} 道")
+            for rid, why in rows:
+                print(f"        · {rid}：{why}")
+        print("    ── 作废写在**评测集数据**里，base 与 lora 摘掉的必然是同一批；"
+              "改它要同时重判两个模型。")
 
     if r.get("_confusion"):
         print("\n  工具混淆（该调→实调，取前 8）：")
