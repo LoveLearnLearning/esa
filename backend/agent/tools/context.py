@@ -49,6 +49,7 @@ class AgentRuntimeDependencies:
     rag_service: Any | None = None
     personal_knowledge_retrieval_service: Any | None = None
     mcp_client_manager: Any | None = None
+    sandbox_service: Any | None = None
     extra: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

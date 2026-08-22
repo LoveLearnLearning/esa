@@ -33,6 +33,7 @@ COMMON_TOOLS = frozenset(
     {
         "get_weather", "get_time", "web_search", "arxiv_search", "calculator",
         "math_solver", "bitwise_calculator", "load_skill",
+        "run_in_sandbox",
         "parse_pdf_attachment", "parse_word_attachment",
         "parse_presentation_attachment", "parse_spreadsheet_attachment",
         "parse_image_attachment", "retrieve_personal_knowledge",

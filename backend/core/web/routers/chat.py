@@ -619,6 +619,7 @@ def _runtime_dependencies(
             state, "personal_knowledge_retrieval_service", None
         ),
         mcp_client_manager=getattr(state, "mcp_client_manager", None),
+        sandbox_service=getattr(state, "sandbox_service", None),
     )
 
 

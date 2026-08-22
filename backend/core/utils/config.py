@@ -218,6 +218,32 @@ def _csv_from_env(name: str, default: str) -> tuple[str, ...]:
     return values
 
 
+# Agent command sandbox. It is opt-in until Bubblewrap is installed and the
+# persistent root has been reviewed for the deployment host.
+SANDBOX_ENABLED: bool = _bool_from_env("ESA_SANDBOX_ENABLED", False)
+SANDBOX_ROOT: Path = _path_from_env(
+    "ESA_SANDBOX_ROOT", RAG_WORKSPACE_ROOT / "data" / "sandbox"
+)
+SANDBOX_RUNTIME: str = _str_from_env("ESA_SANDBOX_RUNTIME", "bwrap")
+SANDBOX_MAX_TIMEOUT_SECONDS: float = _float_from_env(
+    "ESA_SANDBOX_MAX_TIMEOUT_SECONDS", 30.0, minimum=0.1, maximum=300.0
+)
+SANDBOX_MAX_OUTPUT_CHARS: int = _int_from_env(
+    "ESA_SANDBOX_MAX_OUTPUT_CHARS", 50_000, minimum=1024
+)
+SANDBOX_MAX_COMMAND_CHARS: int = _int_from_env(
+    "ESA_SANDBOX_MAX_COMMAND_CHARS", 12_000, minimum=128
+)
+SANDBOX_CPU_SECONDS: int = _int_from_env("ESA_SANDBOX_CPU_SECONDS", 20)
+SANDBOX_MEMORY_BYTES: int = _int_from_env(
+    "ESA_SANDBOX_MEMORY_BYTES", 1_024 * 1_024 * 1_024
+)
+SANDBOX_FILE_SIZE_BYTES: int = _int_from_env(
+    "ESA_SANDBOX_FILE_SIZE_BYTES", 128 * 1_024 * 1_024
+)
+SANDBOX_PROCESS_COUNT: int = _int_from_env("ESA_SANDBOX_PROCESS_COUNT", 64)
+
+
 # MCP child processes. The ESA backend is the MCP client and owns the complete
 # subprocess lifetime. Only the audited You.com search tool is exposed.
 MCP_ENABLED: bool = True

@@ -884,6 +884,52 @@ class AgentActionItem {
 
 enum MessageRole { user, assistant, tool }
 
+/// A source emitted by a retrieval tool and attached to one assistant reply.
+class SourceCitation {
+  const SourceCitation({
+    required this.index,
+    required this.label,
+    this.filename,
+    this.fileId,
+    this.previewUrl,
+    this.page,
+    this.section,
+  });
+
+  final int index;
+  final String label;
+  final String? filename;
+  final String? fileId;
+  final String? previewUrl;
+  final int? page;
+  final String? section;
+
+  String get locationLabel {
+    // Public knowledge-base citations do not have a local file to open. Keep
+    // their source label and append any structured location metadata.
+    if (filename == null || filename!.trim().isEmpty) {
+      final parts = <String>[label.trim()];
+      if (page != null && page! > 0) parts.add('第$page页');
+      if (section != null && section!.trim().isNotEmpty) {
+        parts.add(section!.trim());
+      }
+      return parts.where((part) => part.isNotEmpty).join(' · ');
+    }
+    final parts = <String>[];
+    parts.add(filename!.trim());
+    if (page != null && page! > 0) parts.add('第$page页');
+    if (section != null && section!.trim().isNotEmpty) {
+      parts.add(section!.trim());
+    }
+    return parts.join(' · ');
+  }
+
+  bool get canOpen =>
+      (filename != null && filename!.trim().isNotEmpty) ||
+      (fileId != null && fileId!.trim().isNotEmpty) ||
+      (previewUrl != null && previewUrl!.trim().isNotEmpty);
+}
+
 MessageRole roleFromString(String r) {
   switch (r) {
     case 'user':
