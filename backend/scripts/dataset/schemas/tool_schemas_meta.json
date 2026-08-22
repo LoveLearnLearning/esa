@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-22T13:15:48+00:00",
+  "captured_at": "2026-08-22T21:17:34+00:00",
   "source": "github.com/LoveLearnLearning/esa",
   "source_repo": "local-clone@885029d",
   "workspace": "learning",
@@ -7,7 +7,7 @@
     "common",
     "learning"
   ],
-  "schema_version": "5f774ba8",
+  "schema_version": "e37b194b",
   "with_attachments": false,
   "kept": [
     "arxiv_search",
@@ -32,6 +32,7 @@
     "retrieve_federated_knowledge",
     "retrieve_knowledge",
     "retrieve_personal_knowledge",
+    "run_in_sandbox",
     "save_core_memory",
     "search_core_memories",
     "web_search"

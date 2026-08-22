@@ -162,6 +162,74 @@ final answer = 42;
     expect(find.textContaining('<parameter='), findsNothing);
   });
 
+  testWidgets('assistant renders source badges after text and opens them', (
+    tester,
+  ) async {
+    SourceCitation? opened;
+    final message = ChatMessage(
+      id: 'assistant-source',
+      role: MessageRole.assistant,
+      text: '回答内容\n\n【来源 1 | 个人知识库】',
+    );
+
+    await tester.pumpWidget(
+      app(
+        AssistantMessage(
+          message: message,
+          onRegenerate: () {},
+          sources: const [
+            SourceCitation(
+              index: 1,
+              label: '来源 1',
+              filename: 'lecture.pdf',
+              page: 3,
+            ),
+          ],
+          onOpenSource: (value) => opened = value,
+        ),
+      ),
+    );
+
+    expect(find.textContaining('【来源'), findsNothing);
+    expect(find.text('lecture.pdf · 第3页'), findsOneWidget);
+    await tester.tap(find.text('lecture.pdf · 第3页'));
+    expect(opened?.filename, 'lecture.pdf');
+    expect(opened?.page, 3);
+  });
+
+  testWidgets('public retrieval source badges are also clickable', (
+    tester,
+  ) async {
+    SourceCitation? opened;
+    final message = ChatMessage(
+      id: 'assistant-public-source',
+      role: MessageRole.assistant,
+      text: '回答内容',
+    );
+
+    await tester.pumpWidget(
+      app(
+        AssistantMessage(
+          message: message,
+          onRegenerate: () {},
+          sources: const [
+            SourceCitation(
+              index: 1,
+              label: '来源 1 · calculus.pdf',
+              filename: 'calculus.pdf',
+              page: 12,
+            ),
+          ],
+          onOpenSource: (value) => opened = value,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('calculus.pdf · 第12页'));
+    expect(opened?.filename, 'calculus.pdf');
+    expect(opened?.page, 12);
+  });
+
   testWidgets('assistant repaints while the same message streams', (
     tester,
   ) async {

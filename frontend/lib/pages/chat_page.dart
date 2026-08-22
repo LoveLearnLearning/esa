@@ -3,6 +3,8 @@
 // 侧边栏用 Scaffold.drawer 资料弹层用 showProfileSheet
 
 import 'package:flutter/gestures.dart';
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -16,6 +18,7 @@ import '../theme/esa_theme.dart';
 import '../widgets/assistant_message.dart';
 import '../widgets/agent_action_sheet.dart';
 import '../widgets/attachment_preview/attachment_preview.dart';
+import '../widgets/attachment_preview/pdf_attachment_viewer.dart';
 import '../widgets/composer.dart';
 import '../widgets/code_editor/code_editor_pane.dart';
 import '../widgets/history_drawer.dart';
@@ -521,7 +524,8 @@ class _ChatPageState extends State<ChatPage> {
     );
     final mobileLanding = narrow && app.messages.isEmpty;
     // 首页（学习仪表盘）模式下用户从仪表盘发起发送后，一旦对话建立就自动切回对话视图。
-    final shouldStartChat = widget.homeMode &&
+    final shouldStartChat =
+        widget.homeMode &&
         widget.onStartChat != null &&
         app.activeWorkspace == WorkspaceType.learning &&
         _pendingSend &&
@@ -543,7 +547,8 @@ class _ChatPageState extends State<ChatPage> {
           FocusManager.instance.primaryFocus?.unfocus();
         }
       },
-      child: widget.homeMode &&
+      child:
+          widget.homeMode &&
               app.activeWorkspace == WorkspaceType.learning &&
               (app.activeId == null || !_pendingSend)
           ? _LearningHome(
@@ -789,6 +794,11 @@ class _ChatPageState extends State<ChatPage> {
                         source: _CodeSource.assistant,
                       ),
                   codeOverrideVersion: _codeDraftVersion,
+                  sources: _sourcesForAssistant(
+                    app.messages,
+                    app.messages.indexOf(m),
+                  ),
+                  onOpenSource: _openSource,
                   onCodeChangedWithId: (blockId, code, language) {
                     final existing = _codeDrafts[blockId];
                     if (existing == null) return;
@@ -808,6 +818,257 @@ class _ChatPageState extends State<ChatPage> {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+
+  List<SourceCitation> _sourcesForAssistant(
+    List<ChatMessage> messages,
+    int assistantIndex,
+  ) {
+    final output = <SourceCitation>[];
+    // Tool results are inserted immediately before the assistant message.
+    // Walk that contiguous block in its original order so citations match the
+    // ranks returned by the retrieval service.
+    var firstToolIndex = assistantIndex;
+    while (firstToolIndex > 0 && messages[firstToolIndex - 1].isTool) {
+      firstToolIndex--;
+    }
+    for (var i = firstToolIndex; i < assistantIndex; i++) {
+      final message = messages[i];
+      if (!message.isTool || message.text.trim().isEmpty) continue;
+      try {
+        final payload = jsonDecode(message.text);
+        if (payload is! Map) continue;
+        final results =
+            payload['results'] ??
+            (payload['data'] is Map
+                ? (payload['data'] as Map)['results']
+                : null);
+        if (results is! List) continue;
+        for (var resultIndex = 0; resultIndex < results.length; resultIndex++) {
+          final result = results[resultIndex];
+          if (result is! Map) continue;
+          final source = result['source'];
+          final sourceMap = source is Map ? source : null;
+          final sourceLabel =
+              (result['filename'] ??
+                      sourceMap?['filename'] ??
+                      sourceMap?['name'] ??
+                      source)
+                  ?.toString()
+                  .trim();
+          if (sourceLabel == null || sourceLabel.isEmpty) continue;
+          // Both retrieval tools expose the canonical document filename in
+          // `source`. Keep it as the lookup key so every source badge has a
+          // real tap target; the open handler still enforces file ownership
+          // through the knowledge-base API.
+          final filename = sourceLabel;
+          final fileId =
+              (result['file_id'] ??
+                      result['fileId'] ??
+                      sourceMap?['file_id'] ??
+                      sourceMap?['fileId'] ??
+                      result['document_id'] ??
+                      result['documentId'])
+                  ?.toString()
+                  .trim();
+          final previewUrl =
+              (result['preview_url'] ??
+                      result['previewUrl'] ??
+                      sourceMap?['preview_url'] ??
+                      sourceMap?['previewUrl'])
+                  ?.toString()
+                  .trim();
+          final location = result['location'];
+          final page = _citationPage(result, location);
+          final section = result['section']?.toString().trim();
+          final citation = SourceCitation(
+            index: resultIndex + 1,
+            label: '来源 ${resultIndex + 1} · $sourceLabel',
+            filename: filename,
+            fileId: fileId?.isEmpty == true ? null : fileId,
+            previewUrl: previewUrl?.isEmpty == true ? null : previewUrl,
+            page: page,
+            section: section?.isEmpty == true ? null : section,
+          );
+          if (!output.any(
+            (item) =>
+                item.filename == citation.filename &&
+                item.page == citation.page,
+          )) {
+            output.add(citation);
+          }
+        }
+      } on FormatException {
+        // Non-retrieval tools may return plain text.
+      }
+    }
+    return output;
+  }
+
+  int? _citationPage(Object? result, Object? location) {
+    if (result is Map) {
+      for (final key in const ['page', 'page_number', 'pageNumber']) {
+        final value = result[key];
+        if (value is num && value.toInt() > 0) return value.toInt();
+      }
+    }
+    if (location is Map) {
+      final direct = location['page'];
+      if (direct is num && direct.toInt() > 0) return direct.toInt();
+
+      // DocIR locators use a zero-based container index for page locators.
+      final index = location['container_index'];
+      if (location['kind']?.toString() == 'page' && index is num) {
+        final page = index.toInt() + 1;
+        if (page > 0) return page;
+      }
+      final label = location['label']?.toString() ?? '';
+      final match = RegExp(r'第\s*(\d+)\s*页').firstMatch(label);
+      if (match != null) return int.tryParse(match.group(1)!);
+    }
+    if (result is Map && result['evidence'] is List) {
+      for (final evidence in result['evidence'] as List) {
+        if (evidence is! Map || evidence['locators'] is! List) continue;
+        for (final locator in evidence['locators'] as List) {
+          final page = _citationPage(null, locator);
+          if (page != null) return page;
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<void> _openSource(SourceCitation citation) async {
+    final filename = citation.filename;
+    if (filename == null || filename.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final snapshot = await AppScope.of(
+        context,
+      ).api.getPersonalKnowledgeBase();
+      KnowledgeBaseFile? file;
+      for (final candidate in snapshot.files) {
+        if ((citation.fileId != null && candidate.id == citation.fileId) ||
+            _sameSourceFilename(candidate.filename, filename)) {
+          file = candidate;
+          break;
+        }
+      }
+      if (!mounted) return;
+      if (file == null) {
+        messenger.showSnackBar(const SnackBar(content: Text('找不到对应的知识库文件')));
+        return;
+      }
+      final content = await AppScope.of(
+        context,
+      ).api.fetchPersonalKnowledgeBasePreview(file);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => _SourcePreviewDialog(
+          file: file!,
+          content: content,
+          page: citation.page,
+        ),
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(error.detail)));
+      }
+    } catch (_) {
+      if (mounted) {
+        messenger.showSnackBar(const SnackBar(content: Text('来源预览加载失败，请重试')));
+      }
+    }
+  }
+
+  bool _sameSourceFilename(String left, String right) {
+    String normalize(String value) => value
+        .trim()
+        .replaceFirst(RegExp(r'^【来源\s*\d+】'), '')
+        .split(RegExp(r'\s+·\s+'))
+        .first
+        .split('/')
+        .last;
+
+    return normalize(left) == normalize(right);
+  }
+}
+
+class _SourcePreviewDialog extends StatelessWidget {
+  const _SourcePreviewDialog({
+    required this.file,
+    required this.content,
+    this.page,
+  });
+
+  final KnowledgeBaseFile file;
+  final AttachmentContent content;
+  final int? page;
+
+  @override
+  Widget build(BuildContext context) {
+    final isPdf =
+        content.mediaType.startsWith('application/pdf') ||
+        file.extension == 'pdf';
+    final text = utf8.decode(content.bytes, allowMalformed: true);
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      child: SizedBox(
+        width: 920,
+        height: 700,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 10, 10),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.fileText, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      file.filename,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                  if (page != null) Text('第$page页'),
+                  IconButton(
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(LucideIcons.x, size: 18),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: context.n.divider),
+            Expanded(
+              child: isPdf
+                  ? PdfAttachmentViewer(
+                      bytes: content.bytes,
+                      mediaType: content.mediaType,
+                      page: page,
+                    )
+                  : SelectionArea(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(18),
+                        child: SelectableText(
+                          text,
+                          style: const TextStyle(
+                            fontFamily: 'JetBrainsMono',
+                            fontSize: 12.5,
+                            height: 1.55,
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+          ],
         ),
       ),
     );

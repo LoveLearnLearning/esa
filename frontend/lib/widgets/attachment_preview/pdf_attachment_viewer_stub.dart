@@ -8,10 +8,12 @@ class PdfAttachmentViewer extends StatelessWidget {
     super.key,
     required this.bytes,
     required this.mediaType,
+    this.page,
   });
 
   final Uint8List bytes;
   final String mediaType;
+  final int? page;
 
   @override
   Widget build(BuildContext context) =>

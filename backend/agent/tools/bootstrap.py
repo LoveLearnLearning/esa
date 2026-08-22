@@ -13,6 +13,7 @@ def register_builtin_tools() -> None:
     from backend.agent.tools import (  # noqa: F401
         arxiv_search,
         rag_tool,
+        sandbox_tool,
         skills,
         web_search,
     )

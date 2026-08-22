@@ -54,6 +54,7 @@ from backend.agent.rag.personal import (
     PersonalUploadPipeline,
 )
 from backend.agent.rag.runtime import create_embedding_provider
+from backend.sandbox.sandbox import SandboxLimits, SandboxService
 from backend.agent.tools.learning.mastery import EsaMasteryStore
 from backend.core.services.auth_service import AuthService
 from backend.core.services.agent_action_service import AgentActionService
@@ -203,6 +204,16 @@ from backend.core.utils.config import (
     RAG_QDRANT_BASE_URL,
     RAG_QDRANT_TIMEOUT,
     RAG_QDRANT_UPSERT_BATCH_SIZE,
+    SANDBOX_CPU_SECONDS,
+    SANDBOX_ENABLED,
+    SANDBOX_FILE_SIZE_BYTES,
+    SANDBOX_MAX_COMMAND_CHARS,
+    SANDBOX_MAX_OUTPUT_CHARS,
+    SANDBOX_MAX_TIMEOUT_SECONDS,
+    SANDBOX_MEMORY_BYTES,
+    SANDBOX_PROCESS_COUNT,
+    SANDBOX_ROOT,
+    SANDBOX_RUNTIME,
     TRUSTED_HOSTS,
     USER_ATTACHMENT_MAX_BYTES,
     USER_ATTACHMENT_ROOT,
@@ -486,6 +497,23 @@ async def lifespan(app: FastAPI):
         lora_path=MODEL_LORA_PATH,
         lora_name=MODEL_LORA_NAME,
         lora_max_rank=MODEL_LORA_MAX_RANK,
+    )
+    if SANDBOX_ENABLED:
+        SANDBOX_ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(SANDBOX_ROOT, 0o700)
+    app.state.sandbox_service = SandboxService(
+        SANDBOX_ROOT,
+        enabled=SANDBOX_ENABLED,
+        runtime=SANDBOX_RUNTIME,
+        limits=SandboxLimits(
+            max_timeout_seconds=SANDBOX_MAX_TIMEOUT_SECONDS,
+            max_output_chars=SANDBOX_MAX_OUTPUT_CHARS,
+            max_command_chars=SANDBOX_MAX_COMMAND_CHARS,
+            cpu_seconds=SANDBOX_CPU_SECONDS,
+            memory_bytes=SANDBOX_MEMORY_BYTES,
+            file_size_bytes=SANDBOX_FILE_SIZE_BYTES,
+            process_count=SANDBOX_PROCESS_COUNT,
+        ),
     )
     app.state.mcp_client_manager = None
     if MCP_ENABLED:

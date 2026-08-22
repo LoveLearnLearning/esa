@@ -25,6 +25,8 @@ class AssistantMessage extends StatefulWidget {
     this.onOpenCodeEditorWithId,
     this.onCodeChangedWithId,
     this.codeOverrideVersion = 0,
+    this.sources = const [],
+    this.onOpenSource,
   });
 
   final ChatMessage message;
@@ -38,6 +40,8 @@ class AssistantMessage extends StatefulWidget {
   final void Function(String blockId, String code, String language)?
   onCodeChangedWithId;
   final int codeOverrideVersion;
+  final List<SourceCitation> sources;
+  final ValueChanged<SourceCitation>? onOpenSource;
 
   @override
   State<AssistantMessage> createState() => _AssistantMessageState();
@@ -190,6 +194,13 @@ class _AssistantMessageState extends State<AssistantMessage> {
                   const SizedBox(height: EsaSpace.md),
                 ],
                 _body(context, m),
+                if (!m.typing && widget.sources.isNotEmpty) ...[
+                  const SizedBox(height: EsaSpace.sm),
+                  _SourceList(
+                    sources: widget.sources,
+                    onOpenSource: widget.onOpenSource,
+                  ),
+                ],
                 if (!m.typing && m.text.isNotEmpty) ...[
                   const SizedBox(height: EsaSpace.sm),
                   Row(
@@ -354,8 +365,94 @@ class _AssistantMessageState extends State<AssistantMessage> {
   }
 }
 
+class _SourceList extends StatelessWidget {
+  const _SourceList({required this.sources, this.onOpenSource});
+
+  final List<SourceCitation> sources;
+  final ValueChanged<SourceCitation>? onOpenSource;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final source in sources)
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: source.canOpen && onOpenSource != null
+                      ? () => onOpenSource!(source)
+                      : null,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: context.n.n200,
+                      border: Border.all(color: context.n.divider),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          source.canOpen
+                              ? LucideIcons.fileText
+                              : LucideIcons.link,
+                          size: 12,
+                          color: source.canOpen
+                              ? EsaColors.accent
+                              : context.n.n600,
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            source.locationLabel.isEmpty
+                                ? source.label
+                                : source.locationLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
+                            style: TextStyle(
+                              color: source.canOpen
+                                  ? context.scheme.onSurface
+                                  : context.n.n600,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 String _visibleAssistantText(String text) {
-  return _withoutTrailingAiLabel(_withoutToolCallMarkup(text));
+  final visible = _withoutTrailingAiLabel(_withoutToolCallMarkup(text));
+  // A model may echo a complete citation line from the tool response. Remove
+  // that line before rendering; the structured source badges are rendered
+  // below the answer instead.
+  final withoutCitationLines = visible.replaceAll(
+    RegExp(r'^\s*【来源\s*\d+(?:\s*\|[^】]*)?】[^\r\n]*\s*$', multiLine: true),
+    '',
+  );
+  return withoutCitationLines.replaceAll(
+    RegExp(r'【来源\s*\d+(?:\s*\|[^】]*)?】'),
+    '',
+  );
 }
 
 String _withoutToolCallMarkup(String text) {

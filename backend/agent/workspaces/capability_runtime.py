@@ -160,6 +160,15 @@ class BoundToolExecutor:
                 from backend.agent.tools.web_search import execute_web_search
 
                 return await execute_web_search(self.context, **normalized)
+            if name == "run_in_sandbox":
+                service = self.context.runtime_dependencies.sandbox_service
+                if service is None:
+                    return {"ok": False, "error": "sandbox_not_configured"}
+                return await service.execute(
+                    user_id=self.context.user_id,
+                    conversation_id=self.context.conversation_id,
+                    **normalized,
+                )
             if name in {
                 "start_frontier_tracking", "start_research_writing", "start_dataset_analysis"
             }:
