@@ -106,13 +106,13 @@ def evaluate_layers(
     cases: Sequence[EvaluationCase],
     retrieve: Callable[[str], Mapping[str, Sequence[str]]],
 ) -> dict[str, RetrievalMetrics]:
-    """对五个阶段分别评分，不能只报告最终 Reranker 的结果。"""
+    """对实际执行的检索阶段分别评分，不能伪造未执行的层。"""
 
     positive_cases = [case for case in cases if case.answerable]
     if not positive_cases:
         raise ValueError("at least one answerable evaluation case is required")
     traces = [retrieve(case.query) for case in positive_cases]
-    required = ("dense", "bm25_body", "bm25_heading", "rrf", "reranker")
+    required = ("dense", "bm25_body", "bm25_heading", "fusion", "final")
     missing = [
         layer
         for layer in required
@@ -120,7 +120,10 @@ def evaluate_layers(
     ]
     if missing:
         raise ValueError(f"missing evaluation layers: {', '.join(missing)}")
+    layers = [*required]
+    if all("reranker" in trace for trace in traces):
+        layers.insert(-1, "reranker")
     return {
         layer: _metrics(positive_cases, [trace[layer] for trace in traces])
-        for layer in required
+        for layer in layers
     }

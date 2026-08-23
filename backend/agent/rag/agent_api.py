@@ -11,7 +11,11 @@
 from __future__ import annotations
 
 import dataclasses
+import json
+from collections.abc import Callable
 from typing import Any
+
+from backend.core.utils.models import ToolExecutionResult
 
 from .retrieval.context import estimate_tokens, truncate_text_to_token_budget
 from .retrieval.contracts import Evidence, SearchHit, SearchResponse
@@ -58,6 +62,9 @@ B2_RESULT_KEYS = (
     "context_chunk_ids",
     "evidence",
 )
+V2_CONTRACT_VERSION = "retrieve_knowledge.v2"
+V2_MODEL_TOKEN_BUDGET = 2048
+V2_RESULT_TOKEN_LIMIT = 512
 
 
 def configure_retrieval_service(service: RetrievalService) -> None:
@@ -98,7 +105,8 @@ def retrieve_knowledge_payload(
     if similarity_threshold is not None and not 0 <= similarity_threshold <= 1:
         raise ValueError("similarity_threshold must be between 0 and 1")
 
-    response = (service or get_retrieval_service()).search(query)
+    active_service = service or get_retrieval_service()
+    response = active_service.search(query)
     hits = _apply_rerank_threshold(response, similarity_threshold)[:top_k]
     contexts = _compact_contexts(hits)
     return {
@@ -111,9 +119,194 @@ def retrieve_knowledge_payload(
         "sources": [_source_label(hit, rank) for rank, hit in enumerate(hits, start=1)],
         "context_text": "\n\n".join(contexts),
         "degraded": list(response.trace.degraded),
-        "rankings": {
-            name: list(chunk_ids) for name, chunk_ids in response.trace.rankings.items()
-        },
+        "rankings": _legacy_rankings(response, active_service.config.rerank_limit),
+    }
+
+
+def retrieve_knowledge_v2_result(
+    query: str,
+    top_k: int = 5,
+    similarity_threshold: float | None = None,
+    service: RetrievalService | None = None,
+    token_counter: Callable[[str], int] | None = None,
+) -> ToolExecutionResult:
+    """Return semantic v2 projections for the model, UI, and audit store."""
+
+    if top_k <= 0:
+        raise ValueError("top_k must be positive")
+    if similarity_threshold is not None and not 0 <= similarity_threshold <= 1:
+        raise ValueError("similarity_threshold must be between 0 and 1")
+
+    active_service = service or get_retrieval_service()
+    response = active_service.search(query)
+    hits = _apply_rerank_threshold(response, similarity_threshold)[:top_k]
+    counter = token_counter or estimate_tokens
+    counter_name = "agent_tokenizer" if token_counter is not None else "fallback"
+    model_content = _v2_model_projection(response, hits, counter, counter_name)
+    returned_chunk_ids = {
+        item["chunk_id"] for item in model_content["results"]
+    }
+    display_content = _v2_display_projection(
+        response,
+        [hit for hit in hits if hit.chunk_id in returned_chunk_ids],
+    )
+    audit_metadata = {
+        "contract_version": V2_CONTRACT_VERSION,
+        "response": dataclasses.asdict(response),
+        "model_budget": dict(model_content["budget"]),
+    }
+    return ToolExecutionResult(model_content, display_content, audit_metadata)
+
+
+def _legacy_rankings(
+    response: SearchResponse,
+    rerank_limit: int,
+) -> dict[str, list[str]]:
+    """Preserve the frozen v1 ranking names behind an explicit legacy adapter."""
+
+    output = {
+        name: list(values)
+        for name, values in response.trace.rankings.items()
+        if name not in {"fusion", "final", "reranker"}
+    }
+    fusion = list(response.trace.rankings.get("fusion", ()))
+    output["rrf"] = fusion
+    output["reranker"] = list(
+        response.trace.rankings.get("reranker", tuple(fusion[:rerank_limit]))
+    )
+    return output
+
+
+def _serialized_token_count(payload: object, counter: Callable[[str], int]) -> int:
+    serialized = json.dumps(payload, ensure_ascii=False, default=str)
+    return counter(serialized)
+
+
+def _v2_execution(response: SearchResponse) -> dict[str, Any]:
+    fusion = response.trace.fusion
+    weight_names = (
+        "dense_weight",
+        "bm25_body_weight",
+        "bm25_heading_weight",
+    )
+    return {
+        "configured_method": fusion.get("configured_method"),
+        "applied_method": fusion.get("applied_method"),
+        "ranking_method": fusion.get("ranking_method", "retrieval"),
+        "reranker_applied": response.trace.reranker_applied,
+        "weights": {name: fusion[name] for name in weight_names if name in fusion},
+        "degraded": list(response.trace.degraded),
+    }
+
+
+def _v2_hit(hit: SearchHit, rank: int, content: str) -> dict[str, Any]:
+    primary = hit.evidence[0]
+    return {
+        "rank": rank,
+        "chunk_id": hit.chunk_id,
+        "content": content,
+        "retrieval_score": hit.retrieval_score,
+        "rerank_score": hit.rerank_score,
+        "source_ref": primary.evidence_id,
+        "quote_eligible": bool(hit.evidence)
+        and all(item.quote_eligible for item in hit.evidence),
+    }
+
+
+def _v2_model_projection(
+    response: SearchResponse,
+    hits: list[SearchHit],
+    counter: Callable[[str], int],
+    counter_name: str,
+) -> dict[str, Any]:
+    """Budget the final serialized model JSON, including every metadata field."""
+
+    retained = list(hits)
+    query_limit = 256
+    returned_query = truncate_text_to_token_budget(response.query, query_limit)
+
+    def build(per_result_limit: int, *, truncated: bool) -> dict[str, Any]:
+        results = [
+            _v2_hit(
+                hit,
+                rank,
+                truncate_text_to_token_budget(hit.context_text, per_result_limit),
+            )
+            for rank, hit in enumerate(retained, start=1)
+        ]
+        return {
+            "contract_version": V2_CONTRACT_VERSION,
+            "query": returned_query,
+            "result_count": len(results),
+            "results": results,
+            "execution": _v2_execution(response),
+            "budget": {
+                "limit": V2_MODEL_TOKEN_BUDGET,
+                "returned_token_count": 0,
+                "truncated": truncated,
+                "counter": counter_name,
+            },
+        }
+
+    while retained and _serialized_token_count(build(0, truncated=True), counter) > V2_MODEL_TOKEN_BUDGET:
+        retained.pop()
+    while _serialized_token_count(build(0, truncated=True), counter) > V2_MODEL_TOKEN_BUDGET:
+        if query_limit == 0:
+            raise RuntimeError("retrieve_knowledge.v2 fixed metadata exceeds token budget")
+        query_limit //= 2
+        returned_query = truncate_text_to_token_budget(response.query, query_limit)
+
+    low, high = 0, V2_RESULT_TOKEN_LIMIT
+    while low < high:
+        middle = (low + high + 1) // 2
+        candidate = build(middle, truncated=False)
+        if _serialized_token_count(candidate, counter) <= V2_MODEL_TOKEN_BUDGET:
+            low = middle
+        else:
+            high = middle - 1
+
+    was_truncated = returned_query != response.query.strip() or len(retained) != len(hits) or any(
+        truncate_text_to_token_budget(hit.context_text, low) != hit.context_text.strip()
+        for hit in retained
+    )
+    payload = build(low, truncated=was_truncated)
+    for _ in range(4):
+        count = _serialized_token_count(payload, counter)
+        payload["budget"]["returned_token_count"] = count
+        if _serialized_token_count(payload, counter) == count:
+            break
+    if _serialized_token_count(payload, counter) > V2_MODEL_TOKEN_BUDGET:
+        raise RuntimeError("retrieve_knowledge.v2 model projection exceeds token budget")
+    return payload
+
+
+def _v2_display_projection(
+    response: SearchResponse,
+    hits: list[SearchHit],
+) -> dict[str, Any]:
+    results = []
+    for rank, hit in enumerate(hits, start=1):
+        primary = hit.evidence[0]
+        locator = primary.locators[0] if primary.locators else None
+        results.append(
+            {
+                "rank": rank,
+                "chunk_id": hit.chunk_id,
+                "source_ref": primary.evidence_id,
+                "source": primary.document_name,
+                "section": " / ".join(primary.section_path) or None,
+                "page": _page_number(locator),
+                "location": dict(locator) if locator else None,
+                "quote_eligible": bool(hit.evidence)
+                and all(item.quote_eligible for item in hit.evidence),
+            }
+        )
+    return {
+        "contract_version": V2_CONTRACT_VERSION,
+        "query": response.query,
+        "result_count": len(results),
+        "results": results,
+        "execution": _v2_execution(response),
     }
 
 
@@ -180,16 +373,14 @@ def _result_payload(
 
     primary = hit.evidence[0]
     locator = primary.locators[0] if primary.locators else None
-    page = (
-        int(locator["container_index"]) + 1
-        if locator
-        and locator.get("kind") == "page"
-        and isinstance(locator.get("container_index"), int)
-        else None
-    )
+    page = _page_number(locator)
     return {
         "content": hit.context_text if content is None else content,
-        "score": hit.rerank_score if hit.rerank_score is not None else hit.rrf_score,
+        "score": (
+            hit.rerank_score
+            if hit.rerank_score is not None
+            else hit.retrieval_score
+        ),
         "score_type": "reranker" if hit.rerank_score is not None else "rrf",
         "rank": rank,
         "source": primary.document_name,
@@ -197,11 +388,21 @@ def _result_payload(
         "page": page,
         "location": dict(locator) if locator else None,
         "chunk_id": hit.chunk_id,
-        "rrf_score": hit.rrf_score,
+        "rrf_score": hit.retrieval_score,
         "rerank_score": hit.rerank_score,
         "context_chunk_ids": list(hit.context_chunk_ids),
         "evidence": [_evidence_payload(item) for item in hit.evidence],
     }
+
+
+def _page_number(locator: Any) -> int | None:
+    if (
+        isinstance(locator, dict)
+        and locator.get("kind") == "page"
+        and isinstance(locator.get("container_index"), int)
+    ):
+        return int(locator["container_index"]) + 1
+    return None
 
 
 def _evidence_payload(evidence: Evidence) -> dict[str, Any]:
