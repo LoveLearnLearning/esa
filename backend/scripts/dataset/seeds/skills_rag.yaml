@@ -119,12 +119,12 @@ rag:
     - q: "帮我算 2 的 16 次方"
       tool: calculator
       args: { expression: "2**16" }
-      lure: retrieve_knowledge_v2
+      lure: retrieve_knowledge
       a: "$2^{{16}} = {value}$。这种算术直接算就行，不用查知识库。"
     - q: "我数据结构掌握得怎么样"
       tool: get_mastery_report
       args: { course: "数据结构" }
-      lure: retrieve_knowledge_v2
+      lure: retrieve_knowledge
       a: "你在**数据结构**上覆盖了 {total_points} 个知识点，平均掌握度 **{avg_mastery}**。这是查你的学情数据，不用检索知识库。"
 
   # similarity_threshold 的约束：schema 写明「未启用 Reranker 时不能使用」

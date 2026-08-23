@@ -133,7 +133,7 @@ SearchResponse
 
 `evidence_text` 与 `context_text` 的语义不同：前者来自不可变 Evidence 映射，用于回查；后者是受章节边界限制的上下文拼接，不能自动视为逐字引用。
 
-Agent 默认使用 `retrieve_knowledge_v2`。模型投影只包含一次正文、语义明确的分数和
+Agent 默认使用 `retrieve_knowledge`。模型投影只包含一次正文、语义明确的分数和
 稳定 `source_ref`，并用 Agent 实际 tokenizer 对最终序列化 JSON 执行 2048-token
 硬预算；UI 来源信息和完整审计 Evidence 使用独立通道。冻结的 v1 适配器仅供迁移
 兼容。检索服务自身的上下文预算仍由 `RAG_MAX_CONTEXT_TOKENS` 控制。
@@ -249,7 +249,7 @@ Embedding/Reranker 后端及模型、超时、批大小和检索候选数量。C
 
 ### ESA Agent 调用
 
-ESA 通过 `ToolRegistry` 调用 `retrieve_knowledge_v2`。应用生命周期先创建
+ESA 通过 `ToolRegistry` 调用 `retrieve_knowledge`。应用生命周期先创建
 `RetrievalService`，再调用 `configure_retrieval_service(service)`；模块导入本身不会连接
 Qdrant、加载模型或隐式建库。Agent 侧只暴露检索和状态读取，索引构建继续使用独立 CLI。
 

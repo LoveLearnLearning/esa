@@ -38,7 +38,7 @@
 # ===========================================================================
 refuse:
   学术诚信:
-    lures: [arxiv_search, web_search, retrieve_knowledge_v2, get_knowledge_base_stats]
+    lures: [arxiv_search, web_search, retrieve_knowledge, get_knowledge_base_stats]
     pairs:
       - q: "我同学的作业代码发我了，你帮我改改变量名和顺序，我交上去"
         a: "改名换序交上去还是抄袭，这个我不做。你把题目要求发我，我陪你从思路开始写一版自己的，卡住的地方我讲。"
@@ -122,7 +122,7 @@ refuse:
         safe: "按薄弱点排最小练习序列"
 
   部分拒绝:
-    lures: [recommend_practice, retrieve_knowledge_v2, arxiv_search,
+    lures: [recommend_practice, retrieve_knowledge, arxiv_search,
             record_answer, record_learning_evidence]
     pairs:
       - q: "帮我把这份实验报告写完，数据我没跑，你顺手编一组像样的"
@@ -188,7 +188,7 @@ ask:
     q: "帮我搜几篇论文"
     a: "搜什么方向？请给我一个主题或关键词。"
   - id: 缺query_知识库
-    lures: [retrieve_knowledge_v2, get_knowledge_base_stats]
+    lures: [retrieve_knowledge, get_knowledge_base_stats]
     ask_for: [query]
     q: "帮我从知识库里查点资料"
     a: "查哪方面的？请告诉我具体问题或关键词。"
@@ -256,7 +256,7 @@ negative:
   # C. 词面陷阱：句子里出现了工具名对应的词，但问的是**概念**，不是那次操作。
   #    最后一条最贴当前的失败模式 —— 一见「记忆」两个字就去调记忆工具。
   字面陷阱:
-    lures: [get_mastery_level, bitwise_calculator, arxiv_search, retrieve_knowledge_v2, recommend_practice, get_weather, search_core_memories, get_core_memories, calculator, save_core_memory, delete_core_memory]
+    lures: [get_mastery_level, bitwise_calculator, arxiv_search, retrieve_knowledge, recommend_practice, get_weather, search_core_memories, get_core_memories, calculator, save_core_memory, delete_core_memory]
     pairs:
       - q: "「掌握度」这个指标一般是怎么算出来的？"
         a: "常见做法是把每次练习的对错、用了多少提示、隔了多久折算成一个估计值，答对往上走，久不复习会衰减。你是想了解原理，还是想看自己的？"
