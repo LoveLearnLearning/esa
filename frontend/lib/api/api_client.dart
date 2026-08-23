@@ -211,6 +211,19 @@ class ApiClient {
     throw ApiException(r.statusCode, detail);
   }
 
+  /// 检测后端进程是否可达：GET /health 无需认证，成功返回 200。
+  Future<bool> checkHealth() async {
+    if (kOfflineMode) return true;
+    try {
+      final r = await http.get(_uri('/health'), headers: _headers()).timeout(
+        const Duration(seconds: 8),
+      );
+      return r.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ---------- 认证 ----------
   Future<int> sendRegistrationCode(String email) async {
     if (kOfflineMode) return 60;

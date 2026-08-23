@@ -327,7 +327,7 @@ class DocumentAttachment {
   }
 
   String get modeLabel => switch (mode) {
-    'pending' => '已保存 · 发送后按需解析',
+    'pending' => '已上传 · 发送后按需解析',
     'rag' => 'DocIR · RAG',
     _ => 'DocIR · 全文',
   };
