@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -32,7 +33,7 @@ from backend.core.router.workspace_profiles import build_workspace_route
 from backend.core.router.workspace_registry import resolve_workspace
 from backend.core.services.teaching_context_adapter import TeachingContextAdapter
 from backend.core.workspaces import WORKSPACE_CATALOG, WorkspaceAccessPolicy
-from backend.core.utils.models import ParsedOutput, ToolCall
+from backend.core.utils.models import ParsedOutput, ToolCall, ToolExecutionResult
 
 
 @pytest.mark.parametrize("definition", WORKSPACE_DEFINITIONS.values())
@@ -535,6 +536,95 @@ def test_executable_run_preserves_agent_run_and_stream_interfaces():
     events = asyncio.run(collect_stream())
     assert events[-1].event == "complete"
     assert events[-1].data["messages"][-1]["content"] == "compiled answer"
+
+
+def test_agent_routes_tool_result_channels_to_model_stream_and_audit():
+    """Compact observations, display events, and audits must remain separated."""
+
+    class Executor:
+        async def execute(self, _name, _arguments):
+            return ToolExecutionResult(
+                model_content={"channel": "model"},
+                display_content={"channel": "display"},
+                audit_metadata={"channel": "audit"},
+            )
+
+    class StreamParser:
+        raw_text = ""
+
+        def feed(self, chunk):
+            self.raw_text += chunk
+            return []
+
+        def finish(self):
+            return []
+
+    class Provider:
+        def __init__(self):
+            self.calls = 0
+            self.observed_messages = []
+
+        def _response(self, messages):
+            self.observed_messages.append([dict(item) for item in messages])
+            self.calls += 1
+            return "call" if self.calls == 1 else "answer"
+
+        async def generate(self, messages, _schemas):
+            return self._response(messages)
+
+        async def generate_stream(self, messages, _schemas):
+            yield self._response(messages)
+
+        def create_stream_parser(self):
+            return StreamParser()
+
+        def parse_output(self, response, _schemas):
+            if response == "call":
+                return ParsedOutput(tool_calls=[ToolCall("fake_tool", {})])
+            return ParsedOutput(content=response)
+
+    run_spec = SimpleNamespace(
+        messages=({"role": "user", "content": "question"},),
+        tool_schemas=(),
+        loop_policy=SimpleNamespace(max_iterations=2, tool_timeout_seconds=1),
+        tool_executor=Executor(),
+        run_metadata={
+            "request_id": "request-test",
+            "run_id": "run-test",
+            "conversation_id": "conversation-test",
+            "workspace_type": "learning",
+        },
+        capability_fingerprint="capability-test",
+    )
+
+    provider = Provider()
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+    messages = asyncio.run(agent.run(run_spec))
+
+    assert json.loads(provider.observed_messages[1][-1]["content"]) == {
+        "channel": "model"
+    }
+    tool_message = next(item for item in messages if item.get("role") == "tool")
+    assert json.loads(tool_message["content"]) == {"channel": "display"}
+    assert json.loads(tool_message["model_content"]) == {"channel": "model"}
+    assert tool_message["audit_metadata"] == {"channel": "audit"}
+
+    stream_provider = Provider()
+    stream_agent = object.__new__(Agent)
+    stream_agent.llm_provider = stream_provider
+
+    async def collect_stream():
+        return [event async for event in stream_agent.run_stream(run_spec)]
+
+    events = asyncio.run(collect_stream())
+    assert json.loads(stream_provider.observed_messages[1][-1]["content"]) == {
+        "channel": "model"
+    }
+    display_event = next(event for event in events if event.event == "tool")
+    assert json.loads(display_event.data["content"]) == {"channel": "display"}
+    assert "audit" not in json.dumps(display_event.data)
+    assert "model" not in json.dumps(display_event.data)
 
 
 def test_stream_emits_heartbeat_while_model_has_no_visible_output():

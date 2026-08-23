@@ -108,7 +108,7 @@ class RetrievalService:
         )
         return SearchHit(
             chunk_id=chunk.chunk_id,
-            rrf_score=fused_scores[chunk.chunk_id],
+            retrieval_score=fused_scores[chunk.chunk_id],
             rerank_score=selection.rerank_scores.get(chunk.chunk_id),
             evidence=tuple(
                 evidence
@@ -127,7 +127,7 @@ class RetrievalService:
         query: str,
         context_level: ContextLevel = ContextLevel.EVIDENCE,
     ) -> SearchResponse:
-        """执行三路召回、RRF、重排、去重和结构化证据组装。"""
+        """执行三路召回、fusion、串行重排、去重和结构化证据组装。"""
 
         if not query.strip():
             raise ValueError("query cannot be blank")
@@ -164,18 +164,30 @@ class RetrievalService:
             name: tuple(item.chunk_id for item in items)
             for name, items in route_result.routes.items()
         }
-        rankings["rrf"] = tuple(item.chunk_id for item in fused)
-        rankings["reranker"] = tuple(item.chunk_id for item in selection.ranking)
+        rankings["fusion"] = tuple(item.chunk_id for item in fused)
+        if selection.reranker_applied:
+            rankings["reranker"] = tuple(item.chunk_id for item in selection.ranking)
+        rankings["final"] = tuple(hit.chunk_id for hit in hits)
         degraded = route_result.degraded + selection.degraded
         raw_scores = {
             name: {item.chunk_id: item.score for item in items}
             for name, items in route_result.routes.items()
+        }
+        fusion_trace = {
+            **fusion_trace,
+            "reranker_applied": selection.reranker_applied,
+            "ranking_method": (
+                "reranker"
+                if selection.reranker_applied
+                else "retrieval"
+            ),
         }
         trace = SearchTrace(
             rankings=rankings,
             degraded=degraded,
             raw_scores=raw_scores,
             fusion=fusion_trace,
+            reranker_applied=selection.reranker_applied,
         )
         response = SearchResponse(query, context_level, hits, trace)
         logger.info(
@@ -196,6 +208,12 @@ class RetrievalService:
         method = self.config.fusion_method
         if method == "dense":
             fused = list(routes.get("dense", ()))[: self.config.rrf_limit]
+            applied_method = "dense"
+            actual_weights: dict[str, float] = {
+                "dense_weight": 1.0,
+                "bm25_body_weight": 0.0,
+                "bm25_heading_weight": 0.0,
+            }
             if not fused:
                 fused = reciprocal_rank_fusion(
                     {
@@ -206,30 +224,50 @@ class RetrievalService:
                     rrf_k=self.config.rrf_k,
                     limit=self.config.rrf_limit,
                 )
-            return fused, {"method": method, "dense_weight": 1.0}
+                applied_method = "lexical_rrf_fallback"
+                actual_weights = {
+                    "dense_weight": 0.0,
+                    "bm25_body_weight": 1.0,
+                    "bm25_heading_weight": 1.0,
+                }
+            return fused, {
+                "configured_method": method,
+                "applied_method": applied_method,
+                **actual_weights,
+            }
         if method == "equal_rrf":
             return (
                 reciprocal_rank_fusion(
                     routes, rrf_k=self.config.rrf_k, limit=self.config.rrf_limit
                 ),
-                {"method": method},
+                {
+                    "configured_method": method,
+                    "applied_method": method,
+                    "dense_weight": 1.0,
+                    "bm25_body_weight": 1.0,
+                    "bm25_heading_weight": 1.0,
+                },
             )
         if method == "weighted_rrf":
             lexical_weight = 1.0 - self.config.dense_weight
             weights = {
-                "dense": self.config.dense_weight,
-                "bm25_body": lexical_weight * self.config.lexical_body_weight,
-                "bm25_heading": lexical_weight
+                "dense_weight": self.config.dense_weight,
+                "bm25_body_weight": lexical_weight * self.config.lexical_body_weight,
+                "bm25_heading_weight": lexical_weight
                 * (1.0 - self.config.lexical_body_weight),
+            }
+            route_weights = {
+                name: weights[f"{name}_weight"]
+                for name in ("dense", "bm25_body", "bm25_heading")
             }
             return (
                 weighted_reciprocal_rank_fusion(
                     routes,
-                    weights,
+                    route_weights,
                     rrf_k=self.config.rrf_k,
                     limit=self.config.rrf_limit,
                 ),
-                {"method": method, **weights},
+                {"configured_method": method, "applied_method": method, **weights},
             )
         effective_alpha = self.config.dense_weight
         if not routes.get("dense"):
@@ -243,9 +281,14 @@ class RetrievalService:
             limit=self.config.rrf_limit,
             lexical_gate=None if self.config.lexical_gate_enabled else 1.0,
         )
+        lexical_weight = (1.0 - effective_alpha) * result.lexical_confidence
         return list(result.ranking), {
-            "method": method,
+            "configured_method": method,
+            "applied_method": method,
             "dense_weight": effective_alpha,
+            "bm25_body_weight": lexical_weight * self.config.lexical_body_weight,
+            "bm25_heading_weight": lexical_weight
+            * (1.0 - self.config.lexical_body_weight),
             "lexical_body_weight": self.config.lexical_body_weight,
             "lexical_confidence": result.lexical_confidence,
             "lexical_gate_enabled": self.config.lexical_gate_enabled,

@@ -226,7 +226,7 @@ def gen_rag(cfg, version, rng, all_names, out):
     retrieval_error = {
         "ok": False,
         "error": "tool_execution_error",
-        "tool": "retrieve_knowledge",
+        "tool": "retrieve_knowledge_v2",
         # ⚠️ 必须是后端**原文**（agent_api.py:78-81 那两行拼起来）。
         # 上游写的是截断版「RAG retrieval service is not configured」，
         # 少了后半句，`check_error_texts_registered` 当场判「未登记」——
@@ -237,13 +237,13 @@ def gen_rag(cfg, version, rng, all_names, out):
     for j, item in enumerate(cfg["rag"]["概念讲解_检索失败降级"]):
         out.append(mk(
             f"rag_fallback_{j:02d}", f"rag__检索失败降级__{j:02d}", "tool_error",
-            ["retrieve_knowledge", "get_knowledge_base_stats", "calculator"],
+            ["retrieve_knowledge_v2", "get_knowledge_base_stats", "calculator"],
             [Turn(role="user", content=item["q"]),
              Turn(role="tool_call", calls=[
-                 ToolCall("retrieve_knowledge", {"query": item["q"]})
+                 ToolCall("retrieve_knowledge_v2", {"query": item["q"]})
              ]),
              Turn(role="tool_result", results=[
-                 ToolResult("retrieve_knowledge", retrieval_error, is_error=True)
+                 ToolResult("retrieve_knowledge_v2", retrieval_error, is_error=True)
              ]),
              Turn(role="assistant", content=item["a"])],
             version, rng, all_names, review=True))
@@ -251,7 +251,7 @@ def gen_rag(cfg, version, rng, all_names, out):
     for j, item in enumerate(cfg["rag"]["参数约束"]):
         out.append(mk(
             f"rag_param_{j:02d}", f"rag__参数约束__{j:02d}", "hard_negative",
-            ["retrieve_knowledge", "get_knowledge_base_stats"],
+            ["retrieve_knowledge_v2", "get_knowledge_base_stats"],
             [Turn(role="user", content=item["q"]),
              Turn(role="assistant", content=item["a"])],
             version, rng, all_names))
@@ -277,7 +277,7 @@ def main() -> int:
     print(f"生成 {len(out)} 条 → {OUT.relative_to(ROOT)}")
     for cat, n in sorted(Counter(s.category for s in out).items()):
         print(f"  {cat:20s} {n}")
-    print("\nretrieve_knowledge 已包含检索失败后的同轮降级样本。")
+    print("\nretrieve_knowledge_v2 已包含检索失败后的同轮降级样本。")
     print("成功检索正例仍需 RAG 负责人提供真实语料库导出，禁止编造来源。")
     return 0
 

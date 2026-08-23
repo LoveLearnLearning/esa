@@ -158,8 +158,8 @@ def test_three_routes_are_visible(service: RetrievalService) -> None:
         "dense",
         "bm25_body",
         "bm25_heading",
-        "rrf",
-        "reranker",
+        "fusion",
+        "final",
     }
     assert response.hits
 
@@ -213,6 +213,14 @@ def test_reference_reranker_prefers_overlap() -> None:
         "黑盒测试", ["黑盒测试不关注内部结构", "完全无关的薪资信息"]
     )
     assert scores[0] > scores[1]
+
+
+def test_transformers_reranker_instruction_allows_cross_language_relevance() -> None:
+    """Reranker instruction must not require query/document language matching."""
+    instruction = TransformersReranker().instruction.lower()
+    assert "different languages" in instruction
+    assert "cross-lingual semantic relevance" in instruction
+    assert "lexical or language matching" in instruction
 
 
 def test_collection_loader_rejects_document_hash_tamper(tmp_path: Path) -> None:
@@ -287,7 +295,7 @@ def test_layer_evaluation_ignores_negative_cases() -> None:
     )
     layers = {
         name: ["a"]
-        for name in ("dense", "bm25_body", "bm25_heading", "rrf", "reranker")
+        for name in ("dense", "bm25_body", "bm25_heading", "fusion", "reranker", "final")
     }
     metrics = evaluate_layers([positive, negative], lambda _query: layers)
     assert all(
@@ -368,10 +376,12 @@ def test_online_failures_degrade_to_bm25_and_rrf(
     )
     response = service.search("反向传播")
     assert response.trace.rankings["dense"] == ()
-    assert (
-        response.trace.rankings["reranker"]
-        == response.trace.rankings["rrf"][: service.config.rerank_limit]
-    )
+    assert "reranker" not in response.trace.rankings
+    assert response.trace.rankings["final"]
+    assert response.trace.fusion["applied_method"] == "lexical_rrf_fallback"
+    assert response.trace.fusion["dense_weight"] == 0.0
+    assert response.trace.fusion["bm25_body_weight"] == 1.0
+    assert response.trace.fusion["bm25_heading_weight"] == 1.0
     assert {item.split(":", 1)[0] for item in response.trace.degraded} == {
         "dense_unavailable",
         "reranker_unavailable",

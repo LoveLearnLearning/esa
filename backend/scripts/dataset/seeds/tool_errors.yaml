@@ -60,7 +60,7 @@ wrapped:
     args: { query: "knowledge tracing", max_results: 3 }
     err: "arXiv API 请求超时（已重试 5 次）"
     src: backend/agent/tools/arxiv_search.py:295
-    lures: [arxiv_search, web_search, retrieve_knowledge]
+    lures: [arxiv_search, web_search, retrieve_knowledge_v2]
     q: "帮我找几篇知识追踪方向的论文，我想看看最近的进展"
     a: |
       arXiv 那边没响应（[Error]: arXiv API 请求超时（已重试 5 次）），这次检索没拿到结果。
@@ -109,11 +109,11 @@ wrapped:
       或者你直接给我一篇具体的论文名，我们从那一篇往下聊。
 
   - id: rag_service_not_configured
-    tool: retrieve_knowledge
+    tool: retrieve_knowledge_v2
     args: { query: "红黑树的删除操作", top_k: 5 }
     err: "RAG retrieval service is not configured; configure it during the ESA application lifespan"
     src: backend/agent/rag/agent_api.py:41-44
-    lures: [retrieve_knowledge, get_knowledge_base_stats, load_skill]
+    lures: [retrieve_knowledge_v2, get_knowledge_base_stats, load_skill]
     q: "从知识库里查一下红黑树删除操作的完整步骤"
     a: |
       知识库这次没接上（[Error]: RAG retrieval service is not configured; configure it during the ESA
@@ -123,11 +123,11 @@ wrapped:
       符号和步骤划分可能不一样，考试以课件为准。要不要我先讲通用版？
 
   - id: rag_threshold_out_of_range
-    tool: retrieve_knowledge
+    tool: retrieve_knowledge_v2
     args: { query: "TCP 拥塞控制", top_k: 5, similarity_threshold: 1.5 }
     err: "similarity_threshold must be between 0 and 1"
     src: backend/agent/rag/agent_api.py:57-58
-    lures: [retrieve_knowledge, get_knowledge_base_stats]
+    lures: [retrieve_knowledge_v2, get_knowledge_base_stats]
     q: "查一下知识库里 TCP 拥塞控制的内容，相似度阈值给我调到 1.5，我只要最准的"
     a: |
       1.5 这个值不合法：[Error]: similarity_threshold must be between 0 and 1，阈值是个 0 到 1 的概率，
@@ -137,11 +137,11 @@ wrapped:
       我建议先不设阈值检索一次，看看结果够不够聚焦，不够再收紧——要我这么做吗？
 
   - id: rag_threshold_needs_reranker
-    tool: retrieve_knowledge
+    tool: retrieve_knowledge_v2
     args: { query: "死锁的四个必要条件", top_k: 5, similarity_threshold: 0.9 }
     err: "similarity_threshold requires an active reranker; RRF scores are rank-fusion scores, not probabilities"
     src: backend/agent/rag/agent_api.py:104-107
-    lures: [retrieve_knowledge, get_knowledge_base_stats]
+    lures: [retrieve_knowledge_v2, get_knowledge_base_stats]
     q: "知识库里搜死锁的四个必要条件，阈值设 0.9 只要最相关的"
     a: |
       这个阈值用不了：[Error]: similarity_threshold requires an active reranker; RRF scores are
@@ -579,7 +579,7 @@ exec_error:
   - id: kp_not_in_graph
     tool: get_mastery_level
     args: { kp_id: "快速排序" }
-    lures: [get_mastery_level, get_mastery_report, recommend_practice, retrieve_knowledge]
+    lures: [get_mastery_level, get_mastery_report, recommend_practice, retrieve_knowledge_v2]
     q: "我快速排序掌握得怎么样了"
     a: |-
       查不到「快速排序」这个知识点——课程图谱里没有单独收它，所以我这边没有它的掌握度，
@@ -597,7 +597,7 @@ exec_error:
   - id: kp_not_in_graph_evidence
     tool: get_learning_evidence_summary
     args: { kp_id: "红黑树" }
-    lures: [get_learning_evidence_summary, get_mastery_level, retrieve_knowledge]
+    lures: [get_learning_evidence_summary, get_mastery_level, retrieve_knowledge_v2]
     q: "我在红黑树上的学习证据能给我看看吗"
     a: |-
       查不到「红黑树」这个知识点——课程图谱里没有收它，所以我这边没有对应的学习证据可看，

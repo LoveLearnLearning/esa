@@ -97,6 +97,8 @@ def test_reranker_micro_batches_all_candidates_then_sorts_globally() -> None:
     ).select("query", fused)
     assert scorer.batch_sizes == [4, 4, 4, 4, 4, 3]
     assert len(selection.rerank_scores) == 23
+    assert selection.ranking[0].chunk_id == "c22"
+    assert selection.ranking[0].score == 22.0
 
 
 def test_reranker_batch_size_does_not_change_score_semantics() -> None:

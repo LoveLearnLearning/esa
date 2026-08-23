@@ -455,7 +455,7 @@ def corpus_cases() -> list[tuple[str, bool]]:
         Returns:
             Sample => 处理结果。
         """
-        return make(id=sid, category="hard_negative", tool_names=["retrieve_knowledge", "calculator"],
+        return make(id=sid, category="hard_negative", tool_names=["retrieve_knowledge_v2", "calculator"],
                     turns=[Turn(role="user", content="帮我算 2 的 16 次方"),
                            Turn(role="assistant", content=answer)])
 

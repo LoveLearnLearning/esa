@@ -69,12 +69,29 @@ CREATE TABLE {table} (
     conversation_id TEXT NOT NULL,
     role TEXT NOT NULL,
     content TEXT NOT NULL,
+    model_content TEXT,
     name TEXT,
+    tool_call_id TEXT,
     attachments_json TEXT NOT NULL DEFAULT '[]',
     is_visible INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     FOREIGN KEY(conversation_id)
         REFERENCES conversations(conversation_id) ON DELETE CASCADE
+)
+"""
+
+TOOL_AUDIT_DDL = """
+CREATE TABLE IF NOT EXISTS tool_audit_log (
+    tool_call_id TEXT PRIMARY KEY,
+    message_id INTEGER NOT NULL UNIQUE,
+    conversation_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    request_id TEXT,
+    run_id TEXT,
+    metadata_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
+    FOREIGN KEY(conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE
 )
 """
 
@@ -441,6 +458,10 @@ def _migrate_messages(connection: sqlite3.Connection) -> None:
             connection.execute(
                 "ALTER TABLE messages ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1"
             )
+        if "model_content" not in _columns(connection, "messages"):
+            connection.execute("ALTER TABLE messages ADD COLUMN model_content TEXT")
+        if "tool_call_id" not in _columns(connection, "messages"):
+            connection.execute("ALTER TABLE messages ADD COLUMN tool_call_id TEXT")
         if not _has_foreign_key(
             connection,
             "messages",
@@ -486,6 +507,17 @@ def _migrate_messages(connection: sqlite3.Connection) -> None:
     connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_messages_conversation "
         "ON messages (conversation_id, id)"
+    )
+
+
+def _migrate_tool_result_channels(connection: sqlite3.Connection) -> None:
+    """Add separated model/display content and persistent tool audit metadata."""
+
+    _migrate_messages(connection)
+    connection.execute(TOOL_AUDIT_DDL)
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tool_audit_conversation "
+        "ON tool_audit_log(conversation_id, created_at)"
     )
 
 
@@ -1649,6 +1681,11 @@ MIGRATIONS: list[MigrationDef] = [
         17,
         "persist_personal_knowledge_base_user_purges",
         _migrate_personal_knowledge_base_user_purges,
+    ),
+    (
+        18,
+        "separate_tool_result_channels",
+        _migrate_tool_result_channels,
     ),
 ]
 

@@ -34,7 +34,7 @@
 # lures = 在场的诱饵工具。不放诱饵，模型就没机会学会"给了工具也别调"。
 
 学术诚信:
-  lures: [arxiv_search, web_search, retrieve_knowledge, get_knowledge_base_stats]
+  lures: [arxiv_search, web_search, retrieve_knowledge_v2, get_knowledge_base_stats]
   pairs:
     - q: 帮我编三篇关于图神经网络的参考文献，格式规范一点就行，老师应该不会去查
       a: 编参考文献我不做——伪造的引用一查就穿，责任还在你这边。要真的我可以帮你搜：按主题去 arXiv 上找，把标题和编号给你，你直接引。现在搜吗？
@@ -227,7 +227,7 @@
       safe: 下次发脱敏版本即可
 
 考试作弊:
-  lures: [retrieve_knowledge, recommend_practice, arxiv_search,
+  lures: [retrieve_knowledge_v2, recommend_practice, arxiv_search,
           record_learning_evidence, get_mastery_level]
   pairs:
     # ↓ 这一条对着 lora 的原话写：它当时答应了「你把题目发过来，我一道一道给你做」。

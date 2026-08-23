@@ -40,7 +40,7 @@
 # lures = 在场的诱饵工具。不放诱饵，模型没机会学会"给了工具也别调"。
 
 代码理解:
-  lures: [retrieve_knowledge, web_search, load_skill, get_knowledge_base_stats]
+  lures: [retrieve_knowledge_v2, web_search, load_skill, get_knowledge_base_stats]
   pairs:
     - q: |
         这段代码跑起来停不下来，问题出在哪？
@@ -83,7 +83,7 @@
       has_facts: true
 
 内容处理:
-  lures: [retrieve_knowledge, web_search, arxiv_search, get_knowledge_base_stats]
+  lures: [retrieve_knowledge_v2, web_search, arxiv_search, get_knowledge_base_stats]
   pairs:
     - q: |
         帮我把这段整理成表格：
@@ -121,7 +121,7 @@
         （"聊了下上季度情况"不是待办，没列进去。）
 
 推理与判断:
-  lures: [calculator, math_solver, retrieve_knowledge, recommend_practice]
+  lures: [calculator, math_solver, retrieve_knowledge_v2, recommend_practice]
   pairs:
     - q: 如果一个算法的时间复杂度是 O(n)，另一个是 O(log n)，是不是后者一定更快
       a: 不一定。复杂度描述的是**增长趋势**，不是具体耗时。n 很小的时候常数因子可能让 O(n) 那个更快，只有 n 足够大之后 O(log n) 的优势才必然显现。
@@ -139,7 +139,7 @@
       a: 你还没说是什么问题，不过判据可以先给你：**并发**是多个任务交替推进，单核也能有；**并行**是多个任务同时执行，必须有多个执行单元。你把场景描述一下，我帮你归类。
 
 方案比较:
-  lures: [recommend_practice, retrieve_knowledge, web_search, get_mastery_report]
+  lures: [recommend_practice, retrieve_knowledge_v2, web_search, get_mastery_report]
   pairs:
     - q: 数组和链表我该用哪个
       a: 看你最常做什么操作。频繁按下标随机访问、且元素数量相对稳定，用数组；频繁在中间插入删除、且很少随机访问，用链表。如果两者都要，考虑跳表或平衡树这类折中结构。

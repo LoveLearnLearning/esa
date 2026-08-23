@@ -122,7 +122,8 @@ class ConversationSummaryStore(BaseSQLiteStore):
         """
         rows = self.query_all(
             """
-            SELECT id, role, content, name, is_visible, created_at
+            SELECT id, role, COALESCE(model_content, content) AS content,
+                   name, is_visible, created_at
             FROM messages
             WHERE conversation_id = ? AND id > ?
             ORDER BY id ASC

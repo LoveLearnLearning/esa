@@ -29,6 +29,7 @@ from backend.agent.rag.agent_api import (
     knowledge_base_stats,
     reset_retrieval_service,
     retrieve_knowledge_payload,
+    retrieve_knowledge_v2_result,
 )
 from backend.agent.rag.retrieval.context import estimate_tokens
 from backend.agent.rag.retrieval.contracts import (
@@ -106,7 +107,7 @@ def _response(
     )
     hit = SearchHit(
         chunk_id="chunk_1",
-        rrf_score=0.031,
+        retrieval_score=0.031,
         rerank_score=rerank_score,
         evidence=(evidence,),
         context_chunk_ids=("chunk_1",),
@@ -117,7 +118,17 @@ def _response(
         context_level=ContextLevel.EVIDENCE,
         hits=(hit,),
         trace=SearchTrace(
-            rankings={"rrf": ("chunk_1",), "reranker": ("chunk_1",)},
+            rankings={
+                "fusion": ("chunk_1",),
+                "reranker": ("chunk_1",),
+                "final": ("chunk_1",),
+            },
+            fusion={
+                "configured_method": "dense",
+                "applied_method": "dense",
+                "ranking_method": "reranker",
+            },
+            reranker_applied=True,
             degraded=(),
         ),
     )
@@ -209,6 +220,35 @@ def test_similarity_threshold_requires_reranker_probability() -> None:
 
     with pytest.raises(RuntimeError, match="requires an active reranker"):
         retrieve_knowledge_payload("什么是测试？", similarity_threshold=0.5)
+
+
+def test_v2_separates_model_display_and_audit_with_final_json_budget() -> None:
+    original = _response()
+    long_context = "TCP先发送SYN。服务器返回SYNACK。客户端确认。" * 500
+    hits = tuple(
+        replace(
+            original.hits[0],
+            chunk_id=f"chunk_{index}",
+            context_chunk_ids=(f"chunk_{index}",),
+            context_text=long_context,
+        )
+        for index in range(5)
+    )
+    _configure(replace(original, hits=hits))
+
+    counter = lambda text: len(text)
+    result = retrieve_knowledge_v2_result(
+        "什么是测试？", top_k=5, token_counter=counter
+    )
+
+    serialized = __import__("json").dumps(result.model_content, ensure_ascii=False)
+    assert counter(serialized) <= 2048
+    assert result.model_content["contract_version"] == "retrieve_knowledge.v2"
+    assert '"evidence":' not in serialized
+    assert '"context_text":' not in serialized
+    assert result.model_content["budget"]["truncated"] is True
+    assert result.display_content["results"][0]["source"] == "测试文档.pdf"
+    assert result.audit_metadata["response"]["hits"][0]["evidence"]
 
 
 def test_unconfigured_service_has_clear_error() -> None:
