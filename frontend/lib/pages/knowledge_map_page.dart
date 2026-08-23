@@ -894,7 +894,7 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              LucideIcons.map,
+              LucideIcons.mapPin,
               size: 54,
               color: context.n.n500.withValues(alpha: 0.7),
             ),

@@ -550,6 +550,7 @@ class _ChatPageState extends State<ChatPage> {
       busy: app.busy,
       conversationId: app.activeId,
       taskMode: _taskMode,
+      onStop: app.stopGeneration,
       onClearTaskMode: () => setState(() => _taskMode = null),
       onOpenCodeEditor: (blockId, code, language) => _openCodeEditor(
         blockId,

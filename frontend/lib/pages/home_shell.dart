@@ -101,6 +101,9 @@ class _HomeShellState extends State<HomeShell> {
       onViewAssignments: _learningChatOpen
           ? null
           : () => unawaited(_select(StudentSection.assignments)),
+      onContinueLearning: _learningChatOpen
+          ? null
+          : () => unawaited(_continueLearning()),
       onStartChat: _openChatInput,
     ),
     StudentSection.assignments => StudentAssignmentsPage(onOpenChat: _showHome),
@@ -194,6 +197,21 @@ class _HomeShellState extends State<HomeShell> {
   /// 首页（学习仪表盘）上开始输入/发送时切回对话视图。
   void _openChatInput() {
     if (!mounted || _learningChatOpen) return;
+    setState(() => _learningChatOpen = true);
+  }
+
+  /// 首页“继续学习”按钮：先检测与后端的连通性，再切回对话视图继续学习。
+  Future<void> _continueLearning() async {
+    if (!mounted || _learningChatOpen) return;
+    final app = AppScope.of(context);
+    final connectionError = await app.checkBackendConnection();
+    if (!mounted) return;
+    if (connectionError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(connectionError)),
+      );
+      return;
+    }
     setState(() => _learningChatOpen = true);
   }
 
@@ -394,7 +412,7 @@ class _GlobalRail extends StatelessWidget {
           onTap: () => onSelect(StudentSection.schedule),
         ),
         _RailButton(
-          icon: LucideIcons.bookOpen,
+          icon: LucideIcons.mapPin,
           tooltip: '知识地图',
           active: section == StudentSection.knowledge,
           onTap: () => onSelect(StudentSection.knowledge),
@@ -700,6 +718,8 @@ class _WorkspaceSidebar extends StatelessWidget {
                 (conversation) => _ConversationEntry(
                   conversation: conversation,
                   onTap: () => onOpenConversation(conversation),
+                  onDelete: () =>
+                      _deleteConversation(context, app, conversation),
                 ),
               )
               .toList(),
@@ -764,6 +784,7 @@ class _WorkspaceSidebar extends StatelessWidget {
           _ConversationEntry(
             conversation: conversation,
             onTap: () => onOpenConversation(conversation),
+            onDelete: () => _deleteConversation(context, app, conversation),
           ),
     ];
   }
@@ -800,6 +821,36 @@ class _WorkspaceSidebar extends StatelessWidget {
       await app.updateGroup(group.id, name: name);
     }
     controller.dispose();
+  }
+
+  Future<void> _deleteConversation(
+    BuildContext context,
+    AppState app,
+    ChatConversation conversation,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除对话'),
+        content: Text('确定要删除「${conversation.title}」吗？此操作无法撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFE5484D),
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await app.deleteConversation(conversation.id);
+    }
   }
 
   Future<void> _deleteGroup(
@@ -1025,9 +1076,14 @@ class _ExpandableSidebarRowState extends State<_ExpandableSidebarRow> {
 }
 
 class _ConversationEntry extends StatelessWidget {
-  const _ConversationEntry({required this.conversation, required this.onTap});
+  const _ConversationEntry({
+    required this.conversation,
+    required this.onTap,
+    this.onDelete,
+  });
   final ChatConversation conversation;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) => ListTile(
@@ -1041,6 +1097,16 @@ class _ConversationEntry extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       style: const TextStyle(fontSize: 12.5),
     ),
+    trailing: onDelete == null
+        ? null
+        : IconButton(
+            tooltip: '删除对话',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+            iconSize: 14,
+            icon: const Icon(LucideIcons.trash2),
+            onPressed: onDelete,
+          ),
     onTap: onTap,
   );
 }
