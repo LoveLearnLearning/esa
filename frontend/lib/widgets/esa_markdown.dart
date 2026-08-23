@@ -44,6 +44,9 @@ String normalizeMarkdownLatex(String source) {
 bool containsFencedCode(String source) =>
     RegExp(r'^\s*(?:```|~~~)', multiLine: true).hasMatch(source);
 
+typedef CodeRunCallback =
+    Future<void> Function(String blockId, String code, String language);
+
 class EsaMarkdown extends StatelessWidget {
   const EsaMarkdown({
     super.key,
@@ -54,6 +57,7 @@ class EsaMarkdown extends StatelessWidget {
     this.codeOverrideFor,
     this.onOpenCodeEditorWithId,
     this.onCodeChangedWithId,
+    this.onRunCode,
     this.codeOverrideVersion = 0,
   });
 
@@ -66,6 +70,7 @@ class EsaMarkdown extends StatelessWidget {
   onOpenCodeEditorWithId;
   final void Function(String blockId, String code, String language)?
   onCodeChangedWithId;
+  final CodeRunCallback? onRunCode;
   final int codeOverrideVersion;
 
   @override
@@ -94,6 +99,7 @@ class EsaMarkdown extends StatelessWidget {
           codeOverrideFor: codeOverrideFor,
           onOpenCodeEditorWithId: onOpenCodeEditorWithId,
           onCodeChangedWithId: onCodeChangedWithId,
+          onRunCode: onRunCode,
         ),
       },
       extensionSet: md.ExtensionSet(
@@ -148,6 +154,7 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
     this.codeOverrideFor,
     this.onOpenCodeEditorWithId,
     this.onCodeChangedWithId,
+    this.onRunCode,
   });
 
   final void Function(String code, String language)? onEditCode;
@@ -157,6 +164,7 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
   onOpenCodeEditorWithId;
   final void Function(String blockId, String code, String language)?
   onCodeChangedWithId;
+  final CodeRunCallback? onRunCode;
   var _blockIndex = 0;
 
   @override
@@ -185,6 +193,7 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
       blockId: blockId,
       onOpenEditorWithId: onOpenCodeEditorWithId,
       onCodeChangedWithId: onCodeChangedWithId,
+      onRunCode: onRunCode,
     );
   }
 }
@@ -198,6 +207,7 @@ class _EditableCodeBlock extends StatefulWidget {
     this.onOpenEditor,
     this.onOpenEditorWithId,
     this.onCodeChangedWithId,
+    this.onRunCode,
   });
 
   final String code;
@@ -209,6 +219,7 @@ class _EditableCodeBlock extends StatefulWidget {
   onOpenEditorWithId;
   final void Function(String blockId, String code, String language)?
   onCodeChangedWithId;
+  final CodeRunCallback? onRunCode;
 
   @override
   State<_EditableCodeBlock> createState() => _EditableCodeBlockState();
@@ -219,6 +230,7 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
   late String _originalCode;
   bool _editing = false;
   bool _copied = false;
+  bool _running = false;
 
   bool get _modified => _controller.text != _originalCode;
 
@@ -260,6 +272,17 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
       widget.language,
     );
     setState(() {});
+  }
+
+  Future<void> _runCode() async {
+    final callback = widget.onRunCode;
+    if (callback == null || _running) return;
+    setState(() => _running = true);
+    try {
+      await callback(widget.blockId, _controller.text, widget.language);
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
   }
 
   @override
@@ -364,11 +387,21 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                     );
                   },
                 ),
-                _action(Icons.play_arrow_rounded, '运行', iconColor, () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('尚未配置隔离代码执行服务，已阻止在浏览器中直接执行。')),
-                  );
-                }),
+                if (widget.onRunCode != null)
+                  _running
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : _action(
+                          Icons.play_arrow_rounded,
+                          '使用辅助模型修复并在沙箱运行',
+                          iconColor,
+                          _runCode,
+                        ),
               ],
             ),
           ),

@@ -184,4 +184,44 @@ print("hello")
     expect(richText, contains('print("edited")'));
     expect(richText, isNot(contains('print("hello")')));
   });
+
+  testWidgets('run button sends the current edited code and language', (
+    tester,
+  ) async {
+    String? blockId;
+    String? code;
+    String? language;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(
+          body: EsaMarkdown(
+            data: '''```cpp
+int main() { return 0; }
+```''',
+            codeBlockPrefix: 'message-2',
+            onRunCode: (id, value, lang) async {
+              blockId = id;
+              code = value;
+              language = lang;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('编辑'));
+    await tester.pump();
+    await tester.enterText(
+      find.byType(TextField),
+      '#include <iostream>\nint main() { return 0; }',
+    );
+    await tester.tap(find.byTooltip('使用辅助模型修复并在沙箱运行'));
+    await tester.pump();
+
+    expect(blockId, 'message-2:0');
+    expect(code, contains('#include <iostream>'));
+    expect(language, 'cpp');
+    expect(tester.takeException(), isNull);
+  });
 }

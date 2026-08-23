@@ -59,8 +59,28 @@ def test_bwrap_command_is_network_and_home_isolated(tmp_path: Path) -> None:
     argv = service._bwrap_argv("/usr/bin/bwrap", workspace, "/workspace", "echo ok")
 
     assert "--unshare-all" in argv
+    assert "--share-net" not in argv
     assert "--clearenv" in argv
     assert "--bind" in argv
     assert "/workspace" in argv
     assert "--setenv" in argv
     assert "HOME" in argv
+    assert "/usr/bin/prlimit" in argv
+    assert "--nproc=64:64" in argv
+
+
+def test_trusted_install_can_share_network_without_changing_default(
+    tmp_path: Path,
+) -> None:
+    service = SandboxService(tmp_path, enabled=True, runtime="bwrap")
+    workspace = service.workspace_for("u", "c")
+    argv = service._bwrap_argv(
+        "/usr/bin/bwrap",
+        workspace,
+        "/workspace",
+        "python3 -m pip --version",
+        allow_network=True,
+    )
+
+    assert argv.index("--share-net") > argv.index("--unshare-all")
+    assert "/opt/esa-installer/pip" in argv

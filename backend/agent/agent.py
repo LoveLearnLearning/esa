@@ -11,7 +11,7 @@ import time
 from collections.abc import AsyncIterator, Mapping
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -211,6 +211,12 @@ class Agent:
         lora_path: str | Path | None = None,
         lora_name: str = "esa-agent",
         lora_max_rank: int = 16,
+        enforce_eager: bool = False,
+        performance_mode: Literal[
+            "balanced", "interactivity", "throughput"
+        ] = "interactivity",
+        fully_sharded_loras: bool = False,
+        specialize_active_lora: bool = True,
         stream_heartbeat_seconds: float = AGENT_STREAM_HEARTBEAT_SECONDS,
     ) -> None:
         """初始化 `Agent` 实例。"""
@@ -240,6 +246,10 @@ class Agent:
             lora_path=lora_path,
             lora_name=lora_name,
             lora_max_rank=lora_max_rank,
+            enforce_eager=enforce_eager,
+            performance_mode=performance_mode,
+            fully_sharded_loras=fully_sharded_loras,
+            specialize_active_lora=specialize_active_lora,
         )
 
     async def run(self, run_spec: ExecutableAgentRun) -> list[dict]:

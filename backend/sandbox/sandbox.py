@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import hashlib
+import importlib.util
 import math
 import os
 from pathlib import Path, PurePosixPath
@@ -44,7 +45,13 @@ def _safe_component(value: str) -> str:
 
 
 def _set_limits(limits: SandboxLimits) -> None:
-    """Set inherited POSIX limits before Bubblewrap starts the shell."""
+    """Set host-safe limits before Bubblewrap starts the shell.
+
+    RLIMIT_NPROC is deliberately applied *inside* the new user namespace in
+    ``_bwrap_argv``.  Applying it here counts every process owned by the same
+    account on the Slurm node; a busy shared account would then prevent
+    Bubblewrap itself from creating its namespace with ``EAGAIN``.
+    """
 
     resource.setrlimit(resource.RLIMIT_CPU, (limits.cpu_seconds, limits.cpu_seconds))
     resource.setrlimit(
@@ -53,12 +60,6 @@ def _set_limits(limits: SandboxLimits) -> None:
     resource.setrlimit(
         resource.RLIMIT_FSIZE, (limits.file_size_bytes, limits.file_size_bytes)
     )
-    # RLIMIT_NPROC is best-effort on Linux and is still useful for normal
-    # service accounts.  Some platforms do not expose it.
-    if hasattr(resource, "RLIMIT_NPROC"):
-        resource.setrlimit(
-            resource.RLIMIT_NPROC, (limits.process_count, limits.process_count)
-        )
 
 
 class SandboxService:
@@ -76,6 +77,13 @@ class SandboxService:
         self.enabled = enabled
         self.runtime = runtime
         self.limits = limits or SandboxLimits()
+        pip_spec = importlib.util.find_spec("pip")
+        pip_locations = (
+            tuple(pip_spec.submodule_search_locations or ()) if pip_spec else ()
+        )
+        self.pip_package_path = (
+            Path(pip_locations[0]).resolve() if pip_locations else None
+        )
         if self.limits.max_timeout_seconds <= 0:
             raise ValueError("sandbox timeout must be positive")
 
@@ -121,6 +129,7 @@ class SandboxService:
         command: str,
         workdir: str | None = None,
         timeout_seconds: float | None = None,
+        allow_network: bool = False,
     ) -> dict[str, Any]:
         """Execute one command and return bounded, JSON-safe output."""
 
@@ -140,6 +149,10 @@ class SandboxService:
                 "error": "sandbox_runtime_unavailable",
                 "runtime": self.runtime,
             }
+        if allow_network and (
+            self.pip_package_path is None or not self.pip_package_path.is_dir()
+        ):
+            return {"ok": False, "error": "sandbox_package_installer_unavailable"}
         workspace = self.workspace_for(user_id, conversation_id)
         cwd = self.resolve_workdir(workspace, workdir)
         requested_timeout = float(
@@ -153,7 +166,13 @@ class SandboxService:
             self.limits.max_timeout_seconds,
             max(0.1, requested_timeout),
         )
-        argv = self._bwrap_argv(runtime, workspace, cwd, command)
+        argv = self._bwrap_argv(
+            runtime,
+            workspace,
+            cwd,
+            command,
+            allow_network=allow_network,
+        )
         started = time.monotonic()
         try:
             process = await asyncio.create_subprocess_exec(
@@ -241,15 +260,26 @@ class SandboxService:
             return result
 
     def _bwrap_argv(
-        self, runtime: str, workspace: Path, cwd: str, command: str
+        self,
+        runtime: str,
+        workspace: Path,
+        cwd: str,
+        command: str,
+        *,
+        allow_network: bool = False,
     ) -> list[str]:
         argv = [
             runtime,
             "--die-with-parent",
             "--new-session",
             "--unshare-all",
-            "--clearenv",
         ]
+        # Normal code execution remains network-isolated.  A trusted caller may
+        # temporarily share the host namespace for a policy-validated package
+        # install; the subsequent user program is still run without networking.
+        if allow_network:
+            argv.append("--share-net")
+        argv.append("--clearenv")
         for path in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"):
             if Path(path).exists():
                 argv.extend(("--ro-bind", path, path))
@@ -275,6 +305,46 @@ class SandboxService:
                 "--setenv",
                 "LANG",
                 "C.UTF-8",
+            )
+        )
+        if allow_network:
+            # The compute-node system Python intentionally has no pip module.
+            # Expose only the backend environment's pip package (read-only),
+            # and only to the trusted dependency-install invocation.
+            assert self.pip_package_path is not None
+            argv.extend(
+                (
+                    "--dir",
+                    "/opt",
+                    "--dir",
+                    "/opt/esa-installer",
+                    "--ro-bind",
+                    str(self.pip_package_path),
+                    "/opt/esa-installer/pip",
+                )
+            )
+            for env_name in (
+                "HTTP_PROXY",
+                "HTTPS_PROXY",
+                "NO_PROXY",
+                "ALL_PROXY",
+                "http_proxy",
+                "https_proxy",
+                "no_proxy",
+                "all_proxy",
+                "SSL_CERT_FILE",
+            ):
+                value = os.environ.get(env_name)
+                if value:
+                    argv.extend(("--setenv", env_name, value))
+        # Set the process hard limit after Bubblewrap has entered its private
+        # user/PID namespaces.  This preserves fork-bomb protection without
+        # counting unrelated processes belonging to the same HPC account.
+        argv.extend(
+            (
+                "/usr/bin/prlimit",
+                f"--nproc={self.limits.process_count}:{self.limits.process_count}",
+                "--",
                 "/bin/sh",
                 "-lc",
                 command,

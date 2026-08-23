@@ -55,6 +55,13 @@ class SendMessageRequest(BaseModel):
     replace_message_id: int | None = Field(default=None, ge=1)
 
 
+class CodeExecutionRequest(BaseModel):
+    """Code block submitted to the auxiliary-model sandbox pipeline."""
+
+    language: str = Field(min_length=1, max_length=32)
+    code: str = Field(min_length=1, max_length=50_000)
+
+
 class ResearchProjectCreateRequest(BaseModel):
     """表示 `research project create request` 数据结构。"""
     name: str = Field(min_length=1, max_length=80)

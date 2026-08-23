@@ -37,6 +37,73 @@ class ChatStreamEvent {
   final Map<String, dynamic> data;
 }
 
+class CodeExecutionResult {
+  const CodeExecutionResult({
+    required this.ok,
+    required this.language,
+    required this.code,
+    required this.codeChanged,
+    required this.dependencies,
+    required this.rejectedDependencies,
+    required this.notes,
+    required this.warnings,
+    required this.modelUsed,
+    required this.attemptCount,
+    required this.result,
+    required this.installResults,
+  });
+
+  factory CodeExecutionResult.fromJson(Map<String, dynamic> json) =>
+      CodeExecutionResult(
+        ok: json['ok'] == true,
+        language: json['language']?.toString() ?? 'plaintext',
+        code: json['code']?.toString() ?? '',
+        codeChanged: json['code_changed'] == true,
+        dependencies: _stringValues(json['dependencies']),
+        rejectedDependencies: _stringValues(json['rejected_dependencies']),
+        notes: _stringValues(json['notes']),
+        warnings: _stringValues(json['warnings']),
+        modelUsed: json['model_used'] == true,
+        attemptCount: (json['attempt_count'] as num?)?.toInt() ?? 0,
+        result: json['result'] is Map
+            ? Map<String, dynamic>.from(json['result'] as Map)
+            : const {},
+        installResults: json['install_results'] is List
+            ? (json['install_results'] as List)
+                  .whereType<Map>()
+                  .map(Map<String, dynamic>.from)
+                  .toList()
+            : const [],
+      );
+
+  static List<String> _stringValues(Object? value) => value is List
+      ? value.whereType<Object>().map((item) => item.toString()).toList()
+      : const [];
+
+  final bool ok;
+  final String language;
+  final String code;
+  final bool codeChanged;
+  final List<String> dependencies;
+  final List<String> rejectedDependencies;
+  final List<String> notes;
+  final List<String> warnings;
+  final bool modelUsed;
+  final int attemptCount;
+  final Map<String, dynamic> result;
+  final List<Map<String, dynamic>> installResults;
+
+  String get stdout => result['stdout']?.toString() ?? '';
+  String get stderr => result['stderr']?.toString() ?? '';
+  String get error => result['error']?.toString() ?? '';
+  double get durationSeconds {
+    final seconds = result['duration_seconds'];
+    if (seconds is num) return seconds.toDouble();
+    final milliseconds = result['duration_ms'];
+    return milliseconds is num ? milliseconds.toDouble() / 1000 : 0;
+  }
+}
+
 class AttachmentContent {
   const AttachmentContent({
     required this.bytes,
@@ -1540,6 +1607,32 @@ class ApiClient {
     return list
         .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<CodeExecutionResult> executeCode(
+    String conversationId, {
+    required String code,
+    required String language,
+  }) async {
+    if (kOfflineMode) {
+      return CodeExecutionResult.fromJson({
+        'ok': false,
+        'language': language,
+        'code': code,
+        'code_changed': false,
+        'warnings': ['离线模式未启用沙箱'],
+        'result': {'ok': false, 'error': 'sandbox_disabled'},
+      });
+    }
+    final response = await http.post(
+      _uri('/conversations/$conversationId/code/execute'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'code': code, 'language': language}),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return CodeExecutionResult.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
   }
 
   Future<List<ChatMessage>> sendMessageWithAttachments(

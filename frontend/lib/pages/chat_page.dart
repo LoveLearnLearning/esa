@@ -368,6 +368,79 @@ class _ChatPageState extends State<ChatPage> {
     app.send(message, markdown: true, displayText: message);
   }
 
+  Future<void> _executeCode(
+    AppState app,
+    String blockId,
+    String code,
+    String language, {
+    required _CodeSource source,
+  }) async {
+    final conversationId = app.activeId;
+    if (conversationId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先进入一个对话再运行代码')));
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await app.api.executeCode(
+        conversationId,
+        code: code,
+        language: normalizeCodeLanguage(language),
+      );
+      if (!mounted) return;
+
+      if (result.codeChanged && result.code.isNotEmpty) {
+        final existing = _codeDrafts[blockId];
+        final next = existing == null
+            ? _CodeSession(
+                id: blockId,
+                value: result.code,
+                originalValue: code.trimRight(),
+                language: normalizeCodeLanguage(result.language),
+                source: source,
+              )
+            : existing.copyWith(
+                value: result.code,
+                language: normalizeCodeLanguage(result.language),
+                source: source,
+              );
+        _codeDrafts[blockId] = next;
+        setState(() {
+          if (_codeSession?.id == blockId) _codeSession = next;
+          _codeDraftVersion++;
+        });
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (_) => _CodeExecutionDialog(
+          result: result,
+          onOpenEditor: () {
+            Navigator.of(context).pop();
+            _openCodeEditor(
+              blockId,
+              result.code.isEmpty ? code : result.code,
+              result.language,
+              source: source,
+            );
+          },
+        ),
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(error.detail)));
+      }
+    } catch (_) {
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('代码执行失败，请稍后重试')),
+        );
+      }
+    }
+  }
+
   void _clearComposerCodeDrafts() {
     setState(() {
       _codeDrafts.removeWhere((id, _) => id.startsWith('composer:'));
@@ -590,6 +663,13 @@ class _ChatPageState extends State<ChatPage> {
           onSendToAgent: code.source == _CodeSource.assistant
               ? () => _sendEditedAgentCode(app)
               : null,
+          onRunCode: (value, language) => _executeCode(
+            app,
+            code.id,
+            value,
+            language,
+            source: code.source,
+          ),
           onClose: _closeCodeEditor,
         );
       }
@@ -744,6 +824,13 @@ class _ChatPageState extends State<ChatPage> {
                         source: _CodeSource.user,
                       ),
                   codeOverrideVersion: _codeDraftVersion,
+                  onRunCode: (blockId, code, language) => _executeCode(
+                    app,
+                    blockId,
+                    code,
+                    language,
+                    source: _CodeSource.user,
+                  ),
                   attachments: m.attachments,
                   onOpenAttachment: _openAttachment,
                   onEdit: (text) async {
@@ -794,6 +881,13 @@ class _ChatPageState extends State<ChatPage> {
                         source: _CodeSource.assistant,
                       ),
                   codeOverrideVersion: _codeDraftVersion,
+                  onRunCode: (blockId, code, language) => _executeCode(
+                    app,
+                    blockId,
+                    code,
+                    language,
+                    source: _CodeSource.assistant,
+                  ),
                   sources: _sourcesForAssistant(
                     app.messages,
                     app.messages.indexOf(m),
@@ -996,6 +1090,197 @@ class _ChatPageState extends State<ChatPage> {
 
     return normalize(left) == normalize(right);
   }
+}
+
+class _CodeExecutionDialog extends StatelessWidget {
+  const _CodeExecutionDialog({
+    required this.result,
+    required this.onOpenEditor,
+  });
+
+  final CodeExecutionResult result;
+  final VoidCallback onOpenEditor;
+
+  @override
+  Widget build(BuildContext context) {
+    final output = result.stdout.isEmpty ? '（程序没有标准输出）' : result.stdout;
+    final installFailures = result.installResults
+        .where((item) => item['ok'] != true)
+        .toList();
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      child: SizedBox(
+        width: 840,
+        height: 680,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 10, 10),
+              child: Row(
+                children: [
+                  Icon(
+                    result.ok
+                        ? LucideIcons.circleCheck
+                        : LucideIcons.circleAlert,
+                    size: 19,
+                    color: result.ok
+                        ? const Color(0xFF22C55E)
+                        : context.scheme.error,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      result.ok ? '沙箱运行成功' : '沙箱运行失败',
+                      style: context.texts.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(LucideIcons.x, size: 18),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: context.n.divider),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Chip(label: Text(result.language.toUpperCase())),
+                  Chip(label: Text('尝试 ${result.attemptCount} 次')),
+                  Chip(
+                    label: Text(result.modelUsed ? '辅助 9B 已检查' : '辅助模型降级'),
+                  ),
+                  if (result.codeChanged) const Chip(label: Text('代码已自动修复')),
+                  if (result.durationSeconds > 0)
+                    Chip(
+                      label: Text(
+                        '${result.durationSeconds.toStringAsFixed(2)} 秒',
+                      ),
+                    ),
+                  for (final dependency in result.dependencies)
+                    Chip(label: Text('已安装 $dependency')),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (result.notes.isNotEmpty)
+                      _section(
+                        context,
+                        '辅助模型修改',
+                        result.notes.map((item) => '• $item').join('\n'),
+                      ),
+                    if (result.codeChanged)
+                      _section(context, '最终执行代码', result.code, code: true),
+                    _section(context, '标准输出', output, code: true),
+                    if (result.stderr.isNotEmpty)
+                      _section(
+                        context,
+                        '错误输出',
+                        result.stderr,
+                        code: true,
+                        error: true,
+                      ),
+                    if (result.error.isNotEmpty)
+                      _section(context, '执行错误', result.error, error: true),
+                    if (installFailures.isNotEmpty)
+                      _section(
+                        context,
+                        '依赖安装失败',
+                        installFailures
+                            .map(
+                              (item) =>
+                                  item['stderr']?.toString().trim().isNotEmpty ==
+                                      true
+                                  ? item['stderr'].toString()
+                                  : item['error']?.toString() ?? 'unknown error',
+                            )
+                            .join('\n'),
+                        code: true,
+                        error: true,
+                      ),
+                    if (result.rejectedDependencies.isNotEmpty)
+                      _section(
+                        context,
+                        '未安装的非白名单依赖',
+                        result.rejectedDependencies.join(', '),
+                      ),
+                    if (result.warnings.isNotEmpty)
+                      _section(context, '提示', result.warnings.join('\n')),
+                  ],
+                ),
+              ),
+            ),
+            Divider(height: 1, color: context.n.divider),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: onOpenEditor,
+                    icon: const Icon(LucideIcons.fileCode2, size: 16),
+                    label: const Text('在编辑器中打开'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('完成'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _section(
+    BuildContext context,
+    String title,
+    String content, {
+    bool code = false,
+    bool error = false,
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: 16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: context.texts.labelLarge),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: error
+                ? context.scheme.errorContainer.withValues(alpha: .35)
+                : context.n.n100,
+            border: Border.all(color: context.n.divider),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SelectableText(
+            content,
+            style: TextStyle(
+              fontFamily: code ? 'JetBrainsMono' : null,
+              fontSize: code ? 12.5 : 13.5,
+              height: 1.55,
+              color: error ? context.scheme.error : null,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _SourcePreviewDialog extends StatelessWidget {

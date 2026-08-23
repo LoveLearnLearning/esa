@@ -42,6 +42,7 @@ from backend.core.services.teaching_context_adapter import TeachingContextAdapte
 from backend.core.services.conversation_title_service import (
     ConversationTitleService,
 )
+from backend.core.services.code_execution_service import CodeExecutionService
 from backend.core.services.user_attachment_service import (
     AttachmentTooLarge,
     StoredAttachment,
@@ -60,6 +61,7 @@ from backend.core.web.concurrency import (
 )
 from backend.core.web.deps import get_current_session
 from backend.core.web.schemas import (
+    CodeExecutionRequest,
     ConversationCreateRequest,
     ConversationPatchRequest,
     SendMessageRequest,
@@ -1181,6 +1183,36 @@ def get_messages(
     _load_owned(request, conversation_id, session)
     chat_store: ChatStore = request.app.state.chat_store
     return chat_store.get_history(conversation_id)
+
+
+@router.post("/{conversation_id}/code/execute")
+async def execute_code(
+    conversation_id: str,
+    body: CodeExecutionRequest,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    """Repair with the auxiliary model, then execute in the owned sandbox."""
+
+    _load_owned(request, conversation_id, session)
+    service = getattr(request.app.state, "code_execution_service", None)
+    if not isinstance(service, CodeExecutionService):
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "代码执行服务尚未配置",
+        )
+    try:
+        return await service.execute(
+            user_id=session.user_id,
+            conversation_id=conversation_id,
+            language=body.language,
+            code=body.code,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            str(error),
+        ) from error
 
 
 @router.post("/{conversation_id}/messages")

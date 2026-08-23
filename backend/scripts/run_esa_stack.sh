@@ -85,7 +85,8 @@ if (( shared_compute_node == 1 )) && {
 fi
 
 read -r \
-    main_model main_tp main_lora main_lora_name \
+    main_model main_tp main_lora main_lora_name main_enforce_eager \
+    main_performance_mode main_lora_fully_sharded main_lora_specialize_active \
     auxiliary_model auxiliary_name auxiliary_port auxiliary_dtype \
     auxiliary_gpu_memory auxiliary_max_length auxiliary_max_num_seqs \
     auxiliary_max_images rag_enabled rag_embedding_backend \
@@ -102,8 +103,12 @@ from backend.core.utils.config import (
     AUXILIARY_MODEL_PATH,
     AUXILIARY_MODEL_PORT,
     MODEL_PATH,
+    MODEL_ENFORCE_EAGER,
+    MODEL_LORA_FULLY_SHARDED,
     MODEL_LORA_NAME,
     MODEL_LORA_PATH,
+    MODEL_LORA_SPECIALIZE_ACTIVE,
+    MODEL_PERFORMANCE_MODE,
     MODEL_TENSOR_PARALLEL_SIZE,
     MCP_ENABLED,
     PERSONAL_KB_ENABLED,
@@ -119,6 +124,10 @@ print(
     MODEL_TENSOR_PARALLEL_SIZE,
     MODEL_LORA_PATH or "disabled",
     MODEL_LORA_NAME,
+    "1" if MODEL_ENFORCE_EAGER else "0",
+    MODEL_PERFORMANCE_MODE,
+    "1" if MODEL_LORA_FULLY_SHARDED else "0",
+    "1" if MODEL_LORA_SPECIALIZE_ACTIVE else "0",
     AUXILIARY_MODEL_PATH,
     AUXILIARY_MODEL_NAME,
     AUXILIARY_MODEL_PORT,
@@ -229,6 +238,12 @@ cleanup() {
             sleep 1
         done
     fi
+    # The backend runs in its own session. vLLM workers can briefly survive
+    # their parent during shutdown and become reparented to PID 1; always reap
+    # any remaining members of that dedicated process group before restarting.
+    if [[ -n "$backend_pid" ]]; then
+        kill -KILL -- "-$backend_pid" 2>/dev/null || true
+    fi
     for pid in "$auxiliary_pid" "$mineru_api_pid" "$qdrant_pid"; do
         if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
             kill "$pid" 2>/dev/null || true
@@ -246,6 +261,7 @@ echo "Node=$(hostname)"
 echo "AllocatedGPUs=${CUDA_VISIBLE_DEVICES:-all}"
 echo "MainModel=$main_model MainGPUs=$main_devices TP=$main_tp"
 echo "MainLoRA=$main_lora LoRAName=$main_lora_name"
+echo "MainOptimization=Eager:$main_enforce_eager Mode:$main_performance_mode FullyShardedLoRA:$main_lora_fully_sharded SpecializeActiveLoRA:$main_lora_specialize_active"
 echo "AuxiliaryModel=$auxiliary_model AuxiliaryGPU=$auxiliary_device"
 echo "AuxiliaryEndpoint=http://127.0.0.1:${auxiliary_port}/v1"
 echo "MinerUEndpoint=$mineru_api_url"
@@ -484,7 +500,7 @@ fi
 echo "===== Starting ESA backend ====="
 CUDA_VISIBLE_DEVICES="$backend_devices" \
 TRITON_CACHE_DIR="$main_cache" \
-python -m backend.main &
+setsid python -m backend.main &
 backend_pid=$!
 
 wait_targets=("$auxiliary_pid" "$backend_pid")

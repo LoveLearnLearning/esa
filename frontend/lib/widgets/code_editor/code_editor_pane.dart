@@ -79,6 +79,7 @@ class CodeEditorPane extends StatefulWidget {
     required this.onLanguageChanged,
     required this.onClose,
     this.onSendToAgent,
+    this.onRunCode,
     this.compact = false,
     this.indentSize = 2,
     this.editorTheme = 'vs-dark',
@@ -92,6 +93,7 @@ class CodeEditorPane extends StatefulWidget {
   final ValueChanged<String> onLanguageChanged;
   final VoidCallback onClose;
   final VoidCallback? onSendToAgent;
+  final Future<void> Function(String code, String language)? onRunCode;
   final bool compact;
   final int indentSize;
   final String editorTheme;
@@ -103,6 +105,7 @@ class CodeEditorPane extends StatefulWidget {
 
 class _CodeEditorPaneState extends State<CodeEditorPane> {
   bool _copied = false;
+  bool _running = false;
   late String _lspStatus;
   Timer? _copiedTimer;
 
@@ -145,6 +148,17 @@ class _CodeEditorPaneState extends State<CodeEditorPane> {
     _copiedTimer = Timer(const Duration(milliseconds: 1200), () {
       if (mounted) setState(() => _copied = false);
     });
+  }
+
+  Future<void> _runCode() async {
+    final callback = widget.onRunCode;
+    if (callback == null || _running) return;
+    setState(() => _running = true);
+    try {
+      await callback(widget.value, normalizeCodeLanguage(widget.language));
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
   }
 
   @override
@@ -200,6 +214,21 @@ class _CodeEditorPaneState extends State<CodeEditorPane> {
                       icon: const Icon(LucideIcons.send, size: 16),
                     ),
                   ),
+                if (widget.onRunCode != null)
+                  _running
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : _action(
+                          context,
+                          LucideIcons.play,
+                          '使用辅助模型修复并在沙箱运行',
+                          _runCode,
+                        ),
                 _action(
                   context,
                   _copied ? LucideIcons.check : LucideIcons.copy,

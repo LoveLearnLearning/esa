@@ -24,6 +24,7 @@ class AssistantMessage extends StatefulWidget {
     this.codeOverrideFor,
     this.onOpenCodeEditorWithId,
     this.onCodeChangedWithId,
+    this.onRunCode,
     this.codeOverrideVersion = 0,
     this.sources = const [],
     this.onOpenSource,
@@ -39,6 +40,7 @@ class AssistantMessage extends StatefulWidget {
   onOpenCodeEditorWithId;
   final void Function(String blockId, String code, String language)?
   onCodeChangedWithId;
+  final CodeRunCallback? onRunCode;
   final int codeOverrideVersion;
   final List<SourceCitation> sources;
   final ValueChanged<SourceCitation>? onOpenSource;
@@ -347,6 +349,7 @@ class _AssistantMessageState extends State<AssistantMessage> {
       codeOverrideFor: widget.codeOverrideFor,
       onOpenCodeEditorWithId: widget.onOpenCodeEditorWithId,
       onCodeChangedWithId: widget.onCodeChangedWithId,
+      onRunCode: widget.onRunCode,
       codeOverrideVersion: widget.codeOverrideVersion,
     );
 
