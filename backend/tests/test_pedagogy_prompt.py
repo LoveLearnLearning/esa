@@ -53,7 +53,7 @@ def test_system_prompt_defines_when_tools_must_be_used():
 
     assert "# Tool 使用规则" in prompt
     assert "不要凭模型记忆猜测" in prompt
-    assert "retrieve_knowledge_v2" in prompt
+    assert "retrieve_knowledge" in prompt
 
 
 def test_build_prompt_has_no_duplicate_prompt_or_style_rule_tables():

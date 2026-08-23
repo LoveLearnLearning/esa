@@ -122,7 +122,7 @@ def gen_arxiv(cfg, version, rng, all_names, out):
     for i, q in enumerate(cfg["arxiv_search"]["混淆_不该检索"]):
         out.append(mk(
             f"arxiv_neg_{i:03d}", f"arxiv__不该检索__{i:03d}", "hard_negative",
-            ["arxiv_search", "web_search", "retrieve_knowledge_v2"],
+            ["arxiv_search", "web_search", "retrieve_knowledge"],
             [Turn(role="user", content=q), Turn(role="assistant", content=replies[q])],
             version, rng, all_names, review=True))
 

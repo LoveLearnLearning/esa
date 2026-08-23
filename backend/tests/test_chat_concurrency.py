@@ -136,7 +136,7 @@ def test_tool_result_channels_are_persisted_without_leaking_audit_to_history(tmp
         [
             {
                 "role": "tool",
-                "name": "retrieve_knowledge_v2",
+                "name": "retrieve_knowledge",
                 "content": '{"display":"source"}',
                 "model_content": '{"model":"compact"}',
                 "tool_call_id": "tool-test",

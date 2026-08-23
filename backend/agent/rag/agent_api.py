@@ -123,14 +123,14 @@ def retrieve_knowledge_payload(
     }
 
 
-def retrieve_knowledge_v2_result(
+def retrieve_knowledge_result(
     query: str,
     top_k: int = 5,
     similarity_threshold: float | None = None,
     service: RetrievalService | None = None,
     token_counter: Callable[[str], int] | None = None,
 ) -> ToolExecutionResult:
-    """Return semantic v2 projections for the model, UI, and audit store."""
+    """Return separated projections for the model, UI, and audit store."""
 
     if top_k <= 0:
         raise ValueError("top_k must be positive")

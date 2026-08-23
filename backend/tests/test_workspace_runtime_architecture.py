@@ -442,9 +442,8 @@ def test_concept_explanation_runtime_exposes_rag_and_direct_answer_policy():
     )
 
     system_prompt = spec.messages[0]["content"]
-    assert "retrieve_knowledge_v2" in spec.run_metadata["tool_names"]
-    assert "retrieve_knowledge" not in spec.run_metadata["tool_names"]
-    assert "先调用 `retrieve_knowledge_v2`" in system_prompt
+    assert "retrieve_knowledge" in spec.run_metadata["tool_names"]
+    assert "先调用 `retrieve_knowledge`" in system_prompt
     assert "本轮直接回答" in system_prompt
     assert "正式讲解前，先问" not in system_prompt
 
@@ -484,12 +483,12 @@ def test_bound_rag_tool_uses_the_turn_runtime_dependency(monkeypatch):
         return {"query": query, "result_count": 0}
 
     monkeypatch.setattr(
-        "backend.agent.rag.agent_api.retrieve_knowledge_v2_result",
+        "backend.agent.rag.agent_api.retrieve_knowledge_result",
         fake_retrieve,
     )
     result = asyncio.run(
         compiled.bind(context).execute(
-            "retrieve_knowledge_v2", {"query": "binary search", "top_k": 3}
+            "retrieve_knowledge", {"query": "binary search", "top_k": 3}
         )
     )
 

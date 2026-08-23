@@ -25,7 +25,7 @@ LEARNING_TOOLS = frozenset(
         "recommend_practice", "get_mastery_report", "get_mastery_level",
         "get_weak_prerequisites", "get_review_timing", "record_answer",
         "record_learning_evidence", "get_learning_evidence_summary",
-        "retrieve_knowledge_v2", "get_knowledge_base_stats",
+        "retrieve_knowledge", "get_knowledge_base_stats",
     }
 )
 
@@ -89,7 +89,6 @@ CAPABILITY_DECLARATIONS: dict[str, CapabilityDeclaration] = {
         for name in COMMON_TOOLS
     },
     **{name: CapabilityDeclaration(name, "learning") for name in LEARNING_TOOLS},
-    "retrieve_knowledge": CapabilityDeclaration("retrieve_knowledge", "legacy"),
     **{
         name: CapabilityDeclaration(
             name,

@@ -114,7 +114,7 @@ def latex_of(sympy_result: str) -> str:
 # 学情三件套已由 fixtures.py 用测试学情库真实计算，不在此列。
 BACKEND_REQUIRED = {
     "load_skill",
-    "retrieve_knowledge_v2",
+    "retrieve_knowledge",
     "get_knowledge_base_stats",
 }
 

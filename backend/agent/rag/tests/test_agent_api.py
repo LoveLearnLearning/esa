@@ -29,7 +29,7 @@ from backend.agent.rag.agent_api import (
     knowledge_base_stats,
     reset_retrieval_service,
     retrieve_knowledge_payload,
-    retrieve_knowledge_v2_result,
+    retrieve_knowledge_result,
 )
 from backend.agent.rag.retrieval.context import estimate_tokens
 from backend.agent.rag.retrieval.contracts import (
@@ -237,7 +237,7 @@ def test_v2_separates_model_display_and_audit_with_final_json_budget() -> None:
     _configure(replace(original, hits=hits))
 
     counter = lambda text: len(text)
-    result = retrieve_knowledge_v2_result(
+    result = retrieve_knowledge_result(
         "什么是测试？", top_k=5, token_counter=counter
     )
 

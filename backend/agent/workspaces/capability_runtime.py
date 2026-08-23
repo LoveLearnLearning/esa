@@ -115,17 +115,12 @@ class BoundToolExecutor:
                     assignment_id=self.context.authorized_resources.assignment_id,
                 )
             if name == "retrieve_knowledge":
-                from backend.agent.rag.agent_api import retrieve_knowledge_payload
-
-                service = self.context.runtime_dependencies.rag_service
-                return retrieve_knowledge_payload(service=service, **normalized)
-            if name == "retrieve_knowledge_v2":
-                from backend.agent.rag.agent_api import retrieve_knowledge_v2_result
+                from backend.agent.rag.agent_api import retrieve_knowledge_result
 
                 service = self.context.runtime_dependencies.rag_service
                 provider = self.context.runtime_dependencies.token_counter
                 counter = getattr(provider, "count_tokens", None)
-                return retrieve_knowledge_v2_result(
+                return retrieve_knowledge_result(
                     service=service,
                     token_counter=counter if callable(counter) else None,
                     **normalized,
