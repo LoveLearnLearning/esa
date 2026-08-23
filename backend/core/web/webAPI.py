@@ -238,6 +238,7 @@ from backend.core.web.routers import (
     research_capabilities,
     schedule,
     schedule_hust,
+    sandbox,
     student_teaching,
     teaching,
     workspaces,
@@ -792,6 +793,7 @@ business_router.include_router(learning.router)
 business_router.include_router(lsp.router)
 business_router.include_router(schedule.router)
 business_router.include_router(schedule_hust.router)
+business_router.include_router(sandbox.router)
 business_router.include_router(memories.router)
 business_router.include_router(personal_knowledge_base.router)
 business_router.include_router(workspaces.router)

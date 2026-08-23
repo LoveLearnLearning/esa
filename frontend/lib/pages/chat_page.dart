@@ -368,6 +368,26 @@ class _ChatPageState extends State<ChatPage> {
     app.send(message, markdown: true, displayText: message);
   }
 
+  Future<String?> _runCode(AppState app, String code, String language) async {
+    final conversationId = app.activeId;
+    if (conversationId == null) return '请先发送一条消息，再运行代码。';
+    try {
+      final result = await app.api.runCodeInSandbox(
+        conversationId: conversationId,
+        code: code,
+        language: language,
+      );
+      final output = result.displayOutput;
+      if (result.ok && output.isEmpty) return '运行成功（无输出）';
+      if (result.ok) return output;
+      return output.isEmpty ? '运行失败' : '运行失败\n$output';
+    } on ApiException catch (error) {
+      return '运行失败：${error.detail}';
+    } catch (_) {
+      return '运行失败：无法连接沙箱服务。';
+    }
+  }
+
   void _clearComposerCodeDrafts() {
     setState(() {
       _codeDrafts.removeWhere((id, _) => id.startsWith('composer:'));
@@ -485,6 +505,7 @@ class _ChatPageState extends State<ChatPage> {
         source: _CodeSource.composer,
       ),
       onCodeBlockChanged: _syncComposerCodeBlock,
+      onRunCode: (code, language) => _runCode(app, code, language),
       onSelectedAttachmentsChanged: widget.onSelectedAttachmentsChanged,
       courseNames: <String>{
         ...app.learningCourses.map((item) => item.name),
@@ -760,6 +781,7 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     );
                   },
+                  onRunCode: (code, language) => _runCode(app, code, language),
                 );
               case MessageRole.tool:
                 child = Align(
@@ -809,6 +831,7 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     );
                   },
+                  onRunCode: (code, language) => _runCode(app, code, language),
                 );
             }
             return Center(

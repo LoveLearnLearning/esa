@@ -49,6 +49,49 @@ class AttachmentContent {
   final String filename;
 }
 
+class SandboxRunResult {
+  const SandboxRunResult({
+    required this.ok,
+    this.stdout = '',
+    this.stderr = '',
+    this.error,
+    this.exitCode,
+    this.timedOut = false,
+    this.outputTruncated = false,
+  });
+
+  factory SandboxRunResult.fromJson(Map<String, dynamic> json) {
+    return SandboxRunResult(
+      ok: json['ok'] == true,
+      stdout: json['stdout'] as String? ?? '',
+      stderr: json['stderr'] as String? ?? '',
+      error: json['error'] as String?,
+      exitCode: (json['exit_code'] as num?)?.toInt(),
+      timedOut: json['timed_out'] == true,
+      outputTruncated: json['output_truncated'] == true,
+    );
+  }
+
+  final bool ok;
+  final String stdout;
+  final String stderr;
+  final String? error;
+  final int? exitCode;
+  final bool timedOut;
+  final bool outputTruncated;
+
+  String get displayOutput {
+    final parts = <String>[];
+    if (stdout.isNotEmpty) parts.add(stdout);
+    if (stderr.isNotEmpty) parts.add(stderr);
+    if (parts.isEmpty && error != null) parts.add(error!);
+    if (parts.isEmpty && timedOut) parts.add('运行超时');
+    if (parts.isEmpty && !ok) parts.add('运行失败');
+    if (outputTruncated) parts.add('\n[输出已截断]');
+    return parts.join('\n');
+  }
+}
+
 class RequestCancellation {
   bool _cancelled = false;
   void Function()? _activeCancel;
@@ -190,6 +233,31 @@ class ApiClient {
   };
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
+
+  Future<SandboxRunResult> runCodeInSandbox({
+    required String conversationId,
+    required String code,
+    required String language,
+    double timeoutSeconds = 30,
+  }) async {
+    if (kOfflineMode) {
+      return const SandboxRunResult(ok: false, error: '离线模式未启用代码执行服务');
+    }
+    final response = await http.post(
+      _uri('/sandbox/run'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'conversation_id': conversationId,
+        'code': code,
+        'language': language,
+        'timeout_seconds': timeoutSeconds,
+      }),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return SandboxRunResult.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
 
   dynamic _decode(http.Response r) => jsonDecode(utf8.decode(r.bodyBytes));
 

@@ -109,6 +109,37 @@ final answer = 42;
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('code block run button forwards code and shows output', (
+    tester,
+  ) async {
+    String? receivedCode;
+    String? receivedLanguage;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(
+          body: EsaMarkdown(
+            data: '''```python
+print('hello')
+```''',
+            onRunCode: (code, language) async {
+              receivedCode = code;
+              receivedLanguage = language;
+              return 'hello';
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('运行'));
+    await tester.pumpAndSettle();
+
+    expect(receivedCode, "print('hello')");
+    expect(receivedLanguage, 'python');
+    expect(find.text('hello'), findsOneWidget);
+  });
+
   testWidgets('code preview follows streaming markdown updates', (
     tester,
   ) async {

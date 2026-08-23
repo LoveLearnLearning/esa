@@ -55,6 +55,15 @@ class SendMessageRequest(BaseModel):
     replace_message_id: int | None = Field(default=None, ge=1)
 
 
+class SandboxRunRequest(BaseModel):
+    """请求在当前用户对话沙箱中运行一段代码。"""
+
+    conversation_id: str = Field(min_length=1, max_length=128)
+    code: str = Field(min_length=1, max_length=12_000)
+    language: str = Field(min_length=1, max_length=32)
+    timeout_seconds: float = Field(default=30.0, gt=0, le=300.0)
+
+
 class ResearchProjectCreateRequest(BaseModel):
     """表示 `research project create request` 数据结构。"""
     name: str = Field(min_length=1, max_length=80)

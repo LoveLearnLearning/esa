@@ -14,6 +14,7 @@ import math
 import os
 from pathlib import Path, PurePosixPath
 import resource
+import shlex
 import shutil
 import signal
 import time
@@ -239,6 +240,59 @@ class SandboxService:
             result["timed_out"] = True
             result["error"] = "sandbox_timeout"
             return result
+
+    async def execute_code(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str,
+        code: str,
+        language: str,
+        timeout_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        """Run an interpreted code block through the same isolated command path."""
+
+        source = code.strip()
+        if not source:
+            raise SandboxError("code cannot be blank")
+        command = self._code_command(source, language)
+        return await self.execute(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            command=command,
+            timeout_seconds=timeout_seconds,
+        )
+
+    @staticmethod
+    def _code_command(code: str, language: str) -> str:
+        normalized = language.strip().lower()
+        aliases = {
+            "py": "python",
+            "python3": "python",
+            "js": "javascript",
+            "node": "javascript",
+            "sh": "shell",
+            "bash": "shell",
+            "zsh": "shell",
+        }
+        normalized = aliases.get(normalized, normalized)
+        interpreters = {
+            "python": ("python3", "-c"),
+            "javascript": ("node", "-e"),
+            "shell": ("/bin/sh", "-c"),
+            "ruby": ("ruby", "-e"),
+            "perl": ("perl", "-e"),
+            "php": ("php", "-r"),
+        }
+        try:
+            executable, flag = interpreters[normalized]
+        except KeyError as error:
+            raise SandboxError(
+                f"暂不支持直接运行 {language!r} 代码，请使用 Python、JavaScript、Shell、Ruby、Perl 或 PHP"
+            ) from error
+        # shlex.quote keeps source code one argument to the interpreter. The
+        # outer sandbox shell therefore cannot reinterpret quotes or newlines.
+        return " ".join(shlex.quote(value) for value in (executable, flag, code))
 
     def _bwrap_argv(
         self, runtime: str, workspace: Path, cwd: str, command: str

@@ -64,3 +64,14 @@ def test_bwrap_command_is_network_and_home_isolated(tmp_path: Path) -> None:
     assert "/workspace" in argv
     assert "--setenv" in argv
     assert "HOME" in argv
+
+
+def test_code_command_quotes_source_and_normalizes_languages() -> None:
+    command = SandboxService._code_command("print('a\n$HOME')", "py")
+    assert command.startswith("python3 -c ")
+    assert "$HOME" in command
+    assert SandboxService._code_command("console.log('ok')", "js").startswith(
+        "node -e "
+    )
+    with pytest.raises(SandboxError, match="暂不支持"):
+        SandboxService._code_command("int main() {}", "cpp")
