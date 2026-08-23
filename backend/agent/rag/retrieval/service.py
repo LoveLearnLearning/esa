@@ -15,7 +15,7 @@ import time
 
 from ..chunk import Chunk
 from ..collection import LoadedChunkCollection
-from .context import ContextBuilder, EvidenceAssembler
+from .context import ContextBuilder, EvidenceAssembler, rank_evidence_for_query
 from .calibration import (
     CosineScoreCalibrator,
     RobustMinMaxScoreCalibrator,
@@ -93,6 +93,7 @@ class RetrievalService:
 
     def _build_hit(
         self,
+        query: str,
         item: RankedItem,
         context_level: ContextLevel,
         fused_scores: Mapping[str, float],
@@ -106,18 +107,19 @@ class RetrievalService:
             chunk,
             *(part for part in context if part.chunk_id != chunk.chunk_id),
         )
+        evidence = tuple(
+            evidence
+            for part in evidence_chunks
+            for evidence in EvidenceAssembler.build(
+                part,
+                self.collection.document_names[part.document_id],
+            )
+        )
         return SearchHit(
             chunk_id=chunk.chunk_id,
             retrieval_score=fused_scores[chunk.chunk_id],
             rerank_score=selection.rerank_scores.get(chunk.chunk_id),
-            evidence=tuple(
-                evidence
-                for part in evidence_chunks
-                for evidence in EvidenceAssembler.build(
-                    part,
-                    self.collection.document_names[part.document_id],
-                )
-            ),
+            evidence=rank_evidence_for_query(query, evidence),
             context_chunk_ids=tuple(part.chunk_id for part in context),
             context_text="\n\n".join(part.bm25_body for part in context),
         )
@@ -147,10 +149,12 @@ class RetrievalService:
             selected_chunks,
             context_level,
             self.config.max_context_tokens,
+            selection.merged_context_chunk_ids,
         )
 
         hits = tuple(
             self._build_hit(
+                query,
                 item,
                 context_level,
                 fused_scores,

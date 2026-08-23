@@ -96,7 +96,9 @@ def _response(
         parse_revision_id="parse_1",
         document_name=document_name,
         section_path=("第一章",),
-        locators=locators if locators is not None else (
+        locators=locators
+        if locators is not None
+        else (
             {
                 "locator_id": "locator_1",
                 "kind": "page",
@@ -141,8 +143,8 @@ def _configure(response: SearchResponse) -> None:
     configure_retrieval_service(service)
 
 
-def test_retrieve_knowledge_preserves_old_shape_and_adds_evidence() -> None:
-    """验证 `retrieve_knowledge_preserves_old_shape_and_adds_evidence` 场景。"""
+def test_compatibility_projection_uses_neutral_score_and_real_stages() -> None:
+    """Compatibility output must not label arbitrary fusion scores as RRF."""
     _configure(_response())
 
     payload = retrieve_knowledge_payload("什么是测试？", top_k=1)
@@ -155,7 +157,32 @@ def test_retrieve_knowledge_preserves_old_shape_and_adds_evidence() -> None:
     assert tuple(result) == B2_RESULT_KEYS
     assert result["source"] == "测试文档.pdf"
     assert result["score_type"] == "reranker"
+    assert result["retrieval_score"] == 0.031
+    assert "rrf_score" not in result
+    assert "rrf" not in payload["rankings"]
+    assert payload["rankings"]["fusion"] == ["chunk_1"]
     assert result["evidence"][0]["element_id"] == "element_1"
+
+
+def test_compatibility_projection_reports_dense_when_reranker_did_not_run() -> None:
+    original = _response(rerank_score=None)
+    trace = replace(
+        original.trace,
+        rankings={"fusion": ("chunk_1",), "final": ("chunk_1",)},
+        fusion={
+            "configured_method": "dense",
+            "applied_method": "dense",
+            "ranking_method": "retrieval",
+        },
+        reranker_applied=False,
+    )
+    _configure(replace(original, trace=trace))
+
+    payload = retrieve_knowledge_payload("什么是测试？", top_k=1)
+
+    assert payload["results"][0]["score_type"] == "dense"
+    assert payload["results"][0]["score"] == 0.031
+    assert set(payload["rankings"]) == {"fusion", "final"}
 
 
 def test_retrieve_knowledge_compacts_context_with_a_global_budget() -> None:
@@ -205,9 +232,7 @@ def test_group_locator_and_missing_locator_do_not_assume_page() -> None:
     )
     grouped = retrieve_knowledge_payload("什么是测试？", top_k=1)
     assert grouped["results"][0]["page"] is None
-    assert grouped["sources"] == [
-        "【来源 1】测试文档.pdf · 第一章 · PPTX 解析组 2"
-    ]
+    assert grouped["sources"] == ["【来源 1】测试文档.pdf · 第一章 · PPTX 解析组 2"]
 
     _configure(_response(locators=()))
     unlocated = retrieve_knowledge_payload("什么是测试？", top_k=1)
@@ -259,6 +284,66 @@ def test_display_name_removes_known_download_and_author_noise() -> None:
     )
 
 
+def test_source_projection_selects_query_relevant_evidence() -> None:
+    original = _response()
+    base = original.hits[0].evidence[0]
+    irrelevant = replace(
+        base,
+        evidence_id="evidence_irrelevant",
+        evidence_text="完全无关的背景资料",
+        locators=(
+            {
+                "locator_id": "page_1",
+                "kind": "page",
+                "container_id": "page_000000",
+                "container_index": 0,
+            },
+        ),
+    )
+    relevant = replace(
+        base,
+        evidence_id="evidence_relevant",
+        evidence_text="测试是验证软件行为是否符合预期的过程。",
+        locators=(
+            {
+                "locator_id": "page_7",
+                "kind": "page",
+                "container_id": "page_000006",
+                "container_index": 6,
+            },
+        ),
+    )
+    hit = replace(original.hits[0], evidence=(irrelevant, relevant))
+    _configure(replace(original, hits=(hit,)))
+
+    result = retrieve_knowledge_result("什么是测试？", top_k=1)
+
+    assert result.model_content["results"][0]["source_ref"] == "evidence_relevant"
+    assert result.display_content["results"][0]["page"] == 7
+    assert result.display_content["results"][0]["location"]["label"] == "第7页"
+
+
+def test_v2_enforces_paraphrase_only_mode_for_unverified_evidence() -> None:
+    original = _response()
+    evidence = replace(
+        original.hits[0].evidence[0],
+        text_origin="native_or_ocr_unverified",
+        quote_eligible=False,
+    )
+    hit = replace(original.hits[0], evidence=(evidence,))
+    _configure(replace(original, hits=(hit,)))
+
+    result = retrieve_knowledge_result("什么是测试？", top_k=1)
+
+    model_hit = result.model_content["results"][0]
+    assert model_hit["quote_eligible"] is False
+    assert model_hit["citation_mode"] == "paraphrase_only_unverified"
+    assert result.model_content["citation_policy"] == {
+        "verbatim_requires_quote_eligible": True,
+        "when_ineligible": "paraphrase_and_disclose_unverified_extraction",
+    }
+
+
 def test_similarity_threshold_requires_reranker_probability() -> None:
     """验证 `similarity_threshold_requires_reranker_probability` 场景。"""
     _configure(_response(rerank_score=None))
@@ -281,10 +366,10 @@ def test_v2_separates_model_display_and_audit_with_final_json_budget() -> None:
     )
     _configure(replace(original, hits=hits))
 
-    counter = lambda text: len(text)
-    result = retrieve_knowledge_result(
-        "什么是测试？", top_k=5, token_counter=counter
-    )
+    def counter(text: str) -> int:
+        return len(text)
+
+    result = retrieve_knowledge_result("什么是测试？", top_k=5, token_counter=counter)
 
     serialized = __import__("json").dumps(result.model_content, ensure_ascii=False)
     assert counter(serialized) <= 2048
@@ -294,6 +379,32 @@ def test_v2_separates_model_display_and_audit_with_final_json_budget() -> None:
     assert result.model_content["budget"]["truncated"] is True
     assert result.display_content["results"][0]["source"] == "测试文档.pdf"
     assert result.audit_metadata["response"]["hits"][0]["evidence"]
+
+
+def test_v2_budget_reserves_space_for_returned_count() -> None:
+    original = _response()
+    long_context = "测试相关内容。" * 1000
+    hit = replace(original.hits[0], context_text=long_context)
+    _configure(replace(original, hits=(hit,)))
+
+    # Make the count field materially affect the serialized budget so the
+    # regression does not depend on a particular production tokenizer.
+    def counter(text: str) -> int:
+        return len(text.encode("utf-8"))
+
+    result = retrieve_knowledge_result(
+        "什么是测试？",
+        top_k=1,
+        token_counter=counter,
+    )
+    serialized = __import__("json").dumps(result.model_content, ensure_ascii=False)
+    assert counter(serialized) <= 2048
+    assert result.model_content["budget"]["returned_token_count"] == counter(serialized)
+    assert (
+        result.model_content["budget"]["original_token_count"]
+        > result.model_content["budget"]["returned_token_count"]
+    )
+    assert result.model_content["budget"]["truncated"] is True
 
 
 def test_unconfigured_service_has_clear_error() -> None:

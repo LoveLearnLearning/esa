@@ -40,7 +40,7 @@ DEFAULT_CASES = RAG_WORKSPACE_ROOT / "data/evaluation/reference_evaluation_v1.js
 DEFAULT_OUTPUT = RAG_WORKSPACE_ROOT / "artifacts/rag/evaluations"
 
 
-MetricPayload = dict[str, int | float]
+MetricPayload = dict[str, int | float | None]
 LayerMetrics = dict[str, MetricPayload]
 CategoryMetrics = dict[str, LayerMetrics]
 RankingMap = dict[str, dict[str, Sequence[str]]]
@@ -195,7 +195,7 @@ def _validate_document_coverage(
         raise ValueError(f"every document needs five positive cases: {counts}")
 
 
-def _metrics_dict(metrics: RetrievalMetrics) -> dict[str, int | float]:
+def _metrics_dict(metrics: RetrievalMetrics) -> MetricPayload:
     """处理 `_metrics_dict` 相关逻辑。"""
     return dataclasses.asdict(metrics)
 
@@ -214,12 +214,10 @@ def _category_metrics(
     rankings: Mapping[str, Mapping[str, Sequence[str]]],
 ) -> CategoryMetrics:
     """处理 `_category_metrics` 相关逻辑。"""
-    tags = sorted(
-        {tag for case in cases if case.answerable for tag in case.category_tags}
-    )
+    tags = sorted({tag for case in cases for tag in case.category_tags})
     return {
         tag: _layer_metrics(
-            [case for case in cases if case.answerable and tag in case.category_tags],
+            [case for case in cases if tag in case.category_tags],
             rankings,
         )
         for tag in tags
@@ -375,7 +373,7 @@ def _build_summary(
         for item in negative_results
     ]
     return {
-        "schema_version": "reference-evaluation-summary-0.2",
+        "schema_version": "reference-evaluation-summary-0.3",
         "evaluation_id": evaluation_id,
         "index_generation_id": index_generation_id,
         "collection_id": collection.manifest.collection_id,

@@ -88,7 +88,7 @@
     "type": "function",
     "function": {
       "name": "retrieve_knowledge",
-      "description": "从知识库检索紧凑证据。返回语义明确、受最终 JSON token 预算约束的结果；完整来源和审计数据由服务端分离处理。",
+      "description": "从知识库检索紧凑证据。返回语义明确、受最终 JSON token 预算约束的结果；完整来源和审计数据由服务端分离处理。必须遵守每条结果的 citation_mode：paraphrase_only_unverified 只能转述并说明文字提取未经验证，禁止逐字引用。",
       "parameters": {
         "type": "object",
         "properties": {

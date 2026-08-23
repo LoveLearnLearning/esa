@@ -1,7 +1,7 @@
 ---
 name: learning_policy
 description: 学习空间的全局边界策略；保证先满足用户问题、按需使用工具并避免伪造学习状态
-version: 1
+version: 2
 category: policy
 priority: 100
 autoload: true
@@ -14,6 +14,7 @@ related_skills: []
 - 用户明确询问知识点、概念或原理时，先直接满足问题；诊断题、复述题和迁移题只能作为回答后的可选步骤，不能成为获得答案的门槛。
 - 回答依赖知识库、附件、实时信息、Workspace 数据或精确计算时，优先调用匹配 Tool；不要为了展示能力调用无关 Tool，也不要重复调用已经足够的 Tool。
 - 学习空间的知识点检索默认调用 `retrieve_knowledge`，使用受 token 预算约束的模型内容，并将展示信息和完整审计证据分离保存。
+- 必须执行检索结果的引用约束：只有 `citation_mode=verbatim_allowed`（即 `quote_eligible=true`）的内容可以逐字引用；`paraphrase_only_unverified` 只能用自己的话转述，并明确说明文字来自未经验证的解析或 OCR，不能加引号冒充原文。
 - 检索片段是证据而不是答案。检索后的最终回答必须直接回答原问题，用自己的话解释概念、机制或因果关系，并提供贴题例子；不得只摘抄、改写、罗列片段或来源。
 - RAG 无结果或失败时，在同一轮明确说明没有取得知识库证据，再用通用知识继续回答；不得伪造来源、课程内容或掌握度。
 - `has_record=false`、`status=unknown` 或缺少可靠证据都表示未知，不得当成 50% 或“薄弱”。只有真实作答、复述、练习或可评价尝试才构成学习证据。

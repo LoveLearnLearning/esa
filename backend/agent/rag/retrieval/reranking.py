@@ -16,7 +16,6 @@ import math
 from ..chunk import Chunk
 from ..inference import InferenceUnavailable
 from .contracts import RankedItem, Reranker, RetrievalConfig
-from .fusion import consolidate_overlaps
 
 
 def aggregate_chunk_scores(scores: Sequence[float], method: str) -> float:
@@ -61,8 +60,81 @@ class CandidateSelection:
     ranking: tuple[RankedItem, ...]
     final_candidates: tuple[RankedItem, ...]
     rerank_scores: Mapping[str, float]
+    merged_context_chunk_ids: Mapping[str, tuple[str, ...]]
     degraded: tuple[str, ...]
     reranker_applied: bool
+
+
+def consolidate_adjacent_candidates(
+    ranked: Sequence[RankedItem],
+    chunks: Mapping[str, Chunk],
+) -> tuple[list[RankedItem], dict[str, tuple[str, ...]]]:
+    """Keep one ranked hit per coherent section/page and merge its other chunks."""
+
+    accepted: list[RankedItem] = []
+    merged: dict[str, list[str]] = {}
+    group_owners: dict[str, str] = {}
+    for item in ranked:
+        chunk = chunks[item.chunk_id]
+        owner_id = next(
+            (
+                group_owners[group]
+                for group in chunk.overlap_group_ids
+                if group in group_owners
+            ),
+            None,
+        )
+        if owner_id is None:
+            for accepted_item in accepted:
+                owner = chunks[accepted_item.chunk_id]
+                if _same_result_region(owner, chunk):
+                    owner_id = owner.chunk_id
+                    break
+        if owner_id is not None:
+            merged.setdefault(owner_id, []).append(chunk.chunk_id)
+            continue
+        accepted.append(item)
+        merged.setdefault(chunk.chunk_id, [])
+        for group in chunk.overlap_group_ids:
+            group_owners.setdefault(group, chunk.chunk_id)
+
+    return accepted, {
+        owner: tuple(
+            sorted(values, key=lambda chunk_id: chunks[chunk_id].document_order)
+        )
+        for owner, values in merged.items()
+    }
+
+
+def _same_result_region(left: Chunk, right: Chunk) -> bool:
+    if left.document_id != right.document_id:
+        return False
+    if left.section_id == right.section_id:
+        return True
+    if _page_keys(left) & _page_keys(right):
+        return True
+    return bool(
+        abs(left.document_order - right.document_order) == 1
+        or left.next_chunk_id == right.chunk_id
+        or left.previous_chunk_id == right.chunk_id
+        or right.next_chunk_id == left.chunk_id
+        or right.previous_chunk_id == left.chunk_id
+    )
+
+
+def _page_keys(chunk: Chunk) -> set[tuple[str, object]]:
+    keys: set[tuple[str, object]] = set()
+    for evidence in chunk.evidence:
+        for locator in evidence.locators:
+            if locator.kind != "page":
+                continue
+            if locator.page_id:
+                keys.add(("page_id", locator.page_id))
+            elif locator.container_id:
+                keys.add(("container_id", locator.container_id))
+            elif locator.container_index is not None:
+                keys.add(("container_index", locator.container_index))
+    return keys
 
 
 @dataclass(frozen=True)
@@ -115,13 +187,21 @@ class CandidateReranker:
             ]
 
         ranking = tuple(candidates)
-        final_candidates = tuple(
-            consolidate_overlaps(candidates, self.chunks)[: self.config.final_limit]
+        consolidated, merged_context_chunk_ids = consolidate_adjacent_candidates(
+            candidates,
+            self.chunks,
         )
+        final_candidates = tuple(consolidated[: self.config.final_limit])
+        retained_ids = {item.chunk_id for item in final_candidates}
         return CandidateSelection(
             ranking=ranking,
             final_candidates=final_candidates,
             rerank_scores=rerank_scores,
+            merged_context_chunk_ids={
+                chunk_id: values
+                for chunk_id, values in merged_context_chunk_ids.items()
+                if chunk_id in retained_ids
+            },
             degraded=tuple(degraded),
             reranker_applied=reranker_applied,
         )

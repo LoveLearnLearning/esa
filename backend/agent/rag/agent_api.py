@@ -19,14 +19,19 @@ from typing import Any
 
 from backend.core.utils.models import ToolExecutionResult
 
-from .retrieval.context import estimate_tokens, truncate_text_to_token_budget
+from .retrieval.context import (
+    estimate_tokens,
+    query_aware_excerpt,
+    rank_evidence_for_query,
+    truncate_text_to_token_budget,
+)
 from .retrieval.contracts import Evidence, SearchHit, SearchResponse
 from .retrieval.service import RetrievalService
 
 _service: RetrievalService | None = None
 
-# B1/B2 v1: these tuples are the frozen JSON surface. Additive or breaking
-# changes require a new contract version and fixture migration.
+# B1 remains frozen.  The compatibility retrieval projection uses neutral
+# score/ranking names so non-RRF fusion can never be mislabeled as RRF.
 B1_CONTRACT_VERSION = "get_knowledge_base_stats.v1"
 B1_TOP_LEVEL_KEYS = (
     "collection_id",
@@ -37,7 +42,7 @@ B1_TOP_LEVEL_KEYS = (
     "index_backend",
     "config",
 )
-B2_CONTRACT_VERSION = "retrieve_knowledge.v1"
+B2_CONTRACT_VERSION = "retrieve_knowledge.compat.v2"
 B2_CONTEXT_TOKEN_BUDGET = 2048
 B2_RESULT_CONTEXT_TOKEN_LIMIT = 512
 B2_TOP_LEVEL_KEYS = (
@@ -59,7 +64,7 @@ B2_RESULT_KEYS = (
     "page",
     "location",
     "chunk_id",
-    "rrf_score",
+    "retrieval_score",
     "rerank_score",
     "context_chunk_ids",
     "evidence",
@@ -110,18 +115,28 @@ def retrieve_knowledge_payload(
     active_service = service or get_retrieval_service()
     response = active_service.search(query)
     hits = _apply_rerank_threshold(response, similarity_threshold)[:top_k]
-    contexts = _compact_contexts(hits)
+    contexts = _compact_contexts(response.query, hits)
+    retrieval_method = str(response.trace.fusion.get("applied_method", "retrieval"))
     return {
         "query": response.query,
         "result_count": len(hits),
         "results": [
-            _result_payload(hit, rank, content=contexts[rank - 1])
+            _result_payload(
+                response.query,
+                hit,
+                rank,
+                retrieval_method,
+                content=contexts[rank - 1],
+            )
             for rank, hit in enumerate(hits, start=1)
         ],
-        "sources": [_source_label(hit, rank) for rank, hit in enumerate(hits, start=1)],
+        "sources": [
+            _source_label(response.query, hit, rank)
+            for rank, hit in enumerate(hits, start=1)
+        ],
         "context_text": "\n\n".join(contexts),
         "degraded": list(response.trace.degraded),
-        "rankings": _legacy_rankings(response, active_service.config.rerank_limit),
+        "rankings": _compatibility_rankings(response),
     }
 
 
@@ -145,9 +160,7 @@ def retrieve_knowledge_result(
     counter = token_counter or estimate_tokens
     counter_name = "agent_tokenizer" if token_counter is not None else "fallback"
     model_content = _v2_model_projection(response, hits, counter, counter_name)
-    returned_chunk_ids = {
-        item["chunk_id"] for item in model_content["results"]
-    }
+    returned_chunk_ids = {item["chunk_id"] for item in model_content["results"]}
     display_content = _v2_display_projection(
         response,
         [hit for hit in hits if hit.chunk_id in returned_chunk_ids],
@@ -160,23 +173,10 @@ def retrieve_knowledge_result(
     return ToolExecutionResult(model_content, display_content, audit_metadata)
 
 
-def _legacy_rankings(
-    response: SearchResponse,
-    rerank_limit: int,
-) -> dict[str, list[str]]:
-    """Preserve the frozen v1 ranking names behind an explicit legacy adapter."""
+def _compatibility_rankings(response: SearchResponse) -> dict[str, list[str]]:
+    """Expose only ranking stages that actually ran, under their real names."""
 
-    output = {
-        name: list(values)
-        for name, values in response.trace.rankings.items()
-        if name not in {"fusion", "final", "reranker"}
-    }
-    fusion = list(response.trace.rankings.get("fusion", ()))
-    output["rrf"] = fusion
-    output["reranker"] = list(
-        response.trace.rankings.get("reranker", tuple(fusion[:rerank_limit]))
-    )
-    return output
+    return {name: list(values) for name, values in response.trace.rankings.items()}
 
 
 def _serialized_token_count(payload: object, counter: Callable[[str], int]) -> int:
@@ -201,8 +201,11 @@ def _v2_execution(response: SearchResponse) -> dict[str, Any]:
     }
 
 
-def _v2_hit(hit: SearchHit, rank: int, content: str) -> dict[str, Any]:
-    primary = hit.evidence[0]
+def _v2_hit(query: str, hit: SearchHit, rank: int, content: str) -> dict[str, Any]:
+    primary = rank_evidence_for_query(query, hit.evidence)[0]
+    quote_eligible = bool(hit.evidence) and all(
+        item.quote_eligible for item in hit.evidence
+    )
     return {
         "rank": rank,
         "chunk_id": hit.chunk_id,
@@ -210,8 +213,10 @@ def _v2_hit(hit: SearchHit, rank: int, content: str) -> dict[str, Any]:
         "retrieval_score": hit.retrieval_score,
         "rerank_score": hit.rerank_score,
         "source_ref": primary.evidence_id,
-        "quote_eligible": bool(hit.evidence)
-        and all(item.quote_eligible for item in hit.evidence),
+        "quote_eligible": quote_eligible,
+        "citation_mode": (
+            "verbatim_allowed" if quote_eligible else "paraphrase_only_unverified"
+        ),
     }
 
 
@@ -226,13 +231,63 @@ def _v2_model_projection(
     retained = list(hits)
     query_limit = 256
     returned_query = truncate_text_to_token_budget(response.query, query_limit)
+    original_token_count = 0
+
+    def citation_policy() -> dict[str, Any]:
+        return {
+            "verbatim_requires_quote_eligible": True,
+            "when_ineligible": "paraphrase_and_disclose_unverified_extraction",
+        }
+
+    def build_original(token_count: int) -> dict[str, Any]:
+        results = [
+            _v2_hit(
+                response.query,
+                hit,
+                rank,
+                hit.context_text.strip(),
+            )
+            for rank, hit in enumerate(hits, start=1)
+        ]
+        return {
+            "contract_version": V2_CONTRACT_VERSION,
+            "query": response.query.strip(),
+            "result_count": len(results),
+            "results": results,
+            "citation_policy": citation_policy(),
+            "execution": _v2_execution(response),
+            "budget": {
+                "limit": V2_MODEL_TOKEN_BUDGET,
+                "original_token_count": token_count,
+                "returned_token_count": token_count,
+                "truncated": False,
+                "counter": counter_name,
+            },
+        }
+
+    # Count the exact hypothetical projection before query/result/content
+    # pruning.  Both count fields are set to that value, so the reported count
+    # includes its own serialized representation rather than relying on an
+    # estimate that omits metadata.
+    for _ in range(16):
+        measured = _serialized_token_count(
+            build_original(original_token_count), counter
+        )
+        if measured == original_token_count:
+            break
+        original_token_count = measured
+    else:
+        raise RuntimeError(
+            "retrieve_knowledge.v2 original token count did not converge"
+        )
 
     def build(per_result_limit: int, *, truncated: bool) -> dict[str, Any]:
         results = [
             _v2_hit(
+                response.query,
                 hit,
                 rank,
-                truncate_text_to_token_budget(hit.context_text, per_result_limit),
+                query_aware_excerpt(hit.context_text, response.query, per_result_limit),
             )
             for rank, hit in enumerate(retained, start=1)
         ]
@@ -241,20 +296,35 @@ def _v2_model_projection(
             "query": returned_query,
             "result_count": len(results),
             "results": results,
+            "citation_policy": citation_policy(),
             "execution": _v2_execution(response),
             "budget": {
                 "limit": V2_MODEL_TOKEN_BUDGET,
-                "returned_token_count": 0,
+                "original_token_count": original_token_count,
+                # Reserve the serialized width/token cost of the final count
+                # while searching the content budget.  Writing the real count
+                # back later must not push an otherwise exact-fit payload over
+                # the hard limit.
+                "returned_token_count": V2_MODEL_TOKEN_BUDGET,
                 "truncated": truncated,
                 "counter": counter_name,
             },
         }
 
-    while retained and _serialized_token_count(build(0, truncated=True), counter) > V2_MODEL_TOKEN_BUDGET:
+    while (
+        retained
+        and _serialized_token_count(build(0, truncated=True), counter)
+        > V2_MODEL_TOKEN_BUDGET
+    ):
         retained.pop()
-    while _serialized_token_count(build(0, truncated=True), counter) > V2_MODEL_TOKEN_BUDGET:
+    while (
+        _serialized_token_count(build(0, truncated=True), counter)
+        > V2_MODEL_TOKEN_BUDGET
+    ):
         if query_limit == 0:
-            raise RuntimeError("retrieve_knowledge.v2 fixed metadata exceeds token budget")
+            raise RuntimeError(
+                "retrieve_knowledge.v2 fixed metadata exceeds token budget"
+            )
         query_limit //= 2
         returned_query = truncate_text_to_token_budget(response.query, query_limit)
 
@@ -267,9 +337,14 @@ def _v2_model_projection(
         else:
             high = middle - 1
 
-    was_truncated = returned_query != response.query.strip() or len(retained) != len(hits) or any(
-        truncate_text_to_token_budget(hit.context_text, low) != hit.context_text.strip()
-        for hit in retained
+    was_truncated = (
+        returned_query != response.query.strip()
+        or len(retained) != len(hits)
+        or any(
+            query_aware_excerpt(hit.context_text, response.query, low)
+            != hit.context_text.strip()
+            for hit in retained
+        )
     )
     payload = build(low, truncated=was_truncated)
     for _ in range(4):
@@ -278,7 +353,9 @@ def _v2_model_projection(
         if _serialized_token_count(payload, counter) == count:
             break
     if _serialized_token_count(payload, counter) > V2_MODEL_TOKEN_BUDGET:
-        raise RuntimeError("retrieve_knowledge.v2 model projection exceeds token budget")
+        raise RuntimeError(
+            "retrieve_knowledge.v2 model projection exceeds token budget"
+        )
     return payload
 
 
@@ -288,7 +365,7 @@ def _v2_display_projection(
 ) -> dict[str, Any]:
     results = []
     for rank, hit in enumerate(hits, start=1):
-        primary = hit.evidence[0]
+        primary = rank_evidence_for_query(response.query, hit.evidence)[0]
         locator = primary.locators[0] if primary.locators else None
         results.append(
             {
@@ -341,7 +418,7 @@ def _apply_rerank_threshold(
     if any(hit.rerank_score is None for hit in hits):
         raise RuntimeError(
             "similarity_threshold requires an active reranker; "
-            "RRF scores are rank-fusion scores, not probabilities"
+            "retrieval/fusion scores are not reranker probabilities"
         )
     return [
         hit
@@ -350,7 +427,7 @@ def _apply_rerank_threshold(
     ]
 
 
-def _compact_contexts(hits: list[SearchHit]) -> list[str]:
+def _compact_contexts(query: str, hits: list[SearchHit]) -> list[str]:
     """Allocate the tool-level context budget fairly in ranking order."""
 
     remaining = B2_CONTEXT_TOKEN_BUDGET
@@ -359,38 +436,40 @@ def _compact_contexts(hits: list[SearchHit]) -> list[str]:
         remaining_results = len(hits) - position
         fair_share = remaining // remaining_results
         limit = min(B2_RESULT_CONTEXT_TOKEN_LIMIT, fair_share)
-        content = truncate_text_to_token_budget(hit.context_text, limit)
+        content = query_aware_excerpt(hit.context_text, query, limit)
         contexts.append(content)
         remaining -= estimate_tokens(content)
     return contexts
 
 
 def _result_payload(
+    query: str,
     hit: SearchHit,
     rank: int,
+    retrieval_method: str,
     *,
     content: str | None = None,
 ) -> dict[str, Any]:
     """把一个正式 SearchHit 转换为 Agent 工具结果。"""
 
-    primary = hit.evidence[0]
+    primary = rank_evidence_for_query(query, hit.evidence)[0]
     locator = primary.locators[0] if primary.locators else None
     page = _page_number(locator)
     return {
         "content": hit.context_text if content is None else content,
         "score": (
-            hit.rerank_score
-            if hit.rerank_score is not None
-            else hit.retrieval_score
+            hit.rerank_score if hit.rerank_score is not None else hit.retrieval_score
         ),
-        "score_type": "reranker" if hit.rerank_score is not None else "rrf",
+        "score_type": (
+            "reranker" if hit.rerank_score is not None else retrieval_method
+        ),
         "rank": rank,
         "source": _display_document_name(primary.document_name),
         "section": " / ".join(primary.section_path) or None,
         "page": page,
         "location": _display_locator(locator),
         "chunk_id": hit.chunk_id,
-        "rrf_score": hit.retrieval_score,
+        "retrieval_score": hit.retrieval_score,
         "rerank_score": hit.rerank_score,
         "context_chunk_ids": list(hit.context_chunk_ids),
         "evidence": [_evidence_payload(item) for item in hit.evidence],
@@ -428,10 +507,9 @@ def _evidence_payload(evidence: Evidence) -> dict[str, Any]:
     return dataclasses.asdict(evidence)
 
 
-def _source_label(hit: SearchHit, rank: int) -> str:
-
+def _source_label(query: str, hit: SearchHit, rank: int) -> str:
     """处理 `_source_label` 相关逻辑。"""
-    primary = hit.evidence[0]
+    primary = rank_evidence_for_query(query, hit.evidence)[0]
     section = " / ".join(primary.section_path) or "未知章节"
     locations = tuple(_locator_label(locator) for locator in primary.locators)
     location = "、".join(dict.fromkeys(label for label in locations if label))
@@ -456,7 +534,9 @@ def _locator_label(locator: Any) -> str:
         return f"第{index + 1}页"
     if locator.get("kind") == "group" and isinstance(index, int):
         metadata = locator.get("metadata")
-        source_format = metadata.get("source_format") if isinstance(metadata, dict) else None
+        source_format = (
+            metadata.get("source_format") if isinstance(metadata, dict) else None
+        )
         prefix = str(source_format).upper() if source_format else "文档"
         return f"{prefix} 解析组 {index + 1}"
     return str(locator.get("container_id") or "")
