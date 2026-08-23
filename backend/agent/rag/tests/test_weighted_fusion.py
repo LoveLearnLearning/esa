@@ -113,7 +113,7 @@ def test_supervised_calibrators_fit_only_explicit_samples() -> None:
 
 @pytest.mark.parametrize(
     "query",
-    ["TCP", "RFC 793", "Figure 3", "Section 2.1", "BKT", "2024"],
+    ["TCP", "RFC 793", "Figure 3", "Section 2.1", "ABC.1", "BKT", "2024"],
 )
 def test_exact_lexical_queries_receive_more_confidence(query: str) -> None:
     """验证 `exact_lexical_queries_receive_more_confidence` 场景。"""

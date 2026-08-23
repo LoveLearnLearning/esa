@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 from collections.abc import Callable
+from pathlib import PurePath
 from typing import Any
 
 from backend.core.utils.models import ToolExecutionResult
@@ -293,10 +295,10 @@ def _v2_display_projection(
                 "rank": rank,
                 "chunk_id": hit.chunk_id,
                 "source_ref": primary.evidence_id,
-                "source": primary.document_name,
+                "source": _display_document_name(primary.document_name),
                 "section": " / ".join(primary.section_path) or None,
                 "page": _page_number(locator),
-                "location": dict(locator) if locator else None,
+                "location": _display_locator(locator),
                 "quote_eligible": bool(hit.evidence)
                 and all(item.quote_eligible for item in hit.evidence),
             }
@@ -383,10 +385,10 @@ def _result_payload(
         ),
         "score_type": "reranker" if hit.rerank_score is not None else "rrf",
         "rank": rank,
-        "source": primary.document_name,
+        "source": _display_document_name(primary.document_name),
         "section": " / ".join(primary.section_path) or None,
         "page": page,
-        "location": dict(locator) if locator else None,
+        "location": _display_locator(locator),
         "chunk_id": hit.chunk_id,
         "rrf_score": hit.retrieval_score,
         "rerank_score": hit.rerank_score,
@@ -396,13 +398,28 @@ def _result_payload(
 
 
 def _page_number(locator: Any) -> int | None:
-    if (
-        isinstance(locator, dict)
-        and locator.get("kind") == "page"
-        and isinstance(locator.get("container_index"), int)
-    ):
-        return int(locator["container_index"]) + 1
+    if not isinstance(locator, dict) or locator.get("kind") != "page":
+        return None
+    explicit_page = locator.get("page")
+    if isinstance(explicit_page, int) and not isinstance(explicit_page, bool):
+        return explicit_page if explicit_page >= 1 else None
+    container_index = locator.get("container_index")
+    if isinstance(container_index, int) and not isinstance(container_index, bool):
+        return container_index + 1
     return None
+
+
+def _display_locator(locator: Any) -> dict[str, Any] | None:
+    """Return one display-safe locator with page fields using one convention."""
+
+    if not isinstance(locator, dict):
+        return None
+    output = dict(locator)
+    page = _page_number(locator)
+    if locator.get("kind") == "page" and page is not None:
+        output["page"] = page
+        output["label"] = f"第{page}页"
+    return output
 
 
 def _evidence_payload(evidence: Evidence) -> dict[str, Any]:
@@ -419,7 +436,8 @@ def _source_label(hit: SearchHit, rank: int) -> str:
     locations = tuple(_locator_label(locator) for locator in primary.locators)
     location = "、".join(dict.fromkeys(label for label in locations if label))
     suffix = f" · {location}" if location else ""
-    return f"【来源 {rank}】{primary.document_name} · {section}{suffix}"
+    source = _display_document_name(primary.document_name)
+    return f"【来源 {rank}】{source} · {section}{suffix}"
 
 
 def _locator_label(locator: Any) -> str:
@@ -427,6 +445,9 @@ def _locator_label(locator: Any) -> str:
 
     if not isinstance(locator, dict):
         return ""
+    page = _page_number(locator)
+    if page is not None:
+        return f"第{page}页"
     label = locator.get("label")
     if isinstance(label, str) and label.strip():
         return label.strip()
@@ -439,3 +460,57 @@ def _locator_label(locator: Any) -> str:
         prefix = str(source_format).upper() if source_format else "文档"
         return f"{prefix} 解析组 {index + 1}"
     return str(locator.get("container_id") or "")
+
+
+_DOWNLOAD_SITE_SUFFIX = re.compile(
+    r"\s*\([^)]*(?:z-library|z-lib|1lib)[^)]*\)\s*$",
+    re.IGNORECASE,
+)
+_AUTHOR_LATIN_NAME = re.compile(
+    r"(?:^|[\s(])(?:[A-Z][\w.'’-]*\s+){1,4}[A-Z][\w.'’-]*(?:$|[),])"
+)
+
+
+def _trailing_parenthesized(value: str) -> tuple[str, str] | None:
+    """Split one balanced trailing parenthesized suffix from a filename stem."""
+
+    if not value.endswith(")"):
+        return None
+    depth = 0
+    for position in range(len(value) - 1, -1, -1):
+        character = value[position]
+        if character == ")":
+            depth += 1
+        elif character == "(":
+            depth -= 1
+            if depth == 0:
+                return value[:position].rstrip(), value[position + 1 : -1].strip()
+    return None
+
+
+def _looks_like_author_suffix(value: str) -> bool:
+    if re.search(r"(?:原书|第\s*\d+\s*版|典藏版)", value):
+        return False
+    return bool(
+        "[美]" in value
+        or any(mark in value for mark in ("·", ",", "，"))
+        or _AUTHOR_LATIN_NAME.search(value)
+    )
+
+
+def _display_document_name(document_name: str) -> str:
+    """Remove known acquisition noise while preserving an auditable raw name."""
+
+    original = PurePath(document_name).name.strip()
+    stem = original
+    extension = PurePath(original).suffix
+    if extension:
+        stem = original[: -len(extension)]
+    cleaned = re.sub(r"(?:[_\s-]+origin)\s*$", "", stem, flags=re.IGNORECASE)
+    cleaned, site_count = _DOWNLOAD_SITE_SUFFIX.subn("", cleaned)
+    changed = cleaned != stem or site_count > 0
+    trailing = _trailing_parenthesized(cleaned.rstrip())
+    if changed and trailing is not None and _looks_like_author_suffix(trailing[1]):
+        cleaned = trailing[0]
+    cleaned = cleaned.strip(" _-")
+    return cleaned if changed and cleaned else original

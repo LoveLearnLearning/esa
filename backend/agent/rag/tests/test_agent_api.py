@@ -76,6 +76,7 @@ def _reset_service() -> Iterator[None]:
 def _response(
     rerank_score: float | None = 0.875,
     locators: tuple[dict[str, object], ...] | None = None,
+    document_name: str = "测试文档.pdf",
 ) -> SearchResponse:
     """处理 `_response` 相关逻辑。"""
     evidence = Evidence(
@@ -93,7 +94,7 @@ def _response(
         document_id="document_1",
         source_version_id="source_1",
         parse_revision_id="parse_1",
-        document_name="测试文档.pdf",
+        document_name=document_name,
         section_path=("第一章",),
         locators=locators if locators is not None else (
             {
@@ -212,6 +213,50 @@ def test_group_locator_and_missing_locator_do_not_assume_page() -> None:
     unlocated = retrieve_knowledge_payload("什么是测试？", top_k=1)
     assert unlocated["results"][0]["page"] is None
     assert unlocated["sources"] == ["【来源 1】测试文档.pdf · 第一章"]
+
+
+def test_page_number_and_display_locator_use_one_canonical_label() -> None:
+    """A parser-supplied page label cannot contradict the displayed page."""
+
+    _configure(
+        _response(
+            locators=(
+                {
+                    "locator_id": "page_4",
+                    "kind": "page",
+                    "container_id": "page_000003",
+                    "container_index": 3,
+                    "label": "iv",
+                },
+            )
+        )
+    )
+
+    legacy = retrieve_knowledge_payload("什么是测试？", top_k=1)
+    assert legacy["results"][0]["page"] == 4
+    assert legacy["results"][0]["location"]["label"] == "第4页"
+    assert legacy["sources"] == ["【来源 1】测试文档.pdf · 第一章 · 第4页"]
+
+
+def test_display_name_removes_known_download_and_author_noise() -> None:
+    raw_name = (
+        "数据结构与算法分析 C语言描述(原书第2版)典藏版 "
+        "(马克·艾伦·维斯 Mark.Allen.Weiss) "
+        "(z-library.sk, 1lib.sk, z-lib.sk)_origin.pdf"
+    )
+    _configure(_response(document_name=raw_name))
+
+    legacy = retrieve_knowledge_payload("什么是测试？", top_k=1)
+    result = retrieve_knowledge_result("什么是测试？", top_k=1)
+
+    expected = "数据结构与算法分析 C语言描述(原书第2版)典藏版"
+    assert legacy["results"][0]["source"] == expected
+    assert expected in legacy["sources"][0]
+    assert result.display_content["results"][0]["source"] == expected
+    assert (
+        result.audit_metadata["response"]["hits"][0]["evidence"][0]["document_name"]
+        == raw_name
+    )
 
 
 def test_similarity_threshold_requires_reranker_probability() -> None:
