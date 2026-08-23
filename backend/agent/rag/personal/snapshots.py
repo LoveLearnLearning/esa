@@ -191,7 +191,10 @@ class PersonalQdrantSnapshotManager:
                 await asyncio.wait_for(
                     self._wake.wait(), timeout=self.max_delay_seconds
                 )
-            except TimeoutError:
+            # On Python 3.10 asyncio.TimeoutError is not the builtin
+            # TimeoutError. Catch the asyncio exception so the periodic
+            # snapshot task survives idle timer wakeups and shuts down cleanly.
+            except asyncio.TimeoutError:
                 pass
             if self._stopping:
                 break

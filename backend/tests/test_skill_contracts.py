@@ -108,9 +108,15 @@ def test_concept_explanation_skill_answers_now_and_uses_rag():
         if skill.name == "grounded_explanation"
     )
 
-    assert "retrieve_knowledge" in definition.requires_tools
-    assert "先调用 `retrieve_knowledge`" in definition.body
+    assert definition.requires_tools[0] == "retrieve_federated_knowledge"
+    assert "默认调用 `retrieve_federated_knowledge`" in definition.body
+    assert "同时检索" in definition.body
+    assert "retrieve_personal_knowledge" in definition.body
+    assert "retrieve_knowledge" in definition.body
     assert "本轮直接回答" in definition.body
+    assert "不能代替讲解" in definition.body
+    assert "删掉所有引文和来源名" in definition.body
+    assert "不要求最终答案机械地各引用一条" in definition.body
     assert "正式讲解前，先问" not in definition.body
 
 

@@ -40,7 +40,7 @@ class AssistantMessage extends StatefulWidget {
   onOpenCodeEditorWithId;
   final void Function(String blockId, String code, String language)?
   onCodeChangedWithId;
-  final Future<String?> Function(String code, String language)? onRunCode;
+  final CodeRunCallback? onRunCode;
   final int codeOverrideVersion;
   final List<SourceCitation> sources;
   final ValueChanged<SourceCitation>? onOpenSource;

@@ -109,9 +109,10 @@ final answer = 42;
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('code block run button forwards code and shows output', (
+  testWidgets('code block run button forwards block identity and code', (
     tester,
   ) async {
+    String? receivedBlockId;
     String? receivedCode;
     String? receivedLanguage;
     await tester.pumpWidget(
@@ -122,22 +123,22 @@ final answer = 42;
             data: '''```python
 print('hello')
 ```''',
-            onRunCode: (code, language) async {
+            onRunCode: (blockId, code, language) async {
+              receivedBlockId = blockId;
               receivedCode = code;
               receivedLanguage = language;
-              return 'hello';
             },
           ),
         ),
       ),
     );
 
-    await tester.tap(find.byTooltip('运行'));
+    await tester.tap(find.byTooltip('使用辅助模型修复并在沙箱运行'));
     await tester.pumpAndSettle();
 
+    expect(receivedBlockId, 'markdown:0');
     expect(receivedCode, "print('hello')");
     expect(receivedLanguage, 'python');
-    expect(find.text('hello'), findsOneWidget);
   });
 
   testWidgets('code preview follows streaming markdown updates', (
@@ -214,5 +215,45 @@ print("hello")
         .toList();
     expect(richText, contains('print("edited")'));
     expect(richText, isNot(contains('print("hello")')));
+  });
+
+  testWidgets('run button sends the current edited code and language', (
+    tester,
+  ) async {
+    String? blockId;
+    String? code;
+    String? language;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(
+          body: EsaMarkdown(
+            data: '''```cpp
+int main() { return 0; }
+```''',
+            codeBlockPrefix: 'message-2',
+            onRunCode: (id, value, lang) async {
+              blockId = id;
+              code = value;
+              language = lang;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('编辑'));
+    await tester.pump();
+    await tester.enterText(
+      find.byType(TextField),
+      '#include <iostream>\nint main() { return 0; }',
+    );
+    await tester.tap(find.byTooltip('使用辅助模型修复并在沙箱运行'));
+    await tester.pump();
+
+    expect(blockId, 'message-2:0');
+    expect(code, contains('#include <iostream>'));
+    expect(language, 'cpp');
+    expect(tester.takeException(), isNull);
   });
 }

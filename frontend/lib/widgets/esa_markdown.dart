@@ -44,6 +44,9 @@ String normalizeMarkdownLatex(String source) {
 bool containsFencedCode(String source) =>
     RegExp(r'^\s*(?:```|~~~)', multiLine: true).hasMatch(source);
 
+typedef CodeRunCallback =
+    Future<void> Function(String blockId, String code, String language);
+
 class EsaMarkdown extends StatelessWidget {
   const EsaMarkdown({
     super.key,
@@ -67,7 +70,7 @@ class EsaMarkdown extends StatelessWidget {
   onOpenCodeEditorWithId;
   final void Function(String blockId, String code, String language)?
   onCodeChangedWithId;
-  final Future<String?> Function(String code, String language)? onRunCode;
+  final CodeRunCallback? onRunCode;
   final int codeOverrideVersion;
 
   @override
@@ -161,7 +164,7 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
   onOpenCodeEditorWithId;
   final void Function(String blockId, String code, String language)?
   onCodeChangedWithId;
-  final Future<String?> Function(String code, String language)? onRunCode;
+  final CodeRunCallback? onRunCode;
   var _blockIndex = 0;
 
   @override
@@ -216,7 +219,7 @@ class _EditableCodeBlock extends StatefulWidget {
   onOpenEditorWithId;
   final void Function(String blockId, String code, String language)?
   onCodeChangedWithId;
-  final Future<String?> Function(String code, String language)? onRunCode;
+  final CodeRunCallback? onRunCode;
 
   @override
   State<_EditableCodeBlock> createState() => _EditableCodeBlockState();
@@ -228,7 +231,6 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
   bool _editing = false;
   bool _copied = false;
   bool _running = false;
-  String? _runOutput;
 
   bool get _modified => _controller.text != _originalCode;
 
@@ -274,22 +276,10 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
 
   Future<void> _runCode() async {
     final callback = widget.onRunCode;
-    if (callback == null) {
-      setState(() => _runOutput = '运行不可用：当前页面没有绑定沙箱服务。');
-      return;
-    }
-    if (_running) return;
-    setState(() {
-      _running = true;
-      _runOutput = null;
-    });
+    if (callback == null || _running) return;
+    setState(() => _running = true);
     try {
-      final output = await callback(_controller.text, widget.language);
-      if (!mounted) return;
-      setState(() => _runOutput = output);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _runOutput = '运行失败：$error');
+      await callback(widget.blockId, _controller.text, widget.language);
     } finally {
       if (mounted) setState(() => _running = false);
     }
@@ -397,14 +387,21 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                     );
                   },
                 ),
-                _action(
+                if (widget.onRunCode != null)
                   _running
-                      ? Icons.hourglass_top_rounded
-                      : Icons.play_arrow_rounded,
-                  _running ? '运行中' : '运行',
-                  iconColor,
-                  _runCode,
-                ),
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : _action(
+                          Icons.play_arrow_rounded,
+                          '使用辅助模型修复并在沙箱运行',
+                          iconColor,
+                          _runCode,
+                        ),
               ],
             ),
           ),
@@ -426,7 +423,7 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                             minLines: 4,
                             maxLines: null,
                             keyboardType: TextInputType.multiline,
-                            onChanged: (_) => setState(() => _runOutput = null),
+                            onChanged: (_) => setState(() {}),
                             style: TextStyle(
                               color: baseCodeColor,
                               fontFamily: 'JetBrainsMono',
@@ -483,7 +480,6 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                 );
               },
             ),
-          if (_runOutput != null) _RunOutput(output: _runOutput!),
         ],
       ),
     );
@@ -499,37 +495,6 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
       tooltip: tooltip,
       onPressed: onPressed,
       icon: Icon(icon, size: 16, color: color),
-    );
-  }
-}
-
-class _RunOutput extends StatelessWidget {
-  const _RunOutput({required this.output});
-
-  final String output;
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxHeight: 220),
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-      decoration: BoxDecoration(
-        color: dark ? const Color(0xFF1D1F23) : const Color(0xFFF0F0ED),
-        border: Border(top: BorderSide(color: context.n.divider)),
-      ),
-      child: SingleChildScrollView(
-        child: SelectableText(
-          output.isEmpty ? '(无输出)' : output,
-          style: TextStyle(
-            color: dark ? const Color(0xFFD6D9DE) : const Color(0xFF383A42),
-            fontFamily: 'JetBrainsMono',
-            fontSize: 12,
-            height: 1.5,
-          ),
-        ),
-      ),
     );
   }
 }

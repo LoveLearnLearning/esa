@@ -29,6 +29,7 @@
     "recommend_practice",
     "record_answer",
     "record_learning_evidence",
+    "retrieve_federated_knowledge",
     "retrieve_knowledge",
     "retrieve_personal_knowledge",
     "run_in_sandbox",

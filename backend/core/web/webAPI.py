@@ -59,6 +59,7 @@ from backend.agent.tools.learning.mastery import EsaMasteryStore
 from backend.core.services.auth_service import AuthService
 from backend.core.services.agent_action_service import AgentActionService
 from backend.core.services.auxiliary_llm_service import AuxiliaryLLMClient
+from backend.core.services.code_execution_service import CodeExecutionService
 from backend.core.services.conversation_compression_service import (
     ConversationCompressionService,
 )
@@ -150,14 +151,18 @@ from backend.core.utils.config import (
     LSP_SERVER_COMMANDS,
     MODEL_DTYPE,
     MODEL_GPU_MEMORY_UTILIZATION,
+    MODEL_ENFORCE_EAGER,
     MODEL_KV_CACHE_DTYPE,
+    MODEL_LORA_FULLY_SHARDED,
     MODEL_LORA_MAX_RANK,
     MODEL_LORA_NAME,
     MODEL_LORA_PATH,
+    MODEL_LORA_SPECIALIZE_ACTIVE,
     MODEL_MAX_MODEL_LENGTH,
     MODEL_MAX_NUM_SEQS,
     MODEL_MAX_OUTPUT_TOKENS,
     MODEL_PATH,
+    MODEL_PERFORMANCE_MODE,
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
     MCP_CALL_TIMEOUT_SECONDS,
@@ -211,7 +216,9 @@ from backend.core.utils.config import (
     SANDBOX_MAX_OUTPUT_CHARS,
     SANDBOX_MAX_TIMEOUT_SECONDS,
     SANDBOX_MEMORY_BYTES,
+    SANDBOX_PACKAGE_INSTALL_ENABLED,
     SANDBOX_PROCESS_COUNT,
+    SANDBOX_PYTHON_PACKAGE_ALLOWLIST,
     SANDBOX_ROOT,
     SANDBOX_RUNTIME,
     TRUSTED_HOSTS,
@@ -238,7 +245,6 @@ from backend.core.web.routers import (
     research_capabilities,
     schedule,
     schedule_hust,
-    sandbox,
     student_teaching,
     teaching,
     workspaces,
@@ -498,6 +504,10 @@ async def lifespan(app: FastAPI):
         lora_path=MODEL_LORA_PATH,
         lora_name=MODEL_LORA_NAME,
         lora_max_rank=MODEL_LORA_MAX_RANK,
+        enforce_eager=MODEL_ENFORCE_EAGER,
+        performance_mode=MODEL_PERFORMANCE_MODE,
+        fully_sharded_loras=MODEL_LORA_FULLY_SHARDED,
+        specialize_active_lora=MODEL_LORA_SPECIALIZE_ACTIVE,
     )
     if SANDBOX_ENABLED:
         SANDBOX_ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -515,6 +525,12 @@ async def lifespan(app: FastAPI):
             file_size_bytes=SANDBOX_FILE_SIZE_BYTES,
             process_count=SANDBOX_PROCESS_COUNT,
         ),
+    )
+    app.state.code_execution_service = CodeExecutionService(
+        llm_client=app.state.auxiliary_llm_client,
+        sandbox_service=app.state.sandbox_service,
+        package_install_enabled=SANDBOX_PACKAGE_INSTALL_ENABLED,
+        allowed_python_packages=SANDBOX_PYTHON_PACKAGE_ALLOWLIST,
     )
     app.state.mcp_client_manager = None
     if MCP_ENABLED:
@@ -733,15 +749,13 @@ async def lifespan(app: FastAPI):
         app.state.personal_knowledge_base_service.notify_worker = (
             app.state.personal_knowledge_base_worker.notify
         )
-        _recovered_jobs, revision_reconciled = await (
-            app.state.personal_knowledge_base_worker.reconcile_startup()
-        )
-        if not revision_reconciled:
-            logger.error(
-                "personal knowledge-base startup revision reconcile did not "
-                "complete; retrieval remains unavailable until explicit retry"
+        recovered_jobs = app.state.personal_knowledge_base_worker.start()
+        if recovered_jobs:
+            logger.warning(
+                "personal knowledge-base recovered %s interrupted job(s); "
+                "reconciliation continues in the background",
+                recovered_jobs,
             )
-        app.state.personal_knowledge_base_worker.start()
     app.state.mm_sessions = (
         MultimodalSessionService(MultimodalIngestionService(mm_config))
         if mm_config.enabled
@@ -793,7 +807,6 @@ business_router.include_router(learning.router)
 business_router.include_router(lsp.router)
 business_router.include_router(schedule.router)
 business_router.include_router(schedule_hust.router)
-business_router.include_router(sandbox.router)
 business_router.include_router(memories.router)
 business_router.include_router(personal_knowledge_base.router)
 business_router.include_router(workspaces.router)

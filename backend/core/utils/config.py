@@ -26,12 +26,21 @@ if TYPE_CHECKING:
     from vllm.config.model import ModelDType
     from vllm.model_executor.layers.quantization import QuantizationMethods
 
-DEBUG_MODE: bool = os.environ.get("ESA_DEBUG", "false").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
+
+def _bool_from_env(name: str, default: bool) -> bool:
+    """Read a strict boolean environment variable."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean")
+
+
+DEBUG_MODE: bool = _bool_from_env("ESA_DEBUG", False)
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
@@ -45,6 +54,15 @@ MODEL_MAX_OUTPUT_TOKENS: int = 8192
 MODEL_MAX_NUM_SEQS: int = 16
 MODEL_QUANTIZATION: QuantizationMethods | None = None
 MODEL_TENSOR_PARALLEL_SIZE: int = 4
+MODEL_ENFORCE_EAGER: bool = _bool_from_env("ESA_MODEL_ENFORCE_EAGER", False)
+MODEL_PERFORMANCE_MODE: Literal["balanced", "interactivity", "throughput"] = cast(
+    Literal["balanced", "interactivity", "throughput"],
+    os.environ.get("ESA_MODEL_PERFORMANCE_MODE", "interactivity").strip().lower(),
+)
+if MODEL_PERFORMANCE_MODE not in {"balanced", "interactivity", "throughput"}:
+    raise ValueError(
+        "ESA_MODEL_PERFORMANCE_MODE must be balanced, interactivity, or throughput"
+    )
 MODEL_LORA_PATH: str | None = (
     os.environ.get("ESA_MODEL_LORA_PATH", "").strip() or None
 )
@@ -59,6 +77,12 @@ except ValueError as exc:
     raise ValueError("ESA_MODEL_LORA_MAX_RANK must be an integer") from exc
 if MODEL_LORA_MAX_RANK <= 0:
     raise ValueError("ESA_MODEL_LORA_MAX_RANK must be greater than zero")
+MODEL_LORA_FULLY_SHARDED: bool = _bool_from_env(
+    "ESA_MODEL_LORA_FULLY_SHARDED", False
+)
+MODEL_LORA_SPECIALIZE_ACTIVE: bool = _bool_from_env(
+    "ESA_MODEL_LORA_SPECIALIZE_ACTIVE", True
+)
 
 # Auxiliary model: dedicated to document parsing and offline context compression.
 # It is served by the local vLLM sidecar and is never exposed publicly.
@@ -128,19 +152,6 @@ def _optional_str_from_env(name: str, default: str | None = None) -> str | None:
         return default
     value = value.strip()
     return value or None
-
-
-def _bool_from_env(name: str, default: bool) -> bool:
-    """处理 `_bool_from_env` 相关逻辑。"""
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    normalized = value.strip().lower()
-    if normalized in {"1", "true", "yes", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(f"{name} must be a boolean")
 
 
 def _int_from_env(name: str, default: int, *, minimum: int = 1) -> int:
@@ -242,6 +253,14 @@ SANDBOX_FILE_SIZE_BYTES: int = _int_from_env(
     "ESA_SANDBOX_FILE_SIZE_BYTES", 128 * 1_024 * 1_024
 )
 SANDBOX_PROCESS_COUNT: int = _int_from_env("ESA_SANDBOX_PROCESS_COUNT", 64)
+SANDBOX_PACKAGE_INSTALL_ENABLED: bool = _bool_from_env(
+    "ESA_SANDBOX_PACKAGE_INSTALL_ENABLED", False
+)
+SANDBOX_PYTHON_PACKAGE_ALLOWLIST: tuple[str, ...] = _csv_from_env(
+    "ESA_SANDBOX_PYTHON_PACKAGE_ALLOWLIST",
+    "numpy,pandas,matplotlib,scipy,sympy,requests,pillow,"
+    "opencv-python-headless,scikit-learn,seaborn",
+)
 
 
 # MCP child processes. The ESA backend is the MCP client and owns the complete

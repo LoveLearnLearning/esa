@@ -35,6 +35,7 @@ class Composer extends StatefulWidget {
     this.courseNames = const [],
     this.toolsOn = true,
     this.onToolsOnChanged,
+    this.onStop,
   });
 
   final bool busy;
@@ -63,11 +64,14 @@ class Composer extends StatefulWidget {
   onOpenCodeEditor;
   final void Function(String blockId, String code, String language)?
   onCodeBlockChanged;
-  final Future<String?> Function(String code, String language)? onRunCode;
+  final CodeRunCallback? onRunCode;
   final ValueChanged<List<DocumentAttachment>>? onSelectedAttachmentsChanged;
   final List<String> courseNames;
   final bool toolsOn;
   final ValueChanged<bool>? onToolsOnChanged;
+
+  /// 模型正在输出时，发送按钮切换为终止按钮，点击后调用该回调。
+  final VoidCallback? onStop;
 
   @override
   State<Composer> createState() => ComposerState();
@@ -412,7 +416,7 @@ class ComposerState extends State<Composer> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
               const SizedBox(width: 8),
-              const Text('正在保存附件…'),
+              const Text('正在上传附件…'),
             ] else ...[
               Flexible(
                 child: Column(
@@ -636,6 +640,34 @@ class ComposerState extends State<Composer> {
   );
 
   Widget _sendButton(BuildContext context) {
+    // 模型输出中把发送按钮切换成“终止”按钮，点击即可停止生成。
+    if (widget.busy && widget.onStop != null) {
+      return Semantics(
+        button: true,
+        label: '停止生成',
+        child: Tooltip(
+          message: '停止生成',
+          child: Material(
+            color: EsaColors.accent,
+            borderRadius: BorderRadius.circular(10),
+            child: InkWell(
+              onTap: widget.onStop,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                child: const Icon(
+                  LucideIcons.square,
+                  size: 16,
+                  color: EsaColors.onAccent,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     final enabled = _canSend;
     return Semantics(
       button: true,

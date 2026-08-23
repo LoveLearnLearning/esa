@@ -8,6 +8,7 @@ import logging
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Literal
 
 from transformers import AutoTokenizer
 from vllm import SamplingParams
@@ -41,6 +42,12 @@ class LLMProvider:
         lora_path: str | Path | None = None,
         lora_name: str = "esa-agent",
         lora_max_rank: int = 16,
+        enforce_eager: bool = False,
+        performance_mode: Literal[
+            "balanced", "interactivity", "throughput"
+        ] = "interactivity",
+        fully_sharded_loras: bool = False,
+        specialize_active_lora: bool = True,
     ) -> None:
         """初始化 `LLMProvider` 实例。"""
         self.model_path = Path(model_path)
@@ -73,12 +80,18 @@ class LLMProvider:
             )
         logger.info(
             "正在加载千问模型：path=%s，LoRA=%s，TP=%s，"
-            "max_model_len=%s，max_output_tokens=%s",
+            "max_model_len=%s，max_output_tokens=%s，enforce_eager=%s，"
+            "performance_mode=%s，fully_sharded_loras=%s，"
+            "specialize_active_lora=%s",
             self.model_path,
             self.lora_request.lora_path if self.lora_request else "disabled",
             tensor_parallel_size,
             max_model_len,
             max_output_tokens,
+            enforce_eager,
+            performance_mode,
+            fully_sharded_loras,
+            specialize_active_lora,
         )
 
         engine_args = AsyncEngineArgs(
@@ -87,13 +100,16 @@ class LLMProvider:
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
             tensor_parallel_size=tensor_parallel_size,
-            enforce_eager=True,
+            enforce_eager=enforce_eager,
             quantization=quantization,
             dtype=dtype,
             kv_cache_dtype=kv_cache_dtype,
             enable_lora=self.lora_request is not None,
             max_loras=1,
             max_lora_rank=lora_max_rank,
+            fully_sharded_loras=fully_sharded_loras,
+            specialize_active_lora=specialize_active_lora,
+            performance_mode=performance_mode,
         )
 
         self.engine = AsyncLLM.from_engine_args(engine_args)

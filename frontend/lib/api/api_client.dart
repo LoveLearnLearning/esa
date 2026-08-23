@@ -37,6 +37,73 @@ class ChatStreamEvent {
   final Map<String, dynamic> data;
 }
 
+class CodeExecutionResult {
+  const CodeExecutionResult({
+    required this.ok,
+    required this.language,
+    required this.code,
+    required this.codeChanged,
+    required this.dependencies,
+    required this.rejectedDependencies,
+    required this.notes,
+    required this.warnings,
+    required this.modelUsed,
+    required this.attemptCount,
+    required this.result,
+    required this.installResults,
+  });
+
+  factory CodeExecutionResult.fromJson(Map<String, dynamic> json) =>
+      CodeExecutionResult(
+        ok: json['ok'] == true,
+        language: json['language']?.toString() ?? 'plaintext',
+        code: json['code']?.toString() ?? '',
+        codeChanged: json['code_changed'] == true,
+        dependencies: _stringValues(json['dependencies']),
+        rejectedDependencies: _stringValues(json['rejected_dependencies']),
+        notes: _stringValues(json['notes']),
+        warnings: _stringValues(json['warnings']),
+        modelUsed: json['model_used'] == true,
+        attemptCount: (json['attempt_count'] as num?)?.toInt() ?? 0,
+        result: json['result'] is Map
+            ? Map<String, dynamic>.from(json['result'] as Map)
+            : const {},
+        installResults: json['install_results'] is List
+            ? (json['install_results'] as List)
+                  .whereType<Map>()
+                  .map(Map<String, dynamic>.from)
+                  .toList()
+            : const [],
+      );
+
+  static List<String> _stringValues(Object? value) => value is List
+      ? value.whereType<Object>().map((item) => item.toString()).toList()
+      : const [];
+
+  final bool ok;
+  final String language;
+  final String code;
+  final bool codeChanged;
+  final List<String> dependencies;
+  final List<String> rejectedDependencies;
+  final List<String> notes;
+  final List<String> warnings;
+  final bool modelUsed;
+  final int attemptCount;
+  final Map<String, dynamic> result;
+  final List<Map<String, dynamic>> installResults;
+
+  String get stdout => result['stdout']?.toString() ?? '';
+  String get stderr => result['stderr']?.toString() ?? '';
+  String get error => result['error']?.toString() ?? '';
+  double get durationSeconds {
+    final seconds = result['duration_seconds'];
+    if (seconds is num) return seconds.toDouble();
+    final milliseconds = result['duration_ms'];
+    return milliseconds is num ? milliseconds.toDouble() / 1000 : 0;
+  }
+}
+
 class AttachmentContent {
   const AttachmentContent({
     required this.bytes,
@@ -47,49 +114,6 @@ class AttachmentContent {
   final Uint8List bytes;
   final String mediaType;
   final String filename;
-}
-
-class SandboxRunResult {
-  const SandboxRunResult({
-    required this.ok,
-    this.stdout = '',
-    this.stderr = '',
-    this.error,
-    this.exitCode,
-    this.timedOut = false,
-    this.outputTruncated = false,
-  });
-
-  factory SandboxRunResult.fromJson(Map<String, dynamic> json) {
-    return SandboxRunResult(
-      ok: json['ok'] == true,
-      stdout: json['stdout'] as String? ?? '',
-      stderr: json['stderr'] as String? ?? '',
-      error: json['error'] as String?,
-      exitCode: (json['exit_code'] as num?)?.toInt(),
-      timedOut: json['timed_out'] == true,
-      outputTruncated: json['output_truncated'] == true,
-    );
-  }
-
-  final bool ok;
-  final String stdout;
-  final String stderr;
-  final String? error;
-  final int? exitCode;
-  final bool timedOut;
-  final bool outputTruncated;
-
-  String get displayOutput {
-    final parts = <String>[];
-    if (stdout.isNotEmpty) parts.add(stdout);
-    if (stderr.isNotEmpty) parts.add(stderr);
-    if (parts.isEmpty && error != null) parts.add(error!);
-    if (parts.isEmpty && timedOut) parts.add('运行超时');
-    if (parts.isEmpty && !ok) parts.add('运行失败');
-    if (outputTruncated) parts.add('\n[输出已截断]');
-    return parts.join('\n');
-  }
 }
 
 class RequestCancellation {
@@ -234,31 +258,6 @@ class ApiClient {
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
-  Future<SandboxRunResult> runCodeInSandbox({
-    required String conversationId,
-    required String code,
-    required String language,
-    double timeoutSeconds = 30,
-  }) async {
-    if (kOfflineMode) {
-      return const SandboxRunResult(ok: false, error: '离线模式未启用代码执行服务');
-    }
-    final response = await http.post(
-      _uri('/sandbox/run'),
-      headers: _headers(auth: true),
-      body: jsonEncode({
-        'conversation_id': conversationId,
-        'code': code,
-        'language': language,
-        'timeout_seconds': timeoutSeconds,
-      }),
-    );
-    if (response.statusCode != 200) _fail(response);
-    return SandboxRunResult.fromJson(
-      Map<String, dynamic>.from(_decode(response) as Map),
-    );
-  }
-
   dynamic _decode(http.Response r) => jsonDecode(utf8.decode(r.bodyBytes));
 
   Never _fail(http.Response r) {
@@ -277,6 +276,19 @@ class ApiClient {
       detail = '请求失败（${r.statusCode}）';
     }
     throw ApiException(r.statusCode, detail);
+  }
+
+  /// 检测后端进程是否可达：GET /health 无需认证，成功返回 200。
+  Future<bool> checkHealth() async {
+    if (kOfflineMode) return true;
+    try {
+      final r = await http
+          .get(_uri('/health'), headers: _headers())
+          .timeout(const Duration(seconds: 8));
+      return r.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   // ---------- 认证 ----------
@@ -1608,6 +1620,32 @@ class ApiClient {
     return list
         .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<CodeExecutionResult> executeCode(
+    String conversationId, {
+    required String code,
+    required String language,
+  }) async {
+    if (kOfflineMode) {
+      return CodeExecutionResult.fromJson({
+        'ok': false,
+        'language': language,
+        'code': code,
+        'code_changed': false,
+        'warnings': ['离线模式未启用沙箱'],
+        'result': {'ok': false, 'error': 'sandbox_disabled'},
+      });
+    }
+    final response = await http.post(
+      _uri('/conversations/$conversationId/code/execute'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'code': code, 'language': language}),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return CodeExecutionResult.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
   }
 
   Future<List<ChatMessage>> sendMessageWithAttachments(

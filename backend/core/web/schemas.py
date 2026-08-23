@@ -55,13 +55,11 @@ class SendMessageRequest(BaseModel):
     replace_message_id: int | None = Field(default=None, ge=1)
 
 
-class SandboxRunRequest(BaseModel):
-    """请求在当前用户对话沙箱中运行一段代码。"""
+class CodeExecutionRequest(BaseModel):
+    """Code block submitted to the auxiliary-model sandbox pipeline."""
 
-    conversation_id: str = Field(min_length=1, max_length=128)
-    code: str = Field(min_length=1, max_length=12_000)
     language: str = Field(min_length=1, max_length=32)
-    timeout_seconds: float = Field(default=30.0, gt=0, le=300.0)
+    code: str = Field(min_length=1, max_length=50_000)
 
 
 class ResearchProjectCreateRequest(BaseModel):

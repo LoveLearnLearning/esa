@@ -11,7 +11,7 @@ import time
 from collections.abc import AsyncIterator, Mapping
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -35,6 +35,50 @@ logger = logging.getLogger(__name__)
 
 _TERMINAL_TOOL_ERRORS = frozenset(
     {"tool_not_available", "resource_capability_required"}
+)
+
+_KNOWLEDGE_RETRIEVAL_TOOLS = frozenset(
+    {
+        "retrieve_federated_knowledge",
+        "retrieve_personal_knowledge",
+        "retrieve_knowledge",
+    }
+)
+
+_KNOWLEDGE_RESPONSE_CONTRACT = {
+    "kind": "evidence_to_explanation",
+    "requirements": [
+        "先直接回答用户原问题，再解释关键概念及其机制或因果关系",
+        "至少给出一个贴合原问题的具体例子；必要时补充边界条件或易错点",
+        "只引用与原问题真正相关的证据，并标注其真实来源",
+        "证据不足或偏题时明确舍弃该证据，并用通用知识补足讲解",
+    ],
+    "forbidden": [
+        "只摘抄、改写或罗列知识库片段和来源",
+        "为了覆盖个人库和公共库而强行使用不相关证据",
+        "用‘根据检索结果’开头后立即结束而不解释",
+    ],
+}
+
+_KNOWLEDGE_MODEL_TOP_LEVEL_KEYS = (
+    "ok",
+    "error",
+    "message",
+    "query",
+    "result_count",
+    "results",
+    "sources",
+    "degraded",
+    "federation",
+)
+
+_KNOWLEDGE_MODEL_RESULT_KEYS = (
+    "rank",
+    "knowledge_scope",
+    "source",
+    "section",
+    "page",
+    "content",
 )
 
 
@@ -118,6 +162,39 @@ def serialize_tool_result(result: object) -> str:
     return json.dumps(result, ensure_ascii=False, default=str)
 
 
+def serialize_tool_result_for_model(name: str, result: object) -> str:
+    """Add a trusted answer contract to knowledge observations for the model.
+
+    The persisted/UI-facing Tool result remains the original payload.  This
+    model-only envelope keeps retrieval evidence from being mistaken for a
+    finished explanation without changing the public Tool contract.
+    """
+
+    if name not in _KNOWLEDGE_RETRIEVAL_TOOLS:
+        return serialize_tool_result(result)
+    if isinstance(result, Mapping):
+        payload = {
+            key: result[key]
+            for key in _KNOWLEDGE_MODEL_TOP_LEVEL_KEYS
+            if key in result
+        }
+        raw_results = result.get("results")
+        if isinstance(raw_results, list):
+            payload["results"] = [
+                {
+                    key: item[key]
+                    for key in _KNOWLEDGE_MODEL_RESULT_KEYS
+                    if key in item
+                }
+                for item in raw_results
+                if isinstance(item, Mapping)
+            ]
+    else:
+        payload = {"result": result}
+    payload["_response_contract"] = _KNOWLEDGE_RESPONSE_CONTRACT
+    return serialize_tool_result(payload)
+
+
 class Agent:
     """封装 `Agent` 的状态与行为。"""
     def __init__(
@@ -134,6 +211,12 @@ class Agent:
         lora_path: str | Path | None = None,
         lora_name: str = "esa-agent",
         lora_max_rank: int = 16,
+        enforce_eager: bool = False,
+        performance_mode: Literal[
+            "balanced", "interactivity", "throughput"
+        ] = "interactivity",
+        fully_sharded_loras: bool = False,
+        specialize_active_lora: bool = True,
         stream_heartbeat_seconds: float = AGENT_STREAM_HEARTBEAT_SECONDS,
     ) -> None:
         """初始化 `Agent` 实例。"""
@@ -163,6 +246,10 @@ class Agent:
             lora_path=lora_path,
             lora_name=lora_name,
             lora_max_rank=lora_max_rank,
+            enforce_eager=enforce_eager,
+            performance_mode=performance_mode,
+            fully_sharded_loras=fully_sharded_loras,
+            specialize_active_lora=specialize_active_lora,
         )
 
     async def run(self, run_spec: ExecutableAgentRun) -> list[dict]:
@@ -279,12 +366,16 @@ class Agent:
                     timeout=run_spec.loop_policy.tool_timeout_seconds,
                 )
                 result_text = serialize_tool_result(result)
+                model_result_text = serialize_tool_result_for_model(
+                    tool_call.name,
+                    result,
+                )
 
                 messages.append(
                     {
                         "role": "tool",
                         "name": tool_call.name,
-                        "content": result_text,
+                        "content": model_result_text,
                     }
                 )
                 new_messages.append(
@@ -526,6 +617,10 @@ class Agent:
                             },
                         )
                 result_text = serialize_tool_result(result)
+                model_result_text = serialize_tool_result_for_model(
+                    tool_call.name,
+                    result,
+                )
 
                 tool_message = {
                     "role": "tool",
@@ -538,7 +633,7 @@ class Agent:
                     {
                         "role": "tool",
                         "name": tool_call.name,
-                        "content": result_text,
+                        "content": model_result_text,
                     }
                 )
                 new_messages.append(tool_message)

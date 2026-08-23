@@ -25,7 +25,8 @@ LEARNING_TOOLS = frozenset(
         "recommend_practice", "get_mastery_report", "get_mastery_level",
         "get_weak_prerequisites", "get_review_timing", "record_answer",
         "record_learning_evidence", "get_learning_evidence_summary",
-        "retrieve_knowledge", "get_knowledge_base_stats",
+        "retrieve_federated_knowledge", "retrieve_knowledge",
+        "get_knowledge_base_stats",
     }
 )
 
