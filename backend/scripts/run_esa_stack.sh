@@ -205,6 +205,7 @@ if (( rag_gpu_count == 1 )); then
     rag_device="${allocated_gpus[main_tp + 1]}"
     backend_devices="${main_devices},${rag_device}"
     export RAG_EMBEDDING_RUNTIME_DEVICE="${RAG_EMBEDDING_RUNTIME_DEVICE:-cuda:${main_tp}}"
+    export RAG_RERANKER_RUNTIME_DEVICE="${RAG_RERANKER_RUNTIME_DEVICE:-cuda:${main_tp}}"
 fi
 runtime_root="${SLURM_TMPDIR:-/tmp}/esa-${SLURM_JOB_ID:-$$}"
 auxiliary_cache="$runtime_root/triton-auxiliary"

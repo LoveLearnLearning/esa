@@ -150,6 +150,7 @@ class TransformersReranker:
     model_name: str = "Qwen/Qwen3-Reranker-4B"
     load_path: str | None = None
     device: str = "cuda"
+    runtime_device: str | None = None
     max_length: int = 8192
     instruction: str = (
         "Given a search query and a candidate passage, judge whether the passage "
@@ -164,6 +165,9 @@ class TransformersReranker:
     _true_id: int = field(init=False, default=0, repr=False)
     _prefix_tokens: list[int] = field(init=False, default_factory=list, repr=False)
     _suffix_tokens: list[int] = field(init=False, default_factory=list, repr=False)
+    _vl_mode: bool = field(init=False, default=False, repr=False)
+    _score_linear: Any = field(init=False, default=None, repr=False)
+    _processor: Any = field(init=False, default=None, repr=False)
 
     def __post_init__(self) -> None:
         """完成实例初始化后的校验与派生字段构建。"""
@@ -193,27 +197,83 @@ class TransformersReranker:
             return
         try:
             import torch
-            from transformers import AutoModelForCausalLM, AutoTokenizer
+            from transformers import AutoConfig
         except ImportError as exc:
             raise InferenceUnavailable(
                 "Transformers reranker dependencies are not installed"
             ) from exc
         self._torch = torch
         source = self.load_path or self.model_name
-        self._tokenizer = AutoTokenizer.from_pretrained(
-            source,
-            padding_side="left",
-        )
-        self._model = (
-            AutoModelForCausalLM.from_pretrained(
+        try:
+            model_type = AutoConfig.from_pretrained(source).model_type
+        except Exception as exc:
+            raise InferenceUnavailable(
+                f"cannot inspect reranker model configuration: {source}"
+            ) from exc
+        if model_type == "qwen3_vl":
+            # Qwen3-VL-Reranker scores the final hidden state with the
+            # difference between the ``yes`` and ``no`` language-model rows.
+            try:
+                from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
+            except ImportError as exc:
+                raise InferenceUnavailable(
+                    "Qwen3-VL reranker requires a recent Transformers release"
+                ) from exc
+            self._processor = AutoProcessor.from_pretrained(
                 source,
-                torch_dtype="auto",
+                trust_remote_code=True,
+                padding_side="left",
             )
-            .to(self.device)
-            .eval()
-        )
-        self._false_id = self._tokenizer.convert_tokens_to_ids("no")
-        self._true_id = self._tokenizer.convert_tokens_to_ids("yes")
+            self._tokenizer = self._processor.tokenizer
+            language_model = (
+                Qwen3VLForConditionalGeneration.from_pretrained(
+                    source,
+                    torch_dtype="auto",
+                    trust_remote_code=True,
+                )
+                .to(self.runtime_device or self.device)
+                .eval()
+            )
+            self._model = language_model.model
+            vocab = self._tokenizer.get_vocab()
+            try:
+                false_id = int(vocab["no"])
+                true_id = int(vocab["yes"])
+                lm_head = language_model.lm_head.weight.detach()
+            except (KeyError, AttributeError, TypeError, ValueError) as exc:
+                raise InferenceUnavailable(
+                    "Qwen3-VL reranker tokenizer/model lacks yes/no scoring tokens"
+                ) from exc
+            linear = torch.nn.Linear(lm_head.shape[1], 1, bias=False)
+            with torch.no_grad():
+                linear.weight[0].copy_(lm_head[true_id] - lm_head[false_id])
+            self._score_linear = linear.to(
+                self.runtime_device or self.device
+            ).to(self._model.dtype).eval()
+            self._vl_mode = True
+        else:
+            try:
+                from transformers import AutoModelForCausalLM, AutoTokenizer
+            except ImportError as exc:
+                raise InferenceUnavailable(
+                    "Transformers reranker dependencies are not installed"
+                ) from exc
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                source,
+                padding_side="left",
+            )
+            self._model = (
+                AutoModelForCausalLM.from_pretrained(
+                    source,
+                    torch_dtype="auto",
+                )
+                .to(self.runtime_device or self.device)
+                .eval()
+            )
+            self._false_id = self._tokenizer.convert_tokens_to_ids("no")
+            self._true_id = self._tokenizer.convert_tokens_to_ids("yes")
+        if self._vl_mode:
+            return
         prefix = (
             "<|im_start|>system\n"
             "Judge whether the Document meets the requirements based on "
@@ -244,6 +304,8 @@ class TransformersReranker:
         if not documents:
             return []
         self._load()
+        if self._vl_mode:
+            return self._score_qwen3_vl(query, documents)
         texts = [
             (
                 f"<Instruct>: {self.instruction}\n"
@@ -278,4 +340,54 @@ class TransformersReranker:
                 dim=1,
             )
             scores = self._torch.nn.functional.log_softmax(binary, dim=1)[:, 1].exp()
+        return scores.float().cpu().tolist()
+
+    def _score_qwen3_vl(
+        self,
+        query: str,
+        documents: Sequence[str],
+    ) -> list[float]:
+        """Score text-only pairs through the Qwen3-VL processor."""
+
+        prompts = [
+            self._processor.apply_chat_template(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            'Judge whether the Document meets the requirements '
+                            'based on the Query and the Instruct provided. The '
+                            'answer can only be "yes" or "no".'
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"<Instruct>: {self.instruction}\n"
+                            f"<Query>: {query}\n"
+                            f"<Document>: {document}"
+                        ),
+                    },
+                ],
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            for document in documents
+        ]
+        encoded = self._processor(
+            text=prompts,
+            padding=True,
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors="pt",
+        )
+        target_device = self.runtime_device or self.device
+        encoded = {
+            name: value.to(target_device) if hasattr(value, "to") else value
+            for name, value in encoded.items()
+        }
+        with self._torch.inference_mode():
+            hidden = self._model(**encoded).last_hidden_state[:, -1]
+            logits = self._score_linear(hidden).squeeze(-1)
+            scores = self._torch.sigmoid(logits)
         return scores.float().cpu().tolist()

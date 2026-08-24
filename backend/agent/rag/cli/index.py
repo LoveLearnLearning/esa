@@ -191,6 +191,7 @@ def _reranker(
         return TransformersReranker(
             model_name=model_name,
             device=core_config.RAG_RERANKER_DEVICE,
+            runtime_device=core_config.RAG_RERANKER_RUNTIME_DEVICE,
             max_length=core_config.RAG_RERANKER_MAX_LENGTH,
         )
     if not base_url:

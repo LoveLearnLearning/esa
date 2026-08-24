@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import time
@@ -183,6 +184,55 @@ class Agent:
             specialize_active_lora=specialize_active_lora,
         )
 
+    @staticmethod
+    def _provider_accepts_metadata(method: object) -> bool:
+        """Check whether a test or alternate provider accepts prompt metadata."""
+
+        try:
+            parameters = inspect.signature(method).parameters
+        except (TypeError, ValueError):
+            return False
+        return "request_id" in parameters or any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        )
+
+    async def _generate(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        run_spec: ExecutableAgentRun,
+    ) -> str:
+        """Invoke the provider while passing correlation metadata when supported."""
+
+        method = self.llm_provider.generate
+        if self._provider_accepts_metadata(method):
+            return await method(
+                messages,
+                tools,
+                request_id=run_spec.run_metadata.get("request_id"),
+                conversation_id=run_spec.run_metadata.get("conversation_id"),
+            )
+        return await method(messages, tools)
+
+    def _generate_stream(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        run_spec: ExecutableAgentRun,
+    ) -> AsyncIterator[str]:
+        """Invoke streaming generation with optional correlation metadata."""
+
+        method = self.llm_provider.generate_stream
+        if self._provider_accepts_metadata(method):
+            return method(
+                messages,
+                tools,
+                request_id=run_spec.run_metadata.get("request_id"),
+                conversation_id=run_spec.run_metadata.get("conversation_id"),
+            )
+        return method(messages, tools)
+
     async def run(self, run_spec: ExecutableAgentRun) -> list[dict]:
         """Run one non-streaming turn from an already-authorized specification."""
         started_at = time.monotonic()
@@ -223,9 +273,10 @@ class Agent:
         terminal_tool_errors: dict[str, str] = {}
         stop_loop = False
         for _ in range(run_spec.loop_policy.max_iterations):
-            response = await self.llm_provider.generate(
+            response = await self._generate(
                 messages,
                 tool_schemas,
+                run_spec,
             )
 
             parsed: ParsedOutput = self.llm_provider.parse_output(
@@ -385,9 +436,10 @@ class Agent:
         stop_loop = False
         for _ in range(run_spec.loop_policy.max_iterations):
             stream_parser = self.llm_provider.create_stream_parser()
-            generation = self.llm_provider.generate_stream(
+            generation = self._generate_stream(
                 messages,
                 tool_schemas,
+                run_spec,
             ).__aiter__()
             pending_chunk: asyncio.Task[str] | None = None
             heartbeat_seconds = getattr(

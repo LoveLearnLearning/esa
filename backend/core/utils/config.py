@@ -40,7 +40,20 @@ def _bool_from_env(name: str, default: bool) -> bool:
     raise ValueError(f"{name} must be a boolean")
 
 
+def _positive_int_from_env(name: str, default: int) -> int:
+    """Read a strictly positive integer before the general config helpers."""
+
+    try:
+        value = int(os.environ.get(name, default))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be greater than zero")
+    return value
+
+
 DEBUG_MODE: bool = _bool_from_env("ESA_DEBUG", False)
+LOG_PROMPTS: bool = _bool_from_env("ESA_LOG_PROMPTS", False)
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
@@ -49,8 +62,16 @@ MODEL_PATH: str = os.environ.get("ESA_MODEL_PATH", "Qwen/Qwen3.5-122B-A10B")
 MODEL_DTYPE: ModelDType = "bfloat16"
 MODEL_KV_CACHE_DTYPE: CacheDType = "auto"
 MODEL_GPU_MEMORY_UTILIZATION: float = 0.95
-MODEL_MAX_MODEL_LENGTH: int = 81920
-MODEL_MAX_OUTPUT_TOKENS: int = 8192
+MODEL_MAX_MODEL_LENGTH: int = _positive_int_from_env(
+    "ESA_MODEL_MAX_MODEL_LENGTH", 131_072
+)
+MODEL_MAX_OUTPUT_TOKENS: int = _positive_int_from_env(
+    "ESA_MODEL_MAX_OUTPUT_TOKENS", 16_384
+)
+if MODEL_MAX_OUTPUT_TOKENS >= MODEL_MAX_MODEL_LENGTH:
+    raise ValueError(
+        "ESA_MODEL_MAX_OUTPUT_TOKENS must be smaller than ESA_MODEL_MAX_MODEL_LENGTH"
+    )
 MODEL_MAX_NUM_SEQS: int = 16
 MODEL_QUANTIZATION: QuantizationMethods | None = None
 MODEL_TENSOR_PARALLEL_SIZE: int = 4
@@ -63,23 +84,17 @@ if MODEL_PERFORMANCE_MODE not in {"balanced", "interactivity", "throughput"}:
     raise ValueError(
         "ESA_MODEL_PERFORMANCE_MODE must be balanced, interactivity, or throughput"
     )
-MODEL_LORA_PATH: str | None = (
-    os.environ.get("ESA_MODEL_LORA_PATH", "").strip() or None
-)
+MODEL_LORA_PATH: str | None = os.environ.get("ESA_MODEL_LORA_PATH", "").strip() or None
 MODEL_LORA_NAME: str = os.environ.get("ESA_MODEL_LORA_NAME", "esa-agent").strip()
 if not MODEL_LORA_NAME:
     raise ValueError("ESA_MODEL_LORA_NAME cannot be blank")
 try:
-    MODEL_LORA_MAX_RANK: int = int(
-        os.environ.get("ESA_MODEL_LORA_MAX_RANK", "16")
-    )
+    MODEL_LORA_MAX_RANK: int = int(os.environ.get("ESA_MODEL_LORA_MAX_RANK", "16"))
 except ValueError as exc:
     raise ValueError("ESA_MODEL_LORA_MAX_RANK must be an integer") from exc
 if MODEL_LORA_MAX_RANK <= 0:
     raise ValueError("ESA_MODEL_LORA_MAX_RANK must be greater than zero")
-MODEL_LORA_FULLY_SHARDED: bool = _bool_from_env(
-    "ESA_MODEL_LORA_FULLY_SHARDED", False
-)
+MODEL_LORA_FULLY_SHARDED: bool = _bool_from_env("ESA_MODEL_LORA_FULLY_SHARDED", False)
 MODEL_LORA_SPECIALIZE_ACTIVE: bool = _bool_from_env(
     "ESA_MODEL_LORA_SPECIALIZE_ACTIVE", True
 )
@@ -94,8 +109,17 @@ AUXILIARY_MODEL_BASE_URL: str = "http://127.0.0.1:51025/v1"
 AUXILIARY_MODEL_PORT: int = 51025
 AUXILIARY_MODEL_DTYPE: str = "bfloat16"
 AUXILIARY_MODEL_GPU_MEMORY_UTILIZATION: float = 0.80
-AUXILIARY_MODEL_MAX_MODEL_LENGTH: int = 32768
-AUXILIARY_MODEL_MAX_OUTPUT_TOKENS: int = 4096
+AUXILIARY_MODEL_MAX_MODEL_LENGTH: int = _positive_int_from_env(
+    "ESA_AUXILIARY_MODEL_MAX_MODEL_LENGTH", 65_536
+)
+AUXILIARY_MODEL_MAX_OUTPUT_TOKENS: int = _positive_int_from_env(
+    "ESA_AUXILIARY_MODEL_MAX_OUTPUT_TOKENS", 8_192
+)
+if AUXILIARY_MODEL_MAX_OUTPUT_TOKENS >= AUXILIARY_MODEL_MAX_MODEL_LENGTH:
+    raise ValueError(
+        "ESA_AUXILIARY_MODEL_MAX_OUTPUT_TOKENS must be smaller than "
+        "ESA_AUXILIARY_MODEL_MAX_MODEL_LENGTH"
+    )
 AUXILIARY_MODEL_MAX_NUM_SEQS: int = 8
 AUXILIARY_MODEL_MAX_IMAGES_PER_PROMPT: int = 4
 AUXILIARY_MODEL_REQUEST_TIMEOUT: float = 180.0
@@ -104,6 +128,9 @@ AUXILIARY_MODEL_REQUEST_TIMEOUT: float = 180.0
 AGENT_LOOP_TIME: int = 10
 AGENT_TOOL_TIMEOUT_SECONDS: float = 30.0
 AGENT_STREAM_HEARTBEAT_SECONDS: float = 15.0
+WORKSPACE_CONTEXT_MAX_TOKENS: int = _positive_int_from_env(
+    "ESA_WORKSPACE_CONTEXT_MAX_TOKENS", 16_000
+)
 
 # Offline conversation context compression. Original messages are retained;
 # the summary only replaces old messages in the next model prompt.
@@ -353,10 +380,14 @@ PERSONAL_KB_ROOT: Path = _path_from_env(
     Path("/persist_data/home/chenxuzhao/esa-personal-knowledge-base"),
 )
 _personal_kb_temp_override = _optional_str_from_env("PERSONAL_KB_TEMP_ROOT")
-PERSONAL_KB_TEMP_ROOT: Path = Path(
-    _personal_kb_temp_override
-    or (Path(os.environ.get("SLURM_TMPDIR", "/tmp")) / "esa-personal-kb")
-).expanduser().resolve()
+PERSONAL_KB_TEMP_ROOT: Path = (
+    Path(
+        _personal_kb_temp_override
+        or (Path(os.environ.get("SLURM_TMPDIR", "/tmp")) / "esa-personal-kb")
+    )
+    .expanduser()
+    .resolve()
+)
 PERSONAL_KB_SNAPSHOT_ROOT: Path = _path_from_env(
     "PERSONAL_KB_SNAPSHOT_ROOT",
     PERSONAL_KB_ROOT / "qdrant-snapshots",
@@ -364,9 +395,7 @@ PERSONAL_KB_SNAPSHOT_ROOT: Path = _path_from_env(
 PERSONAL_KB_MAX_FILE_BYTES: int = _int_from_env(
     "PERSONAL_KB_MAX_FILE_BYTES", 200 * 1024 * 1024
 )
-PERSONAL_KB_MAX_BATCH_FILES: int = _int_from_env(
-    "PERSONAL_KB_MAX_BATCH_FILES", 20
-)
+PERSONAL_KB_MAX_BATCH_FILES: int = _int_from_env("PERSONAL_KB_MAX_BATCH_FILES", 20)
 PERSONAL_KB_MAX_BATCH_BYTES: int = _int_from_env(
     "PERSONAL_KB_MAX_BATCH_BYTES", 1024 * 1024 * 1024
 )
@@ -377,18 +406,14 @@ PERSONAL_KB_MAX_REQUEST_BYTES: int = _int_from_env(
 PERSONAL_KB_MAX_USER_BYTES: int = _int_from_env(
     "PERSONAL_KB_MAX_USER_BYTES", 10 * 1024 * 1024 * 1024
 )
-PERSONAL_KB_MAX_USER_FILES: int = _int_from_env(
-    "PERSONAL_KB_MAX_USER_FILES", 1000
-)
+PERSONAL_KB_MAX_USER_FILES: int = _int_from_env("PERSONAL_KB_MAX_USER_FILES", 1000)
 PERSONAL_KB_QDRANT_COLLECTION: str = _str_from_env(
     "PERSONAL_KB_QDRANT_COLLECTION", "esa_personal_kb_qwen3_4b"
 )
 PERSONAL_KB_SNAPSHOT_MAX_DELAY_SECONDS: int = _int_from_env(
     "PERSONAL_KB_SNAPSHOT_MAX_DELAY_SECONDS", 600
 )
-PERSONAL_KB_SNAPSHOT_RETENTION: int = _int_from_env(
-    "PERSONAL_KB_SNAPSHOT_RETENTION", 3
-)
+PERSONAL_KB_SNAPSHOT_RETENTION: int = _int_from_env("PERSONAL_KB_SNAPSHOT_RETENTION", 3)
 PERSONAL_KB_RESTORE_ON_STARTUP: bool = _bool_from_env(
     "PERSONAL_KB_RESTORE_ON_STARTUP", True
 )
@@ -401,9 +426,7 @@ PERSONAL_KB_MINERU_COMMAND: Path = _path_from_env(
 PERSONAL_KB_MINERU_TIMEOUT_SECONDS: int = _int_from_env(
     "PERSONAL_KB_MINERU_TIMEOUT_SECONDS", 7200
 )
-PERSONAL_KB_MINERU_ATTEMPTS: int = _int_from_env(
-    "PERSONAL_KB_MINERU_ATTEMPTS", 2
-)
+PERSONAL_KB_MINERU_ATTEMPTS: int = _int_from_env("PERSONAL_KB_MINERU_ATTEMPTS", 2)
 _personal_kb_libreoffice_value = os.environ.get(
     "PERSONAL_KB_LIBREOFFICE_BIN", ""
 ).strip()
@@ -418,9 +441,7 @@ PERSONAL_KB_OFFICE_PREVIEW_TIMEOUT_SECONDS: int = _int_from_env(
 PERSONAL_KB_OFFICE_PREVIEW_MAX_BYTES: int = _int_from_env(
     "PERSONAL_KB_OFFICE_PREVIEW_MAX_BYTES", 64 * 1024 * 1024
 )
-PERSONAL_KB_VISION_ENABLED: bool = _bool_from_env(
-    "PERSONAL_KB_VISION_ENABLED", False
-)
+PERSONAL_KB_VISION_ENABLED: bool = _bool_from_env("PERSONAL_KB_VISION_ENABLED", False)
 PERSONAL_KB_WORKERS: int = _int_from_env("PERSONAL_KB_WORKERS", 2)
 PERSONAL_KB_EMBEDDING_CONCURRENCY: int = _int_from_env(
     "PERSONAL_KB_EMBEDDING_CONCURRENCY", 1
@@ -428,9 +449,7 @@ PERSONAL_KB_EMBEDDING_CONCURRENCY: int = _int_from_env(
 PERSONAL_KB_JOB_TIMEOUT_SECONDS: int = _int_from_env(
     "PERSONAL_KB_JOB_TIMEOUT_SECONDS", 3600
 )
-PERSONAL_KB_MAX_RETRIES: int = _int_from_env(
-    "PERSONAL_KB_MAX_RETRIES", 3, minimum=0
-)
+PERSONAL_KB_MAX_RETRIES: int = _int_from_env("PERSONAL_KB_MAX_RETRIES", 3, minimum=0)
 PERSONAL_KB_MAX_EXPANDED_BYTES: int = _int_from_env(
     "PERSONAL_KB_MAX_EXPANDED_BYTES", 1024 * 1024 * 1024
 )
@@ -582,6 +601,9 @@ RAG_RERANKER_MODEL_PATH: str = _str_from_env(
 )
 RAG_RERANKER_BASE_URL: str | None = _optional_str_from_env("RAG_RERANKER_BASE_URL")
 RAG_RERANKER_DEVICE: str = _str_from_env("RAG_RERANKER_DEVICE", "cuda")
+RAG_RERANKER_RUNTIME_DEVICE: str | None = _optional_str_from_env(
+    "RAG_RERANKER_RUNTIME_DEVICE"
+)
 RAG_RERANKER_MAX_LENGTH: int = _int_from_env("RAG_RERANKER_MAX_LENGTH", 8192)
 RAG_RERANKER_TIMEOUT: float = _float_from_env(
     "RAG_RERANKER_TIMEOUT", 120.0, minimum=0.001
@@ -599,7 +621,7 @@ RAG_RERANKER_BATCH_SIZE: int = _int_from_env("RAG_RERANKER_BATCH_SIZE", 4)
 RAG_FINAL_LIMIT: int = _int_from_env("RAG_FINAL_LIMIT", 5)
 RAG_RRF_K: int = _int_from_env("RAG_RRF_K", 60)
 RAG_SECTION_WINDOW: int = _int_from_env("RAG_SECTION_WINDOW", 1, minimum=0)
-RAG_MAX_CONTEXT_TOKENS: int = _int_from_env("RAG_MAX_CONTEXT_TOKENS", 8192)
+RAG_MAX_CONTEXT_TOKENS: int = _int_from_env("RAG_MAX_CONTEXT_TOKENS", 16_384)
 RAG_RERANK_THRESHOLD: float | None = _optional_float_from_env(
     "RAG_RERANK_THRESHOLD", minimum=0.0, maximum=1.0
 )
@@ -691,7 +713,9 @@ def validate_startup_config() -> None:
             lora_path / "adapter_config.json",
             lora_path / "adapter_model.safetensors",
         )
-        missing_lora_files = [path for path in required_lora_files if not path.is_file()]
+        missing_lora_files = [
+            path for path in required_lora_files if not path.is_file()
+        ]
         if missing_lora_files:
             values = ", ".join(str(path) for path in missing_lora_files)
             raise RuntimeError(f"LoRA adapter files are missing: {values}")
@@ -733,9 +757,7 @@ def validate_startup_config() -> None:
                 f"PERSONAL_KB_ROOT is not readable and writable: {PERSONAL_KB_ROOT}"
             )
         validate_durable_path("PERSONAL_KB_ROOT", PERSONAL_KB_ROOT)
-        validate_durable_path(
-            "PERSONAL_KB_SNAPSHOT_ROOT", PERSONAL_KB_SNAPSHOT_ROOT
-        )
+        validate_durable_path("PERSONAL_KB_SNAPSHOT_ROOT", PERSONAL_KB_SNAPSHOT_ROOT)
         try:
             PERSONAL_KB_SNAPSHOT_ROOT.relative_to(PERSONAL_KB_ROOT)
         except ValueError as exc:
