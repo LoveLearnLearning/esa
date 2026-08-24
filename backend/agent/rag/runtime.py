@@ -117,9 +117,10 @@ def create_retrieval_service(
         reranker = None
     elif config.RAG_RERANKER_BACKEND == "transformers":
         reranker = TransformersReranker(
-            model_name="Qwen/Qwen3-Reranker-4B",
+            model_name=config.RAG_RERANKER_MODEL_PATH,
             load_path=config.RAG_RERANKER_MODEL_PATH,
             device=config.RAG_RERANKER_DEVICE,
+            runtime_device=config.RAG_RERANKER_RUNTIME_DEVICE,
             max_length=config.RAG_RERANKER_MAX_LENGTH,
         )
     elif config.RAG_RERANKER_BACKEND == "vllm":

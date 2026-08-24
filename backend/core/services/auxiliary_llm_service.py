@@ -4,9 +4,16 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any
 
 import httpx
+
+from backend.core.utils.config import LOG_PROMPTS
+
+
+logger = logging.getLogger(__name__)
 
 
 class AuxiliaryLLMUnavailable(RuntimeError):
@@ -73,6 +80,22 @@ class AuxiliaryLLMClient:
             "stream": False,
             "chat_template_kwargs": {"enable_thinking": False},
         }
+        if LOG_PROMPTS:
+            serialized = json.dumps(messages, ensure_ascii=False, default=str)
+            logger.info(
+                "LLM prompt start model=auxiliary model_name=%s chars=%d",
+                self.model,
+                len(serialized),
+            )
+            logger.info(
+                "LLM prompt body model=auxiliary model_name=%s\n%s",
+                self.model,
+                serialized,
+            )
+            logger.info(
+                "LLM prompt end model=auxiliary model_name=%s",
+                self.model,
+            )
         try:
             response = await self._client.post("/chat/completions", json=body)
             response.raise_for_status()

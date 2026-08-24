@@ -53,6 +53,7 @@ def _positive_int_from_env(name: str, default: int) -> int:
 
 
 DEBUG_MODE: bool = _bool_from_env("ESA_DEBUG", False)
+LOG_PROMPTS: bool = _bool_from_env("ESA_LOG_PROMPTS", False)
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
@@ -600,6 +601,9 @@ RAG_RERANKER_MODEL_PATH: str = _str_from_env(
 )
 RAG_RERANKER_BASE_URL: str | None = _optional_str_from_env("RAG_RERANKER_BASE_URL")
 RAG_RERANKER_DEVICE: str = _str_from_env("RAG_RERANKER_DEVICE", "cuda")
+RAG_RERANKER_RUNTIME_DEVICE: str | None = _optional_str_from_env(
+    "RAG_RERANKER_RUNTIME_DEVICE"
+)
 RAG_RERANKER_MAX_LENGTH: int = _int_from_env("RAG_RERANKER_MAX_LENGTH", 8192)
 RAG_RERANKER_TIMEOUT: float = _float_from_env(
     "RAG_RERANKER_TIMEOUT", 120.0, minimum=0.001

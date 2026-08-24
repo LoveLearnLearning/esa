@@ -20,10 +20,38 @@ from vllm.model_executor.layers.quantization import QuantizationMethods
 from vllm.sampling_params import RequestOutputKind
 from vllm.v1.engine.async_llm import AsyncLLM
 
+from backend.core.utils.config import LOG_PROMPTS
 from backend.core.utils.models import ParsedOutput
 from backend.core.utils.parser import StreamOutputParser, parse_output
 
 logger = logging.getLogger(__name__)
+
+
+def _log_model_prompt(
+    request_id: str,
+    conversation_id: str | None,
+    prompt: str,
+) -> None:
+    """记录发送给主模型的最终 chat-template prompt。"""
+
+    if not LOG_PROMPTS:
+        return
+    logger.info(
+        "LLM prompt start model=main request_id=%s chars=%d",
+        request_id,
+        len(prompt),
+    )
+    logger.info(
+        "LLM prompt body model=main request_id=%s conversation_id=%s\n%s",
+        request_id,
+        conversation_id or "-",
+        prompt,
+    )
+    logger.info(
+        "LLM prompt end model=main request_id=%s conversation_id=%s",
+        request_id,
+        conversation_id or "-",
+    )
 
 
 class LLMProvider:
@@ -155,7 +183,13 @@ class LLMProvider:
         """创建千问 XML 协议的流式解析器。"""
         return StreamOutputParser()
 
-    async def generate(self, prompts: list[dict], tools: list[dict]) -> str:
+    async def generate(
+        self,
+        prompts: list[dict],
+        tools: list[dict],
+        request_id: str | None = None,
+        conversation_id: str | None = None,
+    ) -> str:
         """生成 LLM 的返回信息
         Args:
             prompts: list           => 输入的提示词 dict 格式如下:
@@ -171,7 +205,12 @@ class LLMProvider:
         """
         chunks: list[str] = []
 
-        async for chunk in self.generate_stream(prompts, tools):
+        async for chunk in self.generate_stream(
+            prompts,
+            tools,
+            request_id=request_id,
+            conversation_id=conversation_id,
+        ):
             chunks.append(chunk)
 
         return "".join(chunks)
@@ -181,6 +220,7 @@ class LLMProvider:
         messages: list[dict],
         tools: list[dict],
         request_id: str | None = None,
+        conversation_id: str | None = None,
     ) -> AsyncIterator[str]:
         """生成 `stream` 相关数据。
 
@@ -195,6 +235,7 @@ class LLMProvider:
         request_id = request_id or str(uuid.uuid4())
 
         prompt = self.build_prompt(messages, tools)
+        _log_model_prompt(request_id, conversation_id, prompt)
 
         sampling_params = SamplingParams(
             temperature=0.7,
