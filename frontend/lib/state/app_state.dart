@@ -1,6 +1,6 @@
 // ESA 应用状态 —— 集中式 ChangeNotifier 通过 ApiClient 调用真实后端
 // 认证 / 对话列表 / 历史消息 / 发消息 均对接 API.md 定义的接口
-// 置顶(pinned) 主题 设置为纯前端本地状态 后端无对应字段
+// 账户数据由后端持久化；设备外观设置由 SharedPreferences 持久化。
 
 import 'dart:async';
 import 'dart:collection';
@@ -32,7 +32,11 @@ class AppState extends ChangeNotifier {
   static const _scheduleSettingsStoragePrefix = 'esa.schedule.settings.';
   static const _codeEditorIndentSizeKey = 'esa.editor.indent_size';
   static const _codeEditorThemeKey = 'esa.editor.theme';
-  static const _groupProjectBindingsPrefix = 'esa.group_projects.';
+  // Read once to migrate bindings written by older client-only builds.
+  static const _legacyGroupProjectBindingsPrefix = 'esa.group_projects.';
+  static const _themeModeKey = 'esa.appearance.theme_mode';
+  static const _streamOnKey = 'esa.chat.stream_on';
+  static const _toolsOnKey = 'esa.chat.tools_on';
 
   // ---- 本地设置(不落后端) ----
   ThemeMode themeMode = ThemeMode.dark;
@@ -63,6 +67,7 @@ class AppState extends ChangeNotifier {
   String role = '学生';
   UserPreferences preferences = const UserPreferences();
   UserProfile userProfile = const UserProfile();
+  UserStats userStats = const UserStats();
   bool loadingProfile = false;
   List<LearningCourseSummary> learningCourses = const [];
   MasteryReport? masteryReport;
@@ -73,9 +78,6 @@ class AppState extends ChangeNotifier {
   // ---- 对话数据 ----
   final List<ChatConversation> conversations = [];
   final Map<String, List<ChatMessage>> _messages = {};
-  final Set<String> _pinned = {}; // 本地置顶集合
-  final Set<String> _pinnedGroupIds = {}; // 本地分组置顶集合
-  final Map<String, String> _groupProjectBindings = {}; // 科研分组归属项目(前端本地)
   final List<ChatGroup> groups = [];
   String? activeGroupId;
   String? activeResearchProjectId;
@@ -97,18 +99,43 @@ class AppState extends ChangeNotifier {
   String get username => api.username ?? '';
   bool get isLoggedIn => api.isLoggedIn;
 
-  bool isGroupPinned(String groupId) => _pinnedGroupIds.contains(groupId);
+  bool isGroupPinned(String groupId) =>
+      groups.any((group) => group.id == groupId && group.pinned);
 
-  String? groupProjectId(String groupId) => _groupProjectBindings[groupId];
+  String? groupProjectId(String groupId) {
+    final persisted = groups
+        .where((group) => group.id == groupId)
+        .map((group) => group.projectId)
+        .firstOrNull;
+    if (persisted != null) return persisted;
+    return conversations
+        .where(
+          (conversation) =>
+              conversation.groupId == groupId &&
+              conversation.researchProjectId != null,
+        )
+        .map((conversation) => conversation.researchProjectId)
+        .firstOrNull;
+  }
+
+  List<ChatGroup> get generalGroups =>
+      groups.where((group) => groupProjectId(group.id) == null).toList();
 
   List<ChatGroup> groupsForProject(String projectId) => groups.where((group) {
-    if (_groupProjectBindings[group.id] == projectId) return true;
+    if (group.projectId == projectId) return true;
     return conversations.any(
       (conversation) =>
           conversation.researchProjectId == projectId &&
           conversation.groupId == group.id,
     );
   }).toList();
+
+  void _sortGroups() {
+    groups.sort((a, b) {
+      final pins = (b.pinned ? 1 : 0).compareTo(a.pinned ? 1 : 0);
+      return pins != 0 ? pins : a.sortOrder.compareTo(b.sortOrder);
+    });
+  }
 
   List<ChatMessage> get messages =>
       activeId == null ? const [] : (_messages[activeId] ?? const []);
@@ -134,16 +161,12 @@ class AppState extends ChangeNotifier {
     String groupId,
     String projectId,
   ) => conversations
-      .where(
-        (c) => c.groupId == groupId && c.researchProjectId == projectId,
-      )
+      .where((c) => c.groupId == groupId && c.researchProjectId == projectId)
       .toList();
 
   List<ChatConversation> ungroupedConversationsInProject(String projectId) =>
       conversations
-          .where(
-            (c) => c.groupId == null && c.researchProjectId == projectId,
-          )
+          .where((c) => c.groupId == null && c.researchProjectId == projectId)
           .toList();
 
   List<String> get scheduleCourseNames {
@@ -236,10 +259,11 @@ class AppState extends ChangeNotifier {
     await Future.wait([
       loadConversations(),
       loadGroups(),
-      _loadGroupProjectBindings(),
       loadPreferencesAndProfile(),
+      loadUserStats(),
       loadLearningOverview(),
     ]);
+    await _migrateLegacyGroupProjectBindings();
     if (conversations.isNotEmpty) {
       await setActive(conversations.first.id);
     } else {
@@ -252,13 +276,6 @@ class AppState extends ChangeNotifier {
     await _discardDraftConversation();
     await api.logout();
     _clearSession();
-  }
-
-  /// 游客模式：纯本地进入主界面，不创建后端会话。
-  void enterAsGuest() {
-    _clearSession();
-    api.username = '游客';
-    notifyListeners();
   }
 
   Future<void> restoreSession() async {
@@ -364,6 +381,14 @@ class AppState extends ChangeNotifier {
     if (isCodeEditorTheme(editorTheme)) {
       codeEditorTheme = editorTheme!;
     }
+    themeMode = switch (localPreferences.getString(_themeModeKey)) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      'system' => ThemeMode.system,
+      _ => themeMode,
+    };
+    streamOn = localPreferences.getBool(_streamOnKey) ?? streamOn;
+    toolsOn = localPreferences.getBool(_toolsOnKey) ?? toolsOn;
   }
 
   /// 修改成功后服务端会注销全部会话，前端同步回到登录页。
@@ -419,9 +444,6 @@ class AppState extends ChangeNotifier {
     unawaited(_forgetRememberedSession());
     conversations.clear();
     _messages.clear();
-    _pinned.clear();
-    _pinnedGroupIds.clear();
-    _groupProjectBindings.clear();
     groups.clear();
     activeGroupId = null;
     activeResearchProjectId = null;
@@ -437,6 +459,7 @@ class AppState extends ChangeNotifier {
     busy = false;
     preferences = const UserPreferences();
     userProfile = const UserProfile();
+    userStats = const UserStats();
     learningCourses = const [];
     masteryReport = null;
     loadingLearningOverview = false;
@@ -694,12 +717,6 @@ class AppState extends ChangeNotifier {
       final list = activeWorkspace == WorkspaceType.learning
           ? await api.listConversations()
           : await api.listWorkspaceConversations(activeWorkspace);
-      for (final c in list) {
-        c.pinned = _pinned.contains(c.id);
-        if (c.researchProjectId != null && c.groupId != null) {
-          _groupProjectBindings[c.groupId!] = c.researchProjectId!;
-        }
-      }
       conversations
         ..clear()
         ..addAll(list);
@@ -711,44 +728,68 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  String get _groupProjectBindingsKey =>
-      '$_groupProjectBindingsPrefix${api.userId ?? 'guest'}';
+  // ============ 对话分组 ============
+  Future<void> _migrateLegacyGroupProjectBindings() async {
+    final userId = api.userId;
+    if (userId == null || groups.isEmpty) return;
 
-  Future<void> _loadGroupProjectBindings() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_groupProjectBindingsKey);
-    if (raw == null || raw.isEmpty) return;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map) {
-        _groupProjectBindings
-          ..clear()
-          ..addAll(
-            decoded.map(
-              (key, value) => MapEntry(key.toString(), value.toString()),
-            ),
-          );
+    final localPreferences = await _getLocalPreferences();
+    final legacyKey = '$_legacyGroupProjectBindingsPrefix$userId';
+    final candidates = <String, String>{};
+    final locallyBoundGroups = <String>{};
+    final raw = localPreferences?.getString(legacyKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          for (final entry in decoded.entries) {
+            final groupId = entry.key.toString();
+            candidates[groupId] = entry.value.toString();
+            locallyBoundGroups.add(groupId);
+          }
+        }
+      } catch (_) {
+        // A corrupt legacy cache must not block authenticated startup.
       }
-    } catch (_) {
-      // 本地缓存损坏时直接忽略，分组归属仍可从对话数据恢复。
+    }
+
+    // Old builds also inferred bindings from the conversations in a group. Keep
+    // that recovery path so an upgrade does not detach an existing research group.
+    final ambiguousGroups = <String>{};
+    for (final conversation in conversations) {
+      final groupId = conversation.groupId;
+      final projectId = conversation.researchProjectId;
+      if (groupId != null && projectId != null) {
+        final candidate = candidates[groupId];
+        if (candidate == null) {
+          candidates[groupId] = projectId;
+        } else if (candidate != projectId &&
+            !locallyBoundGroups.contains(groupId)) {
+          ambiguousGroups.add(groupId);
+        }
+      }
+    }
+    for (final groupId in ambiguousGroups) {
+      candidates.remove(groupId);
+    }
+
+    var migratedAll = true;
+    for (var index = 0; index < groups.length; index++) {
+      final group = groups[index];
+      final projectId = candidates[group.id];
+      if (group.projectId != null || projectId == null) continue;
+      try {
+        groups[index] = await api.updateGroup(group.id, projectId: projectId);
+      } catch (error) {
+        migratedAll = false;
+        debugPrint('Failed to migrate group project binding: $error');
+      }
+    }
+    if (migratedAll && raw != null) {
+      await localPreferences?.remove(legacyKey);
     }
   }
 
-  Future<void> _saveGroupProjectBindings() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _groupProjectBindingsKey,
-      jsonEncode(_groupProjectBindings),
-    );
-  }
-
-  void _bindGroupToProject(String groupId, String projectId) {
-    if (_groupProjectBindings[groupId] == projectId) return;
-    _groupProjectBindings[groupId] = projectId;
-    unawaited(_saveGroupProjectBindings());
-  }
-
-  // ============ 对话分组 ============
   Future<void> loadGroups({bool force = false}) async {
     if (loadingGroups || (groupsLoaded && !force)) return;
     loadingGroups = true;
@@ -780,11 +821,10 @@ class AppState extends ChangeNotifier {
       customInstruction: customInstruction,
       style: style,
       tone: tone,
+      projectId: projectId,
     );
-    groups.insert(0, group);
-    if (projectId != null) {
-      _bindGroupToProject(group.id, projectId);
-    }
+    groups.add(group);
+    _sortGroups();
     activeGroupId = group.id;
     notifyListeners();
     return group;
@@ -796,21 +836,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleGroupPin(String groupId) {
-    if (_pinnedGroupIds.contains(groupId)) {
-      _pinnedGroupIds.remove(groupId);
-    } else {
-      _pinnedGroupIds.add(groupId);
-      final index = groups.indexWhere((group) => group.id == groupId);
-      if (index > 0) {
-        final group = groups.removeAt(index);
-        groups.insert(0, group);
-      }
-    }
+  Future<void> toggleGroupPin(String groupId) async {
+    final index = groups.indexWhere((group) => group.id == groupId);
+    if (index < 0) return;
+    final updated = await api.setGroupPinned(groupId, !groups[index].pinned);
+    groups[index] = updated;
+    _sortGroups();
     notifyListeners();
   }
 
-  void reorderGroups(int oldIndex, int newIndex) {
+  Future<void> reorderGroups(int oldIndex, int newIndex) async {
     if (oldIndex < 0 || oldIndex >= groups.length) return;
     if (newIndex > oldIndex) newIndex -= 1;
     if (newIndex < 0) newIndex = 0;
@@ -818,6 +853,45 @@ class AppState extends ChangeNotifier {
     final group = groups.removeAt(oldIndex);
     groups.insert(newIndex, group);
     notifyListeners();
+    try {
+      await api.reorderGroups(groups.map((item) => item.id).toList());
+      await loadGroups(force: true);
+    } catch (_) {
+      await loadGroups(force: true);
+      rethrow;
+    }
+  }
+
+  Future<void> reorderGeneralGroups(int oldIndex, int newIndex) async {
+    final reorderedGeneral = generalGroups;
+    if (oldIndex < 0 || oldIndex >= reorderedGeneral.length) return;
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (newIndex < 0) newIndex = 0;
+    if (newIndex > reorderedGeneral.length) {
+      newIndex = reorderedGeneral.length;
+    }
+    final moved = reorderedGeneral.removeAt(oldIndex);
+    reorderedGeneral.insert(newIndex, moved);
+
+    var generalIndex = 0;
+    final fullOrder = [
+      for (final group in groups)
+        if (groupProjectId(group.id) == null)
+          reorderedGeneral[generalIndex++]
+        else
+          group,
+    ];
+    groups
+      ..clear()
+      ..addAll(fullOrder);
+    notifyListeners();
+    try {
+      await api.reorderGroups(groups.map((item) => item.id).toList());
+      await loadGroups(force: true);
+    } catch (_) {
+      await loadGroups(force: true);
+      rethrow;
+    }
   }
 
   Future<ChatGroup> updateGroup(
@@ -838,9 +912,11 @@ class AppState extends ChangeNotifier {
     );
     final index = groups.indexWhere((group) => group.id == groupId);
     if (index >= 0) {
-      groups.removeAt(index);
+      groups[index] = updated;
+    } else {
+      groups.add(updated);
     }
-    groups.insert(0, updated);
+    _sortGroups();
     notifyListeners();
     return updated;
   }
@@ -848,8 +924,6 @@ class AppState extends ChangeNotifier {
   Future<void> deleteGroup(String groupId) async {
     await api.deleteGroup(groupId);
     groups.removeWhere((group) => group.id == groupId);
-    _groupProjectBindings.remove(groupId);
-    unawaited(_saveGroupProjectBindings());
     if (activeGroupId == groupId) activeGroupId = null;
     for (final conversation in conversations) {
       if (conversation.groupId == groupId) conversation.groupId = null;
@@ -870,10 +944,6 @@ class AppState extends ChangeNotifier {
     if (previousGroupId == groupId) return;
     await api.moveConversation(conversationId, groupId);
     conversations[index].groupId = groupId;
-    final projectId = conversations[index].researchProjectId;
-    if (projectId != null && groupId != null) {
-      _bindGroupToProject(groupId, projectId);
-    }
     _adjustGroupCounts(previousGroupId, groupId);
     notifyListeners();
   }
@@ -894,6 +964,9 @@ class AppState extends ChangeNotifier {
         customInstruction: group.customInstruction,
         style: group.style,
         tone: group.tone,
+        projectId: group.projectId,
+        pinned: group.pinned,
+        sortOrder: group.sortOrder,
         conversationCount: (group.conversationCount + delta)
             .clamp(0, 1 << 30)
             .toInt(),
@@ -917,6 +990,9 @@ class AppState extends ChangeNotifier {
     conversations.clear();
     notifyListeners();
     await loadConversations();
+    if (workspace == WorkspaceType.research) {
+      await _migrateLegacyGroupProjectBindings();
+    }
     if (conversations.isNotEmpty) await setActive(conversations.first.id);
     if (workspace == WorkspaceType.research) await loadResearchProjects();
   }
@@ -1067,8 +1143,7 @@ class AppState extends ChangeNotifier {
     String? researchProjectId,
   }) async {
     activeGroupId = groupId;
-    activeResearchProjectId =
-        researchProjectId ?? _groupProjectBindings[groupId];
+    activeResearchProjectId = researchProjectId ?? groupProjectId(groupId);
     notifyListeners();
     await newConversation();
   }
@@ -1091,7 +1166,6 @@ class AppState extends ChangeNotifier {
     _draftConversationId = null;
     conversations.removeWhere((conversation) => conversation.id == id);
     _messages.remove(id);
-    _pinned.remove(id);
     _adjustGroupCounts(groupId, null);
     if (activeId == id) activeId = null;
     notifyListeners();
@@ -1165,7 +1239,6 @@ class AppState extends ChangeNotifier {
     }
     conversations.removeWhere((c) => c.id == id);
     _messages.remove(id);
-    _pinned.remove(id);
     if (_draftConversationId == id) _draftConversationId = null;
     _adjustGroupCounts(removedGroupId, null);
     if (activeId == id) {
@@ -1177,21 +1250,51 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void togglePin(String id) {
-    if (_pinned.contains(id)) {
-      _pinned.remove(id);
-    } else {
-      _pinned.add(id);
+  Future<void> togglePin(String id) async {
+    final conversation = conversations
+        .where((item) => item.id == id)
+        .firstOrNull;
+    if (conversation == null) return;
+    final next = !conversation.pinned;
+    await api.setConversationPinned(id, next);
+    conversation.pinned = next;
+    userStats = UserStats(
+      conversationCount: userStats.conversationCount,
+      pinnedCount: (userStats.pinnedCount + (next ? 1 : -1)).clamp(0, 1 << 30),
+      learningStreakDays: userStats.learningStreakDays,
+    );
+    notifyListeners();
+  }
+
+  Future<void> openLearningAssignmentContext(
+    TeachingAssignment assignment,
+  ) async {
+    await _discardDraftConversation();
+    if (activeWorkspace != WorkspaceType.learning) {
+      await switchWorkspace(WorkspaceType.learning);
     }
-    for (final c in conversations) {
-      if (c.id == id) c.pinned = _pinned.contains(id);
+    final existing = conversations.where(
+      (item) => item.assignmentId == assignment.id,
+    );
+    if (existing.isNotEmpty) {
+      await setActive(existing.first.id);
+      return;
     }
+    final conversation = await api.createWorkspaceConversation(
+      WorkspaceType.learning,
+      classId: assignment.classId,
+      assignmentId: assignment.id,
+    );
+    conversations.insert(0, conversation);
+    _messages[conversation.id] = [];
+    activeId = conversation.id;
     notifyListeners();
   }
 
   // ============ 发送消息 ============
   Future<void> send(
     String text, {
+    String? taskMode,
     bool markdown = false,
     String? displayText,
     List<String> attachmentIds = const [],
@@ -1237,9 +1340,17 @@ class AppState extends ChangeNotifier {
           attachmentIds: selectedAttachmentIds,
           userMessage: userMessage,
           titleInput: isFirstQuestion ? visibleInput : null,
+          taskMode: taskMode,
         );
       } else {
-        final newMsgs = selectedAttachmentIds.isEmpty
+        final newMsgs = taskMode != null
+            ? await api.sendTaskMessage(
+                id,
+                input,
+                taskMode,
+                attachmentIds: selectedAttachmentIds,
+              )
+            : selectedAttachmentIds.isEmpty
             ? await api.sendMessage(id, input)
             : await api.sendMessageWithAttachments(
                 id,
@@ -1307,6 +1418,7 @@ class AppState extends ChangeNotifier {
     ChatMessage? userMessage,
     int? replaceMessageId,
     String? titleInput,
+    String? taskMode,
   }) async {
     var completed = false;
     final reasoningQueue = Queue<String>();
@@ -1382,6 +1494,13 @@ class AppState extends ChangeNotifier {
               input,
               replaceMessageId,
               attachmentIds,
+            )
+          : taskMode != null
+          ? api.streamTaskMessage(
+              conversationId,
+              input,
+              taskMode,
+              attachmentIds: attachmentIds,
             )
           : attachmentIds.isEmpty
           ? api.streamMessage(conversationId, input)
@@ -1660,11 +1779,25 @@ class AppState extends ChangeNotifier {
       ]);
       preferences = values[0] as UserPreferences;
       userProfile = values[1] as UserProfile;
+      if (userProfile.displayName.isNotEmpty) {
+        api.username = userProfile.displayName;
+      }
     } catch (e) {
       if (!_handled401(e)) rethrow;
     } finally {
       loadingProfile = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> loadUserStats() async {
+    try {
+      userStats = await api.getUserStats();
+      notifyListeners();
+    } catch (error) {
+      if (!_handled401(error)) {
+        debugPrint('Failed to load profile stats: $error');
+      }
     }
   }
 
@@ -1691,6 +1824,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<String?> savePreferencesAndProfile({
+    required String displayName,
     required String preferredStyle,
     required String preferredTone,
     required String customInstruction,
@@ -1709,6 +1843,7 @@ class AppState extends ChangeNotifier {
           customInstruction: customInstruction,
         ),
         api.updateProfile(
+          displayName: displayName.trim(),
           major: major,
           grade: grade,
           currentWeek: currentWeek,
@@ -1718,6 +1853,8 @@ class AppState extends ChangeNotifier {
       ]);
       preferences = values[0] as UserPreferences;
       userProfile = values[1] as UserProfile;
+      api.username = userProfile.displayName;
+      await _rememberCurrentSession();
       notifyListeners();
       return null;
     } on ApiException catch (e) {
@@ -1731,16 +1868,25 @@ class AppState extends ChangeNotifier {
   void setThemeMode(ThemeMode mode) {
     themeMode = mode;
     notifyListeners();
+    unawaited(
+      _persistCodeEditorSetting(_themeModeKey, switch (mode) {
+        ThemeMode.light => 'light',
+        ThemeMode.dark => 'dark',
+        ThemeMode.system => 'system',
+      }),
+    );
   }
 
   void setStreamOn(bool v) {
     streamOn = v;
     notifyListeners();
+    unawaited(_persistCodeEditorSetting(_streamOnKey, v));
   }
 
   void setToolsOn(bool v) {
     toolsOn = v;
     notifyListeners();
+    unawaited(_persistCodeEditorSetting(_toolsOnKey, v));
   }
 
   void setCodeEditorIndentSize(int value) {
@@ -1762,12 +1908,7 @@ class AppState extends ChangeNotifier {
     if (localPreferences == null) return;
     if (value is int) await localPreferences.setInt(key, value);
     if (value is String) await localPreferences.setString(key, value);
-  }
-
-  void updateProfile({String? name, String? mail}) {
-    if (name != null && name.trim().isNotEmpty) api.username = name.trim();
-    if (mail != null) email = mail.trim();
-    notifyListeners();
+    if (value is bool) await localPreferences.setBool(key, value);
   }
 }
 

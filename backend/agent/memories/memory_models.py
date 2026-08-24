@@ -92,59 +92,117 @@ class ProfileSnapshot:
             "generated_at": self.generated_at.isoformat(),
         }
 
-    def to_prompt_json(self, max_tokens: int = 700) -> str:
-        """序列化真正需要进入模型上下文的画像数据，并按优先级控制预算。
+    def to_prompt_json(
+        self,
+        max_tokens: int = 300,
+        *,
+        current_message: str = "",
+        task_mode: str | None = None,
+        resolved_kp_ids: tuple[str, ...] = (),
+    ) -> str:
+        """Project only task-relevant fields into compact, always-valid JSON."""
 
-        注意：response_preferences 不在此处输出，避免与 build_prompt.py 中已经解析好的
-        style/tone/custom_instruction 双重注入。
-        """
-        sections: list[tuple[str, list[ProfileField]]] = [
-            ("explicit_context", self.explicit_context),
-            ("active_goals", self.active_goals),
-            ("active_projects", self.active_projects),
-            ("relevant_constraints", self.relevant_constraints),
-            ("relevant_learning_state", self.relevant_learning_state),
-            ("inferred_patterns", self.inferred_patterns),
-        ]
+        planning = task_mode == "study_plan" or any(
+            marker in current_message
+            for marker in ("学习计划", "复习计划", "进度", "第几周", "考试时间")
+        )
+        resolved = set(resolved_kp_ids)
 
-        def field_to_dict(item: ProfileField) -> dict:
-            """处理 `field_to_dict` 相关逻辑。"""
-            return {
-                "field": item.field,
-                "value": item.value,
-                "origin": item.origin.value,
-                "confidence": item.confidence,
+        def compact_learning_value(value: object) -> object:
+            if not isinstance(value, dict):
+                return value
+            if resolved and value.get("kp_id") not in resolved:
+                return None
+            mastery = value.get("mastery")
+            evidence = value.get("evidence")
+            result = {
+                key: value[key]
+                for key in ("kp_id", "name", "course")
+                if value.get(key) is not None
             }
+            if isinstance(mastery, dict):
+                result["mastery"] = {
+                    key: mastery[key]
+                    for key in (
+                        "has_record",
+                        "level",
+                        "status",
+                        "retention",
+                        "needs_review",
+                        "practice_count",
+                    )
+                    if mastery.get(key) is not None
+                }
+            if isinstance(evidence, dict):
+                compact_evidence = {
+                    key: evidence[key]
+                    for key in ("count", "correct_rate", "independent_rate")
+                    if evidence.get(key) is not None
+                }
+                misconceptions = evidence.get("recent_misconceptions")
+                if isinstance(misconceptions, list) and misconceptions:
+                    compact_evidence["recent_misconceptions"] = misconceptions[:2]
+                if compact_evidence:
+                    result["evidence"] = compact_evidence
+            weak = value.get("weak_prerequisites")
+            if isinstance(weak, list) and weak:
+                result["weak_prerequisites"] = weak[:3]
+            return result
 
-        def token_count(payload: dict) -> int:
-            """处理 `token_count` 相关逻辑。"""
-            text = json.dumps(payload, ensure_ascii=False, indent=2)
-            return _estimate_tokens(text)
+        candidates: list[tuple[str, dict]] = []
+        for item in sorted(
+            self.relevant_learning_state,
+            key=lambda field: field.confidence,
+            reverse=True,
+        ):
+            value = compact_learning_value(item.value)
+            if value is not None:
+                candidates.append(
+                    ("learning", {"field": item.field, "value": value})
+                )
+
+        for item in self.explicit_context:
+            if item.field in {"current_week", "total_weeks"} and not planning:
+                continue
+            if item.field not in {"major", "grade", "current_week", "total_weeks"}:
+                continue
+            if item.value not in (None, ""):
+                candidates.append(
+                    ("context", {"field": item.field, "value": item.value})
+                )
+
+        for section_name, items in (
+            ("goals", self.active_goals),
+            ("constraints", self.relevant_constraints),
+            ("patterns", self.inferred_patterns[:3]),
+        ):
+            for item in sorted(items, key=lambda field: field.confidence, reverse=True):
+                if item.value in (None, ""):
+                    continue
+                candidates.append(
+                    (
+                        section_name,
+                        {
+                            "field": item.field,
+                            "value": item.value,
+                            "confidence": round(item.confidence, 2),
+                        },
+                    )
+                )
 
         payload: dict[str, list[dict]] = {}
-        for section_name, items in sections:
-            if not items:
-                continue
+        for section_name, item in candidates:
+            trial = {key: list(value) for key, value in payload.items()}
+            trial.setdefault(section_name, []).append(item)
+            serialized = json.dumps(
+                trial,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            if _estimate_tokens(serialized) <= max_tokens:
+                payload = trial
 
-            ordered = sorted(items, key=lambda item: item.confidence, reverse=True)
-            serialized = [field_to_dict(item) for item in ordered]
-            candidate = {**payload, section_name: serialized}
-            if token_count(candidate) <= max_tokens:
-                payload = candidate
-                continue
-
-            truncated: list[dict] = []
-            for item_dict in serialized:
-                trial = {**payload, section_name: truncated + [item_dict]}
-                if token_count(trial) <= max_tokens:
-                    truncated.append(item_dict)
-                else:
-                    break
-            if truncated:
-                payload[section_name] = truncated
-            break
-
-        return json.dumps(payload, ensure_ascii=False, indent=2)
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 @dataclass

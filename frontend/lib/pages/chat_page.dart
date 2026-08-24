@@ -470,7 +470,8 @@ class _ChatPageState extends State<ChatPage> {
         _resumeFollowing();
         _clearComposerCodeDrafts();
         app.send(
-          _taskMode?.buildPrompt(text) ?? text,
+          text,
+          taskMode: _taskMode?.wireName,
           markdown: markdown,
           displayText: text,
         );
@@ -479,7 +480,8 @@ class _ChatPageState extends State<ChatPage> {
         _resumeFollowing();
         _clearComposerCodeDrafts();
         app.send(
-          _taskMode?.buildPrompt(text) ?? text,
+          text,
+          taskMode: _taskMode?.wireName,
           markdown: markdown,
           displayText: text,
           attachmentIds: [attachment.id],
@@ -1038,7 +1040,7 @@ class _EmptyState extends StatelessWidget {
               SizedBox(height: mobile ? 18 : 42),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final columns = mobile ? 2 : 4;
+                  final columns = mobile ? 2 : 3;
                   final gap = mobile ? 10.0 : 12.0;
                   final width =
                       (constraints.maxWidth - gap * (columns - 1)) / columns;

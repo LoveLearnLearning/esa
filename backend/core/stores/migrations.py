@@ -38,6 +38,9 @@ CREATE TABLE {table} (
     custom_instruction TEXT NOT NULL DEFAULT '',
     style TEXT,
     tone TEXT,
+    project_id TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -52,6 +55,7 @@ CREATE TABLE {table} (
     group_id TEXT,
     workspace_type TEXT NOT NULL DEFAULT 'learning',
     research_project_id TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -142,6 +146,80 @@ def _migrate_message_attachments(connection: sqlite3.Connection) -> None:
             "ALTER TABLE messages ADD COLUMN attachments_json "
             "TEXT NOT NULL DEFAULT '[]'"
         )
+
+
+def _migrate_product_ui_state(connection: sqlite3.Connection) -> None:
+    """Persist formerly client-only account and planner state."""
+    if _table_exists(connection, "users"):
+        user_columns = _columns(connection, "users")
+        if "display_name" not in user_columns:
+            connection.execute(
+                "ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''"
+            )
+            # The oldest supported test/production stores only carried the stable
+            # user id.  Prefer the login name when it exists, but never make this
+            # additive migration depend on a column introduced by a later schema.
+            source_column = "username" if "username" in user_columns else "id"
+            connection.execute(
+                f'UPDATE users SET display_name = "{source_column}" '
+                "WHERE display_name = ''"
+            )
+    if _table_exists(connection, "groups"):
+        columns = _columns(connection, "groups")
+        if "project_id" not in columns:
+            connection.execute("ALTER TABLE groups ADD COLUMN project_id TEXT")
+        if "pinned" not in columns:
+            connection.execute(
+                "ALTER TABLE groups ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+            )
+        if "sort_order" not in columns:
+            connection.execute(
+                "ALTER TABLE groups ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
+            )
+    if _table_exists(connection, "conversations") and "pinned" not in _columns(
+        connection, "conversations"
+    ):
+        connection.execute(
+            "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+        )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS planner_todos (
+            todo_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            due_at TEXT,
+            done INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_planner_todos_user "
+        "ON planner_todos(user_id, done, due_at, created_at DESC)"
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS planner_goals (
+            goal_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            target_at TEXT,
+            progress INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(progress BETWEEN 0 AND 100)
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_planner_goals_user "
+        "ON planner_goals(user_id, target_at, created_at DESC)"
+    )
 
 
 def _execute_script_atomically(
@@ -1286,6 +1364,11 @@ MIGRATIONS: list[MigrationDef] = [
         12,
         "persist_message_attachments",
         _migrate_message_attachments,
+    ),
+    (
+        13,
+        "persist_product_ui_state_and_planner",
+        _migrate_product_ui_state,
     ),
 ]
 

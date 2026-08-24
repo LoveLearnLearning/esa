@@ -199,6 +199,7 @@ def login(body: LoginRequest, request: Request) -> LoginResponse:
         session_id=session.session_id,
         user_id=session.user_id,
         username=user.username,
+        display_name=user.display_name or user.username,
         email=user.email,
         account_role=user.account_role,
         expires_at=session.expires_at,

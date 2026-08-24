@@ -49,9 +49,7 @@ def test_legacy_database_migrates_and_supports_grouping(tmp_path):
 
     columns = {
         row[1]
-        for row in sqlite3.connect(db_path).execute(
-            "PRAGMA table_info(conversations)"
-        )
+        for row in sqlite3.connect(db_path).execute("PRAGMA table_info(conversations)")
     }
     assert "group_id" in columns
 
@@ -70,9 +68,10 @@ def test_legacy_database_migrates_and_supports_grouping(tmp_path):
         group_id=group["group_id"],
     )
     assert conversation["group_id"] == group["group_id"]
-    assert chat_store.get_conversation(conversation["conversation_id"])[
-        "group_id"
-    ] == group["group_id"]
+    assert (
+        chat_store.get_conversation(conversation["conversation_id"])["group_id"]
+        == group["group_id"]
+    )
     assert group_store.get_group(group["group_id"])["conversation_count"] == 1
 
 
@@ -98,9 +97,7 @@ def test_move_delete_and_ownership_guards(tmp_path):
         group_u1["group_id"],
         user_id="u1",
     )
-    assert group_store.get_group(group_u1["group_id"], "u1")[
-        "conversation_count"
-    ] == 1
+    assert group_store.get_group(group_u1["group_id"], "u1")["conversation_count"] == 1
     assert group_store.get_group(group_u2["group_id"], "u1") is None
 
     assert not group_store.delete_group(group_u1["group_id"], "u2")
@@ -195,3 +192,41 @@ def test_update_conversation_can_move_to_ungrouped(tmp_path):
     )
     assert updated is not None
     assert updated["group_id"] is None
+
+
+def test_pins_group_order_and_project_binding_are_persisted(tmp_path):
+    db_path = tmp_path / "esa.db"
+    chat_store, group_store = _setup_stores(db_path)
+
+    first = group_store.create_group("u1", "普通分组")
+    project = group_store.create_group("u1", "科研分组", project_id="project-1")
+    assert first is not None and project is not None
+    assert group_store.update_group(project["group_id"], "u1", pinned=True)
+    assert group_store.reorder_groups("u1", [project["group_id"], first["group_id"]])
+
+    groups = group_store.list_groups("u1")
+    assert [item["group_id"] for item in groups] == [
+        project["group_id"],
+        first["group_id"],
+    ]
+    assert groups[0]["pinned"] is True
+    assert groups[0]["project_id"] == "project-1"
+
+    conversation = chat_store.create_conversation("u1", "置顶对话")
+    assert chat_store.update_conversation(
+        conversation["conversation_id"], "u1", pinned=True
+    )
+    assert (
+        chat_store.get_conversation(conversation["conversation_id"], "u1")["pinned"]
+        is True
+    )
+    chat_store.append_messages(
+        conversation["conversation_id"],
+        [{"role": "user", "content": "今天学习了"}],
+    )
+    stats = chat_store.get_user_stats("u1")
+    assert stats == {
+        "conversation_count": 1,
+        "pinned_count": 1,
+        "learning_streak_days": 1,
+    }

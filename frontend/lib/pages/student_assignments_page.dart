@@ -9,7 +9,7 @@ import '../theme/esa_context.dart';
 class StudentAssignmentsPage extends StatefulWidget {
   const StudentAssignmentsPage({super.key, required this.onOpenChat});
 
-  final VoidCallback onOpenChat;
+  final Future<void> Function(TeachingAssignment assignment) onOpenChat;
 
   @override
   State<StudentAssignmentsPage> createState() =>
@@ -278,7 +278,7 @@ class StudentAssignmentPage extends StatefulWidget {
     required this.onOpenChat,
   });
   final TeachingAssignment assignment;
-  final VoidCallback onOpenChat;
+  final Future<void> Function(TeachingAssignment assignment) onOpenChat;
 
   @override
   State<StudentAssignmentPage> createState() => _StudentAssignmentPageState();
@@ -447,9 +447,9 @@ class _StudentAssignmentPageState extends State<StudentAssignmentPage> {
                 )
               else if (_submission!.feedbackStatus == 'published')
                 FilledButton.icon(
-                  onPressed: () {
+                  onPressed: () async {
                     Navigator.pop(context);
-                    widget.onOpenChat();
+                    await widget.onOpenChat(widget.assignment);
                   },
                   icon: const Icon(LucideIcons.messageCircle, size: 17),
                   label: const Text('开始针对性学习'),

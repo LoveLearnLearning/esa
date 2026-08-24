@@ -68,6 +68,7 @@ from backend.core.stores.email_verification_store import EmailVerificationStore
 from backend.core.stores.frontier_tracking_store import FrontierTrackingStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.migrations import run_migrations
+from backend.core.stores.planner_store import PlannerStore
 from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.research_data_store import ResearchDataStore
 from backend.core.stores.research_project_store import ResearchProjectStore
@@ -150,6 +151,7 @@ from backend.core.web.routers import (
     learning,
     lsp,
     memories,
+    planner,
     preferences,
     research,
     research_capabilities,
@@ -186,6 +188,7 @@ async def lifespan(app: FastAPI):
     app.state.user_store = UserStore(DB_PATH)
     app.state.group_store = GroupStore(DB_PATH)
     app.state.chat_store = ChatStore(DB_PATH)
+    app.state.planner_store = PlannerStore(DB_PATH)
     app.state.session_store = SessionStore(DB_PATH)
     app.state.profile_store = ProfileStore(DB_PATH)
     app.state.user_attachment_store = UserAttachmentStore(
@@ -467,6 +470,7 @@ business_router.include_router(learning.router)
 business_router.include_router(lsp.router)
 business_router.include_router(schedule.router)
 business_router.include_router(memories.router)
+business_router.include_router(planner.router)
 business_router.include_router(workspaces.router)
 business_router.include_router(research.router)
 business_router.include_router(research_capabilities.router)

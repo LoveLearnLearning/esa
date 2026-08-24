@@ -364,11 +364,6 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                     );
                   },
                 ),
-                _action(Icons.play_arrow_rounded, '运行', iconColor, () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('尚未配置隔离代码执行服务，已阻止在浏览器中直接执行。')),
-                  );
-                }),
               ],
             ),
           ),

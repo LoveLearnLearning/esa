@@ -98,7 +98,12 @@ class _HomeShellState extends State<HomeShell> {
               onOpenChat: () => unawaited(_select(StudentSection.assistant)),
             )
           : StudentAssignmentsPage(
-              onOpenChat: () => unawaited(_select(StudentSection.assistant)),
+              onOpenChat: (assignment) async {
+                await AppScope.of(
+                  context,
+                ).openLearningAssignmentContext(assignment);
+                await _select(StudentSection.assistant);
+              },
             ),
     StudentSection.planner => PlannerPage(
       initialTab: _plannerInitialTab,
@@ -723,117 +728,112 @@ class _WorkspaceSidebar extends StatelessWidget {
             onPin: () => app.togglePin(conversation.id),
             onRename: () => _renameConversation(context, app, conversation),
             onDelete: () => app.deleteConversation(conversation.id),
-            onTap: () => _openConversation(
-              context,
-              app,
-              conversation,
-              research: true,
-            ),
+            onTap: () =>
+                _openConversation(context, app, conversation, research: true),
           ),
     ];
   }
 
-  List<Widget> _conversationEntries(BuildContext context, AppState app) => [
-    _sectionHeader(
-      context,
-      title: '对话分组',
-      tooltip: '新建分组',
-      onAdd: () => _showCreateGroup(context, app),
-    ),
-    if (app.groups.isEmpty)
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Text('暂无对话分组', style: context.texts.bodySmall),
-      )
-    else
-      ReorderableListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        buildDefaultDragHandles: false,
-        itemCount: app.groups.length,
-        onReorder: (oldIndex, newIndex) =>
-            app.reorderGroups(oldIndex, newIndex),
-        itemBuilder: (context, index) {
-          final group = app.groups[index];
-          return Padding(
-            key: ValueKey(group.id),
-            padding: const EdgeInsets.only(bottom: 4),
-            child: ReorderableDelayedDragStartListener(
-              index: index,
-              child: _ExpandableSidebarRow(
-                icon: LucideIcons.folder,
-                label: group.name,
-                pinned: app.isGroupPinned(group.id),
-                onPin: () => app.toggleGroupPin(group.id),
-                onAddConversation: () {
-                  unawaited(app.newConversationInGroup(group.id));
-                  onSelect(StudentSection.assistant);
-                },
-                onRename: () => _renameGroup(context, app, group),
-                onDelete: () => _deleteGroup(context, app, group),
-                children: app
-                    .conversationsInGroup(group.id)
-                    .map(
-                      (conversation) => _ConversationEntry(
-                        conversation: conversation,
-                        onPin: () => app.togglePin(conversation.id),
-                        onMove: () =>
-                            _moveConversation(context, app, conversation),
-                        onRename: () =>
-                            _renameConversation(context, app, conversation),
-                        onDelete: () =>
-                            app.deleteConversation(conversation.id),
-                        onTap: () => _openConversation(
-                          context,
-                          app,
-                          conversation,
-                          research: false,
+  List<Widget> _conversationEntries(BuildContext context, AppState app) {
+    final groups = app.generalGroups;
+    return [
+      _sectionHeader(
+        context,
+        title: '对话分组',
+        tooltip: '新建分组',
+        onAdd: () => _showCreateGroup(context, app),
+      ),
+      if (groups.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Text('暂无对话分组', style: context.texts.bodySmall),
+        )
+      else
+        ReorderableListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          buildDefaultDragHandles: false,
+          itemCount: groups.length,
+          onReorder: (oldIndex, newIndex) =>
+              app.reorderGeneralGroups(oldIndex, newIndex),
+          itemBuilder: (context, index) {
+            final group = groups[index];
+            return Padding(
+              key: ValueKey(group.id),
+              padding: const EdgeInsets.only(bottom: 4),
+              child: ReorderableDelayedDragStartListener(
+                index: index,
+                child: _ExpandableSidebarRow(
+                  icon: LucideIcons.folder,
+                  label: group.name,
+                  pinned: app.isGroupPinned(group.id),
+                  onPin: () => app.toggleGroupPin(group.id),
+                  onAddConversation: () {
+                    unawaited(app.newConversationInGroup(group.id));
+                    onSelect(StudentSection.assistant);
+                  },
+                  onRename: () => _renameGroup(context, app, group),
+                  onDelete: () => _deleteGroup(context, app, group),
+                  children: app
+                      .conversationsInGroup(group.id)
+                      .map(
+                        (conversation) => _ConversationEntry(
+                          conversation: conversation,
+                          onPin: () => app.togglePin(conversation.id),
+                          onMove: () =>
+                              _moveConversation(context, app, conversation),
+                          onRename: () =>
+                              _renameConversation(context, app, conversation),
+                          onDelete: () =>
+                              app.deleteConversation(conversation.id),
+                          onTap: () => _openConversation(
+                            context,
+                            app,
+                            conversation,
+                            research: false,
+                          ),
                         ),
-                      ),
-                    )
-                    .toList(),
+                      )
+                      .toList(),
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
+      const SizedBox(height: 12),
+      Text(
+        '历史对话',
+        key: const ValueKey('workspace-history-heading'),
+        style: context.texts.labelSmall,
       ),
-    const SizedBox(height: 12),
-    Text(
-      '历史对话',
-      key: const ValueKey('workspace-history-heading'),
-      style: context.texts.labelSmall,
-    ),
-    const SizedBox(height: 6),
-    for (final conversation in app.ungroupedConversations)
-      _ConversationEntry(
-        conversation: conversation,
-        onPin: () => app.togglePin(conversation.id),
-        onMove: () => _moveConversation(context, app, conversation),
-        onRename: () => _renameConversation(context, app, conversation),
-        onDelete: () => app.deleteConversation(conversation.id),
-        onTap: () =>
-            _openConversation(context, app, conversation, research: false),
-      ),
-  ];
+      const SizedBox(height: 6),
+      for (final conversation in app.ungroupedConversations)
+        _ConversationEntry(
+          conversation: conversation,
+          onPin: () => app.togglePin(conversation.id),
+          onMove: () => _moveConversation(context, app, conversation),
+          onRename: () => _renameConversation(context, app, conversation),
+          onDelete: () => app.deleteConversation(conversation.id),
+          onTap: () =>
+              _openConversation(context, app, conversation, research: false),
+        ),
+    ];
+  }
 
   Future<void> _moveConversation(
     BuildContext context,
     AppState app,
     ChatConversation conversation,
   ) async {
-    final target = await showMoveConversationDialog(
-      context,
-      app,
-      conversation,
-    );
+    final target = await showMoveConversationDialog(context, app, conversation);
     if (target == null || !context.mounted) return;
     try {
       await app.moveConversationToGroup(conversation.id, target.groupId);
     } catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('移动失败：$error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('移动失败：$error')));
     }
   }
 
@@ -854,9 +854,9 @@ class _WorkspaceSidebar extends StatelessWidget {
       await app.moveConversationToGroup(conversation.id, target.groupId);
     } catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('移动失败：$error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('移动失败：$error')));
     }
   }
 
@@ -925,8 +925,7 @@ class _WorkspaceSidebar extends StatelessWidget {
           selected: activeResearchProject?.id == project.id,
           isGroupPinned: app.isGroupPinned,
           onOpen: () => onOpenProject(project),
-          onAddGroup: () =>
-              _showCreateGroupInProject(context, app, project),
+          onAddGroup: () => _showCreateGroupInProject(context, app, project),
           onAddGroupConversation: (group) {
             unawaited(
               app.newConversationInGroup(
@@ -941,22 +940,14 @@ class _WorkspaceSidebar extends StatelessWidget {
           onDeleteGroup: (group) => _deleteGroup(context, app, group),
           conversationsInGroup: (group) =>
               app.conversationsInGroupForProject(group.id, project.id),
-          ungroupedConversations:
-              app.ungroupedConversationsInProject(project.id),
-          onOpenConversation: (conversation) => _openConversation(
-            context,
-            app,
-            conversation,
-            research: true,
+          ungroupedConversations: app.ungroupedConversationsInProject(
+            project.id,
           ),
-          onPinConversation: (conversation) =>
-              app.togglePin(conversation.id),
-          onMoveConversation: (conversation) => _moveConversationInProject(
-            context,
-            app,
-            conversation,
-            project,
-          ),
+          onOpenConversation: (conversation) =>
+              _openConversation(context, app, conversation, research: true),
+          onPinConversation: (conversation) => app.togglePin(conversation.id),
+          onMoveConversation: (conversation) =>
+              _moveConversationInProject(context, app, conversation, project),
           onRenameConversation: (conversation) =>
               _renameConversation(context, app, conversation),
           onDeleteConversation: (conversation) =>
@@ -1361,10 +1352,7 @@ class _ResearchProjectRowState extends State<_ResearchProjectRow> {
                   child: Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          '对话分组',
-                          style: context.texts.labelSmall,
-                        ),
+                        child: Text('对话分组', style: context.texts.labelSmall),
                       ),
                       IconButton(
                         tooltip: '新建分组',
@@ -1428,10 +1416,8 @@ class _ResearchProjectRowState extends State<_ResearchProjectRow> {
                       conversation: conversation,
                       onPin: () => widget.onPinConversation(conversation),
                       onMove: () => widget.onMoveConversation(conversation),
-                      onRename: () =>
-                          widget.onRenameConversation(conversation),
-                      onDelete: () =>
-                          widget.onDeleteConversation(conversation),
+                      onRename: () => widget.onRenameConversation(conversation),
+                      onDelete: () => widget.onDeleteConversation(conversation),
                       onTap: () => widget.onOpenConversation(conversation),
                     ),
                 ],
@@ -1618,11 +1604,7 @@ class _ConversationEntry extends StatelessWidget {
         if (conversation.pinned)
           const Padding(
             padding: EdgeInsets.only(left: 4),
-            child: Icon(
-              LucideIcons.star,
-              size: 12,
-              color: EsaColors.accent,
-            ),
+            child: Icon(LucideIcons.star, size: 12, color: EsaColors.accent),
           ),
       ],
     ),
@@ -2140,7 +2122,7 @@ class _MobileHeader extends StatelessWidget {
             StudentSection.knowledge => '知识地图',
             StudentSection.assignments => '作业',
             StudentSection.planner => '日程',
-            StudentSection.assistant => '学习空间',
+            StudentSection.assistant => 'AI 学习助手',
           }, style: context.texts.headlineSmall),
         ),
         IconButton(

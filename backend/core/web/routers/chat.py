@@ -13,7 +13,16 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse, StreamingResponse
 
 from backend.agent.agent import Agent
@@ -254,6 +263,27 @@ def _validate_group_owned(
     group = group_store.get_group(group_id)
     if group is None or group["user_id"] != session.user_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "分组不存在")
+
+
+def _validate_group_scope(
+    request: Request,
+    group_id: str | None,
+    project_id: str | None,
+    session: SessionPrincipal,
+) -> None:
+    """Ensure a conversation cannot cross a research-project group boundary."""
+    _validate_group_owned(request, group_id, session)
+    if group_id is None:
+        return
+    group = request.app.state.group_store.get_group(group_id, session.user_id)
+    group_project_id = group.get("project_id") if group is not None else None
+    # A null project is retained as a compatibility state for groups created by
+    # older clients. Once a group has a persisted project, the boundary is strict.
+    if group_project_id is not None and group_project_id != project_id:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "分组与对话所属科研项目不一致",
+        )
 
 
 def _classroom_binding_out(request: Request, binding: dict | None) -> dict | None:
@@ -536,7 +566,9 @@ def _runtime_dependencies(
         chat_store=getattr(state, "chat_store", None),
         teaching_store=teaching_store,
         teaching_context_reader=(
-            TeachingContextAdapter(teaching_store) if teaching_store is not None else None
+            TeachingContextAdapter(teaching_store)
+            if teaching_store is not None
+            else None
         ),
         research_project_store=getattr(state, "research_project_store", None),
         research_project_profile_service=getattr(
@@ -637,6 +669,7 @@ def _build_run_spec(
         identity=identity,
         conversation_id=conversation_id,
         current_message=body.content,
+        task_mode=body.task_mode,
         history=tuple(ctx.history),
         conversation_summary=ctx.conversation_summary,
         conversation_mode=ctx.conversation_mode,
@@ -658,9 +691,7 @@ def _build_run_spec(
             "total_weeks": ctx.user.total_weeks,
         },
     )
-    runtime = WorkspaceRuntime(
-        _runtime_dependencies(request, ctx)
-    )
+    runtime = WorkspaceRuntime(_runtime_dependencies(request, ctx))
     return runtime.prepare(turn)
 
 
@@ -721,7 +752,7 @@ def create_conversation(
         dict => 处理结果。
     """
     body = body or ConversationCreateRequest()
-    _validate_group_owned(request, body.group_id, session)
+    _validate_group_scope(request, body.group_id, body.research_project_id, session)
     user_store: UserStore = request.app.state.user_store
     user = user_store.get_by_id(session.user_id)
     if user is None:
@@ -759,15 +790,17 @@ def create_conversation(
             chat_store.delete_conversation(
                 conversation["conversation_id"], session.user_id
             )
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "classroom resource not found")
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, "classroom resource not found"
+            )
         binding_store = request.app.state.classroom_conversation_store
         conversation["classroom_binding"] = _classroom_binding_out(
             request,
             binding_store.bind(
-            conversation_id=conversation["conversation_id"],
-            user_id=session.user_id,
-            class_id=body.class_id,
-            assignment_id=body.assignment_id,
+                conversation_id=conversation["conversation_id"],
+                user_id=session.user_id,
+                class_id=body.class_id,
+                assignment_id=body.assignment_id,
             ),
         )
     elif body.class_id is not None or body.assignment_id is not None:
@@ -832,7 +865,13 @@ def update_conversation(
 
     # 移动分组时校验目标分组归属
     if "group_id" in updates:
-        _validate_group_owned(request, updates["group_id"], session)
+        conversation = _load_owned(request, conversation_id, session)
+        _validate_group_scope(
+            request,
+            updates["group_id"],
+            conversation.get("research_project_id"),
+            session,
+        )
 
     if "class_id" in updates or "assignment_id" in updates:
         conversation = _load_owned(request, conversation_id, session)
@@ -858,7 +897,9 @@ def update_conversation(
         else:
             user = request.app.state.user_store.get_by_id(session.user_id)
             if user is None:
-                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "user no longer exists")
+                raise HTTPException(
+                    status.HTTP_401_UNAUTHORIZED, "user no longer exists"
+                )
             authorization = _authorize_classroom_binding(
                 request,
                 session=session,
@@ -872,8 +913,10 @@ def update_conversation(
                     status.HTTP_404_NOT_FOUND, "classroom resource not found"
                 )
             binding_store.bind(
-                conversation_id=conversation_id, user_id=session.user_id,
-                class_id=class_id, assignment_id=assignment_id,
+                conversation_id=conversation_id,
+                user_id=session.user_id,
+                class_id=class_id,
+                assignment_id=assignment_id,
             )
 
     chat_store: ChatStore = request.app.state.chat_store
@@ -883,6 +926,13 @@ def update_conversation(
 
     if "group_id" in updates:
         chat_store.set_conversation_group(conversation_id, updates["group_id"])
+
+    if "pinned" in updates:
+        chat_store.update_conversation(
+            conversation_id,
+            session.user_id,
+            pinned=updates["pinned"],
+        )
 
 
 @router.delete(
@@ -939,7 +989,9 @@ async def upload_attachment(
     filename = Path((file.filename or "attachment").replace("\\", "/")).name
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SOURCE_SUFFIXES:
-        supported = "、".join(sorted(item.lstrip(".") for item in SUPPORTED_SOURCE_SUFFIXES))
+        supported = "、".join(
+            sorted(item.lstrip(".") for item in SUPPORTED_SOURCE_SUFFIXES)
+        )
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"DocIR 不支持该文件类型；支持：{supported}",
@@ -1085,11 +1137,11 @@ async def send_message(
             body.attachment_ids,
         )
         try:
-            ctx = _prepare_message(
-                request, conversation_id, body, session, attachments
-            )
+            ctx = _prepare_message(request, conversation_id, body, session, attachments)
         except ValueError as error:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)
+            ) from error
         chat_store: ChatStore = request.app.state.chat_store
         agent: Agent = request.app.state.agent
 
@@ -1151,11 +1203,11 @@ async def stream_message(
             body.attachment_ids,
         )
         try:
-            ctx = _prepare_message(
-                request, conversation_id, body, session, attachments
-            )
+            ctx = _prepare_message(request, conversation_id, body, session, attachments)
         except ValueError as error:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)
+            ) from error
         chat_store: ChatStore = request.app.state.chat_store
         agent: Agent = request.app.state.agent
         run_spec = _build_run_spec(

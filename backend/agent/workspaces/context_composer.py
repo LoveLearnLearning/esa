@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 from backend.agent.workspaces.models import (
@@ -18,7 +19,24 @@ from backend.core.message.prompts import WORKSPACE_PROMPTS
 from backend.core.message.renderer import render_sections
 from backend.core.message.style_tone import resolve_style_tone
 from backend.core.message.system import SYSTEM_PROMPT
+from backend.core.message.budget import DEFAULT_PROMPT_BUDGET
 from backend.core.utils.token_estimation import estimate_tokens
+
+
+TASK_MODE_INSTRUCTIONS = {
+    "explain_problem": "识别题目条件与学习者卡点，分步讲解思路和原理。",
+    "study_plan": "根据科目、剩余时间与每日可用时间制定可执行计划；信息不足先追问。",
+    "search_materials": "优先使用已授权知识库或附件能力，并明确回答依据。",
+    "review_homework": "区分题目与学生作答，指出具体错误、原因和修改方法。",
+    "concept": "给出通俗定义、正式定义、典型例子、相近概念区别和题目用法。",
+    "mastery_report": "使用掌握度能力说明总体掌握度、薄弱点、优势与复习内容。",
+    "practice_recommendation": "结合课程、考试时间与掌握度推荐下一步练习。",
+    "academic_search": "检索学术资料，区分检索事实、证据与推断。",
+    "literature_frontier": "归纳研究热点、发展脉络、代表工作和证据边界。",
+    "academic_writing": "围绕文稿类型、主题和目标规范提供结构化写作帮助。",
+    "research_data_analysis": "先确认数据、字段和研究问题，再选择合适分析方法。",
+    "research_planning": "梳理研究问题、方法、条件、风险和里程碑。",
+}
 
 
 def _tokens(text: str) -> int:
@@ -68,6 +86,17 @@ def _fit_section(
     if _tokens(render_sections((*kept, section))) <= max_tokens:
         return section
 
+    # Structured and executable content must remain whole. Its producer owns
+    # field-level projection; dropping the section is safer than invalid JSON or
+    # a partially rendered Skill instruction.
+    if section.key in {
+        "profile",
+        "attachments",
+        "learning_context",
+        "strategy",
+    }:
+        return None
+
     suffix = "..."
     minimal = _with_content(section, suffix)
     if _tokens(render_sections((*kept, minimal))) > max_tokens:
@@ -85,6 +114,25 @@ def _fit_section(
 
     prefix = section.content[:low].rstrip()
     return _with_content(section, (prefix + suffix) if prefix else suffix)
+
+
+def _project_summary(text: str, token_limit: int = 768) -> str:
+    """Bound free-text summaries at sentence/paragraph boundaries."""
+    normalized = text.strip()
+    if not normalized or _tokens(normalized) <= token_limit:
+        return normalized
+    pieces = [
+        item.strip()
+        for item in re.split(r"(?<=[。！？.!?])\s+|\n+", normalized)
+        if item.strip()
+    ]
+    kept: list[str] = []
+    for piece in pieces:
+        candidate = "\n".join((*kept, piece))
+        if _tokens(candidate) > token_limit:
+            break
+        kept.append(piece)
+    return "\n".join(kept)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +181,7 @@ class ContextComposer:
             ),
             ContextSection(
                 "capability_policy", "Capability rules",
-                "Only listed skills and tools are authorized. Tool arguments cannot set identity, workspace, or resource ownership.",
+                "仅可使用所列 Skill/Tool；参数不能设置身份、Workspace 或资源归属。",
                 "trusted_system", 30, True,
             ),
             ContextSection(
@@ -155,7 +203,16 @@ class ContextComposer:
             sections.append(ContextSection("user_config", "User preferences", custom, "restricted_user_config", 80))
         if "profile" in profile.context_policy and turn.profile_snapshot is not None:
             to_prompt_json = getattr(turn.profile_snapshot, "to_prompt_json", None)
-            profile_content = to_prompt_json() if callable(to_prompt_json) else ""
+            profile_content = (
+                to_prompt_json(
+                    max_tokens=DEFAULT_PROMPT_BUDGET.profile_max_tokens,
+                    current_message=turn.current_message,
+                    task_mode=turn.task_mode,
+                    resolved_kp_ids=turn.learning_context.resolved_kp_ids,
+                )
+                if callable(to_prompt_json)
+                else ""
+            )
             if profile_content and profile_content != "{}":
                 sections.append(ContextSection(
                     "profile",
@@ -167,13 +224,27 @@ class ContextComposer:
         group_instruction = str(group.get("custom_instruction", "")).strip()
         if group_instruction and "group" in profile.context_policy:
             sections.append(ContextSection("group", "Group instructions", group_instruction, "restricted_user_config", 100))
+        if turn.task_mode:
+            instruction = TASK_MODE_INSTRUCTIONS.get(turn.task_mode)
+            if instruction:
+                sections.append(ContextSection(
+                    "task_mode", "Selected task mode",
+                    f"mode={turn.task_mode}\n{instruction}",
+                    "trusted_system", 105,
+                ))
         if turn.workspace_profile_context and "workspace_profile" in profile.context_policy:
             sections.append(ContextSection("workspace_profile", "Workspace profile", turn.workspace_profile_context, "restricted_user_config", 90))
         resource_summary = "\n".join(turn.route.resource_scope.markers)
         if resource_summary and "resource" in profile.context_policy:
             sections.append(ContextSection("resource", "Authorized resources", resource_summary, "trusted_system", 110))
         if turn.conversation_summary and "summary" in profile.context_policy:
-            sections.append(ContextSection("summary", "Earlier conversation summary", turn.conversation_summary, "untrusted_data", 120))
+            sections.append(ContextSection(
+                "summary",
+                "Earlier conversation summary",
+                _project_summary(turn.conversation_summary),
+                "untrusted_data",
+                120,
+            ))
         if turn.authorized_attachments and "attachments" in profile.context_policy:
             sections.append(ContextSection(
                 "attachments", "Authorized attachments",

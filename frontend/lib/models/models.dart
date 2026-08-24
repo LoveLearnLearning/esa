@@ -27,6 +27,7 @@ class UserPreferences {
 
 class UserProfile {
   const UserProfile({
+    this.displayName = '',
     this.major = 'cs',
     this.grade = '',
     this.currentWeek = 1,
@@ -34,6 +35,7 @@ class UserProfile {
     this.profileEnabled = false,
   });
 
+  final String displayName;
   final String major;
   final String grade;
   final int currentWeek;
@@ -53,6 +55,7 @@ class UserProfile {
     dynamic value(String key) => json[key] ?? explicit[key];
 
     return UserProfile(
+      displayName: value('display_name') as String? ?? '',
       major: value('major') as String? ?? 'cs',
       grade: value('grade') as String? ?? '',
       currentWeek: (value('current_week') as num?)?.toInt() ?? 1,
@@ -60,6 +63,108 @@ class UserProfile {
       profileEnabled: value('profile_enabled') as bool? ?? true,
     );
   }
+}
+
+class UserStats {
+  const UserStats({
+    this.conversationCount = 0,
+    this.pinnedCount = 0,
+    this.learningStreakDays = 0,
+  });
+
+  final int conversationCount;
+  final int pinnedCount;
+  final int learningStreakDays;
+
+  factory UserStats.fromJson(Map<String, dynamic> json) => UserStats(
+    conversationCount: (json['conversation_count'] as num?)?.toInt() ?? 0,
+    pinnedCount: (json['pinned_count'] as num?)?.toInt() ?? 0,
+    learningStreakDays:
+        (json['learning_streak_days'] as num?)?.toInt() ?? 0,
+  );
+}
+
+class PlannerTodo {
+  const PlannerTodo({
+    required this.id,
+    required this.title,
+    required this.createdAt,
+    required this.updatedAt,
+    this.dueAt,
+    this.done = false,
+  });
+
+  final String id;
+  final String title;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? dueAt;
+  final bool done;
+
+  factory PlannerTodo.fromJson(Map<String, dynamic> json) => PlannerTodo(
+    id: json['todo_id']?.toString() ?? '',
+    title: json['title']?.toString() ?? '',
+    dueAt: DateTime.tryParse(json['due_at']?.toString() ?? '')?.toLocal(),
+    done: json['done'] as bool? ?? false,
+    createdAt:
+        DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
+        DateTime.now(),
+    updatedAt:
+        DateTime.tryParse(json['updated_at']?.toString() ?? '')?.toLocal() ??
+        DateTime.now(),
+  );
+}
+
+class PlannerGoal {
+  const PlannerGoal({
+    required this.id,
+    required this.title,
+    required this.createdAt,
+    required this.updatedAt,
+    this.description = '',
+    this.targetAt,
+    this.progress = 0,
+  });
+
+  final String id;
+  final String title;
+  final String description;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? targetAt;
+  final int progress;
+
+  factory PlannerGoal.fromJson(Map<String, dynamic> json) => PlannerGoal(
+    id: json['goal_id']?.toString() ?? '',
+    title: json['title']?.toString() ?? '',
+    description: json['description']?.toString() ?? '',
+    targetAt: DateTime.tryParse(json['target_at']?.toString() ?? '')?.toLocal(),
+    progress: ((json['progress'] as num?)?.toInt() ?? 0).clamp(0, 100),
+    createdAt:
+        DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
+        DateTime.now(),
+    updatedAt:
+        DateTime.tryParse(json['updated_at']?.toString() ?? '')?.toLocal() ??
+        DateTime.now(),
+  );
+}
+
+class PlannerSnapshot {
+  const PlannerSnapshot({this.todos = const [], this.goals = const []});
+
+  final List<PlannerTodo> todos;
+  final List<PlannerGoal> goals;
+
+  factory PlannerSnapshot.fromJson(Map<String, dynamic> json) => PlannerSnapshot(
+    todos: (json['todos'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => PlannerTodo.fromJson(Map<String, dynamic>.from(item)))
+        .toList(),
+    goals: (json['goals'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => PlannerGoal.fromJson(Map<String, dynamic>.from(item)))
+        .toList(),
+  );
 }
 
 class ScheduleCourse {
@@ -1101,7 +1206,7 @@ class ChatConversation {
   final String? assignmentId;
   final String? assignmentTitle;
   String? groupId;
-  bool pinned; // 置顶 后端暂无字段 仅前端本地状态
+  bool pinned;
 
   factory ChatConversation.fromJson(Map<String, dynamic> j) {
     final binding = j['classroom_binding'] is Map
@@ -1120,6 +1225,7 @@ class ChatConversation {
       assignmentId: binding['assignment_id']?.toString(),
       assignmentTitle: binding['assignment_title']?.toString(),
       groupId: j['group_id'] as String?,
+      pinned: j['pinned'] as bool? ?? false,
     );
   }
 }
@@ -1143,6 +1249,9 @@ class ChatGroup {
     required this.updatedAt,
     this.style,
     this.tone,
+    this.projectId,
+    this.pinned = false,
+    this.sortOrder = 0,
   });
 
   final String id;
@@ -1152,6 +1261,9 @@ class ChatGroup {
   final String customInstruction;
   final String? style;
   final String? tone;
+  final String? projectId;
+  final bool pinned;
+  final int sortOrder;
   final int conversationCount;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -1164,6 +1276,9 @@ class ChatGroup {
     customInstruction: json['custom_instruction'] as String? ?? '',
     style: json['style'] as String?,
     tone: json['tone'] as String?,
+    projectId: json['project_id'] as String?,
+    pinned: json['pinned'] as bool? ?? false,
+    sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
     conversationCount: (json['conversation_count'] as num?)?.toInt() ?? 0,
     createdAt:
         DateTime.tryParse(json['created_at'] as String? ?? '')?.toLocal() ??

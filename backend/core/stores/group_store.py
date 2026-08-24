@@ -16,7 +16,16 @@ class GroupStore(BaseSQLiteStore):
     """对话分组读写类。"""
 
     _UPDATEABLE_FIELDS = frozenset(
-        {"name", "description", "custom_instruction", "style", "tone"}
+        {
+            "name",
+            "description",
+            "custom_instruction",
+            "style",
+            "tone",
+            "project_id",
+            "pinned",
+            "sort_order",
+        }
     )
 
     def __init__(self, database_path: str | Path = "data/esa.db") -> None:
@@ -36,12 +45,29 @@ class GroupStore(BaseSQLiteStore):
                     custom_instruction TEXT NOT NULL DEFAULT '',
                     style TEXT,
                     tone TEXT,
+                    project_id TEXT,
+                    pinned INTEGER NOT NULL DEFAULT 0,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 )
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(groups)").fetchall()
+            }
+            if "project_id" not in columns:
+                connection.execute("ALTER TABLE groups ADD COLUMN project_id TEXT")
+            if "pinned" not in columns:
+                connection.execute(
+                    "ALTER TABLE groups ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+                )
+            if "sort_order" not in columns:
+                connection.execute(
+                    "ALTER TABLE groups ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
+                )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_groups_user
@@ -62,6 +88,7 @@ class GroupStore(BaseSQLiteStore):
         custom_instruction: str = "",
         style: str | None = None,
         tone: str | None = None,
+        project_id: str | None = None,
         group_limit: int | None = None,
     ) -> dict | None:
         """创建 `group` 相关数据。
@@ -87,6 +114,9 @@ class GroupStore(BaseSQLiteStore):
             "custom_instruction": custom_instruction,
             "style": style,
             "tone": tone,
+            "project_id": project_id,
+            "pinned": False,
+            "sort_order": 0,
             "created_at": now,
             "updated_at": now,
         }
@@ -103,13 +133,21 @@ class GroupStore(BaseSQLiteStore):
                         connection.rollback()
                         return None
 
+                order_row = connection.execute(
+                    "SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order "
+                    "FROM groups WHERE user_id = ?",
+                    (user_id,),
+                ).fetchone()
+                group["sort_order"] = int(order_row["next_order"])
+
                 connection.execute(
                     """
                     INSERT INTO groups (
                         group_id, user_id, name, description,
-                        custom_instruction, style, tone, created_at, updated_at
+                        custom_instruction, style, tone, project_id, pinned,
+                        sort_order, created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         group["group_id"],
@@ -119,6 +157,9 @@ class GroupStore(BaseSQLiteStore):
                         group["custom_instruction"],
                         group["style"],
                         group["tone"],
+                        group["project_id"],
+                        0,
+                        group["sort_order"],
                         group["created_at"],
                         group["updated_at"],
                     ),
@@ -146,7 +187,8 @@ class GroupStore(BaseSQLiteStore):
         """
         sql = """
             SELECT g.group_id, g.user_id, g.name, g.description,
-                   g.custom_instruction, g.style, g.tone,
+                   g.custom_instruction, g.style, g.tone, g.project_id,
+                   g.pinned, g.sort_order,
                    g.created_at, g.updated_at,
                    (
                        SELECT COUNT(*)
@@ -163,7 +205,11 @@ class GroupStore(BaseSQLiteStore):
             params += (user_id,)
 
         row = self.query_one(sql, params)
-        return dict(row) if row is not None else None
+        if row is None:
+            return None
+        group = dict(row)
+        group["pinned"] = bool(group["pinned"])
+        return group
 
     def list_groups(self, user_id: str) -> list[dict]:
         """列出 `groups` 相关数据。
@@ -177,7 +223,8 @@ class GroupStore(BaseSQLiteStore):
         rows = self.query_all(
             """
             SELECT g.group_id, g.user_id, g.name, g.description,
-                   g.custom_instruction, g.style, g.tone,
+                   g.custom_instruction, g.style, g.tone, g.project_id,
+                   g.pinned, g.sort_order,
                    g.created_at, g.updated_at,
                    COUNT(c.conversation_id) AS conversation_count
             FROM groups g
@@ -186,17 +233,20 @@ class GroupStore(BaseSQLiteStore):
              AND c.user_id = g.user_id
             WHERE g.user_id = ?
             GROUP BY g.group_id
-            ORDER BY g.updated_at DESC
+            ORDER BY g.pinned DESC, g.sort_order ASC, g.updated_at DESC
             """,
             (user_id,),
         )
-        return [dict(row) for row in rows]
+        groups = [dict(row) for row in rows]
+        for group in groups:
+            group["pinned"] = bool(group["pinned"])
+        return groups
 
     def update_group(
         self,
         group_id: str,
         user_id: str | None = None,
-        **fields: str | None,
+        **fields: object,
     ) -> bool:
         """更新 `group` 相关数据。
 
@@ -215,6 +265,8 @@ class GroupStore(BaseSQLiteStore):
             return self.get_group(group_id, user_id) is not None
 
         updates = dict(fields)
+        if "pinned" in updates:
+            updates["pinned"] = int(bool(updates["pinned"]))
         updates["updated_at"] = self._now()
         set_clause = ", ".join(f"{name} = ?" for name in updates)
         sql = f"UPDATE groups SET {set_clause} WHERE group_id = ?"
@@ -223,6 +275,38 @@ class GroupStore(BaseSQLiteStore):
             sql += " AND user_id = ?"
             params += (user_id,)
         return self.execute(sql, params) > 0
+
+    def reorder_groups(self, user_id: str, group_ids: list[str]) -> bool:
+        """Persist a complete user-owned group order atomically."""
+        if len(group_ids) != len(set(group_ids)):
+            return False
+        with closing(self._connect()) as connection:
+            connection.isolation_level = None
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                owned = {
+                    str(row["group_id"])
+                    for row in connection.execute(
+                        "SELECT group_id FROM groups WHERE user_id = ?", (user_id,)
+                    ).fetchall()
+                }
+                if set(group_ids) != owned:
+                    connection.rollback()
+                    return False
+                now = self._now()
+                connection.executemany(
+                    "UPDATE groups SET sort_order = ?, updated_at = ? "
+                    "WHERE group_id = ? AND user_id = ?",
+                    [
+                        (index, now, group_id, user_id)
+                        for index, group_id in enumerate(group_ids)
+                    ],
+                )
+                connection.commit()
+                return True
+            except Exception:
+                connection.rollback()
+                raise
 
     def delete_group(self, group_id: str, user_id: str) -> bool:
         """删除 `group` 相关数据。

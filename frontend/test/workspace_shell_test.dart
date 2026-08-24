@@ -165,9 +165,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 200));
 
-    await tester.tap(
-      find.byKey(const ValueKey('student-research-destination')),
-    );
+    await tester.tap(find.byTooltip('研究空间'));
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(state.activeWorkspace, WorkspaceType.research);

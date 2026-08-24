@@ -241,7 +241,7 @@ def build_skills_context(*, categories: set[str] | None = None) -> str:
     """
     构建给 Agent 的 Skill 索引。
 
-    这里只注入 name/category/description，完整正文按需通过 load_skill 加载，
+    这里只注入 name/description，完整正文按需通过 load_skill 加载，
     避免把所有 Skill 正文永久塞进 system prompt。
     """
     selected = [
@@ -257,7 +257,9 @@ def build_skills_context(*, categories: set[str] | None = None) -> str:
         return "暂无可用 skill"
 
     return "\n".join(
-        f"- {skill.name} [{skill.category}] {skill.description}" for skill in skills
+        f"- {skill.name}: {skill.description}"
+        for skill in skills
+        if not skill.autoload
     )
 
 

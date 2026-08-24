@@ -1,9 +1,9 @@
 {
  "_meta": {
-  "captured_at": "2026-08-17T18:16:53+00:00",
+  "captured_at": "2026-08-24T13:51:44+00:00",
   "source": "github.com/LoveLearnLearning/esa",
-  "source_repo": "local-clone@ce37198",
-  "prompt_source_fingerprint": "e5843512326c4cf131887dc956c8acc9f4899ae6689aa190ae60635459363e3b",
+  "source_repo": "local-clone@b797fba",
+  "prompt_source_fingerprint": "722003b08f31ac5884fb1c71ebbb3318cc893760517cd13d8697e278f594fcdf",
   "note": "由 dataset/tools/capture_system_prompts.py 调用生产 WorkspaceRuntime.prepare_evaluation 产出，禁止手改",
   "render_params": {
    "user_name": "同学",

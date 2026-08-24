@@ -45,6 +45,7 @@ class UserRecord:
     password_hash: str
     status: str
     account_role: str = "student"
+    display_name: str = ""
 
     preferred_style: str = "concise"
     preferred_tone: str = "friendly"

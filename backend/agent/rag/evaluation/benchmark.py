@@ -9,12 +9,16 @@
 
 from __future__ import annotations
 
-import resource
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from statistics import mean
 from typing import Protocol, TypeVar
+
+try:
+    import resource
+except ModuleNotFoundError:  # Windows has no stdlib resource module.
+    resource = None  # type: ignore[assignment]
 
 
 class BatchOperation(Protocol):
@@ -84,7 +88,11 @@ def benchmark_backend(
         mean_latency_seconds=average,
         p95_latency_seconds=ordered[p95_index],
         items_per_second=len(samples) / average if average else float("inf"),
-        max_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+        max_rss_kib=(
+            resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            if resource is not None
+            else 0
+        ),
     )
 
 

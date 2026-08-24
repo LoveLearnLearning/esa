@@ -27,6 +27,7 @@ from backend.core.web.schemas import (
     UpdateUserProfileRequest,
     UserPreferencesOut,
     UserProfileOut,
+    UserStatsOut,
 )
 
 router = APIRouter(prefix="/me/preferences", tags=["preferences"])
@@ -58,6 +59,7 @@ def _snapshot_to_view(snap_dict: dict, *, user) -> ProfileViewOut:
         ]
 
     return ProfileViewOut(
+        display_name=user.display_name or user.username,
         major=user.major,
         grade=user.grade,
         current_week=user.current_week,
@@ -212,6 +214,13 @@ def update_profile(
             )
 
     if updates:
+        display_name = updates.pop("display_name", None)
+        if display_name is not None:
+            updated = user_store.update_display_name(
+                session.user_id, display_name.strip()
+            )
+            if not updated:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "用户不存在")
         updated = user_store.update_profile(
             user_id=session.user_id,
             major=updates.get("major"),
@@ -229,6 +238,7 @@ def update_profile(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "用户不存在")
 
     return UserProfileOut(
+        display_name=user.display_name or user.username,
         major=user.major,
         grade=user.grade,
         current_week=user.current_week,
@@ -409,6 +419,17 @@ def export_profile(
         "exported_at": datetime.now().isoformat(),
         "dimensions": dimensions,
     }
+
+
+@profile_router.get("/stats")
+def get_user_stats(
+    request: Request,
+    session: CurrentSession,
+) -> UserStatsOut:
+    """Return account-wide statistics used by the profile sheet."""
+    return UserStatsOut(
+        **request.app.state.chat_store.get_user_stats(session.user_id)
+    )
 
 
 @profile_router.delete("")

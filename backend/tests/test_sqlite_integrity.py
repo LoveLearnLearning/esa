@@ -250,7 +250,7 @@ def test_legacy_migration_quarantines_orphans_and_preserves_valid_rows(tmp_path)
     # 引用 groups 的归属触发器。迁移必须能安全拆除并重建它们。
     ChatStore(database_path)
 
-    assert run_migrations(database_path) == 12
+    assert run_migrations(database_path) == 13
     assert run_migrations(database_path) == 0
 
     connection = sqlite3.connect(database_path)
@@ -319,7 +319,7 @@ def test_v10_repairs_databases_that_already_recorded_a_conflicting_v9(tmp_path):
     connection.commit()
     connection.close()
 
-    assert run_migrations(database_path) == 3
+    assert run_migrations(database_path) == 4
     connection = sqlite3.connect(database_path)
     try:
         user_columns = {

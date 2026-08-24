@@ -2,11 +2,13 @@
 // 资料区 + 统计三宫格 + 字段 + 设置区 + 底部 退出登录 / 保存
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../api/api_client.dart';
 import '../state/app_state.dart';
 import '../models/code_editor_settings.dart';
 import '../theme/esa_context.dart';
@@ -14,6 +16,7 @@ import '../theme/esa_theme.dart';
 import 'esa_segmented.dart';
 
 Future<void> showProfileSheet(BuildContext context) {
+  unawaited(AppScope.of(context).loadUserStats());
   return showDialog(
     context: context,
     barrierColor: const Color(0x80201E1D), // rgba(32,30,29,0.5)
@@ -200,13 +203,12 @@ class _ProfileSheetState extends State<_ProfileSheet> {
             ],
           ),
         ),
-        OutlinedButton(onPressed: () {}, child: const Text('更换头像')),
+        Text('头像由显示名生成', style: context.texts.bodySmall),
       ],
     );
   }
 
   Widget _stats(BuildContext context, AppState app) {
-    final pinned = app.conversations.where((c) => c.pinned).length;
     Widget cell(String number, String cn, String en) => Expanded(
       child: Column(
         children: [
@@ -237,11 +239,11 @@ class _ProfileSheetState extends State<_ProfileSheet> {
       child: IntrinsicHeight(
         child: Row(
           children: [
-            cell('${app.conversations.length}', '对话', 'CHATS'),
+            cell('${app.userStats.conversationCount}', '对话', 'CHATS'),
             VerticalDivider(width: 1, color: context.n.divider),
-            cell('$pinned', '收藏', 'PINNED'),
+            cell('${app.userStats.pinnedCount}', '收藏', 'PINNED'),
             VerticalDivider(width: 1, color: context.n.divider),
-            cell('7', '天连续', 'STREAK'),
+            cell('${app.userStats.learningStreakDays}', '天连续', 'STREAK'),
           ],
         ),
       ),
@@ -437,9 +439,9 @@ class _ProfileSheetState extends State<_ProfileSheet> {
         _settingRow(
           context,
           title: '数据与隐私',
-          sub: '管理你的对话与课件数据',
+          sub: '导出或清除画像与个性化数据',
           control: TextButton(
-            onPressed: () {},
+            onPressed: () => _showDataPrivacyDialog(app),
             child: const Text(
               '管理 →',
               style: TextStyle(
@@ -584,6 +586,7 @@ class _ProfileSheetState extends State<_ProfileSheet> {
       _saveError = null;
     });
     final error = await app.savePreferencesAndProfile(
+      displayName: _name.text.trim(),
       preferredStyle: _preferredStyle,
       preferredTone: _preferredTone,
       customInstruction: _customInstruction.text,
@@ -601,8 +604,85 @@ class _ProfileSheetState extends State<_ProfileSheet> {
       });
       return;
     }
-    app.updateProfile(name: _name.text);
     Navigator.of(context).pop();
+  }
+
+  Future<void> _showDataPrivacyDialog(AppState app) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('画像与个性化数据'),
+        content: const Text(
+          '这里管理服务端保存的用户画像维度。对话、作业和课件不在本操作范围内。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              try {
+                final data = await app.api.exportProfileData();
+                await Clipboard.setData(
+                  ClipboardData(
+                    text: const JsonEncoder.withIndent('  ').convert(data),
+                  ),
+                );
+                if (!dialogContext.mounted) return;
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(content: Text('画像数据已复制到剪贴板')),
+                );
+              } on ApiException catch (error) {
+                if (dialogContext.mounted) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    SnackBar(content: Text(error.detail)),
+                  );
+                }
+              }
+            },
+            child: const Text('导出并复制'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final confirmed = await showDialog<bool>(
+                context: dialogContext,
+                builder: (confirmContext) => AlertDialog(
+                  title: const Text('清除画像数据？'),
+                  content: const Text('该操作不可撤销，但不会删除对话、作业或课件。'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(confirmContext, false),
+                      child: const Text('取消'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(confirmContext, true),
+                      child: const Text('确认清除'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed != true) return;
+              try {
+                final count = await app.api.deleteProfileData();
+                if (!dialogContext.mounted || !mounted) return;
+                Navigator.pop(dialogContext);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('已清除 $count 条画像数据')),
+                );
+              } on ApiException catch (error) {
+                if (dialogContext.mounted) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    SnackBar(content: Text(error.detail)),
+                  );
+                }
+              }
+            },
+            child: const Text('清除画像数据'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('完成'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _divider(BuildContext context) =>

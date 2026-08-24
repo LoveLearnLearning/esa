@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.agent.memories.profile_builder import ProfileBuilder
+from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
@@ -31,6 +32,7 @@ from backend.core.web.routers.preferences import (
 
 class StubMasteryStore:
     """封装 `stub mastery store` 数据持久化操作。"""
+
     def get(self, user_name, kp_id):
         """获取 `get` 相关数据。
 
@@ -63,6 +65,7 @@ class StubMasteryStore:
 
 class StubKGStore:
     """封装 `stub k g store` 数据持久化操作。"""
+
     def list_all(self):
         """列出 `all` 相关数据。"""
         return []
@@ -70,6 +73,7 @@ class StubKGStore:
 
 class StubEvidenceStore:
     """封装 `stub evidence store` 数据持久化操作。"""
+
     def get_summary(self, user_name, *, kp_id=None, limit=20):
         """获取 `summary` 相关数据。
 
@@ -83,6 +87,7 @@ class StubEvidenceStore:
 
 class StubCoreMemory:
     """封装 `StubCoreMemory` 的状态与行为。"""
+
     def get_all(self, user_name):
         """获取 `all` 相关数据。"""
         return []
@@ -138,6 +143,7 @@ def _create_app(tmp_path) -> FastAPI:
 
     app = FastAPI()
     app.state.user_store = user_store
+    app.state.chat_store = ChatStore(db_path)
     app.state.profile_store = profile_store
     app.state.profile_builder = profile_builder
 
@@ -181,6 +187,7 @@ def test_get_profile_returns_structured_view(tmp_path):
     assert body["current_week"] == 3
     assert body["total_weeks"] == 18
     assert body["profile_enabled"] is True
+    assert body["display_name"] == "alice"
 
     # explicit 包含 major 字段 origin=explicit_setting confidence=1.0
     explicit_fields = {item["field"]: item for item in body["explicit"]}
@@ -188,6 +195,24 @@ def test_get_profile_returns_structured_view(tmp_path):
     assert explicit_fields["major"]["value"] == "cs"
     assert explicit_fields["major"]["origin"] == "explicit_setting"
     assert explicit_fields["major"]["confidence"] == 1.0
+
+
+def test_display_name_and_account_stats_are_server_owned(tmp_path):
+    app = _create_app(tmp_path)
+    client = TestClient(app)
+
+    updated = client.patch("/me/profile", json={"display_name": "Alice Chen"})
+    assert updated.status_code == 200
+    assert updated.json()["display_name"] == "Alice Chen"
+    assert app.state.user_store.get_by_username("alice").display_name == "Alice Chen"
+
+    stats = client.get("/me/profile/stats")
+    assert stats.status_code == 200
+    assert stats.json() == {
+        "conversation_count": 0,
+        "pinned_count": 0,
+        "learning_streak_days": 0,
+    }
 
 
 def test_patch_profile_explicit_updates_only_explicit_fields(tmp_path):
@@ -314,7 +339,10 @@ def test_patch_memory_settings_updates_switches(tmp_path):
 
     resp = client.patch(
         "/me/memory-settings",
-        json={"learning_profile_enabled": False, "default_conversation_mode": "isolated"},
+        json={
+            "learning_profile_enabled": False,
+            "default_conversation_mode": "isolated",
+        },
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -386,6 +414,7 @@ def test_delete_all_profile_with_confirmation(tmp_path):
 
     # 重置限流器 (DELETE /me/profile 限流 1/minute 上一个测试可能已占用)
     from backend.core.web.rate_limit import profile_limiter
+
     profile_limiter._windows.clear()
 
     # 先写入两条维度
@@ -414,6 +443,7 @@ def test_rate_limit_blocks_excessive_requests(tmp_path):
 
     # 重置限流器 (上一个测试可能已累积计数)
     from backend.core.web.rate_limit import profile_limiter
+
     profile_limiter._windows.clear()
 
     # 发送 11 次请求 (限流 10/minute)

@@ -12,6 +12,15 @@ from backend.agent.workspaces.models import AgentTurnInput
 
 class LearningAdapter:
     """封装 `LearningAdapter` 的状态与行为。"""
+
+    _AUTO_LOAD_SKILLS = frozenset(
+        {
+            "adaptive_practice",
+            "homework_review",
+            "progressive_hint",
+            "teach_back",
+        }
+    )
     def augment(
         self,
         turn: AgentTurnInput,
@@ -40,7 +49,11 @@ class LearningAdapter:
             )
             body = (
                 skills.load(decision.skill_name)
-                if decision.skill_name and decision.skill_name in skills.names
+                if (
+                    decision.skill_name
+                    and decision.skill_name in self._AUTO_LOAD_SKILLS
+                    and decision.skill_name in skills.names
+                )
                 else None
             )
             return StrategyAugmentation(decision.to_prompt_context(body))

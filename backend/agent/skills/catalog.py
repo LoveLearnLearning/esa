@@ -120,8 +120,9 @@ class ScopedSkillView:
         if not self.definitions:
             return "暂无可用 skill"
         return "\n".join(
-            f"- {item.name} [{item.category}] {item.description}"
+            f"- {item.name}: {item.description}"
             for item in self.definitions
+            if not item.autoload
         )
 
     def build_autoload(self) -> str:

@@ -385,6 +385,26 @@ def test_context_composer_uses_cjk_aware_token_budget():
     assert _tokens(clipped) <= 100
 
 
+def test_task_mode_is_server_compiled_as_trusted_context():
+    capabilities = ResolvedCapabilities(
+        skill_index="",
+        autoload_skills="",
+        tool_schemas=(),
+        skill_names=frozenset(),
+        tool_names=frozenset(),
+        fingerprint="f",
+    )
+    composed = ContextComposer(max_tokens=2000).compose(
+        _turn(_route(), task_mode="study_plan"),
+        LEARNING_PROFILE,
+        capabilities,
+    )
+    task = next(section for section in composed.sections if section.key == "task_mode")
+    assert task.trust == "trusted_system"
+    assert "mode=study_plan" in task.content
+    assert "制定可执行计划" in task.content
+
+
 def test_workspace_runtime_builds_trusted_runspec_without_model_owned_identity():
     """验证 `workspace_runtime_builds_trusted_runspec_without_model_owned_identity` 场景。"""
     register_builtin_tools()

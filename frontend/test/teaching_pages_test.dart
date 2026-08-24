@@ -101,7 +101,7 @@ void main() {
     await _pump(
       tester,
       _StudentTeachingApi(),
-      StudentAssignmentsPage(onOpenChat: () {}),
+      StudentAssignmentsPage(onOpenChat: (_) async {}),
     );
 
     expect(find.text('作业中心'), findsOneWidget);

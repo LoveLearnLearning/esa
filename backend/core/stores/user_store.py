@@ -36,6 +36,7 @@ class UserStore(BaseSQLiteStore):
                     password_hash TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'active',
                     account_role TEXT NOT NULL DEFAULT 'student',
+                    display_name TEXT NOT NULL DEFAULT '',
                     preferred_style TEXT NOT NULL DEFAULT 'concise',
                     preferred_tone TEXT NOT NULL DEFAULT 'friendly',
                     custom_instruction TEXT NOT NULL DEFAULT '',
@@ -61,6 +62,13 @@ class UserStore(BaseSQLiteStore):
             if "account_role" not in columns:
                 connection.execute(
                     "ALTER TABLE users ADD COLUMN account_role TEXT NOT NULL DEFAULT 'student'"
+                )
+            if "display_name" not in columns:
+                connection.execute(
+                    "ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''"
+                )
+                connection.execute(
+                    "UPDATE users SET display_name = username WHERE display_name = ''"
                 )
             if "preferred_tone" not in columns:
                 connection.execute(
@@ -142,6 +150,7 @@ class UserStore(BaseSQLiteStore):
             password_hash=row["password_hash"],
             status=row["status"],
             account_role=row["account_role"],
+            display_name=row["display_name"] or row["username"],
             email=row["email"],
             email_verified_at=row["email_verified_at"],
             preferred_style=row["preferred_style"],
@@ -169,7 +178,7 @@ class UserStore(BaseSQLiteStore):
         row = self.query_one(
             """
             SELECT id, username, email, email_verified_at, password_hash, status,
-                   account_role,
+                   account_role, display_name,
                    preferred_style, preferred_tone, custom_instruction,
                    major, grade, current_week, total_weeks, profile_enabled
             FROM users
@@ -196,7 +205,7 @@ class UserStore(BaseSQLiteStore):
         row = self.query_one(
             """
             SELECT id, username, email, email_verified_at, password_hash, status,
-                   account_role,
+                   account_role, display_name,
                    preferred_style, preferred_tone, custom_instruction,
                    major, grade, current_week, total_weeks, profile_enabled
             FROM users
@@ -215,7 +224,7 @@ class UserStore(BaseSQLiteStore):
         row = self.query_one(
             """
             SELECT id, username, email, email_verified_at, password_hash, status,
-                   account_role,
+                   account_role, display_name,
                    preferred_style, preferred_tone, custom_instruction,
                    major, grade, current_week, total_weeks, profile_enabled
             FROM users
@@ -238,11 +247,11 @@ class UserStore(BaseSQLiteStore):
                 """
                 INSERT INTO users (
                     id, username, email, email_verified_at, password_hash, status,
-                    account_role,
+                    account_role, display_name,
                     preferred_style, preferred_tone, custom_instruction,
                     major, grade, current_week, total_weeks, profile_enabled
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user.id,
@@ -252,6 +261,7 @@ class UserStore(BaseSQLiteStore):
                     user.password_hash,
                     user.status,
                     user.account_role,
+                    user.display_name or user.username,
                     user.preferred_style,
                     user.preferred_tone,
                     user.custom_instruction,
@@ -266,6 +276,13 @@ class UserStore(BaseSQLiteStore):
             return False
 
         return True
+
+    def update_display_name(self, user_id: str, display_name: str) -> bool:
+        """Update the account-facing display name without changing login identity."""
+        return self.execute(
+            "UPDATE users SET display_name = ? WHERE id = ?",
+            (display_name, user_id),
+        ) > 0
 
     def bind_email(
         self,

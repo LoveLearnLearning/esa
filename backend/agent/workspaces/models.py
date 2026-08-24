@@ -74,6 +74,7 @@ class AgentTurnInput:
     identity: TrustedIdentity
     conversation_id: str
     current_message: str
+    task_mode: str | None = None
     history: tuple[Mapping[str, Any], ...] = ()
     conversation_summary: str = ""
     conversation_mode: str = "normal"

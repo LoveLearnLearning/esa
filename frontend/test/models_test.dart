@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/models/models.dart';
+import 'package:frontend/models/task_mode.dart';
 
 void main() {
   test(
@@ -109,6 +110,9 @@ void main() {
       'custom_instruction': '用苏格拉底式提问引导我',
       'style': 'socratic',
       'tone': null,
+      'project_id': 'project-1',
+      'pinned': true,
+      'sort_order': 4,
       'conversation_count': 3,
       'created_at': '2026-08-12T08:00:00Z',
       'updated_at': '2026-08-12T09:00:00Z',
@@ -119,6 +123,9 @@ void main() {
     expect(group.name, '高数');
     expect(group.style, 'socratic');
     expect(group.tone, isNull);
+    expect(group.projectId, 'project-1');
+    expect(group.pinned, isTrue);
+    expect(group.sortOrder, 4);
     expect(group.conversationCount, 3);
   });
 
@@ -129,10 +136,52 @@ void main() {
       'updated_at': '2026-08-12T08:00:00Z',
       'workspace_type': 'learning',
       'group_id': 'group-1',
+      'pinned': true,
     });
 
     expect(conversation.groupId, 'group-1');
+    expect(conversation.pinned, isTrue);
   });
+
+  test('account planner snapshot parses server-owned todos and goals', () {
+    final snapshot = PlannerSnapshot.fromJson({
+      'todos': [
+        {
+          'todo_id': 'todo-1',
+          'title': '复习线性代数',
+          'due_at': '2026-08-25T08:00:00Z',
+          'done': true,
+        },
+      ],
+      'goals': [
+        {
+          'goal_id': 'goal-1',
+          'title': '通过期末考试',
+          'description': '按周复习',
+          'target_at': '2026-09-01T00:00:00Z',
+          'progress': 60,
+        },
+      ],
+    });
+
+    expect(snapshot.todos.single.id, 'todo-1');
+    expect(snapshot.todos.single.done, isTrue);
+    expect(snapshot.todos.single.dueAt, isNotNull);
+    expect(snapshot.goals.single.id, 'goal-1');
+    expect(snapshot.goals.single.progress, 60);
+  });
+
+  test(
+    'task modes send identifiers instead of client-authored instructions',
+    () {
+      expect(TaskMode.studyPlan.wireName, 'study_plan');
+      expect(TaskMode.researchDataAnalysis.wireName, 'research_data_analysis');
+      expect(
+        TaskMode.values.map((mode) => mode.wireName).toSet(),
+        hasLength(12),
+      );
+    },
+  );
 
   test('ChatConversation parses research and classroom resource bindings', () {
     final research = ChatConversation.fromJson({
