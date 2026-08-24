@@ -104,6 +104,7 @@ class _HomeShellState extends State<HomeShell> {
       onContinueLearning: _learningChatOpen
           ? null
           : () => unawaited(_continueLearning()),
+      onOpenConversation: (id) => unawaited(_openLearningConversation(id)),
       onStartChat: _openChatInput,
     ),
     StudentSection.assignments => StudentAssignmentsPage(onOpenChat: _showHome),
