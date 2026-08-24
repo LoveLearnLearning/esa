@@ -34,6 +34,7 @@ from backend.core.router.workspace_registry import resolve_workspace
 from backend.core.services.teaching_context_adapter import TeachingContextAdapter
 from backend.core.workspaces import WORKSPACE_CATALOG, WorkspaceAccessPolicy
 from backend.core.utils.models import ParsedOutput, ToolCall, ToolExecutionResult
+from backend.core.web.schemas import SendMessageRequest
 
 
 @pytest.mark.parametrize("definition", WORKSPACE_DEFINITIONS.values())
@@ -127,6 +128,55 @@ def test_compiled_skills_are_closed_over_the_resource_scoped_tool_view():
     assert "parse_pdf_attachment" in with_attachments.capabilities.autoload_skills
     for skill in with_attachments.skills.definitions:
         assert set(skill.requires_tools) <= with_attachments.tools.names
+
+
+def test_knowledge_source_selection_filters_retrieval_tools():
+    """本轮知识库选择必须从 Tool Schema 层面限制检索来源。"""
+    register_builtin_tools()
+    definition = WORKSPACE_DEFINITIONS["learning"]
+    runtime = CapabilityRuntime()
+
+    personal_only = runtime.compile(
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        profile_fingerprint="learning:1",
+        policy_versions=("learning.v1",),
+        knowledge_sources=("personal",),
+    )
+    assert "retrieve_personal_knowledge" in personal_only.capabilities.tool_names
+    assert "retrieve_knowledge" not in personal_only.capabilities.tool_names
+
+    public_only = runtime.compile(
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        profile_fingerprint="learning:1",
+        policy_versions=("learning.v1",),
+        knowledge_sources=("public",),
+    )
+    assert "retrieve_personal_knowledge" not in public_only.capabilities.tool_names
+    assert "retrieve_knowledge" in public_only.capabilities.tool_names
+
+    disabled = runtime.compile(
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        profile_fingerprint="learning:1",
+        policy_versions=("learning.v1",),
+        knowledge_sources=(),
+    )
+    assert "retrieve_personal_knowledge" not in disabled.capabilities.tool_names
+    assert "retrieve_knowledge" not in disabled.capabilities.tool_names
+
+
+def test_message_knowledge_sources_default_and_validation():
+    assert SendMessageRequest(content="默认").knowledge_sources == [
+        "personal",
+        "public",
+    ]
+    assert SendMessageRequest(
+        content="去重", knowledge_sources=["PUBLIC", "public"]
+    ).knowledge_sources == ["public"]
+    with pytest.raises(ValueError, match="knowledge_sources"):
+        SendMessageRequest(content="非法", knowledge_sources=["unknown"])
 
 
 def test_bound_executor_rechecks_required_resource_capabilities():

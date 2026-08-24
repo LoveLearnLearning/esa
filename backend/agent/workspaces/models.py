@@ -85,6 +85,7 @@ class AgentTurnInput:
         default_factory=lambda: LearningTurnContext()
     )
     authorized_attachments: tuple[Mapping[str, Any], ...] = ()
+    knowledge_sources: tuple[str, ...] = ("personal", "public")
     request_metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -103,6 +104,14 @@ class AgentTurnInput:
             "authorized_attachments",
             tuple(_mapping(item) for item in self.authorized_attachments),
         )
+        received_sources = set(self.knowledge_sources)
+        if not received_sources <= {"personal", "public"}:
+            raise ValueError("knowledge_sources must contain personal/public only")
+        sources = tuple(
+            source for source in ("personal", "public")
+            if source in received_sources
+        )
+        object.__setattr__(self, "knowledge_sources", sources)
         object.__setattr__(self, "request_metadata", _mapping(self.request_metadata))
 
 

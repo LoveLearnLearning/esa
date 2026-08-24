@@ -1273,6 +1273,10 @@ class AppState extends ChangeNotifier {
     String? displayText,
     List<String> attachmentIds = const [],
     List<DocumentAttachment> attachments = const [],
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
   }) async {
     final input = text.trim();
     if (input.isEmpty || busy) return;
@@ -1313,16 +1317,23 @@ class AppState extends ChangeNotifier {
           list,
           placeholder,
           attachmentIds: selectedAttachmentIds,
+          knowledgeSources: knowledgeSources,
           userMessage: userMessage,
           titleInput: isFirstQuestion ? visibleInput : null,
         );
       } else {
-        final newMsgs = selectedAttachmentIds.isEmpty
+        final usesDefaultKnowledgeSources =
+            knowledgeSources.length == 2 &&
+            knowledgeSources.contains(KnowledgeSource.personal) &&
+            knowledgeSources.contains(KnowledgeSource.public);
+        final newMsgs =
+            selectedAttachmentIds.isEmpty && usesDefaultKnowledgeSources
             ? await api.sendMessage(id, input)
             : await api.sendMessageWithAttachments(
                 id,
                 input,
                 selectedAttachmentIds,
+                knowledgeSources: knowledgeSources,
               );
         list.remove(placeholder);
         list.addAll(newMsgs.where((message) => !message.isUser));
@@ -1396,6 +1407,10 @@ class AppState extends ChangeNotifier {
     List<ChatMessage> list,
     ChatMessage assistant, {
     List<String> attachmentIds = const [],
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
     ChatMessage? userMessage,
     int? replaceMessageId,
     String? titleInput,
@@ -1480,19 +1495,25 @@ class AppState extends ChangeNotifier {
       // 事件间隔超过 120 秒视为挂死，结束流走中断恢复。只在 Web 上
       // 启用：原生平台连接中断会正常抛错，而且 Stream.timeout 的假
       // 定时器会挂死 FakeAsync 测试环境。
+      final usesDefaultKnowledgeSources =
+          knowledgeSources.length == 2 &&
+          knowledgeSources.contains(KnowledgeSource.personal) &&
+          knowledgeSources.contains(KnowledgeSource.public);
       var events = replaceMessageId != null
           ? api.streamRevisedMessage(
               conversationId,
               input,
               replaceMessageId,
               attachmentIds,
+              knowledgeSources: knowledgeSources,
             )
-          : attachmentIds.isEmpty
+          : attachmentIds.isEmpty && usesDefaultKnowledgeSources
           ? api.streamMessage(conversationId, input)
           : api.streamMessageWithAttachments(
               conversationId,
               input,
               attachmentIds,
+              knowledgeSources: knowledgeSources,
             );
       if (kIsWeb) {
         events = events.timeout(

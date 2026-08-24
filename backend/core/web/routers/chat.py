@@ -525,6 +525,7 @@ def _prepare_message(
         user_message_id=user_message_id,
         resolved_kp_ids=tuple(resolved_kp_ids),
         pending_practice_kp_id=pending_practice_kp_id,
+        knowledge_sources=tuple(body.knowledge_sources),
     )
 
 
@@ -721,6 +722,7 @@ def _build_run_spec(
             pending_practice_kp_id=ctx.pending_practice_kp_id,
         ),
         authorized_attachments=authorized_attachments,
+        knowledge_sources=ctx.knowledge_sources,
         request_metadata={
             "request_id": uuid4().hex,
             "total_weeks": ctx.user.total_weeks,

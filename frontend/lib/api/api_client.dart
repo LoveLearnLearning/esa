@@ -1651,12 +1651,23 @@ class ApiClient {
   Future<List<ChatMessage>> sendMessageWithAttachments(
     String id,
     String content,
-    List<String> attachmentIds,
-  ) async {
+    List<String> attachmentIds, {
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+  }) async {
+    if (kOfflineMode) return _offlineSend(id, content);
     final r = await http.post(
       _uri('/conversations/$id/messages'),
       headers: _headers(auth: true),
-      body: jsonEncode({'content': content, 'attachment_ids': attachmentIds}),
+      body: jsonEncode({
+        'content': content,
+        'attachment_ids': attachmentIds,
+        'knowledge_sources': knowledgeSources
+            .map((item) => item.wireName)
+            .toList(),
+      }),
     );
     if (r.statusCode != 200) _fail(r);
     final list = _decode(r) as List;
@@ -1992,14 +2003,21 @@ class ApiClient {
   Stream<ChatStreamEvent> streamMessageWithAttachments(
     String id,
     String content,
-    List<String> attachmentIds,
-  ) async* {
+    List<String> attachmentIds, {
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+  }) async* {
     final request =
         http.Request('POST', _uri('/conversations/$id/messages/stream'))
           ..headers.addAll(_headers(auth: true))
           ..body = jsonEncode({
             'content': content,
             'attachment_ids': attachmentIds,
+            'knowledge_sources': knowledgeSources
+                .map((item) => item.wireName)
+                .toList(),
           });
 
     final response = await request.send();
@@ -2014,14 +2032,21 @@ class ApiClient {
     String id,
     String content,
     int messageId,
-    List<String> attachmentIds,
-  ) async* {
+    List<String> attachmentIds, {
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+  }) async* {
     final request =
         http.Request('POST', _uri('/conversations/$id/messages/stream'))
           ..headers.addAll(_headers(auth: true))
           ..body = jsonEncode({
             'content': content,
             'attachment_ids': attachmentIds,
+            'knowledge_sources': knowledgeSources
+                .map((item) => item.wireName)
+                .toList(),
             'replace_message_id': messageId,
           });
     final response = await request.send();

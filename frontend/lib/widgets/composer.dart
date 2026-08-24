@@ -35,6 +35,11 @@ class Composer extends StatefulWidget {
     this.courseNames = const [],
     this.toolsOn = true,
     this.onToolsOnChanged,
+    this.knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+    this.onKnowledgeSourcesChanged,
     this.onStop,
   });
 
@@ -69,6 +74,8 @@ class Composer extends StatefulWidget {
   final List<String> courseNames;
   final bool toolsOn;
   final ValueChanged<bool>? onToolsOnChanged;
+  final Set<KnowledgeSource> knowledgeSources;
+  final ValueChanged<Set<KnowledgeSource>>? onKnowledgeSourcesChanged;
 
   /// 模型正在输出时，发送按钮切换为终止按钮，点击后调用该回调。
   final VoidCallback? onStop;
@@ -88,7 +95,6 @@ class ComposerState extends State<Composer> {
   bool _uploadingAttachment = false;
   bool _markdownMode = false;
   bool _memoryEnabled = true;
-  String _resourceScope = '课程资料';
   String? _selectedCourse;
   AttachmentPasteListener? _pasteListener;
 
@@ -751,12 +757,7 @@ class ComposerState extends State<Composer> {
             onSelected: (value) => setState(() => _selectedCourse = value),
           ),
           const SizedBox(width: 6),
-          _contextMenu(
-            context,
-            label: '资料库：$_resourceScope',
-            values: const ['课程资料', '全部资料'],
-            onSelected: (value) => setState(() => _resourceScope = value),
-          ),
+          _knowledgeSourceMenu(context),
           const SizedBox(width: 6),
           _contextMenu(
             context,
@@ -804,6 +805,60 @@ class ComposerState extends State<Composer> {
       ),
     ),
   );
+
+  Widget _knowledgeSourceMenu(BuildContext context) {
+    final selected = widget.knowledgeSources;
+    final label = selected.length == KnowledgeSource.values.length
+        ? '知识库：全部'
+        : selected.isEmpty
+        ? '知识库：未选择'
+        : '知识库：${selected.first.label}';
+
+    void update(KnowledgeSource source, bool enabled) {
+      final next = Set<KnowledgeSource>.of(selected);
+      enabled ? next.add(source) : next.remove(source);
+      widget.onKnowledgeSourcesChanged?.call(next);
+    }
+
+    return MenuAnchor(
+      alignmentOffset: const Offset(0, 6),
+      menuChildren: [
+        for (final source in KnowledgeSource.values)
+          CheckboxMenuButton(
+            key: ValueKey('knowledge-source-${source.wireName}'),
+            value: selected.contains(source),
+            closeOnActivate: false,
+            onChanged: (value) => update(source, value ?? false),
+            child: SizedBox(width: 150, child: Text(source.label)),
+          ),
+      ],
+      builder: (context, controller, child) => InkWell(
+        key: const ValueKey('knowledge-source-menu'),
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => controller.isOpen ? controller.close() : controller.open(),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+          decoration: BoxDecoration(
+            border: Border.all(color: context.n.divider),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(LucideIcons.library, size: 13, color: context.n.n600),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(fontSize: 11.5, color: context.n.n700),
+              ),
+              const SizedBox(width: 4),
+              Icon(LucideIcons.chevronDown, size: 13, color: context.n.n600),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Future<void> pickAttachment() => _pickAttachment();
 

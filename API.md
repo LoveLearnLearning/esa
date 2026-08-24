@@ -339,13 +339,18 @@ PATCH 可传 `name`、`description`、`status`，其中 `status` 为 `active` �
 ```json
 {
   "content": "用户输入的内容",
-  "attachment_ids": ["本对话内已上传的 attachment_id"]
+  "attachment_ids": ["本对话内已上传的 attachment_id"],
+  "knowledge_sources": ["personal", "public"]
 }
 ```
 
 `attachment_ids` 可省略，单轮最多 3 个；附件不存在或不属于当前用户和对话时返回
 `404`。发送消息后，模型会先加载匹配文件类型的 Skill，再按需调用受限附件 Tool；Tool
 只能读取本轮明确传入的附件 ID，不能接收客户端文件路径。
+
+`knowledge_sources` 可省略，默认同时启用个人知识库和公共知识库。可传
+`["personal"]` 或 `["public"]` 限制本轮检索来源，也可传空数组表示本轮不使用知识库。
+后端会从本轮 Agent 的 Tool Schema 中移除未选择来源对应的检索工具。
 
 响应 `200`: 本轮新产生的消息列表(用户消息 + 助手回复 + 工具结果) 结构同历史消息
 
@@ -372,7 +377,10 @@ DOCX、PPTX、XLSX 及 PNG/JPEG/WebP/BMP/GIF/TIFF。上传请求仅将源文件�
 请求头除认证信息外使用 `Content-Type: application/json`，请求体与同步接口相同:
 
 ```json
-{ "content": "用户输入的内容" }
+{
+  "content": "用户输入的内容",
+  "knowledge_sources": ["personal", "public"]
+}
 ```
 
 成功响应 `200`，响应类型为 `text/event-stream`。事件格式:

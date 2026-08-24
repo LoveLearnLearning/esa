@@ -139,6 +139,10 @@ class _ChatPageState extends State<ChatPage> {
   double _editorWidth = 0.46;
   bool _pendingSend = false;
   bool _chatTransitionScheduled = false;
+  Set<KnowledgeSource> _knowledgeSources = const {
+    KnowledgeSource.personal,
+    KnowledgeSource.public,
+  };
 
   GlobalKey<ComposerState> get _composerKey =>
       widget.composerKey ?? _internalComposerKey;
@@ -571,6 +575,9 @@ class _ChatPageState extends State<ChatPage> {
       }.toList(),
       toolsOn: app.toolsOn,
       onToolsOnChanged: app.setToolsOn,
+      knowledgeSources: _knowledgeSources,
+      onKnowledgeSourcesChanged: (sources) =>
+          setState(() => _knowledgeSources = sources),
       onUploadAttachment: (filename, stream, length) =>
           app.uploadConversationAttachment(
             filename: filename,
@@ -586,6 +593,7 @@ class _ChatPageState extends State<ChatPage> {
           _taskMode?.buildPrompt(text) ?? text,
           markdown: markdown,
           displayText: text,
+          knowledgeSources: _knowledgeSources,
         );
       },
       onSendWithAttachment: (text, markdown, attachment) {
@@ -598,6 +606,7 @@ class _ChatPageState extends State<ChatPage> {
           displayText: text,
           attachmentIds: [attachment.id],
           attachments: [attachment],
+          knowledgeSources: _knowledgeSources,
         );
       },
     );

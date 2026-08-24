@@ -34,6 +34,10 @@ ATTACHMENT_TOOLS = frozenset(
         "parse_image_attachment",
     }
 )
+PERSONAL_KNOWLEDGE_TOOLS = frozenset({"retrieve_personal_knowledge"})
+PUBLIC_KNOWLEDGE_TOOLS = frozenset(
+    {"retrieve_knowledge", "get_knowledge_base_stats"}
+)
 
 
 class BoundToolExecutor:
@@ -115,6 +119,12 @@ class BoundToolExecutor:
                     assignment_id=self.context.authorized_resources.assignment_id,
                 )
             if name == "retrieve_knowledge":
+                if "public" not in self.context.knowledge_sources:
+                    return {
+                        "ok": False,
+                        "error": "knowledge_source_not_selected",
+                        "source": "public",
+                    }
                 from backend.agent.rag.agent_api import retrieve_knowledge_result
 
                 service = self.context.runtime_dependencies.rag_service
@@ -126,6 +136,12 @@ class BoundToolExecutor:
                     **normalized,
                 )
             if name == "retrieve_personal_knowledge":
+                if "personal" not in self.context.knowledge_sources:
+                    return {
+                        "ok": False,
+                        "error": "knowledge_source_not_selected",
+                        "source": "personal",
+                    }
                 service = (
                     self.context.runtime_dependencies
                     .personal_knowledge_retrieval_service
@@ -257,6 +273,7 @@ class CapabilityRuntime:
         conversation_mode: str = "normal",
         has_research_project: bool | None = None,
         has_attachments: bool | None = None,
+        knowledge_sources: tuple[str, ...] = ("personal", "public"),
     ) -> CompiledCapabilityView:
         """编译 `compile` 相关数据。
 
@@ -284,6 +301,10 @@ class CapabilityRuntime:
             excluded_tools.update(RESEARCH_WORKFLOW_TOOLS)
         if has_attachments is False:
             excluded_tools.update(ATTACHMENT_TOOLS)
+        if "personal" not in knowledge_sources:
+            excluded_tools.update(PERSONAL_KNOWLEDGE_TOOLS)
+        if "public" not in knowledge_sources:
+            excluded_tools.update(PUBLIC_KNOWLEDGE_TOOLS)
         tools = ScopedToolView.compile(
             tr,
             tool_scopes,
@@ -297,6 +318,7 @@ class CapabilityRuntime:
                 f"conversation_mode:{conversation_mode}",
                 f"research_project:{has_research_project}",
                 f"attachments:{has_attachments}",
+                f"knowledge_sources:{','.join(knowledge_sources)}",
                 skills.fingerprint,
                 tools.fingerprint,
                 *sorted(policy_versions),

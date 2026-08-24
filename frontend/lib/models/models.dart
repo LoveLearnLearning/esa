@@ -1025,6 +1025,18 @@ enum WorkspaceType {
   };
 }
 
+enum KnowledgeSource {
+  personal,
+  public;
+
+  String get wireName => name;
+
+  String get label => switch (this) {
+    KnowledgeSource.personal => '个人知识库',
+    KnowledgeSource.public => '公共知识库',
+  };
+}
+
 class WorkspaceDescriptor {
   const WorkspaceDescriptor({
     required this.type,

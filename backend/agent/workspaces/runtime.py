@@ -80,6 +80,7 @@ class WorkspaceRuntime:
             conversation_mode=turn.conversation_mode,
             has_research_project=route.resource_scope.project_id is not None,
             has_attachments=bool(route.resource_scope.attachment_ids),
+            knowledge_sources=turn.knowledge_sources,
         )
         strategy = (
             self.learning.augment(turn, view.skills, turn.profile_snapshot)
@@ -101,6 +102,7 @@ class WorkspaceRuntime:
             request_id=request_id,
             run_id=str(turn.request_metadata.get("run_id") or request_id),
             total_weeks=turn.request_metadata.get("total_weeks"),
+            knowledge_sources=turn.knowledge_sources,
         )
         return self.builder.build(
             turn=turn,

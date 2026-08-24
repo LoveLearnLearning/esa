@@ -71,6 +71,7 @@ class ToolExecutionContext:
     run_id: str = ""
     username: str = ""
     total_weeks: int | None = None
+    knowledge_sources: tuple[str, ...] = ("personal", "public")
 
     def __post_init__(self) -> None:
         """完成实例初始化后的校验与派生字段构建。"""
@@ -88,3 +89,5 @@ class ToolExecutionContext:
             raise ValueError("authorized resources must come from workspace route")
         if self.conversation_mode not in {"normal", "no_write", "isolated"}:
             raise ValueError("invalid conversation mode")
+        if not set(self.knowledge_sources) <= {"personal", "public"}:
+            raise ValueError("knowledge_sources must contain personal/public only")

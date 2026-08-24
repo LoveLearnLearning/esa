@@ -52,7 +52,20 @@ class SendMessageRequest(BaseModel):
     """表示 `send message request` 数据结构。"""
     content: str = Field(min_length=1)
     attachment_ids: list[str] = Field(default_factory=list, max_length=3)
+    knowledge_sources: list[str] = Field(
+        default_factory=lambda: ["personal", "public"], max_length=2
+    )
     replace_message_id: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_knowledge_sources(self) -> "SendMessageRequest":
+        received = {item.strip().lower() for item in self.knowledge_sources}
+        if not received <= {"personal", "public"}:
+            raise ValueError("knowledge_sources 只能包含 personal 或 public")
+        self.knowledge_sources = [
+            source for source in ("personal", "public") if source in received
+        ]
+        return self
 
 
 class CodeExecutionRequest(BaseModel):
