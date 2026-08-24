@@ -88,6 +88,16 @@ class _HomeShellState extends State<HomeShell> {
     });
   }
 
+  void _showLearningChat() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (!mounted) return;
+    setState(() {
+      _section = StudentSection.home;
+      _learningChatOpen = true;
+      _researchProjectChatOpen = false;
+    });
+  }
+
   Future<void> _openAssignment(TeachingAssignment assignment) async {
     await AppScope.of(context).openLearningAssignmentContext(assignment);
     if (!mounted) return;
@@ -126,7 +136,7 @@ class _HomeShellState extends State<HomeShell> {
     ),
     StudentSection.knowledge => KnowledgeMapPage(
       embedded: true,
-      onOpenChat: _showHome,
+      onOpenChat: _showLearningChat,
       onOpenSchedule: () => unawaited(_select(StudentSection.schedule)),
     ),
     StudentSection.knowledgeBase => const PersonalKnowledgeBasePage(),
@@ -562,17 +572,15 @@ class _WorkspaceSidebar extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          OutlinedButton.icon(
-            key: research
-                ? const ValueKey('new-research-chat')
-                : const ValueKey('new-conversation'),
-            onPressed: research
-                ? () => unawaited(app.newConversation())
-                : onNewConversation,
-            icon: const Icon(LucideIcons.plus, size: 17),
-            label: Text(research ? '新建对话' : '新对话'),
-          ),
-          const SizedBox(height: 12),
+          if (!research) ...[
+            OutlinedButton.icon(
+              key: const ValueKey('new-conversation'),
+              onPressed: onNewConversation,
+              icon: const Icon(LucideIcons.plus, size: 17),
+              label: const Text('新对话'),
+            ),
+            const SizedBox(height: 12),
+          ],
           TextField(
             onChanged: onQueryChanged,
             decoration: InputDecoration(
@@ -1153,18 +1161,6 @@ class _StudentContextRail extends StatefulWidget {
 }
 
 class _StudentContextRailState extends State<_StudentContextRail> {
-  bool _citeCourseMaterials = true;
-  bool _rememberLearning = true;
-  bool _webSearch = false;
-
-  void _reset() {
-    setState(() {
-      _citeCourseMaterials = true;
-      _rememberLearning = true;
-      _webSearch = false;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -1274,53 +1270,6 @@ class _StudentContextRailState extends State<_StudentContextRail> {
                     ],
                   ),
           ),
-          _ContextSection(
-            title: '本次对话设置',
-            child: Column(
-              children: [
-                _ContextToggle(
-                  title: '引用课程资料',
-                  subtitle: '优先引用已选择的课程资料',
-                  value: _citeCourseMaterials,
-                  onChanged: (value) =>
-                      setState(() => _citeCourseMaterials = value),
-                ),
-                _ContextToggle(
-                  title: '长期记忆',
-                  subtitle: '记住本次学习中的关键信息',
-                  value: _rememberLearning,
-                  onChanged: (value) =>
-                      setState(() => _rememberLearning = value),
-                ),
-                _ContextToggle(
-                  title: '联网搜索',
-                  subtitle: '需要时联网补充信息',
-                  value: _webSearch,
-                  onChanged: (value) => setState(() => _webSearch = value),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text('回答风格', style: context.texts.bodyMedium),
-                    ),
-                    Text(
-                      _answerStyleLabel(app.preferences.preferredStyle),
-                      style: context.texts.bodySmall,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    onPressed: _reset,
-                    child: const Text('重置设置'),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -1428,57 +1377,11 @@ class _KnowledgeTag extends StatelessWidget {
   );
 }
 
-class _ContextToggle extends StatelessWidget {
-  const _ContextToggle({
-    required this.title,
-    required this.subtitle,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final String title;
-  final String subtitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: context.texts.bodySmall),
-              const SizedBox(height: 2),
-              Text(subtitle, style: context.texts.labelSmall),
-            ],
-          ),
-        ),
-        Transform.scale(
-          scale: 0.72,
-          alignment: Alignment.topRight,
-          child: Switch(value: value, onChanged: onChanged),
-        ),
-      ],
-    ),
-  );
-}
-
 String _contextFileSize(int bytes) {
   if (bytes <= 0) return '大小未知';
   if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
   return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }
-
-String _answerStyleLabel(String value) => switch (value) {
-  'detailed' => '详细',
-  'socratic' => '苏格拉底',
-  'concise' => '默认',
-  _ => '默认',
-};
 
 String _projectStatusLabel(String status) => switch (status) {
   'active' => '进行中',

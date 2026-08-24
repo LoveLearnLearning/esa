@@ -186,6 +186,9 @@ void main() {
     );
     expect(find.byKey(const ValueKey('teacher-workbench')), findsOneWidget);
     expect(find.text('教学工作台'), findsWidgets);
+    expect(find.text('待处理'), findsNothing);
+    expect(find.text('搜索班级或对话'), findsOneWidget);
+    expect(find.text('搜索班级、作业或对话'), findsNothing);
     expect(find.text('数据结构 1 班'), findsNWidgets(2));
     expect(find.byKey(const ValueKey('student-shell')), findsNothing);
     expect(find.byKey(const ValueKey('student-global-rail')), findsNothing);

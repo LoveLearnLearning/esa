@@ -32,9 +32,6 @@ class Composer extends StatefulWidget {
     this.onCodeBlockChanged,
     this.onRunCode,
     this.onSelectedAttachmentsChanged,
-    this.courseNames = const [],
-    this.toolsOn = true,
-    this.onToolsOnChanged,
     this.knowledgeSources = const {
       KnowledgeSource.personal,
       KnowledgeSource.public,
@@ -71,9 +68,6 @@ class Composer extends StatefulWidget {
   onCodeBlockChanged;
   final CodeRunCallback? onRunCode;
   final ValueChanged<List<DocumentAttachment>>? onSelectedAttachmentsChanged;
-  final List<String> courseNames;
-  final bool toolsOn;
-  final ValueChanged<bool>? onToolsOnChanged;
   final Set<KnowledgeSource> knowledgeSources;
   final ValueChanged<Set<KnowledgeSource>>? onKnowledgeSourcesChanged;
 
@@ -94,8 +88,6 @@ class ComposerState extends State<Composer> {
   String? _attachmentConversationId;
   bool _uploadingAttachment = false;
   bool _markdownMode = false;
-  bool _memoryEnabled = true;
-  String? _selectedCourse;
   AttachmentPasteListener? _pasteListener;
 
   List<_ComposerCodeBlock> get _codeBlocks =>
@@ -755,69 +747,11 @@ class ComposerState extends State<Composer> {
   }
 
   Widget _contextControls(BuildContext context) {
-    final courses = widget.courseNames.map((item) => item.trim()).toSet()
-      ..removeWhere((item) => item.isEmpty);
-    final course =
-        _selectedCourse ?? (courses.isEmpty ? '未选择课程' : courses.first);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _contextMenu(
-            context,
-            label: '当前课程：$course',
-            values: courses.isEmpty ? const ['未选择课程'] : courses.toList(),
-            onSelected: (value) => setState(() => _selectedCourse = value),
-          ),
-          const SizedBox(width: 6),
-          _knowledgeSourceMenu(context),
-          const SizedBox(width: 6),
-          _contextMenu(
-            context,
-            label: '长期记忆：${_memoryEnabled ? '开启' : '关闭'}',
-            values: const ['开启', '关闭'],
-            onSelected: (value) =>
-                setState(() => _memoryEnabled = value == '开启'),
-          ),
-          const SizedBox(width: 6),
-          _contextMenu(
-            context,
-            label: '工具：${widget.toolsOn ? '自动' : '关闭'}',
-            values: const ['自动', '关闭'],
-            onSelected: (value) => widget.onToolsOnChanged?.call(value == '自动'),
-          ),
-        ],
-      ),
+      child: _knowledgeSourceMenu(context),
     );
   }
-
-  Widget _contextMenu(
-    BuildContext context, {
-    required String label,
-    required List<String> values,
-    required ValueChanged<String> onSelected,
-  }) => PopupMenuButton<String>(
-    onSelected: onSelected,
-    itemBuilder: (context) => [
-      for (final value in values)
-        PopupMenuItem<String>(value: value, child: Text(value)),
-    ],
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        border: Border.all(color: context.n.divider),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label, style: TextStyle(fontSize: 11.5, color: context.n.n700)),
-          const SizedBox(width: 4),
-          Icon(LucideIcons.chevronDown, size: 13, color: context.n.n600),
-        ],
-      ),
-    ),
-  );
 
   Widget _knowledgeSourceMenu(BuildContext context) {
     final selected = widget.knowledgeSources;

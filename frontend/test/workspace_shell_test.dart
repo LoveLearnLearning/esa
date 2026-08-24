@@ -139,7 +139,7 @@ void main() {
     expect(find.byKey(const ValueKey('composer-input')), findsOneWidget);
   });
 
-  testWidgets('research sidebar creates chats and projects from group section', (
+  testWidgets('research sidebar only exposes project-backed actions', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1280, 900);
@@ -169,18 +169,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(state.activeWorkspace, WorkspaceType.research);
-    expect(find.byKey(const ValueKey('new-research-chat')), findsOneWidget);
-    expect(find.text('新建对话'), findsOneWidget);
+    expect(find.byKey(const ValueKey('new-research-chat')), findsNothing);
+    expect(find.text('新建对话'), findsNothing);
     expect(find.text('科研项目'), findsOneWidget);
 
     await tester.tap(find.text('科研项目'));
     await tester.pump(const Duration(milliseconds: 200));
     await tester.tap(find.byTooltip('新建项目'));
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.enterText(
-      find.widgetWithText(TextField, '项目名称'),
-      '桌面科研',
-    );
+    await tester.enterText(find.widgetWithText(TextField, '项目名称'), '桌面科研');
     await tester.tap(find.text('创建并打开'));
     await tester.pump(const Duration(milliseconds: 300));
 

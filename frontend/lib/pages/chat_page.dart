@@ -569,12 +569,6 @@ class _ChatPageState extends State<ChatPage> {
         source: _CodeSource.composer,
       ),
       onSelectedAttachmentsChanged: widget.onSelectedAttachmentsChanged,
-      courseNames: <String>{
-        ...app.learningCourses.map((item) => item.name),
-        ...app.scheduleCourseNames,
-      }.toList(),
-      toolsOn: app.toolsOn,
-      onToolsOnChanged: app.setToolsOn,
       knowledgeSources: _knowledgeSources,
       onKnowledgeSourcesChanged: (sources) =>
           setState(() => _knowledgeSources = sources),
@@ -1835,7 +1829,14 @@ class _AssignmentHomeRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Row(
           children: [
-            Checkbox(value: completed, onChanged: (_) => onTap?.call()),
+            Icon(
+              completed
+                  ? Icons.check_circle_outline
+                  : Icons.radio_button_unchecked,
+              size: 20,
+              color: completed ? context.scheme.primary : context.n.n500,
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 assignment.title,
