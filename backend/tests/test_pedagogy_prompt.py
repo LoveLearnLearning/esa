@@ -44,15 +44,15 @@ def test_core_memory_is_not_eagerly_injected_into_system_prompt():
 
     assert "# 核心记忆" not in prompt
     assert "暂无核心记忆" not in prompt
-    assert "search_core_memories" in prompt
+    assert "记忆默认不读" in prompt
 
 
 def test_system_prompt_defines_when_tools_must_be_used():
     """工具不能只被暴露；Prompt 必须给出可执行的调用判据。"""
     prompt = build_system_prompt(prompt_ctx=PromptContext())
 
-    assert "任务依赖" in prompt
-    assert "不猜测" in prompt
+    assert "需外部/实时数据" in prompt
+    assert "不猜" in prompt
     assert "retrieve_knowledge" in prompt
 
 
