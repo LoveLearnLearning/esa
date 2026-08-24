@@ -54,6 +54,7 @@ __pypackages__/
 .env.*
 !.env.example
 !.env.*.example
+/backend/core/utils/config_private.py
 .envrc
 .direnv/
 *.local
@@ -125,6 +126,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Flutter / Dart generated files and platform-local signing state
+*.ipa
 frontend/.dart_tool/
 frontend/.flutter-plugins
 frontend/.flutter-plugins-dependencies
@@ -184,3 +186,16 @@ frpc.ini
 !frpc.example.ini
 
 output/
+
+database/
+
+/data/source_pdfs/**/*.pdf
+
+# Repository-local service state and generated corpus outputs
+/.qdrant-initialized
+/snapshots/
+/data/rebuild-smoke-*/
+/docs/reports/DOCIR_FULL_CORPUS_EVALUATION_*.md
+/*.tar.gz
+
+temp.json

@@ -105,7 +105,7 @@ SearchResponse
 ├── context_level          # evidence / section / full_read
 ├── hits[]
 │   ├── chunk_id
-│   ├── rrf_score
+│   ├── retrieval_score
 │   ├── rerank_score       # 未启用或降级时为 null
 │   ├── context_chunk_ids[]
 │   ├── context_text
@@ -123,14 +123,26 @@ SearchResponse
     │   ├── dense
     │   ├── bm25_body
     │   ├── bm25_heading
-    │   ├── rrf
-    │   └── reranker
+    │   ├── fusion
+    │   ├── reranker          # 仅在真正执行时存在
+    │   └── final
+    ├── fusion                # configured/applied method 与实际权重
+    ├── reranker_applied
     └── degraded[]
 ```
 
 `evidence_text` 与 `context_text` 的语义不同：前者来自不可变 Evidence 映射，用于回查；后者是受章节边界限制的上下文拼接，不能自动视为逐字引用。
 
-当前真实 Evidence 的来源均为 `native_or_ocr_unverified`，因此 `quote_eligible=false`。上层只能表述为“解析或 OCR 风险文字”，不能声称已证明为 PDF 原生文字。
+Agent 默认使用 `retrieve_knowledge`。模型投影只包含一次正文、语义明确的分数和
+稳定 `source_ref`，并用 Agent 实际 tokenizer 对最终序列化 JSON 执行 2048-token
+硬预算，同时报告裁剪前后的完整 JSON token 数；UI 来源信息和完整审计 Evidence
+使用独立通道。兼容投影也使用 `retrieval_score`、真实 fusion 阶段名和实际执行的
+Reranker 阶段，不再把任意检索分数标记为 RRF。检索服务自身的上下文预算仍由
+`RAG_MAX_CONTEXT_TOKENS` 控制。
+
+当前真实 Evidence 的来源均为 `native_or_ocr_unverified`，因此 `quote_eligible=false`、
+`citation_mode=paraphrase_only_unverified`。工具契约和 Agent 系统策略都要求上层只能
+转述并说明“解析或 OCR 未经验证”，禁止把这些内容包装成逐字原文。
 
 ### 3.2 ChunkCollection 输出
 
@@ -226,9 +238,14 @@ python -m pytest backend/agent/DocIR/tests backend/agent/rag/chunk/tests backend
 ```
 
 `--reranker-backend` 默认值由 `backend/core/utils/config.py` 决定，当前正式配置为
-`none`；
-临时设置为 `none` 可独立验证三路召回与 RRF，设置为 `transformers` 或 `vllm`
-则会对 RRF 候选执行真实重排。Reranker 属于查询期配置，不改变已经持久化的索引代次。
+`transformers` 且默认启用；临时设置 `RAG_RERANKER_ENABLED=false` 可独立验证三路召回
+与 Fusion，设置为 `transformers` 或 `vllm` 则会对 Fusion 候选执行真实重排。Reranker
+属于查询期配置，不改变已经持久化的索引代次。
+
+查询期排序严格分两阶段：Fusion 先决定候选集合和候选边界，Reranker 只在该候选池
+内按自己的分数重排。两者分数不再做 min-max 或加权混合；fusion 分数和 rerank 分数
+分别保留在 `retrieval_score` 与 `rerank_score` 中。旧的 `RAG_RERANKER_PRIOR_WEIGHT`
+环境项仍接受以兼容部署配置，但串行 Reranker 不使用它。
 
 ESA 部署默认值集中在 `backend/core/utils/config.py`，包括 Collection manifest、Qdrant 地址、
 Embedding/Reranker 后端及模型、超时、批大小和检索候选数量。CLI 参数仍可在单次
@@ -236,9 +253,21 @@ Embedding/Reranker 后端及模型、超时、批大小和检索候选数量。C
 
 ### ESA Agent 调用
 
-ESA 仍通过 `ToolRegistry` 调用 `retrieve_knowledge`。应用生命周期先创建
+ESA 通过 `ToolRegistry` 调用 `retrieve_knowledge`。应用生命周期先创建
 `RetrievalService`，再调用 `configure_retrieval_service(service)`；模块导入本身不会连接
 Qdrant、加载模型或隐式建库。Agent 侧只暴露检索和状态读取，索引构建继续使用独立 CLI。
+
+### 个人库隔离边界
+
+个人知识库不复用上述冻结的全局 collection 或 `QdrantIndex`。启用
+`PERSONAL_KB_ENABLED` 后，应用使用独立 collection、`PersonalQdrantIndex` 和持久化
+SQLite revision/job/outbox；原文件与 DocIR/Chunk 工件位于 `PERSONAL_KB_ROOT`，Qdrant
+活动 storage 可位于 Job 本地盘，但恢复 snapshot 必须位于持久目录。
+
+Agent 通过独立的 `retrieve_personal_knowledge` 读取个人库。其 schema 不接受
+`user_id`；`BoundToolExecutor` 只注入当前 `ToolExecutionContext.user_id`，索引底层同时
+强制 `user_id + active_generation + visible + SQLite live-file allowlist`。冻结的
+旧调用入口仍保留，但它的分数与排名字段已迁移为中性、真实语义，且不再暴露给默认学习空间。
 
 ## 5. 证明边界
 

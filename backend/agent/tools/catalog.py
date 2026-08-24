@@ -13,7 +13,7 @@ from typing import Any, Literal, Mapping
 from backend.agent.tools.tool_register import ToolRegistry
 from backend.core.utils.tool_arguments import normalize_tool_arguments
 
-TOOL_CATALOG_VERSION = 1
+TOOL_CATALOG_VERSION = 2
 
 MEMORY_READ_TOOLS = frozenset({"search_core_memories", "get_core_memories"})
 MEMORY_WRITE_TOOLS = frozenset(
@@ -25,7 +25,6 @@ LEARNING_TOOLS = frozenset(
         "recommend_practice", "get_mastery_report", "get_mastery_level",
         "get_weak_prerequisites", "get_review_timing", "record_answer",
         "record_learning_evidence", "get_learning_evidence_summary",
-        "retrieve_knowledge", "get_knowledge_base_stats",
     }
 )
 
@@ -33,9 +32,11 @@ COMMON_TOOLS = frozenset(
     {
         "get_weather", "get_time", "web_search", "arxiv_search", "calculator",
         "math_solver", "bitwise_calculator", "load_skill",
+        "run_in_sandbox",
         "parse_pdf_attachment", "parse_word_attachment",
         "parse_presentation_attachment", "parse_spreadsheet_attachment",
-        "parse_image_attachment",
+        "parse_image_attachment", "retrieve_personal_knowledge",
+        "retrieve_knowledge", "get_knowledge_base_stats",
     }
 ) | MEMORY_READ_TOOLS | MEMORY_WRITE_TOOLS
 

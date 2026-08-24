@@ -17,8 +17,7 @@ Future<MoveConversationTarget?> showMoveConversationDialog(
   AppState app,
   ChatConversation conversation, {
   List<ChatGroup>? groups,
-}
-) {
+}) {
   final candidates =
       groups ??
       (conversation.researchProjectId != null
@@ -128,11 +127,7 @@ class _TargetRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         child: Row(
           children: [
-            Icon(
-              icon,
-              size: 16,
-              color: selected ? EsaColors.accent : null,
-            ),
+            Icon(icon, size: 16, color: selected ? EsaColors.accent : null),
             const SizedBox(width: 10),
             Expanded(
               child: Text(

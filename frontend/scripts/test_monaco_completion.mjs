@@ -187,7 +187,15 @@ const tabEvent = () => ({
   stopImmediatePropagation() {},
 });
 
-const arrowEvent = (key, { shiftKey = false } = {}) => ({
+const editorEvent = (
+  key,
+  {
+    shiftKey = false,
+    metaKey = false,
+    altKey = false,
+    ctrlKey = false,
+  } = {},
+) => ({
   key,
   keyCode: {
     ArrowLeft: 37,
@@ -197,9 +205,14 @@ const arrowEvent = (key, { shiftKey = false } = {}) => ({
   }[key],
   target: eventTarget,
   shiftKey,
+  metaKey,
+  altKey,
+  ctrlKey,
   preventDefault() {},
   stopImmediatePropagation() {},
 });
+
+const arrowEvent = (key, options = {}) => editorEvent(key, options);
 
 suggestionFocused = true;
 keydownListener(tabEvent());
@@ -257,4 +270,99 @@ assert.deepEqual(editorTriggers.at(-1), {
   payload: {},
 });
 
-console.log('Monaco completion, Tab, and arrow-key smoke test passed.');
+const macNavigation = [
+  ['ArrowLeft', 'cursorLineStart'],
+  ['ArrowRight', 'cursorLineEnd'],
+  ['ArrowUp', 'cursorTop'],
+  ['ArrowDown', 'cursorBottom'],
+];
+for (const [key, command] of macNavigation) {
+  keydownListener(arrowEvent(key, { metaKey: true }));
+  assert.deepEqual(editorTriggers.at(-1), {
+    sourceName: 'keyboard',
+    command,
+    payload: {},
+  });
+
+  keydownListener(arrowEvent(key, { metaKey: true, shiftKey: true }));
+  assert.deepEqual(editorTriggers.at(-1), {
+    sourceName: 'keyboard',
+    command: `${command}Select`,
+    payload: {},
+  });
+}
+
+for (const [modifier, label] of [
+  ['altKey', 'Option'],
+  ['ctrlKey', 'Control'],
+]) {
+  for (const [key, command] of [
+    ['ArrowLeft', 'cursorWordLeft'],
+    ['ArrowRight', 'cursorWordRight'],
+  ]) {
+    keydownListener(arrowEvent(key, { [modifier]: true }));
+    assert.deepEqual(editorTriggers.at(-1), {
+      sourceName: 'keyboard',
+      command,
+      payload: {},
+    }, `${label}+${key} must move by a word`);
+
+    keydownListener(arrowEvent(key, { [modifier]: true, shiftKey: true }));
+    assert.deepEqual(editorTriggers.at(-1), {
+      sourceName: 'keyboard',
+      command: `${command}Select`,
+      payload: {},
+    }, `${label}+Shift+${key} must select by a word`);
+  }
+}
+
+keydownListener(editorEvent('ArrowUp', { altKey: true }));
+assert.deepEqual(editorTriggers.at(-1), {
+  sourceName: 'keyboard',
+  command: 'editor.action.moveLinesUpAction',
+  payload: {},
+});
+keydownListener(editorEvent('ArrowDown', { altKey: true, shiftKey: true }));
+assert.deepEqual(editorTriggers.at(-1), {
+  sourceName: 'keyboard',
+  command: 'editor.action.copyLinesDownAction',
+  payload: {},
+});
+
+for (const [key, command] of [
+  ['a', 'editor.action.selectAll'],
+  ['c', 'editor.action.clipboardCopyAction'],
+  ['d', 'editor.action.addSelectionToNextFindMatch'],
+  ['x', 'editor.action.clipboardCutAction'],
+  ['v', 'editor.action.clipboardPasteAction'],
+  ['z', 'undo'],
+  ['f', 'actions.find'],
+  ['l', 'expandLineSelection'],
+]) {
+  keydownListener(editorEvent(key, { metaKey: true }));
+  assert.deepEqual(editorTriggers.at(-1), {
+    sourceName: 'keyboard',
+    command,
+    payload: {},
+  }, `Command+${key.toUpperCase()} must stay inside Monaco`);
+}
+keydownListener(editorEvent('z', { metaKey: true, shiftKey: true }));
+assert.deepEqual(editorTriggers.at(-1), {
+  sourceName: 'keyboard',
+  command: 'redo',
+  payload: {},
+});
+for (const [key, command] of [
+  ['k', 'editor.action.deleteLines'],
+  ['l', 'editor.action.selectHighlights'],
+  ['/', 'editor.action.commentLine'],
+]) {
+  keydownListener(editorEvent(key, { metaKey: true, shiftKey: true }));
+  assert.deepEqual(editorTriggers.at(-1), {
+    sourceName: 'keyboard',
+    command,
+    payload: {},
+  }, `Command+Shift+${key.toUpperCase()} must stay inside Monaco`);
+}
+
+console.log('Monaco completion, editing, Tab, and shortcut smoke test passed.');

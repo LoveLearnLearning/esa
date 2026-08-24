@@ -4,7 +4,7 @@ description: 当前消息包含 PDF 附件且回答需要读取、总结或检�
 version: 1
 category: attachment
 priority: 96
-autoload: false
+autoload: true
 triggers:
   - pdf_attachment
 requires_tools:

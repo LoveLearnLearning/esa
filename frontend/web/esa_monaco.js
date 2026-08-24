@@ -70,17 +70,91 @@
     })[event.keyCode];
   }
 
+  function modifiedEditorCommand(event) {
+    const key = event.key?.length === 1 ? event.key.toLowerCase() : event.key;
+    const shift = Boolean(event.shiftKey);
+    const meta = Boolean(event.metaKey);
+    const alt = Boolean(event.altKey);
+    const ctrl = Boolean(event.ctrlKey);
+    const selectSuffix = shift ? 'Select' : '';
+
+    // macOS uses Command for document navigation and Option for word
+    // navigation. Ctrl+Arrow is the equivalent word movement on Windows and
+    // Linux. Keeping these commands explicit prevents Flutter's global
+    // shortcuts from consuming them before Monaco sees the event.
+    if (meta && !alt) {
+      const documentCommands = {
+        ArrowLeft: 'cursorLineStart',
+        ArrowRight: 'cursorLineEnd',
+        ArrowUp: 'cursorTop',
+        ArrowDown: 'cursorBottom',
+      };
+      const documentCommand = documentCommands[key];
+      if (documentCommand) return `${documentCommand}${selectSuffix}`;
+    }
+
+    if (alt && !meta) {
+      if (key === 'ArrowUp') {
+        return shift ? 'editor.action.copyLinesUpAction' : 'editor.action.moveLinesUpAction';
+      }
+      if (key === 'ArrowDown') {
+        return shift ? 'editor.action.copyLinesDownAction' : 'editor.action.moveLinesDownAction';
+      }
+    }
+
+    if ((alt || ctrl) && !meta) {
+      const wordCommands = {
+        ArrowLeft: 'cursorWordLeft',
+        ArrowRight: 'cursorWordRight',
+      };
+      const wordCommand = wordCommands[key];
+      if (wordCommand) return `${wordCommand}${selectSuffix}`;
+    }
+
+    const primary = meta || ctrl;
+    if (!primary || alt) return null;
+    if (shift && key === 'z') return 'redo';
+    if (shift && key === 'k') return 'editor.action.deleteLines';
+    if (shift && key === 'l') return 'editor.action.selectHighlights';
+    if (key === '/') return 'editor.action.commentLine';
+    if (!shift && key === 'y') return 'redo';
+    if (shift) return null;
+    return ({
+      a: 'editor.action.selectAll',
+      c: 'editor.action.clipboardCopyAction',
+      d: 'editor.action.addSelectionToNextFindMatch',
+      v: 'editor.action.clipboardPasteAction',
+      x: 'editor.action.clipboardCutAction',
+      z: 'undo',
+      f: 'actions.find',
+      h: 'editor.action.startFindReplaceAction',
+      l: 'expandLineSelection',
+      Backspace: 'deleteAllLeft',
+      Delete: 'deleteAllRight',
+    })[key] || null;
+  }
+
   // This script loads before Flutter, so this capture listener wins over
   // Flutter's global keyboard shortcuts when a key is pressed in Monaco.
   window.addEventListener(
     'keydown',
     (event) => {
-      const key = event.key === 'Tab' || event.keyCode === 9
-        ? 'Tab'
-        : arrowKeyName(event);
-      if (!key) return;
       for (const record of editors.values()) {
         if (!record.host.contains(event.target)) continue;
+
+        const modifiedCommand = modifiedEditorCommand(event);
+        if (modifiedCommand) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          record.editor.focus();
+          record.editor.trigger('keyboard', modifiedCommand, {});
+          return;
+        }
+
+        const key = event.key === 'Tab' || event.keyCode === 9
+          ? 'Tab'
+          : arrowKeyName(event);
+        if (!key) return;
         event.preventDefault();
         event.stopImmediatePropagation();
         if (key !== 'Tab') {
@@ -90,6 +164,9 @@
           // Let the completion list keep its normal up/down navigation.
           if (
             !event.shiftKey &&
+            !event.metaKey &&
+            !event.altKey &&
+            !event.ctrlKey &&
             suggestWidget &&
             (key === 'ArrowUp' || key === 'ArrowDown')
           ) {

@@ -69,10 +69,29 @@ class ChatStore(BaseSQLiteStore):
                     conversation_id TEXT NOT NULL,
                     role TEXT NOT NULL,
                     content TEXT NOT NULL,
+                    model_content TEXT,
                     name TEXT,
+                    tool_call_id TEXT,
                     attachments_json TEXT NOT NULL DEFAULT '[]',
                     is_visible INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
+                    FOREIGN KEY(conversation_id)
+                        REFERENCES conversations(conversation_id) ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tool_audit_log (
+                    tool_call_id TEXT PRIMARY KEY,
+                    message_id INTEGER NOT NULL UNIQUE,
+                    conversation_id TEXT NOT NULL,
+                    tool_name TEXT NOT NULL,
+                    request_id TEXT,
+                    run_id TEXT,
+                    metadata_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
                     FOREIGN KEY(conversation_id)
                         REFERENCES conversations(conversation_id) ON DELETE CASCADE
                 )
@@ -567,32 +586,7 @@ class ChatStore(BaseSQLiteStore):
             if exists is None:
                 raise ValueError("对话不存在")
 
-            connection.executemany(
-                """
-                INSERT INTO messages (
-                    conversation_id,
-                    role,
-                    content,
-                    name,
-                    attachments_json,
-                    is_visible,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    (
-                        conversation_id,
-                        message["role"],
-                        message["content"],
-                        message.get("name"),
-                        json.dumps(message.get("attachments", []), ensure_ascii=False),
-                        1 if message.get("is_visible", True) else 0,
-                        current_time,
-                    )
-                    for message in messages
-                ],
-            )
+            self._insert_messages(connection, conversation_id, messages, current_time)
             connection.execute(
                 """
                 UPDATE conversations
@@ -601,6 +595,64 @@ class ChatStore(BaseSQLiteStore):
                 """,
                 (current_time, conversation_id),
             )
+
+    @staticmethod
+    def _insert_messages(connection, conversation_id: str, messages: list[dict], current_time: str) -> None:
+        """Persist display/model projections and audit metadata atomically."""
+
+        for message in messages:
+            cursor = connection.execute(
+                """
+                INSERT INTO messages (
+                    conversation_id, role, content, model_content, name,
+                    tool_call_id, attachments_json, is_visible, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    conversation_id,
+                    message["role"],
+                    message["content"],
+                    message.get("model_content"),
+                    message.get("name"),
+                    message.get("tool_call_id"),
+                    json.dumps(message.get("attachments", []), ensure_ascii=False),
+                    1 if message.get("is_visible", True) else 0,
+                    current_time,
+                ),
+            )
+            audit = message.get("audit_metadata")
+            tool_call_id = message.get("tool_call_id")
+            if audit is None or not isinstance(tool_call_id, str) or not tool_call_id:
+                continue
+            connection.execute(
+                """
+                INSERT INTO tool_audit_log (
+                    tool_call_id, message_id, conversation_id, tool_name,
+                    request_id, run_id, metadata_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    tool_call_id,
+                    int(cursor.lastrowid),
+                    conversation_id,
+                    str(message.get("name") or ""),
+                    message.get("request_id"),
+                    message.get("run_id"),
+                    json.dumps(audit, ensure_ascii=False, default=str),
+                    current_time,
+                ),
+            )
+
+    def get_tool_audit(self, tool_call_id: str) -> dict | None:
+        """Read one server-side tool audit record for diagnostics."""
+
+        row = self.query_one(
+            "SELECT metadata_json FROM tool_audit_log WHERE tool_call_id = ?",
+            (tool_call_id,),
+        )
+        return json.loads(row["metadata_json"]) if row is not None else None
 
     def get_history(self, conversation_id: str) -> list[dict]:
         """获取 `history` 相关数据。
@@ -632,6 +684,48 @@ class ChatStore(BaseSQLiteStore):
                 message["attachments"] = []
             history.append(message)
         return history
+
+    def get_latest_attachment_ids(
+        self,
+        conversation_id: str,
+        *,
+        limit: int = 3,
+    ) -> tuple[str, ...]:
+        """Return attachment ids from the latest user message that has files."""
+        if limit < 1:
+            return ()
+        rows = self.query_all(
+            """
+            SELECT attachments_json
+            FROM messages
+            WHERE conversation_id = ?
+              AND role = 'user'
+              AND attachments_json != '[]'
+            ORDER BY id DESC
+            """,
+            (conversation_id,),
+        )
+        for row in rows:
+            try:
+                attachments = json.loads(row["attachments_json"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(attachments, list):
+                continue
+            attachment_ids: list[str] = []
+            for attachment in attachments:
+                if isinstance(attachment, dict):
+                    value = attachment.get("id") or attachment.get("attachment_id")
+                else:
+                    value = attachment
+                if not isinstance(value, str) or not value or value in attachment_ids:
+                    continue
+                attachment_ids.append(value)
+                if len(attachment_ids) >= limit:
+                    break
+            if attachment_ids:
+                return tuple(attachment_ids)
+        return ()
 
     def latest_message_id(self, conversation_id: str) -> int | None:
         """处理 `latest_message_id` 相关逻辑。"""
@@ -665,7 +759,7 @@ class ChatStore(BaseSQLiteStore):
                     raise ValueError("只能修改当前对话中的用户消息")
                 rows = connection.execute(
                     """
-                    SELECT role, content, name FROM messages
+                    SELECT role, COALESCE(model_content, content) AS content, name
                     WHERE conversation_id = ? AND id < ?
                     ORDER BY id ASC
                     """,
@@ -720,7 +814,7 @@ class ChatStore(BaseSQLiteStore):
         """
         rows = self.query_all(
             """
-            SELECT role, content, name
+            SELECT role, COALESCE(model_content, content) AS content, name
             FROM messages
             WHERE conversation_id = ?
             ORDER BY id ASC
@@ -818,7 +912,7 @@ class ChatStore(BaseSQLiteStore):
 
             rows = connection.execute(
                 """
-                SELECT role, content, name
+                SELECT role, COALESCE(model_content, content) AS content, name
                 FROM messages
                 WHERE conversation_id = ? AND id > ?
                 ORDER BY id ASC
@@ -836,32 +930,7 @@ class ChatStore(BaseSQLiteStore):
                     message["name"] = row["name"]
                 history.append(message)
 
-            connection.executemany(
-                """
-                INSERT INTO messages (
-                    conversation_id,
-                    role,
-                    content,
-                    name,
-                    attachments_json,
-                    is_visible,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    (
-                        conversation_id,
-                        message["role"],
-                        message["content"],
-                        message.get("name"),
-                        json.dumps(message.get("attachments", []), ensure_ascii=False),
-                        1 if message.get("is_visible", True) else 0,
-                        current_time,
-                    )
-                    for message in messages
-                ],
-            )
+            self._insert_messages(connection, conversation_id, messages, current_time)
             connection.execute(
                 """
                 UPDATE conversations

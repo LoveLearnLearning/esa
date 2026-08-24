@@ -54,6 +54,61 @@ class _InterruptedToolApi extends _ConversationApi {
   Future<List<ChatMessage>> getMessages(String conversationId) async => [];
 }
 
+class _RepeatedToolIdApi extends _ConversationApi {
+  int streamCalls = 0;
+
+  @override
+  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+    streamCalls++;
+    yield const ChatStreamEvent('start', {});
+    yield const ChatStreamEvent('tool_start', {
+      'id': 'legacy-repeated-tool-id',
+      'name': 'web_search',
+    });
+    yield ChatStreamEvent('tool', {
+      'id': 'legacy-repeated-tool-id',
+      'name': 'web_search',
+      'content': 'result-$streamCalls',
+    });
+    yield ChatStreamEvent('content', {'delta': 'answer-$streamCalls'});
+    yield const ChatStreamEvent('done', {});
+  }
+}
+
+class _DoneWithoutToolResultApi extends _ConversationApi {
+  @override
+  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+    yield const ChatStreamEvent('start', {});
+    yield const ChatStreamEvent('tool_start', {
+      'id': 'tool-without-result',
+      'name': 'web_search',
+    });
+    yield const ChatStreamEvent('content', {'delta': '回答已完成'});
+    yield const ChatStreamEvent('done', {});
+  }
+}
+
+class _RepeatedUnavailableToolApi extends _ConversationApi {
+  @override
+  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+    yield const ChatStreamEvent('start', {});
+    for (final toolId in ['tool-1', 'tool-2']) {
+      yield ChatStreamEvent('tool_start', {
+        'id': toolId,
+        'name': 'parse_pdf_attachment',
+      });
+      yield ChatStreamEvent('tool', {
+        'id': toolId,
+        'name': 'parse_pdf_attachment',
+        'content':
+            '{"ok":false,"error":"tool_not_available","tool":"parse_pdf_attachment"}',
+      });
+    }
+    yield const ChatStreamEvent('content', {'delta': '请重新选择附件'});
+    yield const ChatStreamEvent('done', {});
+  }
+}
+
 class _LegacyConversationApi extends _ConversationApi {
   final Map<String, String> renamed = {};
 
@@ -164,6 +219,53 @@ void main() {
     final tool = state.messages.singleWhere((message) => message.isTool);
     expect(tool.toolRunning, isFalse);
     expect(tool.text, '工具调用未完成：连接已中断');
+  });
+
+  test('重复工具事件 ID 只更新当前轮最新的工具卡片', () async {
+    final api = _RepeatedToolIdApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+
+    await state.send('第一次搜索');
+    await state.send('第二次搜索');
+
+    final tools = state.messages.where((message) => message.isTool).toList();
+    expect(tools.map((message) => message.text), ['result-1', 'result-2']);
+    expect(tools.every((message) => !message.toolRunning), isTrue);
+  });
+
+  test('整轮完成时兜底关闭缺少结果事件的工具状态', () async {
+    final api = _DoneWithoutToolResultApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+
+    await state.send('搜索后回答');
+
+    final tool = state.messages.singleWhere((message) => message.isTool);
+    expect(tool.toolRunning, isFalse);
+    expect(tool.text, '工具调用已结束，未返回可展示结果');
+  });
+
+  test('同一轮重复的不可用工具失败只显示一次', () async {
+    final api = _RepeatedUnavailableToolApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+
+    await state.send('继续分析附件');
+
+    final tools = state.messages.where((message) => message.isTool).toList();
+    expect(tools, hasLength(1));
+    expect(tools.single.toolRunning, isFalse);
+    expect(tools.single.text, contains('tool_not_available'));
   });
 
   test('旧后端没有标题事件时使用首问短标题兜底', () async {

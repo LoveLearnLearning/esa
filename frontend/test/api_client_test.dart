@@ -1,6 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/api/api_client.dart';
+import 'package:frontend/models/models.dart';
 
 void main() {
   test('default API endpoint never exposes the backend HTTP address', () {
@@ -16,5 +20,35 @@ void main() {
       ApiClient(baseUrl: 'https://example.com/api/').baseUrl,
       'https://example.com/api',
     );
+  });
+
+  test('message request sends the selected knowledge sources', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(server.close);
+    late Map<String, dynamic> requestBody;
+    final handled = server.first.then((request) async {
+      requestBody =
+          jsonDecode(await utf8.decoder.bind(request).join())
+              as Map<String, dynamic>;
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType.json
+        ..write('[]');
+      await request.response.close();
+    });
+    final api = ApiClient(
+      baseUrl: 'http://${server.address.host}:${server.port}/api',
+    );
+
+    await api.sendMessageWithAttachments(
+      'conversation-1',
+      '只查个人资料',
+      const [],
+      knowledgeSources: const {KnowledgeSource.personal},
+    );
+    await handled;
+
+    expect(requestBody['attachment_ids'], isEmpty);
+    expect(requestBody['knowledge_sources'], ['personal']);
   });
 }

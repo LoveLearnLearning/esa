@@ -1,0 +1,415 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+usage() {
+    cat <<'EOF'
+安全地把 Qdrant snapshot 恢复到一个不存在的新 Collection。
+
+用法：
+  restore-qdrant-snapshot \
+    --snapshot PATH \
+    --collection NAME \
+    [--qdrant-url URL] \
+    [--checksum PATH] \
+    [--expected-points N] \
+    [--expected-dimension N] \
+    [--timeout SECONDS] \
+    [--wait-seconds SECONDS] \
+    [--skip-checksum] \
+    [--dry-run]
+
+必填：
+  --snapshot PATH          snapshot 文件
+  --collection NAME        恢复后的新 Collection 名称
+
+可选：
+  --qdrant-url URL         默认读取 QDRANT_URL，否则使用
+                           http://127.0.0.1:6333
+  --checksum PATH          默认使用 <snapshot>.checksum
+  --expected-points N      预期 Point 数
+  --expected-dimension N   预期 Dense 向量维度
+  --timeout SECONDS        上传超时，默认 600 秒
+  --wait-seconds SECONDS   等待 green，默认 120 秒
+  --skip-checksum          跳过 checksum，不推荐
+  --dry-run                只做恢复前检查
+  -h, --help               显示帮助
+
+自动行为：
+  - 从 snapshot 同目录的 deployment_manifest.json 读取预期点数和维度；
+  - 或从 chunk_manifest.json 读取预期点数；
+  - 校验 SHA-256；
+  - 检查 Qdrant 健康；
+  - 目标 Collection 已存在时拒绝覆盖；
+  - 恢复后检查 green、点数、向量维度和一个 Point。
+
+可选环境变量：
+  QDRANT_URL
+  QDRANT_API_KEY
+  PYTHON_BIN
+EOF
+}
+
+die() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+qdrant_url="${QDRANT_URL:-http://127.0.0.1:6333}"
+snapshot_file=''
+restore_collection=''
+checksum_file=''
+expected_points=''
+expected_dimension=''
+upload_timeout=600
+wait_seconds=120
+skip_checksum=0
+dry_run=0
+python_bin="${PYTHON_BIN:-python3}"
+
+while (($# > 0)); do
+    case "$1" in
+        --snapshot)
+            (($# >= 2)) || die "--snapshot 缺少参数"
+            snapshot_file="$2"
+            shift 2
+            ;;
+        --collection)
+            (($# >= 2)) || die "--collection 缺少参数"
+            restore_collection="$2"
+            shift 2
+            ;;
+        --qdrant-url)
+            (($# >= 2)) || die "--qdrant-url 缺少参数"
+            qdrant_url="$2"
+            shift 2
+            ;;
+        --checksum)
+            (($# >= 2)) || die "--checksum 缺少参数"
+            checksum_file="$2"
+            shift 2
+            ;;
+        --expected-points)
+            (($# >= 2)) || die "--expected-points 缺少参数"
+            expected_points="$2"
+            shift 2
+            ;;
+        --expected-dimension)
+            (($# >= 2)) || die "--expected-dimension 缺少参数"
+            expected_dimension="$2"
+            shift 2
+            ;;
+        --timeout)
+            (($# >= 2)) || die "--timeout 缺少参数"
+            upload_timeout="$2"
+            shift 2
+            ;;
+        --wait-seconds)
+            (($# >= 2)) || die "--wait-seconds 缺少参数"
+            wait_seconds="$2"
+            shift 2
+            ;;
+        --skip-checksum)
+            skip_checksum=1
+            shift
+            ;;
+        --dry-run)
+            dry_run=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            die "无法识别的参数：$1；使用 --help 查看用法"
+            ;;
+    esac
+done
+
+[[ -n "$snapshot_file" ]] || die "必须提供 --snapshot"
+[[ -n "$restore_collection" ]] || die "必须提供 --collection"
+[[ "$restore_collection" =~ ^[A-Za-z0-9._-]+$ ]] ||
+    die "Collection 名称只能包含字母、数字、点、下划线和短横线"
+[[ "$upload_timeout" =~ ^[1-9][0-9]*$ ]] ||
+    die "--timeout 必须是正整数"
+[[ "$wait_seconds" =~ ^[1-9][0-9]*$ ]] ||
+    die "--wait-seconds 必须是正整数"
+
+if [[ -n "$expected_points" ]]; then
+    [[ "$expected_points" =~ ^[0-9]+$ ]] ||
+        die "--expected-points 必须是非负整数"
+fi
+if [[ -n "$expected_dimension" ]]; then
+    [[ "$expected_dimension" =~ ^[1-9][0-9]*$ ]] ||
+        die "--expected-dimension 必须是正整数"
+fi
+
+[[ -f "$snapshot_file" ]] || die "snapshot 不存在：$snapshot_file"
+[[ -r "$snapshot_file" ]] || die "snapshot 不可读：$snapshot_file"
+
+snapshot_file="$(readlink -f "$snapshot_file")"
+snapshot_dir="$(dirname "$snapshot_file")"
+qdrant_url="${qdrant_url%/}"
+
+for command_name in curl sha256sum awk readlink mktemp; do
+    command -v "$command_name" >/dev/null 2>&1 ||
+        die "缺少命令：$command_name"
+done
+
+if ! command -v "$python_bin" >/dev/null 2>&1; then
+    if command -v python >/dev/null 2>&1; then
+        python_bin=python
+    else
+        die "找不到 Python；可以通过 PYTHON_BIN 指定"
+    fi
+fi
+
+target_json="$(mktemp)"
+restore_json="$(mktemp)"
+collection_json="$(mktemp)"
+sample_json="$(mktemp)"
+
+cleanup() {
+    rm -f -- "$target_json" "$restore_json" "$collection_json" "$sample_json"
+}
+trap cleanup EXIT
+
+curl_common=(-q --noproxy '*' --silent --show-error)
+if [[ -n "${QDRANT_API_KEY:-}" ]]; then
+    curl_common+=(--header "api-key: $QDRANT_API_KEY")
+fi
+
+echo "===== 1. 基本信息 ====="
+echo "Qdrant：$qdrant_url"
+echo "Snapshot：$snapshot_file"
+echo "恢复名称：$restore_collection"
+
+echo
+echo "===== 2. SHA-256 校验 ====="
+if ((skip_checksum == 0)); then
+    if [[ -z "$checksum_file" ]]; then
+        checksum_file="${snapshot_file}.checksum"
+    fi
+    [[ -f "$checksum_file" ]] ||
+        die "checksum 不存在：$checksum_file"
+
+    expected_hash="$(awk 'NF {print $1; exit}' "$checksum_file")"
+    [[ "$expected_hash" =~ ^[0-9a-fA-F]{64}$ ]] ||
+        die "checksum 中的 SHA-256 格式不正确"
+
+    actual_hash="$(sha256sum "$snapshot_file" | awk '{print $1}')"
+    [[ "${actual_hash,,}" == "${expected_hash,,}" ]] ||
+        die "SHA-256 不一致；snapshot 可能损坏"
+
+    echo "SHA-256：OK"
+    echo "$actual_hash"
+else
+    echo "WARNING: 已跳过 SHA-256 校验"
+fi
+
+echo
+echo "===== 3. 读取构建记录 ====="
+deployment_manifest="$snapshot_dir/deployment_manifest.json"
+chunk_manifest="$snapshot_dir/chunk_manifest.json"
+
+if [[ -z "$expected_points" && -f "$deployment_manifest" ]]; then
+    expected_points="$(
+        "$python_bin" -c \
+        'import json,sys; print(json.load(open(sys.argv[1]))["generation"]["chunk_count"])' \
+        "$deployment_manifest"
+    )"
+fi
+if [[ -z "$expected_dimension" && -f "$deployment_manifest" ]]; then
+    expected_dimension="$(
+        "$python_bin" -c \
+        'import json,sys; print(json.load(open(sys.argv[1]))["generation"]["dense_dimension"])' \
+        "$deployment_manifest"
+    )"
+fi
+if [[ -z "$expected_points" && -f "$chunk_manifest" ]]; then
+    expected_points="$(
+        "$python_bin" -c \
+        'import json,sys; print(json.load(open(sys.argv[1]))["chunk_count"])' \
+        "$chunk_manifest"
+    )"
+fi
+
+echo "预期 Points：${expected_points:-未提供}"
+echo "预期维度：${expected_dimension:-未提供}"
+
+echo
+echo "===== 4. Qdrant 健康检查 ====="
+curl "${curl_common[@]}" --fail --max-time 5 "$qdrant_url/healthz" ||
+    die "Qdrant 健康检查失败"
+echo
+
+echo
+echo "===== 5. 检查恢复目标 ====="
+http_code="$(
+    curl "${curl_common[@]}" \
+        --max-time 10 \
+        --output "$target_json" \
+        --write-out '%{http_code}' \
+        "$qdrant_url/collections/$restore_collection" ||
+        true
+)"
+
+case "$http_code" in
+    404)
+        echo "目标不存在，可以安全恢复"
+        ;;
+    200)
+        die "目标已存在，拒绝覆盖：$restore_collection"
+        ;;
+    *)
+        cat "$target_json" >&2 || true
+        die "检查目标失败，HTTP_CODE=$http_code"
+        ;;
+esac
+
+if ((dry_run == 1)); then
+    echo
+    echo "DRY RUN 完成：检查通过，没有上传 snapshot"
+    exit 0
+fi
+
+echo
+echo "===== 6. 上传并恢复 ====="
+if ! curl "${curl_common[@]}" \
+    --fail \
+    --max-time "$upload_timeout" \
+    --request POST \
+    --form "snapshot=@${snapshot_file}" \
+    "$qdrant_url/collections/$restore_collection/snapshots/upload?priority=snapshot" \
+    --output "$restore_json"; then
+    cat "$restore_json" >&2 || true
+    die "恢复请求失败；请检查 Qdrant 日志，不要盲目重试"
+fi
+cat "$restore_json"
+echo
+
+"$python_bin" -c '
+import json
+import sys
+data = json.load(open(sys.argv[1]))
+if data.get("status") != "ok" or data.get("result") is not True:
+    raise SystemExit("恢复 API 未返回 result=true/status=ok")
+' "$restore_json"
+
+echo
+echo "===== 7. 等待 Collection 就绪 ====="
+deadline=$((SECONDS + wait_seconds))
+ready=0
+
+while ((SECONDS < deadline)); do
+    if curl "${curl_common[@]}" \
+        --fail \
+        --max-time 10 \
+        "$qdrant_url/collections/$restore_collection" \
+        --output "$collection_json"; then
+        status="$(
+            "$python_bin" -c \
+            'import json,sys; print(json.load(open(sys.argv[1]))["result"]["status"])' \
+            "$collection_json"
+        )"
+        optimizer_status="$(
+            "$python_bin" -c \
+            'import json,sys; print(json.load(open(sys.argv[1]))["result"]["optimizer_status"])' \
+            "$collection_json"
+        )"
+        echo "status=$status optimizer_status=$optimizer_status"
+        if [[ "$status" == green && "$optimizer_status" == ok ]]; then
+            ready=1
+            break
+        fi
+    fi
+    sleep 1
+done
+
+((ready == 1)) ||
+    die "Collection 在 $wait_seconds 秒内没有变为 green"
+
+echo
+echo "===== 8. 核对恢复结果 ====="
+mapfile -t restored_info < <(
+    "$python_bin" - "$collection_json" <<'PY'
+import json
+import sys
+
+data = json.load(open(sys.argv[1]))["result"]
+params = data["config"]["params"]
+vectors = params.get("vectors", {})
+
+if isinstance(vectors, dict) and "dense" in vectors:
+    dense = vectors["dense"]
+elif isinstance(vectors, dict) and "size" in vectors:
+    dense = vectors
+elif isinstance(vectors, dict) and vectors:
+    dense = next(iter(vectors.values()))
+else:
+    dense = {}
+
+print(data["status"])
+print(data["points_count"])
+print(dense.get("size", ""))
+print(dense.get("distance", ""))
+print(",".join(sorted(params.get("sparse_vectors", {}).keys())))
+PY
+)
+
+restored_status="${restored_info[0]}"
+restored_points="${restored_info[1]}"
+restored_dimension="${restored_info[2]}"
+restored_distance="${restored_info[3]}"
+restored_sparse="${restored_info[4]}"
+
+echo "状态：$restored_status"
+echo "Points：$restored_points"
+echo "Dense 维度：${restored_dimension:-未知}"
+echo "距离算法：${restored_distance:-未知}"
+echo "Sparse vectors：${restored_sparse:-无}"
+
+if [[ -n "$expected_points" && "$restored_points" != "$expected_points" ]]; then
+    die "Point 数不一致：预期 $expected_points，实际 $restored_points"
+fi
+if [[ -n "$expected_dimension" &&
+      "$restored_dimension" != "$expected_dimension" ]]; then
+    die "Dense 维度不一致：预期 $expected_dimension，实际 $restored_dimension"
+fi
+
+echo
+echo "===== 9. 抽查一个 Point ====="
+if ((restored_points > 0)); then
+    curl "${curl_common[@]}" \
+        --fail \
+        --max-time 30 \
+        --request POST \
+        --header 'Content-Type: application/json' \
+        --data '{"limit":1,"with_payload":true,"with_vector":false}' \
+        "$qdrant_url/collections/$restore_collection/points/scroll" \
+        --output "$sample_json" ||
+        die "恢复成功，但抽查 Point 失败"
+
+    "$python_bin" - "$sample_json" <<'PY'
+import json
+import sys
+
+points = json.load(open(sys.argv[1]))["result"]["points"]
+if not points:
+    raise SystemExit("恢复后的 Collection 没有可抽查的 Point")
+
+point = points[0]
+print("Point ID：", point["id"])
+print("Payload 字段：", sorted(point.get("payload", {}).keys()))
+PY
+else
+    echo "Collection 为空，跳过抽查"
+fi
+
+echo
+echo "===== 恢复完成 ====="
+echo "Collection：$restore_collection"
+echo "Points：$restored_points"
+echo "状态：$restored_status"
+echo "已有 Collection 没有被删除或覆盖。"

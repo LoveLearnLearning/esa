@@ -10,10 +10,12 @@ class PdfAttachmentViewer extends StatefulWidget {
     super.key,
     required this.bytes,
     required this.mediaType,
+    this.page,
   });
 
   final Uint8List bytes;
   final String mediaType;
+  final int? page;
 
   @override
   State<PdfAttachmentViewer> createState() => _PdfAttachmentViewerState();
@@ -37,7 +39,9 @@ class _PdfAttachmentViewerState extends State<PdfAttachmentViewer> {
     _url = web.URL.createObjectURL(blob);
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (int viewId) {
       return web.HTMLIFrameElement()
-        ..src = _url
+        ..src = widget.page != null && widget.page! > 0
+            ? '$_url#page=${widget.page}'
+            : _url
         ..style.width = '100%'
         ..style.height = '100%'
         ..style.border = '0';

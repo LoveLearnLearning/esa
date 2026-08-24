@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/theme/esa_theme.dart';
 import 'package:frontend/widgets/composer.dart';
+import 'package:frontend/models/models.dart';
 
 void main() {
   testWidgets('uses the same line metrics for hint and input cursor', (
@@ -35,7 +36,7 @@ void main() {
 
     expect(
       tester.widget<TextField>(find.byType(TextField)).decoration?.hintText,
-      '向 ESA 提问任何学习问题…',
+      '向 ESA 提问，或输入学习任务……',
     );
 
     await tester.tap(find.byType(TextField));
@@ -98,7 +99,10 @@ void main() {
       ),
     );
 
-    expect(find.text('Enter 发送 · Shift + Enter 换行'), findsNothing);
+    expect(find.text('Shift + Enter 换行 · Enter 发送'), findsNothing);
+    expect(find.text('附件'), findsOneWidget);
+    expect(find.text('Markdown'), findsOneWidget);
+    expect(find.text('LaTeX'), findsOneWidget);
     expect(find.bySemanticsLabel('发送'), findsOneWidget);
   });
 
@@ -308,5 +312,42 @@ void main() {
     switchConversation(null);
     await tester.pump();
     expect(tester.widget<TextField>(input).controller!.text, isEmpty);
+  });
+
+  testWidgets('knowledge source menu supports independent multi-selection', (
+    tester,
+  ) async {
+    var selected = <KnowledgeSource>{
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    };
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: StatefulBuilder(
+          builder: (context, setState) => Scaffold(
+            body: Composer(
+              busy: false,
+              onSend: (_, _) {},
+              knowledgeSources: selected,
+              onKnowledgeSourcesChanged: (value) {
+                setState(() => selected = value);
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('知识库：全部'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('knowledge-source-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(CheckboxMenuButton, '个人知识库'));
+    await tester.pump();
+
+    expect(selected, {KnowledgeSource.public});
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.text('知识库：公共知识库'), findsOneWidget);
   });
 }

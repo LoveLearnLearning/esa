@@ -38,7 +38,7 @@ def test_existing_machine_readable_structure_skips_vlm():
 
 
 def test_missing_asset_requires_review_and_generic_description_is_accepted():
-    figure = FigureElement(element_id="g1", document_order=0)
+    figure = FigureElement(element_id="g1", document_order=0, asset_id="asset")
     missing = route_visual_element(figure, asset_present=False)
     assert missing.route is VisualRoute.MANUAL_REVIEW
     assert missing.should_analyze is False
@@ -55,7 +55,7 @@ def test_missing_asset_requires_review_and_generic_description_is_accepted():
 
 
 def test_unsupported_structure_claims_are_held_for_review():
-    figure = FigureElement(element_id="g1", document_order=0)
+    figure = FigureElement(element_id="g1", document_order=0, asset_id="asset")
     route = route_visual_element(figure, asset_present=True)
     outcome = select_visual_candidate(
         _request(route),

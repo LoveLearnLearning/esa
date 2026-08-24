@@ -290,7 +290,7 @@ void main() {
 
   testWidgets('mobile knowledge map', (tester) async {
     await pumpShell(tester, size: const Size(390, 844));
-    await tester.tap(find.text('知识地图'));
+    await tester.tap(find.text('知识'));
     await tester.pumpAndSettle();
     await capture(tester, '.audit-knowledge-mobile.png');
   });

@@ -8,20 +8,50 @@ import logging
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Literal
 
 from transformers import AutoTokenizer
 from vllm import SamplingParams
 from vllm.config.cache import CacheDType
 from vllm.config.model import ModelDType
 from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.lora.request import LoRARequest
 from vllm.model_executor.layers.quantization import QuantizationMethods
 from vllm.sampling_params import RequestOutputKind
 from vllm.v1.engine.async_llm import AsyncLLM
 
+from backend.core.utils.config import LOG_PROMPTS
 from backend.core.utils.models import ParsedOutput
 from backend.core.utils.parser import StreamOutputParser, parse_output
 
 logger = logging.getLogger(__name__)
+
+
+def _log_model_prompt(
+    request_id: str,
+    conversation_id: str | None,
+    prompt: str,
+) -> None:
+    """记录发送给主模型的最终 chat-template prompt。"""
+
+    if not LOG_PROMPTS:
+        return
+    logger.info(
+        "LLM prompt start model=main request_id=%s chars=%d",
+        request_id,
+        len(prompt),
+    )
+    logger.info(
+        "LLM prompt body model=main request_id=%s conversation_id=%s\n%s",
+        request_id,
+        conversation_id or "-",
+        prompt,
+    )
+    logger.info(
+        "LLM prompt end model=main request_id=%s conversation_id=%s",
+        request_id,
+        conversation_id or "-",
+    )
 
 
 class LLMProvider:
@@ -37,18 +67,59 @@ class LLMProvider:
         kv_cache_dtype: CacheDType = "auto",
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
+        lora_path: str | Path | None = None,
+        lora_name: str = "esa-agent",
+        lora_max_rank: int = 16,
+        enforce_eager: bool = False,
+        performance_mode: Literal[
+            "balanced", "interactivity", "throughput"
+        ] = "interactivity",
+        fully_sharded_loras: bool = False,
+        specialize_active_lora: bool = True,
     ) -> None:
         """初始化 `LLMProvider` 实例。"""
         self.model_path = Path(model_path)
         if max_output_tokens <= 0:
             raise ValueError("max_output_tokens 必须大于 0")
+        if lora_max_rank <= 0:
+            raise ValueError("lora_max_rank 必须大于 0")
         self.max_output_tokens = max_output_tokens
+        self.lora_request: LoRARequest | None = None
+        if lora_path is not None:
+            resolved_lora_path = Path(lora_path).expanduser().resolve()
+            if not resolved_lora_path.is_dir():
+                raise FileNotFoundError(f"LoRA 目录不存在：{resolved_lora_path}")
+            if not (resolved_lora_path / "adapter_config.json").is_file():
+                raise FileNotFoundError(
+                    f"LoRA 配置不存在：{resolved_lora_path / 'adapter_config.json'}"
+                )
+            if not (resolved_lora_path / "adapter_model.safetensors").is_file():
+                raise FileNotFoundError(
+                    "LoRA 权重不存在："
+                    f"{resolved_lora_path / 'adapter_model.safetensors'}"
+                )
+            if not lora_name.strip():
+                raise ValueError("lora_name 不能为空")
+            self.lora_request = LoRARequest(
+                lora_name=lora_name,
+                lora_int_id=1,
+                lora_path=str(resolved_lora_path),
+                base_model_name=str(self.model_path),
+            )
         logger.info(
-            "正在加载千问模型：path=%s，TP=%s，max_model_len=%s，max_output_tokens=%s",
+            "正在加载千问模型：path=%s，LoRA=%s，TP=%s，"
+            "max_model_len=%s，max_output_tokens=%s，enforce_eager=%s，"
+            "performance_mode=%s，fully_sharded_loras=%s，"
+            "specialize_active_lora=%s",
             self.model_path,
+            self.lora_request.lora_path if self.lora_request else "disabled",
             tensor_parallel_size,
             max_model_len,
             max_output_tokens,
+            enforce_eager,
+            performance_mode,
+            fully_sharded_loras,
+            specialize_active_lora,
         )
 
         engine_args = AsyncEngineArgs(
@@ -57,10 +128,16 @@ class LLMProvider:
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
             tensor_parallel_size=tensor_parallel_size,
-            enforce_eager=True,
+            enforce_eager=enforce_eager,
             quantization=quantization,
             dtype=dtype,
             kv_cache_dtype=kv_cache_dtype,
+            enable_lora=self.lora_request is not None,
+            max_loras=1,
+            max_lora_rank=lora_max_rank,
+            fully_sharded_loras=fully_sharded_loras,
+            specialize_active_lora=specialize_active_lora,
+            performance_mode=performance_mode,
         )
 
         self.engine = AsyncLLM.from_engine_args(engine_args)
@@ -89,6 +166,11 @@ class LLMProvider:
             add_generation_prompt=True,
         )
 
+    def count_tokens(self, text: str) -> int:
+        """Count serialized observation tokens with the actual Agent tokenizer."""
+
+        return len(self.tokenizer.encode(text, add_special_tokens=False))
+
     def parse_output(
         self,
         raw_text: str,
@@ -101,7 +183,13 @@ class LLMProvider:
         """创建千问 XML 协议的流式解析器。"""
         return StreamOutputParser()
 
-    async def generate(self, prompts: list[dict], tools: list[dict]) -> str:
+    async def generate(
+        self,
+        prompts: list[dict],
+        tools: list[dict],
+        request_id: str | None = None,
+        conversation_id: str | None = None,
+    ) -> str:
         """生成 LLM 的返回信息
         Args:
             prompts: list           => 输入的提示词 dict 格式如下:
@@ -117,7 +205,12 @@ class LLMProvider:
         """
         chunks: list[str] = []
 
-        async for chunk in self.generate_stream(prompts, tools):
+        async for chunk in self.generate_stream(
+            prompts,
+            tools,
+            request_id=request_id,
+            conversation_id=conversation_id,
+        ):
             chunks.append(chunk)
 
         return "".join(chunks)
@@ -127,6 +220,7 @@ class LLMProvider:
         messages: list[dict],
         tools: list[dict],
         request_id: str | None = None,
+        conversation_id: str | None = None,
     ) -> AsyncIterator[str]:
         """生成 `stream` 相关数据。
 
@@ -141,6 +235,7 @@ class LLMProvider:
         request_id = request_id or str(uuid.uuid4())
 
         prompt = self.build_prompt(messages, tools)
+        _log_model_prompt(request_id, conversation_id, prompt)
 
         sampling_params = SamplingParams(
             temperature=0.7,
@@ -153,6 +248,7 @@ class LLMProvider:
             request_id=request_id,
             prompt=prompt,
             sampling_params=sampling_params,
+            lora_request=self.lora_request,
         ):
             for completion in output.outputs:
                 if completion.text:

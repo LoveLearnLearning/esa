@@ -32,13 +32,14 @@ from .contracts import (
     TokenCounter,
     VisionProvider,
 )
-from .enrichment import VLM_DESCRIPTION_PROMPT, enrich_visual_assets
+from .enrichment import VLM_DESCRIPTION_PROMPT
 from .routing import MM_VISUAL_ROUTING_VERSION
 from .selection import MM_VISUAL_SELECTION_VERSION
 from .index import InMemoryAttachmentIndex
 from .parser import MinerUDocumentParser
 from .providers import OpenAICompatibleVisionProvider, TransformersTokenCounter
 from .render import render_document_markdown
+from .visual import VisualEnrichmentService
 from backend.core.log.logger import get_pipeline_logger
 
 
@@ -102,6 +103,10 @@ class MultimodalIngestionService:
             api_key=self.config.vlm_api_key,
             timeout=self.config.vlm_timeout_seconds,
             attempts=self.config.vlm_attempts,
+        )
+        self.visual = VisualEnrichmentService(
+            self.vision,
+            max_concurrency=self.config.vlm_max_concurrency,
         )
         self.token_counter = token_counter or TransformersTokenCounter(
             self.config.tokenizer_path
@@ -176,11 +181,9 @@ class MultimodalIngestionService:
                     parsed.document.document_id,
                     len(parsed.document.assets),
                 )
-                enrichment = await enrich_visual_assets(
+                enrichment = await self.visual.enrich(
                     parsed.document,
                     parsed.document_root,
-                    self.vision,
-                    max_concurrency=self.config.vlm_max_concurrency,
                 )
                 document = enrichment.document
                 save_document(document, document_path)

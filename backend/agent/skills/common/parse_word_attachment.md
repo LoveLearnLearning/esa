@@ -4,7 +4,7 @@ description: 当前消息包含 DOCX 附件且回答需要读取或总结 Word �
 version: 1
 category: attachment
 priority: 96
-autoload: false
+autoload: true
 triggers:
   - word_attachment
 requires_tools:

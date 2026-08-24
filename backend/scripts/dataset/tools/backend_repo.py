@@ -121,3 +121,17 @@ def resolve(repo_arg: str | None = None, *, download: bool = False) -> BackendRe
 
     tmp = Path(tempfile.mkdtemp(prefix="esa_backend_"))
     return BackendRepo(_extract(tmp), kind="tarball:main", tmpdir=tmp)
+
+
+def display_path(p: Path, root: Path) -> str:
+    """打印用的路径：能相对就相对，不能就给绝对路径。
+
+    四个 capture 都支持 `--out`，而 `--out` 指到仓库外时
+    `p.relative_to(root)` 会抛 ValueError —— 抓取其实已经成功了，
+    只是最后那行打印把整个脚本带崩。`check_backend_updates.py`
+    正是要把缓存抓到临时目录再比对，踩的就是这个。
+    """
+    try:
+        return str(p.relative_to(root))
+    except ValueError:
+        return str(p)

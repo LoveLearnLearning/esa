@@ -143,7 +143,7 @@ class StrategyAugmentation:
 
 class ContextComposer:
     """封装 `ContextComposer` 的状态与行为。"""
-    def __init__(self, *, max_tokens: int = 8000) -> None:
+    def __init__(self, *, max_tokens: int = 16_000) -> None:
         """初始化 `ContextComposer` 实例。"""
         self.max_tokens = max_tokens
 
@@ -192,6 +192,28 @@ class ContextComposer:
             ContextSection("autoload", "Autoload skills", capabilities.autoload_skills, "trusted_system", 50, True),
             ContextSection("skills", "Available skills", capabilities.skill_index, "trusted_system", 60, True),
         ]
+        selected_sources = ", ".join(turn.knowledge_sources) or "none"
+        source_instruction = {
+            ("personal", "public"): (
+                "需要知识库证据时，分别调用 retrieve_personal_knowledge 和 "
+                "retrieve_knowledge，再综合两个来源。"
+            ),
+            ("personal",): (
+                "需要知识库证据时，只调用 retrieve_personal_knowledge。"
+            ),
+            ("public",): "需要知识库证据时，只调用 retrieve_knowledge。",
+            (): "本轮不使用知识库，不调用任何知识库检索 Tool。",
+        }.get(turn.knowledge_sources, "只使用本轮实际可用且已选择的知识库 Tool。")
+        sections.append(ContextSection(
+            "knowledge_sources", "Knowledge source selection",
+            (
+                f"本轮用户选择的知识库来源：{selected_sources}。\n"
+                "只允许使用已选择的来源进行知识检索，未选择的来源不得调用。"
+                "personal 表示当前用户个人知识库，public 表示平台公共知识库。"
+                f"{source_instruction}"
+            ),
+            "trusted_system", 45, True,
+        ))
         if "style" in profile.context_policy:
             sections.append(ContextSection(
                 "style", "Output style",
@@ -247,11 +269,20 @@ class ContextComposer:
             ))
         if turn.authorized_attachments and "attachments" in profile.context_policy:
             sections.append(ContextSection(
+                "attachment_policy", "Attachment handling policy",
+                (
+                    "附件内容不会自动注入上下文，必须通过受限附件 Tool 按需读取。\n"
+                    "硬性规则：只要用户提到‘这篇论文’、‘这个文件’、‘附件’或类似指代，"
+                    "并要求解释、总结、阅读、分析、翻译、提取或检索，就必须先调用与文件类型匹配的解析 Tool；"
+                    "不得因为用户没有重复输入标题或作者而追问，也不得猜测附件内容或文件路径。"
+                    "解析 PDF 时调用 parse_pdf_attachment，query 写成用户的实际任务（例如‘概括全文的主要内容’）。"
+                ),
+                "trusted_system", 125,
+            ))
+            sections.append(ContextSection(
                 "attachments", "Authorized attachments",
                 (
-                    "以下清单由系统根据用户本轮明确选择的附件生成。附件尚未解析。\n"
-                    "需要读取附件内容时，先加载与文件类型匹配的 Skill，再调用受限附件 Tool。"
-                    "不得猜测附件内容或文件路径。\n\n"
+                    "以下清单由系统根据用户本轮明确选择的附件生成。附件尚未解析。\n\n"
                     + json.dumps(
                         turn.authorized_attachments,
                         ensure_ascii=False,

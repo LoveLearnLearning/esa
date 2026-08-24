@@ -5,12 +5,15 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
+from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from vllm.config.cache import CacheDType
@@ -21,15 +24,33 @@ from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.skills import validate_skill_contracts
 from backend.agent.workspaces.models import ExecutableAgentRun
 from backend.agent.workspaces.history import sanitize_qwen_history as sanitize_qwen_history
-from backend.core.utils.config import DEBUG_MODE
+from backend.core.utils.config import AGENT_STREAM_HEARTBEAT_SECONDS, DEBUG_MODE
 from backend.core.utils.models import (
     AgentStreamEvent,
     ParsedOutput,
     ToolCall,
+    ToolExecutionResult,
 )
 
 
 logger = logging.getLogger(__name__)
+
+_TERMINAL_TOOL_ERRORS = frozenset(
+    {"tool_not_available", "resource_capability_required"}
+)
+
+def _terminal_tool_error(result: object) -> str | None:
+    """Return an error that cannot be fixed by retrying tool arguments."""
+    if not isinstance(result, Mapping) or result.get("ok") is not False:
+        return None
+    error = result.get("error")
+    return error if isinstance(error, str) and error in _TERMINAL_TOOL_ERRORS else None
+
+
+def _tool_unavailable_message(name: str, error: str) -> str:
+    if error == "resource_capability_required":
+        return f"当前请求没有使用工具 `{name}` 所需的资源权限，请重新选择相关附件或资源后再试。"
+    return f"当前上下文无法使用工具 `{name}`，请重新选择相关附件或调整问题后再试。"
 
 
 def _observed_tools_and_actions(
@@ -98,6 +119,14 @@ def serialize_tool_result(result: object) -> str:
     return json.dumps(result, ensure_ascii=False, default=str)
 
 
+def _tool_result_channels(result: object) -> tuple[object, object, object | None]:
+    """Normalize legacy single-channel results into the three-channel protocol."""
+
+    if isinstance(result, ToolExecutionResult):
+        return result.model_content, result.display_content, result.audit_metadata
+    return result, result, None
+
+
 class Agent:
     """封装 `Agent` 的状态与行为。"""
     def __init__(
@@ -111,8 +140,21 @@ class Agent:
         max_output_tokens: int = 8192,
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
+        lora_path: str | Path | None = None,
+        lora_name: str = "esa-agent",
+        lora_max_rank: int = 16,
+        enforce_eager: bool = False,
+        performance_mode: Literal[
+            "balanced", "interactivity", "throughput"
+        ] = "interactivity",
+        fully_sharded_loras: bool = False,
+        specialize_active_lora: bool = True,
+        stream_heartbeat_seconds: float = AGENT_STREAM_HEARTBEAT_SECONDS,
     ) -> None:
         """初始化 `Agent` 实例。"""
+        if stream_heartbeat_seconds <= 0:
+            raise ValueError("stream_heartbeat_seconds 必须大于 0")
+        self.stream_heartbeat_seconds = stream_heartbeat_seconds
         register_builtin_tools()
         # 在加载昂贵的 vLLM 模型之前 fail-fast，避免 Skill/Tool 漂移带病启动。
         skill_errors = validate_skill_contracts()
@@ -133,7 +175,63 @@ class Agent:
             max_output_tokens=max_output_tokens,
             max_num_seqs=max_num_seqs,
             tensor_parallel_size=tensor_parallel_size,
+            lora_path=lora_path,
+            lora_name=lora_name,
+            lora_max_rank=lora_max_rank,
+            enforce_eager=enforce_eager,
+            performance_mode=performance_mode,
+            fully_sharded_loras=fully_sharded_loras,
+            specialize_active_lora=specialize_active_lora,
         )
+
+    @staticmethod
+    def _provider_accepts_metadata(method: object) -> bool:
+        """Check whether a test or alternate provider accepts prompt metadata."""
+
+        try:
+            parameters = inspect.signature(method).parameters
+        except (TypeError, ValueError):
+            return False
+        return "request_id" in parameters or any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        )
+
+    async def _generate(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        run_spec: ExecutableAgentRun,
+    ) -> str:
+        """Invoke the provider while passing correlation metadata when supported."""
+
+        method = self.llm_provider.generate
+        if self._provider_accepts_metadata(method):
+            return await method(
+                messages,
+                tools,
+                request_id=run_spec.run_metadata.get("request_id"),
+                conversation_id=run_spec.run_metadata.get("conversation_id"),
+            )
+        return await method(messages, tools)
+
+    def _generate_stream(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        run_spec: ExecutableAgentRun,
+    ) -> AsyncIterator[str]:
+        """Invoke streaming generation with optional correlation metadata."""
+
+        method = self.llm_provider.generate_stream
+        if self._provider_accepts_metadata(method):
+            return method(
+                messages,
+                tools,
+                request_id=run_spec.run_metadata.get("request_id"),
+                conversation_id=run_spec.run_metadata.get("conversation_id"),
+            )
+        return method(messages, tools)
 
     async def run(self, run_spec: ExecutableAgentRun) -> list[dict]:
         """Run one non-streaming turn from an already-authorized specification."""
@@ -172,10 +270,13 @@ class Agent:
     ) -> list[dict]:
         """执行 `loop` 相关数据。"""
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
+        terminal_tool_errors: dict[str, str] = {}
+        stop_loop = False
         for _ in range(run_spec.loop_policy.max_iterations):
-            response = await self.llm_provider.generate(
+            response = await self._generate(
                 messages,
                 tool_schemas,
+                run_spec,
             )
 
             parsed: ParsedOutput = self.llm_provider.parse_output(
@@ -221,6 +322,25 @@ class Agent:
             )
 
             for tool_call in tool_calls:
+                previous_error = terminal_tool_errors.get(tool_call.name)
+                if previous_error is not None:
+                    assistant_content = _tool_unavailable_message(
+                        tool_call.name,
+                        previous_error,
+                    )
+                    messages.append(
+                        {"role": "assistant", "content": assistant_content}
+                    )
+                    new_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": assistant_content,
+                            "is_visible": True,
+                        }
+                    )
+                    stop_loop = True
+                    break
+                tool_call_id = f"tool-{uuid4().hex}"
                 result = await asyncio.wait_for(
                     run_spec.tool_executor.execute(
                         tool_call.name,
@@ -228,23 +348,38 @@ class Agent:
                     ),
                     timeout=run_spec.loop_policy.tool_timeout_seconds,
                 )
-                result_text = serialize_tool_result(result)
+                model_result, display_result, audit_metadata = (
+                    _tool_result_channels(result)
+                )
+                model_text = serialize_tool_result(model_result)
+                display_text = serialize_tool_result(display_result)
 
                 messages.append(
                     {
                         "role": "tool",
                         "name": tool_call.name,
-                        "content": result_text,
+                        "content": model_text,
                     }
                 )
                 new_messages.append(
                     {
                         "role": "tool",
                         "name": tool_call.name,
-                        "content": result_text,
+                        "content": display_text,
+                        "model_content": model_text,
+                        "tool_call_id": tool_call_id,
+                        "audit_metadata": audit_metadata,
+                        "request_id": run_spec.run_metadata.get("request_id"),
+                        "run_id": run_spec.run_metadata.get("run_id"),
                         "is_visible": True,
                     }
                 )
+                terminal_error = _terminal_tool_error(model_result)
+                if terminal_error is not None:
+                    terminal_tool_errors[tool_call.name] = terminal_error
+
+            if stop_loop:
+                break
 
         return new_messages
 
@@ -297,18 +432,79 @@ class Agent:
     ) -> AsyncIterator[AgentStreamEvent]:
         """执行 `stream loop` 相关数据。"""
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
+        terminal_tool_errors: dict[str, str] = {}
+        stop_loop = False
         for _ in range(run_spec.loop_policy.max_iterations):
             stream_parser = self.llm_provider.create_stream_parser()
-
-            async for chunk in self.llm_provider.generate_stream(
+            generation = self._generate_stream(
                 messages,
                 tool_schemas,
-            ):
-                for event, delta in stream_parser.feed(chunk):
-                    yield AgentStreamEvent(
-                        event=event,
-                        data={"delta": delta},
+                run_spec,
+            ).__aiter__()
+            pending_chunk: asyncio.Task[str] | None = None
+            heartbeat_seconds = getattr(
+                self,
+                "stream_heartbeat_seconds",
+                AGENT_STREAM_HEARTBEAT_SECONDS,
+            )
+            last_event_at = time.monotonic()
+
+            try:
+                while True:
+                    if pending_chunk is None:
+                        pending_chunk = asyncio.create_task(anext(generation))
+
+                    wait_seconds = max(
+                        0.0,
+                        heartbeat_seconds - (time.monotonic() - last_event_at),
                     )
+                    done, _ = await asyncio.wait(
+                        {pending_chunk},
+                        timeout=wait_seconds,
+                    )
+                    if not done:
+                        yield AgentStreamEvent(
+                            event="heartbeat",
+                            data={"stage": "inference"},
+                        )
+                        last_event_at = time.monotonic()
+                        continue
+
+                    try:
+                        chunk = pending_chunk.result()
+                    except StopAsyncIteration:
+                        pending_chunk = None
+                        break
+                    pending_chunk = None
+
+                    visible_events = stream_parser.feed(chunk)
+                    for event, delta in visible_events:
+                        yield AgentStreamEvent(
+                            event=event,
+                            data={"delta": delta},
+                        )
+                        last_event_at = time.monotonic()
+
+                    # 工具调用 XML 不对用户展示，但模型可能持续生成很久。
+                    # 即使 vLLM 一直有隐藏 token，也按 SSE 空闲时间发送心跳。
+                    if (
+                        not visible_events
+                        and time.monotonic() - last_event_at >= heartbeat_seconds
+                    ):
+                        yield AgentStreamEvent(
+                            event="heartbeat",
+                            data={"stage": "inference"},
+                        )
+                        last_event_at = time.monotonic()
+            finally:
+                if pending_chunk is not None:
+                    if not pending_chunk.done():
+                        pending_chunk.cancel()
+                    with suppress(asyncio.CancelledError, StopAsyncIteration):
+                        await pending_chunk
+                close_generation = getattr(generation, "aclose", None)
+                if close_generation is not None:
+                    await close_generation()
 
             for event, delta in stream_parser.finish():
                 yield AgentStreamEvent(
@@ -357,8 +553,30 @@ class Agent:
                 }
             )
 
-            for tool_index, tool_call in enumerate(tool_calls):
-                tool_call_id = f"tool-{len(new_messages)}-{tool_index}"
+            for tool_call in tool_calls:
+                previous_error = terminal_tool_errors.get(tool_call.name)
+                if previous_error is not None:
+                    assistant_content = _tool_unavailable_message(
+                        tool_call.name,
+                        previous_error,
+                    )
+                    messages.append(
+                        {"role": "assistant", "content": assistant_content}
+                    )
+                    new_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": assistant_content,
+                            "is_visible": True,
+                        }
+                    )
+                    yield AgentStreamEvent(
+                        event="content",
+                        data={"delta": assistant_content},
+                    )
+                    stop_loop = True
+                    break
+                tool_call_id = f"tool-{uuid4().hex}"
                 yield AgentStreamEvent(
                     event="tool_start",
                     data={
@@ -387,12 +605,21 @@ class Agent:
                                 "name": tool_call.name,
                             },
                         )
-                result_text = serialize_tool_result(result)
+                model_result, display_result, audit_metadata = (
+                    _tool_result_channels(result)
+                )
+                model_text = serialize_tool_result(model_result)
+                display_text = serialize_tool_result(display_result)
 
                 tool_message = {
                     "role": "tool",
                     "name": tool_call.name,
-                    "content": result_text,
+                    "content": display_text,
+                    "model_content": model_text,
+                    "tool_call_id": tool_call_id,
+                    "audit_metadata": audit_metadata,
+                    "request_id": run_spec.run_metadata.get("request_id"),
+                    "run_id": run_spec.run_metadata.get("run_id"),
                     "is_visible": True,
                 }
 
@@ -400,7 +627,7 @@ class Agent:
                     {
                         "role": "tool",
                         "name": tool_call.name,
-                        "content": result_text,
+                        "content": model_text,
                     }
                 )
                 new_messages.append(tool_message)
@@ -410,9 +637,15 @@ class Agent:
                     data={
                         "id": tool_call_id,
                         "name": tool_call.name,
-                        "content": result_text,
+                        "content": display_text,
                     },
                 )
+                terminal_error = _terminal_tool_error(model_result)
+                if terminal_error is not None:
+                    terminal_tool_errors[tool_call.name] = terminal_error
+
+            if stop_loop:
+                break
 
         yield AgentStreamEvent(
             event="complete",

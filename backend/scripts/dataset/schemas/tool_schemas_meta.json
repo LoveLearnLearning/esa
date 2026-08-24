@@ -1,0 +1,57 @@
+{
+  "captured_at": "2026-08-23T17:15:01+00:00",
+  "source": "github.com/LoveLearnLearning/esa",
+  "source_repo": "local-clone@4816244",
+  "workspace": "learning",
+  "tool_scopes": [
+    "common",
+    "learning"
+  ],
+  "schema_version": "8641ccac",
+  "with_attachments": false,
+  "kept": [
+    "arxiv_search",
+    "bitwise_calculator",
+    "calculator",
+    "delete_core_memory",
+    "get_core_memories",
+    "get_knowledge_base_stats",
+    "get_learning_evidence_summary",
+    "get_mastery_level",
+    "get_mastery_report",
+    "get_review_timing",
+    "get_time",
+    "get_weak_prerequisites",
+    "get_weather",
+    "load_skill",
+    "math_solver",
+    "propose_core_memory",
+    "recommend_practice",
+    "record_answer",
+    "record_learning_evidence",
+    "retrieve_knowledge",
+    "retrieve_personal_knowledge",
+    "run_in_sandbox",
+    "save_core_memory",
+    "search_core_memories",
+    "web_search"
+  ],
+  "dropped": {
+    "scope=research": [
+      "start_frontier_tracking",
+      "start_research_writing",
+      "start_dataset_analysis"
+    ],
+    "scope=teaching": [
+      "get_teaching_context"
+    ],
+    "按轮动态注入的附件工具": [
+      "parse_pdf_attachment",
+      "parse_word_attachment",
+      "parse_presentation_attachment",
+      "parse_spreadsheet_attachment",
+      "parse_image_attachment"
+    ]
+  },
+  "note": "由 dataset/tools/capture_tool_schemas.py 用后端真实 catalog.tool_scope() 过滤产出，禁止手改，也不要再直接 cp backend/agent/tools/tool_schemas.json —— 那份是全局目录，含科研/教学工具。"
+}

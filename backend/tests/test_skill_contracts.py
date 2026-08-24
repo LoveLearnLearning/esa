@@ -8,6 +8,7 @@ from pathlib import Path
 
 import backend.agent.skills.catalog as skill_catalog
 from backend.agent.skills.catalog import ScopedSkillView
+from backend.agent.tools.catalog import ScopedToolView
 from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.skills import (
     SkillDefinition,
@@ -42,8 +43,8 @@ def test_required_tools_have_actionable_skill_instructions():
     assert {name: tools for name, tools in missing.items() if tools} == {}
 
 
-def test_tool_schema_snapshots_match_the_registered_runtime():
-    """验证运行时工具 Schema 与两个版本化快照一致。"""
+def test_tool_schema_snapshots_match_their_runtime_scopes():
+    """全局快照与运行时一致，数据集快照只保留学习空间静态工具。"""
     register_builtin_tools()
     repository_root = Path(__file__).resolve().parents[2]
     backend_snapshot = repository_root / "backend/agent/tools/tool_schemas.json"
@@ -51,12 +52,29 @@ def test_tool_schema_snapshots_match_the_registered_runtime():
         repository_root / "backend/scripts/dataset/schemas/tool_schemas.json"
     )
 
-    assert backend_snapshot.read_bytes() == dataset_snapshot.read_bytes()
-    assert json.loads(backend_snapshot.read_text(encoding="utf-8")) == tr.schemas
+    backend_schemas = json.loads(backend_snapshot.read_text(encoding="utf-8"))
+    dataset_schemas = json.loads(dataset_snapshot.read_text(encoding="utf-8"))
+    assert backend_schemas == tr.schemas
+
+    attachment_tools = frozenset(
+        name
+        for name in tr.registered_tools
+        if name.startswith("parse_") and name.endswith("_attachment")
+    )
+    learning_view = ScopedToolView.compile(
+        tr,
+        frozenset({"common", "learning"}),
+        excluded_names=attachment_tools,
+    )
+    assert dataset_schemas == list(learning_view.schemas)
+    assert any(
+        schema["function"]["name"] == "retrieve_personal_knowledge"
+        for schema in dataset_schemas
+    )
 
     record_answer = next(
         schema
-        for schema in tr.schemas
+        for schema in backend_schemas
         if schema["function"]["name"] == "record_answer"
     )
     assert "已弃用" in record_answer["function"]["description"]
@@ -93,6 +111,8 @@ def test_concept_explanation_skill_answers_now_and_uses_rag():
     assert "retrieve_knowledge" in definition.requires_tools
     assert "先调用 `retrieve_knowledge`" in definition.body
     assert "本轮直接回答" in definition.body
+    assert "不能代替讲解" in definition.body
+    assert "删掉所有引文和来源名" in definition.body
     assert "正式讲解前，先问" not in definition.body
 
 

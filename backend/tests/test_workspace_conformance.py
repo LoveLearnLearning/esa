@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -32,7 +33,8 @@ from backend.core.router.workspace_profiles import build_workspace_route
 from backend.core.router.workspace_registry import resolve_workspace
 from backend.core.services.teaching_context_adapter import TeachingContextAdapter
 from backend.core.workspaces import WORKSPACE_CATALOG, WorkspaceAccessPolicy
-from backend.core.utils.models import ParsedOutput
+from backend.core.utils.models import ParsedOutput, ToolCall, ToolExecutionResult
+from backend.core.web.schemas import SendMessageRequest
 
 
 @pytest.mark.parametrize("definition", WORKSPACE_DEFINITIONS.values())
@@ -123,8 +125,58 @@ def test_compiled_skills_are_closed_over_the_resource_scoped_tool_view():
     )
     assert "parse_pdf_attachment" in with_attachments.capabilities.tool_names
     assert "parse_pdf_attachment" in with_attachments.capabilities.skill_names
+    assert "parse_pdf_attachment" in with_attachments.capabilities.autoload_skills
     for skill in with_attachments.skills.definitions:
         assert set(skill.requires_tools) <= with_attachments.tools.names
+
+
+def test_knowledge_source_selection_filters_retrieval_tools():
+    """本轮知识库选择必须从 Tool Schema 层面限制检索来源。"""
+    register_builtin_tools()
+    definition = WORKSPACE_DEFINITIONS["learning"]
+    runtime = CapabilityRuntime()
+
+    personal_only = runtime.compile(
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        profile_fingerprint="learning:1",
+        policy_versions=("learning.v1",),
+        knowledge_sources=("personal",),
+    )
+    assert "retrieve_personal_knowledge" in personal_only.capabilities.tool_names
+    assert "retrieve_knowledge" not in personal_only.capabilities.tool_names
+
+    public_only = runtime.compile(
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        profile_fingerprint="learning:1",
+        policy_versions=("learning.v1",),
+        knowledge_sources=("public",),
+    )
+    assert "retrieve_personal_knowledge" not in public_only.capabilities.tool_names
+    assert "retrieve_knowledge" in public_only.capabilities.tool_names
+
+    disabled = runtime.compile(
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        profile_fingerprint="learning:1",
+        policy_versions=("learning.v1",),
+        knowledge_sources=(),
+    )
+    assert "retrieve_personal_knowledge" not in disabled.capabilities.tool_names
+    assert "retrieve_knowledge" not in disabled.capabilities.tool_names
+
+
+def test_message_knowledge_sources_default_and_validation():
+    assert SendMessageRequest(content="默认").knowledge_sources == [
+        "personal",
+        "public",
+    ]
+    assert SendMessageRequest(
+        content="去重", knowledge_sources=["PUBLIC", "public"]
+    ).knowledge_sources == ["public"]
+    with pytest.raises(ValueError, match="knowledge_sources"):
+        SendMessageRequest(content="非法", knowledge_sources=["unknown"])
 
 
 def test_bound_executor_rechecks_required_resource_capabilities():
@@ -535,3 +587,210 @@ def test_executable_run_preserves_agent_run_and_stream_interfaces():
     events = asyncio.run(collect_stream())
     assert events[-1].event == "complete"
     assert events[-1].data["messages"][-1]["content"] == "compiled answer"
+
+
+def test_agent_routes_tool_result_channels_to_model_stream_and_audit():
+    """Compact observations, display events, and audits must remain separated."""
+
+    class Executor:
+        async def execute(self, _name, _arguments):
+            return ToolExecutionResult(
+                model_content={"channel": "model"},
+                display_content={"channel": "display"},
+                audit_metadata={"channel": "audit"},
+            )
+
+    class StreamParser:
+        raw_text = ""
+
+        def feed(self, chunk):
+            self.raw_text += chunk
+            return []
+
+        def finish(self):
+            return []
+
+    class Provider:
+        def __init__(self):
+            self.calls = 0
+            self.observed_messages = []
+
+        def _response(self, messages):
+            self.observed_messages.append([dict(item) for item in messages])
+            self.calls += 1
+            return "call" if self.calls == 1 else "answer"
+
+        async def generate(self, messages, _schemas):
+            return self._response(messages)
+
+        async def generate_stream(self, messages, _schemas):
+            yield self._response(messages)
+
+        def create_stream_parser(self):
+            return StreamParser()
+
+        def parse_output(self, response, _schemas):
+            if response == "call":
+                return ParsedOutput(tool_calls=[ToolCall("fake_tool", {})])
+            return ParsedOutput(content=response)
+
+    run_spec = SimpleNamespace(
+        messages=({"role": "user", "content": "question"},),
+        tool_schemas=(),
+        loop_policy=SimpleNamespace(max_iterations=2, tool_timeout_seconds=1),
+        tool_executor=Executor(),
+        run_metadata={
+            "request_id": "request-test",
+            "run_id": "run-test",
+            "conversation_id": "conversation-test",
+            "workspace_type": "learning",
+        },
+        capability_fingerprint="capability-test",
+    )
+
+    provider = Provider()
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+    messages = asyncio.run(agent.run(run_spec))
+
+    assert json.loads(provider.observed_messages[1][-1]["content"]) == {
+        "channel": "model"
+    }
+    tool_message = next(item for item in messages if item.get("role") == "tool")
+    assert json.loads(tool_message["content"]) == {"channel": "display"}
+    assert json.loads(tool_message["model_content"]) == {"channel": "model"}
+    assert tool_message["audit_metadata"] == {"channel": "audit"}
+
+    stream_provider = Provider()
+    stream_agent = object.__new__(Agent)
+    stream_agent.llm_provider = stream_provider
+
+    async def collect_stream():
+        return [event async for event in stream_agent.run_stream(run_spec)]
+
+    events = asyncio.run(collect_stream())
+    assert json.loads(stream_provider.observed_messages[1][-1]["content"]) == {
+        "channel": "model"
+    }
+    display_event = next(event for event in events if event.event == "tool")
+    assert json.loads(display_event.data["content"]) == {"channel": "display"}
+    assert "audit" not in json.dumps(display_event.data)
+    assert "model" not in json.dumps(display_event.data)
+
+
+def test_stream_emits_heartbeat_while_model_has_no_visible_output():
+    """模型长时间无可见 token 时仍持续产生 SSE 保活事件。"""
+
+    class StreamParser:
+        raw_text = ""
+
+        def feed(self, chunk):
+            self.raw_text += chunk
+            return [("content", chunk)]
+
+        def finish(self):
+            return []
+
+    class SlowProvider:
+        async def generate_stream(self, _messages, _schemas):
+            await asyncio.sleep(0.03)
+            yield "delayed answer"
+
+        def create_stream_parser(self):
+            return StreamParser()
+
+        def parse_output(self, response, _schemas):
+            return ParsedOutput(content=response)
+
+    identity = TrustedIdentity("u1", "student", "student")
+    registration = resolve_workspace(identity, "learning")
+    route = build_workspace_route(registration, ResourceScope())
+    executable = WorkspaceRuntime(AgentRuntimeDependencies()).prepare(
+        AgentTurnInput(
+            route=route,
+            identity=identity,
+            conversation_id="c1",
+            current_message="hello",
+            request_metadata={"request_id": "r1"},
+        )
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = SlowProvider()
+    agent.stream_heartbeat_seconds = 0.005
+
+    async def collect_stream():
+        return [event async for event in agent.run_stream(executable)]
+
+    events = asyncio.run(collect_stream())
+    event_names = [event.event for event in events]
+    assert "heartbeat" in event_names
+    assert event_names.index("heartbeat") < event_names.index("content")
+    assert event_names[-1] == "complete"
+
+
+def test_stream_stops_repeating_a_tool_that_is_not_available():
+    """An unavailable tool is emitted once, then a repeated call is stopped."""
+
+    class StreamParser:
+        raw_text = ""
+
+        def feed(self, chunk):
+            self.raw_text += chunk
+            return []
+
+        def finish(self):
+            return []
+
+    class RepeatingProvider:
+        async def generate(self, _messages, _schemas):
+            return "tool call"
+
+        async def generate_stream(self, _messages, _schemas):
+            yield "tool call"
+
+        def create_stream_parser(self):
+            return StreamParser()
+
+        def parse_output(self, _response, _schemas):
+            return ParsedOutput(
+                tool_calls=[
+                    ToolCall(
+                        "parse_pdf_attachment",
+                        {"attachment_id": "missing", "query": "summary"},
+                    )
+                ]
+            )
+
+    identity = TrustedIdentity("u1", "student", "student")
+    registration = resolve_workspace(identity, "learning")
+    route = build_workspace_route(registration, ResourceScope())
+    executable = WorkspaceRuntime(AgentRuntimeDependencies()).prepare(
+        AgentTurnInput(
+            route=route,
+            identity=identity,
+            conversation_id="c1",
+            current_message="summarize the PDF",
+            request_metadata={"request_id": "r1"},
+        )
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = RepeatingProvider()
+
+    messages = asyncio.run(agent.run(executable))
+    assert sum(message.get("role") == "tool" for message in messages) == 1
+    assert messages[-1]["role"] == "assistant"
+    assert "parse_pdf_attachment" in messages[-1]["content"]
+
+    async def collect_stream():
+        return [event async for event in agent.run_stream(executable)]
+
+    events = asyncio.run(collect_stream())
+    assert [event.event for event in events].count("tool_start") == 1
+    assert [event.event for event in events].count("tool") == 1
+    content = "".join(
+        str(event.data.get("delta", ""))
+        for event in events
+        if event.event == "content"
+    )
+    assert "parse_pdf_attachment" in content
+    assert events[-1].event == "complete"

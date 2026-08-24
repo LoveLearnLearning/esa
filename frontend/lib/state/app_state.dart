@@ -44,8 +44,7 @@ class AppState extends ChangeNotifier {
   bool toolsOn = true;
   int codeEditorIndentSize = 2;
   String codeEditorTheme = 'vs-dark';
-  String accountRole = 'student';
-  List<WorkspaceDescriptor> availableWorkspaces = const [
+  static const _studentWorkspaces = [
     WorkspaceDescriptor(
       type: WorkspaceType.learning,
       name: '学习空间',
@@ -59,6 +58,9 @@ class AppState extends ChangeNotifier {
       capabilities: ['chat', 'research_projects'],
     ),
   ];
+
+  String accountRole = 'student';
+  List<WorkspaceDescriptor> availableWorkspaces = _studentWorkspaces;
   WorkspaceType activeWorkspace = WorkspaceType.learning;
   final List<ResearchProject> researchProjects = [];
   bool loadingResearchProjects = false;
@@ -70,6 +72,7 @@ class AppState extends ChangeNotifier {
   UserStats userStats = const UserStats();
   bool loadingProfile = false;
   List<LearningCourseSummary> learningCourses = const [];
+  List<TeachingAssignment> studentAssignments = const [];
   MasteryReport? masteryReport;
   bool loadingLearningOverview = false;
   String? learningOverviewError;
@@ -88,6 +91,9 @@ class AppState extends ChangeNotifier {
   String? _draftConversationId;
 
   bool busy = false; // 正在发消息
+  StreamSubscription<ChatStreamEvent>? _activeStreamSubscription;
+  StreamController<ChatStreamEvent>? _activeStreamController;
+  bool _stopRequested = false;
   bool loadingConversations = false;
   bool loadingMessages = false;
   final List<ScheduleCourse> scheduleCourses = [];
@@ -98,6 +104,8 @@ class AppState extends ChangeNotifier {
 
   String get username => api.username ?? '';
   bool get isLoggedIn => api.isLoggedIn;
+  bool get isTeacher => accountRole == 'teacher';
+  bool get isStudent => accountRole == 'student';
 
   bool isGroupPinned(String groupId) =>
       groups.any((group) => group.id == groupId && group.pinned);
@@ -177,6 +185,17 @@ class AppState extends ChangeNotifier {
         .toList();
   }
 
+  List<DocumentAttachment> get recentAttachments {
+    final seen = <String>{};
+    return _messages.values
+        .expand((items) => items)
+        .expand((message) => message.attachments)
+        .where(
+          (attachment) => attachment.id.isNotEmpty && seen.add(attachment.id),
+        )
+        .toList();
+  }
+
   ChatGroup? get activeGroup {
     if (activeGroupId == null) return null;
     for (final group in groups) {
@@ -191,9 +210,17 @@ class AppState extends ChangeNotifier {
     String username,
     String password, {
     bool rememberLogin = false,
+    String? expectedAccountRole,
   }) async {
     try {
       await api.login(username, password);
+      final signedInRole = api.accountRole;
+      if (expectedAccountRole != null && signedInRole != expectedAccountRole) {
+        await api.logout();
+        _clearSession();
+        final actualLabel = signedInRole == 'teacher' ? '教师' : '学生';
+        return '该账号是$actualLabel账号，请选择$actualLabel身份登录';
+      }
       email = api.email ?? '';
       await _afterLogin();
       if (rememberLogin) {
@@ -253,22 +280,22 @@ class AppState extends ChangeNotifier {
     api.accountRole = manifest.accountRole;
     role = accountRole == 'teacher' ? '教师' : '学生';
     availableWorkspaces = manifest.workspaces;
-    if (!availableWorkspaces.any((item) => item.type == activeWorkspace)) {
-      activeWorkspace = manifest.defaultWorkspace;
-    }
-    await Future.wait([
+    activeWorkspace = manifest.defaultWorkspace;
+    final startupTasks = <Future<void>>[
       loadConversations(),
       loadGroups(),
       loadPreferencesAndProfile(),
       loadUserStats(),
-      loadLearningOverview(),
-    ]);
-    await _migrateLegacyGroupProjectBindings();
-    if (conversations.isNotEmpty) {
-      await setActive(conversations.first.id);
-    } else {
-      activeId = null;
+    ];
+    if (accountRole == 'student') {
+      startupTasks
+        ..add(loadLearningOverview())
+        ..add(loadStudentAssignments());
     }
+    await Future.wait(startupTasks);
+    await _migrateLegacyGroupProjectBindings();
+    // 登录后先进入学习首页，不自动打开最近一条对话；历史对话仍由侧栏选择。
+    activeId = null;
     notifyListeners();
   }
 
@@ -436,11 +463,13 @@ class AppState extends ChangeNotifier {
   }
 
   void _clearSession() {
+    api.clearPersonalKnowledgeBasePreviewCache();
     api.sessionId = null;
     api.userId = null;
     api.username = null;
     api.email = null;
     api.sessionExpiresAt = null;
+    api.accountRole = 'student';
     unawaited(_forgetRememberedSession());
     conversations.clear();
     _messages.clear();
@@ -457,13 +486,24 @@ class AppState extends ChangeNotifier {
     activeId = null;
     _draftConversationId = null;
     busy = false;
+    _stopRequested = false;
+    _activeStreamSubscription = null;
+    _activeStreamController = null;
     preferences = const UserPreferences();
     userProfile = const UserProfile();
     userStats = const UserStats();
     learningCourses = const [];
+    studentAssignments = const [];
     masteryReport = null;
     loadingLearningOverview = false;
     learningOverviewError = null;
+    accountRole = 'student';
+    role = '学生';
+    availableWorkspaces = _studentWorkspaces;
+    activeWorkspace = WorkspaceType.learning;
+    researchProjects.clear();
+    loadingResearchProjects = false;
+    researchProjectsLoaded = false;
     email = '';
     notifyListeners();
   }
@@ -684,6 +724,36 @@ class AppState extends ChangeNotifier {
     return result;
   }
 
+  Future<ScheduleImportResult> completeHustImport({
+    required String challengeId,
+    required String username,
+    required String password,
+    required String captcha,
+    required String semesterName,
+    required DateTime startDate,
+    required DateTime endDate,
+    bool toNewTable = false,
+    String? newTableName,
+  }) async {
+    final result = await api.completeHustImport(
+      challengeId: challengeId,
+      username: username,
+      password: password,
+      captcha: captcha,
+      semesterName: semesterName,
+      startDate: startDate,
+      endDate: endDate,
+      toNewTable: toNewTable,
+      newTableName: newTableName,
+    );
+    // 教务导入可能新建并切换课程表，直接以服务端快照为准。
+    await loadSchedule(force: true);
+    if (!scheduleLoaded) {
+      throw ApiException(0, '课程已导入，但刷新课表失败，请稍后重试');
+    }
+    return result;
+  }
+
   void _sortSchedule() {
     scheduleCourses.sort((a, b) {
       final day = a.weekday.compareTo(b.weekday);
@@ -707,6 +777,17 @@ class AppState extends ChangeNotifier {
       return true;
     }
     return false;
+  }
+
+  // ============ 后端连通性 ============
+  /// 返回 null 表示后端可达，否则返回可直接展示的提示文案。
+  Future<String?> checkBackendConnection() async {
+    try {
+      final ok = await api.checkHealth();
+      return ok ? null : '后端服务暂时不可用，请稍后再试';
+    } catch (_) {
+      return '无法连接后端，请检查网络后重试';
+    }
   }
 
   // ============ 对话 ============
@@ -1299,10 +1380,15 @@ class AppState extends ChangeNotifier {
     String? displayText,
     List<String> attachmentIds = const [],
     List<DocumentAttachment> attachments = const [],
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
   }) async {
     final input = text.trim();
     if (input.isEmpty || busy) return;
 
+    _stopRequested = false;
     // 没有活动对话时先建一个
     if (activeId == null) {
       await _createConversation();
@@ -1338,6 +1424,7 @@ class AppState extends ChangeNotifier {
           list,
           placeholder,
           attachmentIds: selectedAttachmentIds,
+          knowledgeSources: knowledgeSources,
           userMessage: userMessage,
           titleInput: isFirstQuestion ? visibleInput : null,
           taskMode: taskMode,
@@ -1349,13 +1436,18 @@ class AppState extends ChangeNotifier {
                 input,
                 taskMode,
                 attachmentIds: selectedAttachmentIds,
+                knowledgeSources: knowledgeSources,
               )
-            : selectedAttachmentIds.isEmpty
+            : selectedAttachmentIds.isEmpty &&
+                  knowledgeSources.length == 2 &&
+                  knowledgeSources.contains(KnowledgeSource.personal) &&
+                  knowledgeSources.contains(KnowledgeSource.public)
             ? await api.sendMessage(id, input)
             : await api.sendMessageWithAttachments(
                 id,
                 input,
                 selectedAttachmentIds,
+                knowledgeSources: knowledgeSources,
               );
         list.remove(placeholder);
         list.addAll(newMsgs.where((message) => !message.isUser));
@@ -1390,6 +1482,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// 用户在流式输出中点下“终止”按钮时调用：取消正在进行的 SSE 流，
+  /// 保留已生成的部分内容并结束 busy 状态。
+  Future<void> stopGeneration() async {
+    _stopRequested = true;
+    final subscription = _activeStreamSubscription;
+    _activeStreamSubscription = null;
+    if (subscription != null) await subscription.cancel();
+    final controller = _activeStreamController;
+    _activeStreamController = null;
+    if (controller != null && !controller.isClosed) await controller.close();
+    busy = false;
+    notifyListeners();
+  }
+
   /// SSE 中断后从服务端拉取持久化消息，就地覆盖当前列表。
   /// 拉到以助手回复结尾的完整历史返回 true。
   Future<bool> _recoverInterruptedReply(
@@ -1415,12 +1521,18 @@ class AppState extends ChangeNotifier {
     List<ChatMessage> list,
     ChatMessage assistant, {
     List<String> attachmentIds = const [],
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
     ChatMessage? userMessage,
     int? replaceMessageId,
     String? titleInput,
     String? taskMode,
   }) async {
     var completed = false;
+    _stopRequested = false;
+    final terminalToolFailures = <String>{};
     final reasoningQueue = Queue<String>();
     final contentQueue = Queue<String>();
     Timer? typewriterTimer;
@@ -1472,6 +1584,16 @@ class AppState extends ChangeNotifier {
       ensureTypewriter();
     }
 
+    void finishRunningTools(String fallbackText) {
+      for (final message in list.where(
+        (message) => message.isTool && message.toolRunning,
+      )) {
+        message.toolRunning = false;
+        if (message.text.isEmpty) message.text = fallbackText;
+        message.notifyListeners();
+      }
+    }
+
     Future<void> finishTypewriter() async {
       streamEnded = true;
       if (reasoningQueue.isEmpty && contentQueue.isEmpty) {
@@ -1488,12 +1610,17 @@ class AppState extends ChangeNotifier {
       // 事件间隔超过 120 秒视为挂死，结束流走中断恢复。只在 Web 上
       // 启用：原生平台连接中断会正常抛错，而且 Stream.timeout 的假
       // 定时器会挂死 FakeAsync 测试环境。
+      final usesDefaultKnowledgeSources =
+          knowledgeSources.length == 2 &&
+          knowledgeSources.contains(KnowledgeSource.personal) &&
+          knowledgeSources.contains(KnowledgeSource.public);
       var events = replaceMessageId != null
           ? api.streamRevisedMessage(
               conversationId,
               input,
               replaceMessageId,
               attachmentIds,
+              knowledgeSources: knowledgeSources,
             )
           : taskMode != null
           ? api.streamTaskMessage(
@@ -1501,13 +1628,15 @@ class AppState extends ChangeNotifier {
               input,
               taskMode,
               attachmentIds: attachmentIds,
+              knowledgeSources: knowledgeSources,
             )
-          : attachmentIds.isEmpty
+          : attachmentIds.isEmpty && usesDefaultKnowledgeSources
           ? api.streamMessage(conversationId, input)
           : api.streamMessageWithAttachments(
               conversationId,
               input,
               attachmentIds,
+              knowledgeSources: knowledgeSources,
             );
       if (kIsWeb) {
         events = events.timeout(
@@ -1515,90 +1644,132 @@ class AppState extends ChangeNotifier {
           onTimeout: (sink) => sink.close(),
         );
       }
-      await for (final event in events) {
-        switch (event.event) {
-          case 'start':
-            final persistedId = event.data['user_message_id']?.toString();
-            if (persistedId != null && persistedId.isNotEmpty) {
-              userMessage?.id = persistedId;
-              userMessage?.notifyListeners();
-            }
-            break;
-          case 'reasoning':
-            enqueue(reasoningQueue, event.data['delta'] as String? ?? '');
-          case 'content':
-            enqueue(contentQueue, event.data['delta'] as String? ?? '');
-          case 'title':
-            final title = event.data['title']?.toString().trim() ?? '';
-            final titleConversationId =
-                event.data['conversation_id']?.toString() ?? conversationId;
-            if (title.isNotEmpty) {
-              _setConversationTitle(titleConversationId, title);
-              notifyListeners();
-            }
-          case 'tool_start':
-            list.remove(assistant);
-            list.add(
-              ChatMessage(
-                id:
-                    event.data['id']?.toString() ??
-                    DateTime.now().microsecondsSinceEpoch.toString(),
-                role: MessageRole.tool,
-                name: event.data['name'] as String?,
-                toolRunning: true,
-              ),
-            );
-            list.add(assistant);
-            notifyListeners();
-          case 'tool_progress':
-            // 后端长任务心跳；保留调用中卡片并刷新 Web 的 SSE 超时计时。
-            break;
-          case 'tool':
-            final toolId = event.data['id']?.toString();
-            final toolIndex = toolId == null
-                ? -1
-                : list.indexWhere(
-                    (message) => message.isTool && message.id == toolId,
-                  );
-            if (toolIndex >= 0) {
-              final tool = list[toolIndex];
-              tool.text = event.data['content']?.toString() ?? '';
-              tool.toolRunning = false;
-              tool.notifyListeners();
-            } else {
-              // 兼容尚未发送 tool_start 的旧后端。
+      // 通过可取消的控制器转发 SSE 事件：用户点“终止”时关闭控制器，
+      // 让下面的 await for 正常收尾，保留已生成的部分内容。
+      final controller = StreamController<ChatStreamEvent>();
+      _activeStreamController = controller;
+      final subscription = events.listen(
+        controller.add,
+        onError: controller.addError,
+        onDone: controller.close,
+        cancelOnError: true,
+      );
+      _activeStreamSubscription = subscription;
+      try {
+        await for (final event in controller.stream) {
+          switch (event.event) {
+            case 'start':
+              final persistedId = event.data['user_message_id']?.toString();
+              if (persistedId != null && persistedId.isNotEmpty) {
+                userMessage?.id = persistedId;
+                userMessage?.notifyListeners();
+              }
+              break;
+            case 'reasoning':
+              enqueue(reasoningQueue, event.data['delta'] as String? ?? '');
+            case 'content':
+              enqueue(contentQueue, event.data['delta'] as String? ?? '');
+            case 'title':
+              final title = event.data['title']?.toString().trim() ?? '';
+              final titleConversationId =
+                  event.data['conversation_id']?.toString() ?? conversationId;
+              if (title.isNotEmpty) {
+                _setConversationTitle(titleConversationId, title);
+                notifyListeners();
+              }
+            case 'tool_start':
               list.remove(assistant);
               list.add(
                 ChatMessage(
                   id:
-                      toolId ??
+                      event.data['id']?.toString() ??
                       DateTime.now().microsecondsSinceEpoch.toString(),
                   role: MessageRole.tool,
                   name: event.data['name'] as String?,
-                  text: event.data['content']?.toString() ?? '',
+                  toolRunning: true,
                 ),
               );
               list.add(assistant);
-            }
-            notifyListeners();
-          case 'done':
-            await finishTypewriter();
-            completed = true;
-            assistant.typing = false;
-            if (assistant.text.isEmpty && assistant.reasoning.isEmpty) {
-              list.remove(assistant);
               notifyListeners();
-            } else {
-              assistant.notifyListeners();
-            }
-          case 'error':
-            throw ApiException(
-              500,
-              event.data['detail'] as String? ?? '生成回复失败',
-            );
+            case 'tool_progress':
+              // 后端长任务心跳；保留调用中卡片并刷新 Web 的 SSE 超时计时。
+              break;
+            case 'heartbeat':
+              // 模型排队或生成隐藏工具参数时的保活事件，不改变界面内容。
+              break;
+            case 'tool':
+              final toolId = event.data['id']?.toString();
+              final toolName = event.data['name']?.toString() ?? '';
+              final toolContent = event.data['content']?.toString() ?? '';
+              String? terminalFailureKey;
+              try {
+                final payload = jsonDecode(toolContent);
+                if (payload is Map && payload['ok'] == false) {
+                  final error = payload['error']?.toString();
+                  if (error == 'tool_not_available' ||
+                      error == 'resource_capability_required') {
+                    terminalFailureKey = '$toolName\u0000$error';
+                  }
+                }
+              } on FormatException {
+                // Normal tool output does not have to be JSON.
+              }
+              final toolIndex = toolId == null
+                  ? -1
+                  : list.lastIndexWhere(
+                      (message) => message.isTool && message.id == toolId,
+                    );
+              if (terminalFailureKey != null &&
+                  !terminalToolFailures.add(terminalFailureKey)) {
+                if (toolIndex >= 0) list.removeAt(toolIndex);
+                notifyListeners();
+                break;
+              }
+              if (toolIndex >= 0) {
+                final tool = list[toolIndex];
+                tool.text = toolContent;
+                tool.toolRunning = false;
+                tool.notifyListeners();
+              } else {
+                // 兼容尚未发送 tool_start 的旧后端。
+                list.remove(assistant);
+                list.add(
+                  ChatMessage(
+                    id:
+                        toolId ??
+                        DateTime.now().microsecondsSinceEpoch.toString(),
+                    role: MessageRole.tool,
+                    name: toolName,
+                    text: toolContent,
+                  ),
+                );
+                list.add(assistant);
+              }
+              notifyListeners();
+            case 'done':
+              finishRunningTools('工具调用已结束，未返回可展示结果');
+              await finishTypewriter();
+              completed = true;
+              assistant.typing = false;
+              if (assistant.text.isEmpty && assistant.reasoning.isEmpty) {
+                list.remove(assistant);
+                notifyListeners();
+              } else {
+                assistant.notifyListeners();
+              }
+            case 'error':
+              throw ApiException(
+                500,
+                event.data['detail'] as String? ?? '生成回复失败',
+              );
+          }
         }
+      } finally {
+        if (!controller.isClosed) await controller.close();
       }
     } finally {
+      _activeStreamSubscription = null;
+      _activeStreamController = null;
       typewriterTimer?.cancel();
       if (!completed) {
         assistant.reasoning += reasoningQueue.join();
@@ -1606,20 +1777,23 @@ class AppState extends ChangeNotifier {
         reasoningQueue.clear();
         contentQueue.clear();
         assistant.notifyListeners();
-        for (final message in list.where(
-          (message) => message.isTool && message.toolRunning,
-        )) {
-          message.toolRunning = false;
-          if (message.text.isEmpty) {
-            message.text = '工具调用未完成：连接已中断';
-          }
-          message.notifyListeners();
-        }
+        finishRunningTools(
+          _stopRequested ? '工具调用已停止' : '工具调用未完成：连接已中断',
+        );
         notifyListeners();
       }
     }
 
     if (!completed) {
+      if (_stopRequested) {
+        // 用户主动终止生成：保留已输出的部分内容，不再当作错误处理。
+        assistant.typing = false;
+        if (assistant.text.isEmpty && assistant.reasoning.isEmpty) {
+          list.remove(assistant);
+        }
+        notifyListeners();
+        return;
+      }
       throw ApiException(500, '流式连接意外中断');
     }
     if (titleInput != null) {
@@ -1663,6 +1837,7 @@ class AppState extends ChangeNotifier {
     if (conversationId == null || messageId == null || input.isEmpty || busy) {
       return;
     }
+    _stopRequested = false;
     final list = _messages[conversationId];
     final index = list?.indexWhere((item) => identical(item, message)) ?? -1;
     if (list == null || index < 0) return;
@@ -1821,6 +1996,17 @@ class AppState extends ChangeNotifier {
       loadingLearningOverview = false;
       notifyListeners();
     }
+  }
+
+  Future<void> loadStudentAssignments() async {
+    try {
+      studentAssignments = await api.listStudentAssignments();
+    } on ApiException catch (error) {
+      if (!_handled401(error)) studentAssignments = const [];
+    } catch (_) {
+      studentAssignments = const [];
+    }
+    notifyListeners();
   }
 
   Future<String?> savePreferencesAndProfile({

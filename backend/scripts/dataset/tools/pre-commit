@@ -48,3 +48,22 @@ PYTHONPATH=dataset python3 -m esa.validate dataset/data/ir/*.jsonl || {
 
 echo "==> 自检…"
 python3 dataset/tests/test_validator.py >/dev/null || { echo "校验器自检失败"; exit 1; }
+
+# 发布目录跟着一起刷新。
+#
+# 为什么要自动做：2026-08-15 那次改完只更新了工作副本，
+# ~/Desktop/esa-dataset-pr/ 还停在 8/13 的产物（22 个工具、e62713fb、1325 条、
+# 反馈文档里没有 P0-4）。两周里没有任何东西提醒过 —— 因为它在仓库外，
+# git status 看不见它。**靠人记得同步，就是迟早会忘。**
+#
+# 只在发布目录已经存在时才动它：别人 clone 下来第一次提交，
+# 不该凭空在他桌面上造一个目录。
+PUBLISH_DIR="$HOME/Desktop/esa-dataset-pr"
+if [ -d "$PUBLISH_DIR" ]; then
+    echo "==> 同步发布目录…"
+    python3 dataset/tools/make_publish_dir.py --target backend --out "$PUBLISH_DIR" || {
+        echo
+        echo "发布目录同步失败（多半是泄漏扫描命中）。上面写了命中在哪，处理掉再提交。"
+        exit 1
+    }
+fi

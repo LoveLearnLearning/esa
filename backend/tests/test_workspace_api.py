@@ -93,8 +93,9 @@ def test_workspace_manifest_uses_backend_role_policy(tmp_path):
 
     assert teacher_manifest.status_code == 200
     assert [item["type"] for item in teacher_manifest.json()["workspaces"]] == [
-        "teaching",
+        "learning",
         "research",
+        "teaching",
     ]
     assert teacher_manifest.json()["default_workspace"] == "teaching"
 
@@ -396,4 +397,4 @@ def test_research_workspace_has_only_scoped_tools():
     assert "arxiv_search" in research_tool_names
     assert "web_search" in research_tool_names
     assert "get_mastery_report" not in research_tool_names
-    assert "retrieve_knowledge" not in research_tool_names
+    assert "retrieve_knowledge" in research_tool_names

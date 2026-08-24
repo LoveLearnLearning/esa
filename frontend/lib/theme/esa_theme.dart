@@ -19,20 +19,20 @@ class EsaColors {
   // light
   static const lBg = Color(0xFFF3F2F2);
   static const lSurface = Color(0xFFEAE9E9);
-  static const lText = Color(0xFF201E1D);
+  static const lText = Color.fromARGB(255, 0, 0, 0);
   static const lDivider = Color(0x66201E1D); // 40%
   static const lN100 = Color(0xFFF8F4F4);
   static const lN200 = Color(0xFFEAE7E7);
   static const lN300 = Color(0xFFD7D3D3);
-  static const lN500 = Color(0xFF9B9797);
-  static const lN600 = Color(0xFF7D7979);
-  static const lN700 = Color(0xFF605D5D);
+  static const lN500 = Color.fromARGB(255, 164, 158, 158);
+  static const lN600 = Color.fromARGB(255, 48, 46, 46);
+  static const lN700 = Color.fromARGB(255, 0, 0, 0);
 
   // shared —— 蓝色主色调
   static const accent = Color(0xFF3478F6); // blue-600 主按钮 海报 强调
   static const accent100 = Color(0xFFEAF1FF); // 浅蓝 提示条底色
   static const accent600 = Color(0xFF1F63EA);
-  static const accent700 = Color(0xFF1749A7); // 深蓝 提示条文字
+  static const accent700 = Color.fromARGB(255, 135, 175, 250); // 深蓝 提示条文字
   static const onAccent = Color(0xFFF4F7FE); // 蓝底上的文字/图标
 }
 

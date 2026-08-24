@@ -30,7 +30,7 @@ from backend.agent.learning.practice_context import pending_practice_kp_label
 from backend.agent.tools.context import AgentRuntimeDependencies
 from backend.agent.workspaces.models import AgentTurnInput, LearningTurnContext
 from backend.agent.workspaces.runtime import WorkspaceRuntime
-from backend.agent.mm import MultimodalSessionService
+from backend.agent.mm import AttachmentPreparationStatus, MultimodalSessionService
 from backend.agent.DocIR.tools.batch_corpus import SUPPORTED_SOURCE_SUFFIXES
 from backend.agent.memories.memory_models import ProfileQuery
 from backend.core.stores.chat_store import ChatStore
@@ -51,6 +51,7 @@ from backend.core.services.teaching_context_adapter import TeachingContextAdapte
 from backend.core.services.conversation_title_service import (
     ConversationTitleService,
 )
+from backend.core.services.code_execution_service import CodeExecutionService
 from backend.core.services.user_attachment_service import (
     AttachmentTooLarge,
     StoredAttachment,
@@ -69,6 +70,7 @@ from backend.core.web.concurrency import (
 )
 from backend.core.web.deps import get_current_session
 from backend.core.web.schemas import (
+    CodeExecutionRequest,
     ConversationCreateRequest,
     ConversationPatchRequest,
     SendMessageRequest,
@@ -120,6 +122,26 @@ def _attachment_out(item: StoredAttachment) -> dict:
     }
 
 
+def _preparation_status_out(
+    item: StoredAttachment,
+    preparation: AttachmentPreparationStatus,
+) -> dict:
+    """把 MM 会话状态转换为稳定的 HTTP 附件状态契约。"""
+    return {
+        "attachment_id": item.attachment_id,
+        "filename": item.filename,
+        "status": preparation.state,
+        "mode": preparation.mode,
+        "token_count": preparation.token_count,
+        "element_count": preparation.element_count,
+        "page_count": preparation.page_count,
+        "visual_assets": preparation.visual_asset_count,
+        "quality_issue_count": preparation.quality_issue_count,
+        "document_id": preparation.document_id,
+        "error": preparation.error,
+    }
+
+
 def _attachment_inventory(
     request: Request,
     user_id: str,
@@ -141,7 +163,8 @@ def _attachment_inventory(
             status.HTTP_404_NOT_FOUND,
             "附件不存在或不属于当前用户和对话",
         ) from error
-    _mm_sessions(request)
+    mm_sessions = _mm_sessions(request)
+    status_reader = getattr(mm_sessions, "status", None)
     authorized_attachments = tuple(
         {
             "attachment_id": item.attachment_id,
@@ -149,7 +172,12 @@ def _attachment_inventory(
             "suffix": item.suffix,
             "media_type": item.media_type,
             "size_bytes": item.size_bytes,
-            "status": "stored_unparsed",
+            "status": (
+                "ready"
+                if callable(status_reader)
+                and status_reader(conversation_id, item.attachment_id).state == "ready"
+                else "stored_unparsed"
+            ),
         }
         for item in items
     )
@@ -165,6 +193,41 @@ def _attachment_inventory(
             for item in items
         ],
     )
+
+
+def _conversation_attachment_inventory(
+    request: Request,
+    user_id: str,
+    conversation_id: str,
+    attachment_ids: list[str],
+) -> tuple[tuple[dict, ...], list[dict]]:
+    """Authorize explicit files or restore the latest files used in this chat."""
+    if attachment_ids:
+        return _attachment_inventory(
+            request,
+            user_id,
+            conversation_id,
+            attachment_ids,
+        )
+
+    chat_store: ChatStore = request.app.state.chat_store
+    inherited_ids = list(chat_store.get_latest_attachment_ids(conversation_id))
+    if not inherited_ids:
+        return (), []
+    try:
+        authorized, _ = _attachment_inventory(
+            request,
+            user_id,
+            conversation_id,
+            inherited_ids,
+        )
+    except HTTPException as error:
+        # A previously used file may have been removed from durable storage.
+        # That must not make every later text-only message fail with a 404.
+        if error.status_code == status.HTTP_404_NOT_FOUND:
+            return (), []
+        raise
+    return authorized, []
 
 
 def _turn_coordinator(request: Request) -> ConversationTurnCoordinator:
@@ -492,6 +555,7 @@ def _prepare_message(
         user_message_id=user_message_id,
         resolved_kp_ids=tuple(resolved_kp_ids),
         pending_practice_kp_id=pending_practice_kp_id,
+        knowledge_sources=tuple(body.knowledge_sources),
     )
 
 
@@ -586,7 +650,12 @@ def _runtime_dependencies(
         learning_evidence_store=getattr(state, "learning_evidence_store", None),
         learning_state_service=getattr(state, "learning_state_service", None),
         rag_service=getattr(state, "rag_service", None),
+        token_counter=getattr(getattr(state, "agent", None), "llm_provider", None),
+        personal_knowledge_retrieval_service=getattr(
+            state, "personal_knowledge_retrieval_service", None
+        ),
         mcp_client_manager=getattr(state, "mcp_client_manager", None),
+        sandbox_service=getattr(state, "sandbox_service", None),
     )
 
 
@@ -686,6 +755,7 @@ def _build_run_spec(
             pending_practice_kp_id=ctx.pending_practice_kp_id,
         ),
         authorized_attachments=authorized_attachments,
+        knowledge_sources=ctx.knowledge_sources,
         request_metadata={
             "request_id": uuid4().hex,
             "total_weeks": ctx.user.total_weeks,
@@ -1013,7 +1083,70 @@ async def upload_attachment(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
     finally:
         await file.close()
+    mm_sessions = getattr(request.app.state, "mm_sessions", None)
+    if isinstance(mm_sessions, MultimodalSessionService):
+        mm_sessions.register_stored(conversation_id, stored.attachment_id)
+        # 上传请求只负责排队；MinerU/VLM 在会话服务的后台任务中执行。
+        await mm_sessions.start_prepare(
+            conversation_id,
+            stored.attachment_id,
+            stored.source_path,
+        )
     return _attachment_out(stored)
+
+
+@router.post(
+    "/{conversation_id}/attachments/{attachment_id}/prepare",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def prepare_attachment(
+    conversation_id: str,
+    attachment_id: str,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    """启动 MinerU → DocIR → visual enrichment 的后台任务。"""
+    _load_owned(request, conversation_id, session)
+    mm_sessions = _mm_sessions(request)
+    item = _attachment_store(request).get(
+        user_id=session.user_id,
+        conversation_id=conversation_id,
+        attachment_id=attachment_id,
+    )
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "附件不存在")
+    try:
+        preparation = await mm_sessions.start_prepare(
+            conversation_id,
+            attachment_id,
+            item.source_path,
+        )
+    except (FileNotFoundError, ValueError) as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+    return _preparation_status_out(item, preparation)
+
+
+@router.get("/{conversation_id}/attachments/{attachment_id}/status")
+def attachment_status(
+    conversation_id: str,
+    attachment_id: str,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    """查询附件的 stored/parsing/ready/failed 状态。"""
+    _load_owned(request, conversation_id, session)
+    mm_sessions = _mm_sessions(request)
+    item = _attachment_store(request).get(
+        user_id=session.user_id,
+        conversation_id=conversation_id,
+        attachment_id=attachment_id,
+    )
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "附件不存在")
+    return _preparation_status_out(
+        item,
+        mm_sessions.status(conversation_id, attachment_id),
+    )
 
 
 @router.delete(
@@ -1107,6 +1240,36 @@ def get_messages(
     return chat_store.get_history(conversation_id)
 
 
+@router.post("/{conversation_id}/code/execute")
+async def execute_code(
+    conversation_id: str,
+    body: CodeExecutionRequest,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    """Repair with the auxiliary model, then execute in the owned sandbox."""
+
+    _load_owned(request, conversation_id, session)
+    service = getattr(request.app.state, "code_execution_service", None)
+    if not isinstance(service, CodeExecutionService):
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "代码执行服务尚未配置",
+        )
+    try:
+        return await service.execute(
+            user_id=session.user_id,
+            conversation_id=conversation_id,
+            language=body.language,
+            code=body.code,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            str(error),
+        ) from error
+
+
 @router.post("/{conversation_id}/messages")
 async def send_message(
     conversation_id: str,
@@ -1130,7 +1293,7 @@ async def send_message(
     _ensure_message_allowed(request, conversation, session)
     lease = await _acquire_turn(request, conversation_id)
     async with lease:
-        authorized_attachments, attachments = _attachment_inventory(
+        authorized_attachments, attachments = _conversation_attachment_inventory(
             request,
             session.user_id,
             conversation_id,
@@ -1171,7 +1334,12 @@ async def send_message(
         finally:
             await _cancel_title_generation(title_task)
 
-    return [message for message in new_messages if message.get("is_visible", True)]
+    private_tool_fields = {"model_content", "audit_metadata", "request_id", "run_id"}
+    return [
+        {key: value for key, value in message.items() if key not in private_tool_fields}
+        for message in new_messages
+        if message.get("is_visible", True)
+    ]
 
 
 @router.post("/{conversation_id}/messages/stream")
@@ -1196,7 +1364,7 @@ async def stream_message(
     _ensure_message_allowed(request, conversation, session)
     lease = await _acquire_turn(request, conversation_id)
     try:
-        authorized_attachments, attachments = _attachment_inventory(
+        authorized_attachments, attachments = _conversation_attachment_inventory(
             request,
             session.user_id,
             conversation_id,

@@ -339,13 +339,18 @@ PATCH 可传 `name`、`description`、`status`，其中 `status` 为 `active` �
 ```json
 {
   "content": "用户输入的内容",
-  "attachment_ids": ["本对话内已上传的 attachment_id"]
+  "attachment_ids": ["本对话内已上传的 attachment_id"],
+  "knowledge_sources": ["personal", "public"]
 }
 ```
 
 `attachment_ids` 可省略，单轮最多 3 个；附件不存在或不属于当前用户和对话时返回
 `404`。发送消息后，模型会先加载匹配文件类型的 Skill，再按需调用受限附件 Tool；Tool
 只能读取本轮明确传入的附件 ID，不能接收客户端文件路径。
+
+`knowledge_sources` 可省略，默认同时启用个人知识库和公共知识库。可传
+`["personal"]` 或 `["public"]` 限制本轮检索来源，也可传空数组表示本轮不使用知识库。
+后端会从本轮 Agent 的 Tool Schema 中移除未选择来源对应的检索工具。
 
 响应 `200`: 本轮新产生的消息列表(用户消息 + 助手回复 + 工具结果) 结构同历史消息
 
@@ -372,7 +377,10 @@ DOCX、PPTX、XLSX 及 PNG/JPEG/WebP/BMP/GIF/TIFF。上传请求仅将源文件�
 请求头除认证信息外使用 `Content-Type: application/json`，请求体与同步接口相同:
 
 ```json
-{ "content": "用户输入的内容" }
+{
+  "content": "用户输入的内容",
+  "knowledge_sources": ["personal", "public"]
+}
 ```
 
 成功响应 `200`，响应类型为 `text/event-stream`。事件格式:
@@ -614,6 +622,52 @@ PDF、DOCX、PPTX、XLSX 与常见图片先经过 `MinerU → DocIR → Markdown
 校验状态、元素数与页数。HTML 以及未启用 MM 时的 PDF/图片保留兼容解析路径，响应为
 `document.pipeline: legacy`。模型输出经过严格 Schema 校验后才会去重写入用户课表；
 辅助模型不可用时返回 `502`，不会回退占用主模型。
+
+### POST /me/schedule/import/hust/challenge
+
+开始华中科技大学教务导入。请求体可省略，也可提供 `semester_name`、`start_date` 和
+`end_date`；两个日期必须同时提供。服务端与华科 CAS 建立一个短期、当前用户绑定且
+一次性消费的内存会话，返回：
+
+```json
+{
+  "challenge_id": "...",
+  "captcha_image_base64": "...",
+  "captcha_mime_type": "image/jpeg",
+  "expires_at": "2026-08-18T10:05:00+00:00",
+  "recommended_semester_name": "2026-2027 学年第一学期",
+  "recommended_start_date": "2026-08-31",
+  "recommended_end_date": "2027-01-17"
+}
+```
+
+该接口不接收教务账号或密码。challenge 默认 5 分钟过期；同一用户重新开始时，旧
+challenge 会被关闭。
+
+### POST /me/schedule/import/hust/complete
+
+提交验证码并完成 CAS 登录、课表查询和导入：
+
+```json
+{
+  "challenge_id": "...",
+  "username": "U202600001",
+  "password": "...",
+  "captcha": "abcd",
+  "semester_name": "2026-2027 学年第一学期",
+  "start_date": "2026-08-31",
+  "end_date": "2027-01-17",
+  "target": "new",
+  "table_name": "大二上"
+}
+```
+
+`target` 为 `current` 或 `new`。成功响应沿用课表导入结构，包含 `courses`、
+`imported_count`、`skipped_count`、`warnings`、`tables` 和 `active_table_id`，并同步
+第一教学周日期、总周数及 `user_courses`。账号、密码、CAS Cookie 和 ticket 不落库；
+客户端仅允许向 HTTPS 或本机后端提交凭据。HUB 对部署 IP 返回 403 时，需要校园网、
+学校 VPN 或校内代理。详细配置和真实账号验收清单见
+[documents/HUST_TIMETABLE_IMPORT.md](documents/HUST_TIMETABLE_IMPORT.md)。
 
 ---
 
@@ -1019,6 +1073,59 @@ Demo 没有预计算快照；无直接证据的前置点标记为 `needs_diagnos
   日志；摘要不保存完整答案或敏感凭证。
 - AI 分析只是教师决策支持，不能自动发布成绩或在教师确认前写入学生掌握度。
 - 教学班级关联是附加关系，不改变学生对原有全部知识点、个人课程和学习空间的访问。
+
+## 个人知识库接口
+
+学生与教师共用以下接口。身份只取自 `Authorization: Bearer <session_id>`，请求不得
+提交 `user_id`。完整字段、配额、状态机与删除恢复要求以
+`PERSONAL_KNOWLEDGE_BASE_API.md` 为准。
+
+### GET /me/knowledge-base
+
+返回当前用户的完整知识库快照；空库也返回 `200`。快照包含
+`file_count/chunk_count/index_count/status/progress/updated_at/error/files`，并保证
+`file_count == files.length`。`queued/building` 时客户端每 2 秒轮询。
+
+### POST /me/knowledge-base/files
+
+使用 `multipart/form-data` 的重复 `files` 字段批量上传，成功保存并持久化异步任务后
+返回 `202` 和完整快照。MVP 支持 `pdf, doc, docx, ppt, pptx, xls, xlsx, csv, txt,
+md, json, png, jpg, jpeg, webp`。限制为单文件 200 MB、单批 20 个/1 GB、单用户
+1000 个/10 GB；相同用户内按 SHA-256 去重。
+
+缺少 `files` 返回 `422`，空文件返回 `400`，格式或内容不匹配返回 `415`/`400`，配额
+超限返回 `413`，同用户已有上传或重建任务返回 `409`，功能或依赖不可用返回 `503`。
+
+### DELETE /me/knowledge-base/files/{file_id}
+
+同步隐藏当前用户文件并持久化异步清理任务，成功返回 `204`。清理完成前重复删除同一
+tombstone 仍返回 `204`；不存在、已清理或属于其他用户统一返回 `404`。
+
+### POST /me/knowledge-base/rebuild
+
+空 JSON 请求体。保留原文件并排队全量重建，返回 `202` 和完整快照；空库返回 `400`，
+互斥任务冲突返回 `409`。
+
+### GET/HEAD /me/knowledge-base/files/{file_id}/content
+
+返回当前用户原始文件。支持单段 byte Range、`If-Range`、`206/416`、ETag、准确长度、
+inline 文件名和安全响应头；跨用户、已删除及不存在统一 `404`。响应从已授权文件描述符
+按 64 KiB 流式发送。
+
+### GET/HEAD /me/knowledge-base/files/{file_id}/preview
+
+返回有界派生预览：图片缩略图、文本/CSV/JSON、PDF 的 DocIR 文本，以及 Office 的
+隔离转换 PDF 或文本降级。派生物尚未生成返回 `409`。
+
+### GET/HEAD /me/knowledge-base/files/{file_id}/download
+
+与 content 使用相同认证、Range 和流式边界，响应文件名 disposition 为 attachment。
+
+### GET /internal/metrics/personal-knowledge-base
+
+返回个人库 SQLite 侧运行指标：按状态和阶段的任务数、队列/活动/成功/失败数、
+各阶段持久耗时统计、待清理文件与 generation、collection readiness，以及 Qdrant
+mutation/snapshot sequence。该接口不读取文档正文或 Qdrant 查询结果。
 
 ## Web 部署约定
 

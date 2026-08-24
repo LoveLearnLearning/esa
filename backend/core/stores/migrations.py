@@ -73,12 +73,29 @@ CREATE TABLE {table} (
     conversation_id TEXT NOT NULL,
     role TEXT NOT NULL,
     content TEXT NOT NULL,
+    model_content TEXT,
     name TEXT,
+    tool_call_id TEXT,
     attachments_json TEXT NOT NULL DEFAULT '[]',
     is_visible INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     FOREIGN KEY(conversation_id)
         REFERENCES conversations(conversation_id) ON DELETE CASCADE
+)
+"""
+
+TOOL_AUDIT_DDL = """
+CREATE TABLE IF NOT EXISTS tool_audit_log (
+    tool_call_id TEXT PRIMARY KEY,
+    message_id INTEGER NOT NULL UNIQUE,
+    conversation_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    request_id TEXT,
+    run_id TEXT,
+    metadata_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
+    FOREIGN KEY(conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE
 )
 """
 
@@ -519,6 +536,10 @@ def _migrate_messages(connection: sqlite3.Connection) -> None:
             connection.execute(
                 "ALTER TABLE messages ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1"
             )
+        if "model_content" not in _columns(connection, "messages"):
+            connection.execute("ALTER TABLE messages ADD COLUMN model_content TEXT")
+        if "tool_call_id" not in _columns(connection, "messages"):
+            connection.execute("ALTER TABLE messages ADD COLUMN tool_call_id TEXT")
         if not _has_foreign_key(
             connection,
             "messages",
@@ -564,6 +585,17 @@ def _migrate_messages(connection: sqlite3.Connection) -> None:
     connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_messages_conversation "
         "ON messages (conversation_id, id)"
+    )
+
+
+def _migrate_tool_result_channels(connection: sqlite3.Connection) -> None:
+    """Add separated model/display content and persistent tool audit metadata."""
+
+    _migrate_messages(connection)
+    connection.execute(TOOL_AUDIT_DDL)
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tool_audit_conversation "
+        "ON tool_audit_log(conversation_id, created_at)"
     )
 
 
@@ -1161,6 +1193,344 @@ def _migrate_workspace_runtime_domains(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_personal_knowledge_base(connection: sqlite3.Connection) -> None:
+    """Create the durable, tenant-scoped personal knowledge-base schema."""
+
+    script = """
+        CREATE TABLE personal_knowledge_base_generations (
+            generation_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            input_files_json TEXT NOT NULL DEFAULT '[]',
+            collection_name TEXT NOT NULL,
+            embedding_fingerprint TEXT NOT NULL,
+            chunk_fingerprint TEXT NOT NULL,
+            index_fingerprint TEXT NOT NULL,
+            locator_schema_version TEXT NOT NULL,
+            chunk_count INTEGER NOT NULL DEFAULT 0 CHECK(chunk_count >= 0),
+            index_count INTEGER NOT NULL DEFAULT 0 CHECK(index_count >= 0),
+            created_at TEXT NOT NULL,
+            activated_at TEXT,
+            retired_at TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(status IN ('staging', 'active', 'failed', 'retired'))
+        );
+
+        CREATE TABLE personal_knowledge_bases (
+            user_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'idle',
+            progress REAL NOT NULL DEFAULT 0.0 CHECK(progress BETWEEN 0.0 AND 1.0),
+            error TEXT,
+            active_generation_id TEXT,
+            building_generation_id TEXT,
+            desired_revision INTEGER NOT NULL DEFAULT 0 CHECK(desired_revision >= 0),
+            indexed_revision INTEGER NOT NULL DEFAULT 0 CHECK(indexed_revision >= 0),
+            file_count INTEGER NOT NULL DEFAULT 0 CHECK(file_count >= 0),
+            chunk_count INTEGER NOT NULL DEFAULT 0 CHECK(chunk_count >= 0),
+            index_count INTEGER NOT NULL DEFAULT 0 CHECK(index_count >= 0),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(active_generation_id)
+                REFERENCES personal_knowledge_base_generations(generation_id),
+            FOREIGN KEY(building_generation_id)
+                REFERENCES personal_knowledge_base_generations(generation_id),
+            CHECK(status IN ('idle', 'queued', 'building', 'ready', 'failed')),
+            CHECK(indexed_revision <= desired_revision),
+            CHECK(length(error) <= 2000)
+        );
+
+        CREATE TABLE personal_knowledge_base_files (
+            file_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            suffix TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL CHECK(size_bytes > 0),
+            sha256 TEXT NOT NULL CHECK(length(sha256) = 64),
+            source_path TEXT NOT NULL,
+            docir_manifest_path TEXT,
+            chunk_manifest_path TEXT,
+            ingestion_revision INTEGER NOT NULL CHECK(ingestion_revision > 0),
+            indexed_revision INTEGER NOT NULL DEFAULT 0 CHECK(indexed_revision >= 0),
+            status TEXT NOT NULL DEFAULT 'queued',
+            progress REAL NOT NULL DEFAULT 0.0 CHECK(progress BETWEEN 0.0 AND 1.0),
+            chunk_count INTEGER NOT NULL DEFAULT 0 CHECK(chunk_count >= 0),
+            index_count INTEGER NOT NULL DEFAULT 0 CHECK(index_count >= 0),
+            error TEXT,
+            tombstoned_at TEXT,
+            cleanup_completed_at TEXT,
+            uploaded_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(status IN ('queued', 'building', 'ready', 'failed')),
+            CHECK(length(error) <= 2000)
+        );
+        CREATE INDEX idx_personal_kb_files_user_status
+            ON personal_knowledge_base_files(user_id, status);
+        CREATE INDEX idx_personal_kb_files_user_uploaded
+            ON personal_knowledge_base_files(user_id, uploaded_at DESC, file_id);
+        CREATE INDEX idx_personal_kb_files_user_sha
+            ON personal_knowledge_base_files(user_id, sha256);
+        CREATE UNIQUE INDEX uq_personal_kb_files_live_sha
+            ON personal_knowledge_base_files(user_id, sha256)
+            WHERE tombstoned_at IS NULL;
+
+        CREATE TABLE personal_knowledge_base_jobs (
+            job_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            job_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'queued',
+            progress REAL NOT NULL DEFAULT 0.0 CHECK(progress BETWEEN 0.0 AND 1.0),
+            generation_id TEXT,
+            target_revision INTEGER NOT NULL CHECK(target_revision > 0),
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+            error TEXT,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(generation_id)
+                REFERENCES personal_knowledge_base_generations(generation_id),
+            CHECK(job_type IN ('upload', 'delete', 'rebuild', 'cleanup_generation', 'reconcile')),
+            CHECK(status IN ('queued', 'running', 'succeeded', 'failed', 'cancel_requested', 'cancelled')),
+            CHECK(length(error) <= 2000)
+        );
+        CREATE INDEX idx_personal_kb_jobs_user_status
+            ON personal_knowledge_base_jobs(user_id, status);
+        CREATE INDEX idx_personal_kb_jobs_user_revision
+            ON personal_knowledge_base_jobs(user_id, target_revision, created_at);
+        CREATE UNIQUE INDEX uq_personal_kb_one_running_job
+            ON personal_knowledge_base_jobs(user_id)
+            WHERE status = 'running';
+
+        CREATE INDEX idx_personal_kb_generations_user_status
+            ON personal_knowledge_base_generations(user_id, status);
+
+        CREATE TABLE personal_knowledge_base_collection_state (
+            singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+            collection_name TEXT NOT NULL,
+            qdrant_mutation_seq INTEGER NOT NULL DEFAULT 0 CHECK(qdrant_mutation_seq >= 0),
+            snapshot_mutation_seq INTEGER NOT NULL DEFAULT 0 CHECK(snapshot_mutation_seq >= 0),
+            snapshot_dirty INTEGER NOT NULL DEFAULT 0 CHECK(snapshot_dirty IN (0, 1)),
+            ready INTEGER NOT NULL DEFAULT 0 CHECK(ready IN (0, 1)),
+            error TEXT,
+            updated_at TEXT NOT NULL,
+            CHECK(snapshot_mutation_seq <= qdrant_mutation_seq),
+            CHECK(length(error) <= 2000)
+        );
+
+        CREATE TABLE personal_knowledge_base_mutations (
+            mutation_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            target_revision INTEGER NOT NULL CHECK(target_revision > 0),
+            operation TEXT NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'pending',
+            qdrant_mutation_seq INTEGER UNIQUE,
+            attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+            error TEXT,
+            created_at TEXT NOT NULL,
+            applied_at TEXT,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, target_revision, operation),
+            CHECK(operation IN ('publish_file', 'hide_file', 'delete_file', 'activate_generation', 'delete_generation')),
+            CHECK(status IN ('pending', 'applying', 'applied', 'failed')),
+            CHECK(length(error) <= 2000)
+        );
+        CREATE INDEX idx_personal_kb_mutations_status_seq
+            ON personal_knowledge_base_mutations(status, qdrant_mutation_seq);
+        CREATE INDEX idx_personal_kb_mutations_user_revision
+            ON personal_knowledge_base_mutations(user_id, target_revision);
+
+        CREATE TABLE personal_knowledge_base_snapshots (
+            snapshot_id TEXT PRIMARY KEY,
+            snapshot_path TEXT NOT NULL UNIQUE,
+            sha256 TEXT NOT NULL CHECK(length(sha256) = 64),
+            collection_name TEXT NOT NULL,
+            point_count INTEGER NOT NULL CHECK(point_count >= 0),
+            qdrant_mutation_seq INTEGER NOT NULL CHECK(qdrant_mutation_seq >= 0),
+            embedding_fingerprint TEXT NOT NULL,
+            index_fingerprint TEXT NOT NULL,
+            locator_schema_version TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'valid',
+            created_at TEXT NOT NULL,
+            verified_at TEXT,
+            CHECK(status IN ('creating', 'valid', 'invalid', 'deleted'))
+        );
+        CREATE INDEX idx_personal_kb_snapshots_sequence
+            ON personal_knowledge_base_snapshots(status, qdrant_mutation_seq DESC);
+        """
+    # ``executescript`` implicitly commits an open transaction. Execute each
+    # statement ourselves so run_migrations can roll V13 back as one unit.
+    for statement in script.split(";"):
+        if statement.strip():
+            connection.execute(statement)
+
+
+def _migrate_personal_knowledge_base_job_stage(
+    connection: sqlite3.Connection,
+) -> None:
+    connection.execute(
+        """
+        ALTER TABLE personal_knowledge_base_jobs
+        ADD COLUMN stage TEXT NOT NULL DEFAULT 'queued'
+        CHECK(stage IN (
+            'queued', 'preparing', 'parsing', 'chunking', 'embedding',
+            'indexing', 'verifying', 'committing', 'deleting', 'cleaning',
+            'complete', 'failed', 'cancelled'
+        ))
+        """
+    )
+
+
+def _migrate_personal_knowledge_base_upload_reservations(
+    connection: sqlite3.Connection,
+) -> None:
+    connection.execute(
+        """
+        CREATE TABLE personal_knowledge_base_upload_reservations (
+            reservation_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            reserved_files INTEGER NOT NULL CHECK(reserved_files > 0),
+            reserved_bytes INTEGER NOT NULL CHECK(reserved_bytes > 0),
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_personal_kb_upload_reservations_user
+        ON personal_knowledge_base_upload_reservations(user_id)
+        """
+    )
+
+
+def _migrate_personal_knowledge_base_stage_events(
+    connection: sqlite3.Connection,
+) -> None:
+    connection.execute(
+        """
+        CREATE TABLE personal_knowledge_base_job_stage_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            duration_seconds REAL,
+            FOREIGN KEY(job_id) REFERENCES personal_knowledge_base_jobs(job_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(duration_seconds IS NULL OR duration_seconds >= 0)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_personal_kb_stage_events_stage
+        ON personal_knowledge_base_job_stage_events(stage, started_at)
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO personal_knowledge_base_job_stage_events (
+            job_id, user_id, stage, started_at, ended_at, duration_seconds
+        )
+        SELECT job_id, user_id, stage, updated_at,
+               CASE WHEN stage IN ('complete', 'failed', 'cancelled')
+                    THEN updated_at ELSE NULL END,
+               CASE WHEN stage IN ('complete', 'failed', 'cancelled')
+                    THEN 0.0 ELSE NULL END
+        FROM personal_knowledge_base_jobs
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER trg_personal_kb_job_stage_insert
+        AFTER INSERT ON personal_knowledge_base_jobs
+        BEGIN
+            INSERT INTO personal_knowledge_base_job_stage_events (
+                job_id, user_id, stage, started_at, ended_at, duration_seconds
+            ) VALUES (
+                NEW.job_id, NEW.user_id, NEW.stage, NEW.updated_at,
+                CASE WHEN NEW.stage IN ('complete', 'failed', 'cancelled')
+                     THEN NEW.updated_at ELSE NULL END,
+                CASE WHEN NEW.stage IN ('complete', 'failed', 'cancelled')
+                     THEN 0.0 ELSE NULL END
+            );
+        END
+        """
+    )
+    connection.execute(
+        """
+        CREATE TRIGGER trg_personal_kb_job_stage_update
+        AFTER UPDATE OF stage ON personal_knowledge_base_jobs
+        WHEN OLD.stage != NEW.stage
+        BEGIN
+            UPDATE personal_knowledge_base_job_stage_events
+            SET ended_at = NEW.updated_at,
+                duration_seconds = MAX(
+                    0.0,
+                    (julianday(NEW.updated_at) - julianday(started_at)) * 86400.0
+                )
+            WHERE job_id = NEW.job_id AND ended_at IS NULL;
+            INSERT INTO personal_knowledge_base_job_stage_events (
+                job_id, user_id, stage, started_at, ended_at, duration_seconds
+            ) VALUES (
+                NEW.job_id, NEW.user_id, NEW.stage, NEW.updated_at,
+                CASE WHEN NEW.stage IN ('complete', 'failed', 'cancelled')
+                     THEN NEW.updated_at ELSE NULL END,
+                CASE WHEN NEW.stage IN ('complete', 'failed', 'cancelled')
+                     THEN 0.0 ELSE NULL END
+            );
+        END
+        """
+    )
+
+
+def _migrate_personal_knowledge_base_user_purges(
+    connection: sqlite3.Connection,
+) -> None:
+    """Persist tenant-wide privacy deletion independently of the user row."""
+
+    connection.execute(
+        """
+        CREATE TABLE personal_knowledge_base_user_purges (
+            purge_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            file_ids_json TEXT NOT NULL DEFAULT '[]',
+            qdrant_mutation_seq INTEGER UNIQUE,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            applied_at TEXT,
+            cleanup_completed_at TEXT,
+            updated_at TEXT NOT NULL,
+            CHECK(status IN ('pending', 'applying', 'applied', 'completed', 'failed')),
+            CHECK(qdrant_mutation_seq IS NULL OR qdrant_mutation_seq > 0),
+            CHECK(length(error) <= 2000)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX uq_personal_kb_user_purge
+        ON personal_knowledge_base_user_purges(user_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_personal_kb_user_purge_sequence
+        ON personal_knowledge_base_user_purges(status, qdrant_mutation_seq)
+        """
+    )
+
+
 MIGRATIONS: list[MigrationDef] = [
     (
         1,
@@ -1367,6 +1737,36 @@ MIGRATIONS: list[MigrationDef] = [
     ),
     (
         13,
+        "create_personal_knowledge_base",
+        _migrate_personal_knowledge_base,
+    ),
+    (
+        14,
+        "persist_personal_knowledge_base_job_stage",
+        _migrate_personal_knowledge_base_job_stage,
+    ),
+    (
+        15,
+        "reserve_personal_knowledge_base_upload_quota",
+        _migrate_personal_knowledge_base_upload_reservations,
+    ),
+    (
+        16,
+        "measure_personal_knowledge_base_job_stages",
+        _migrate_personal_knowledge_base_stage_events,
+    ),
+    (
+        17,
+        "persist_personal_knowledge_base_user_purges",
+        _migrate_personal_knowledge_base_user_purges,
+    ),
+    (
+        18,
+        "separate_tool_result_channels",
+        _migrate_tool_result_channels,
+    ),
+    (
+        19,
         "persist_product_ui_state_and_planner",
         _migrate_product_ui_state,
     ),

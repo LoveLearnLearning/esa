@@ -14,6 +14,22 @@ from pathlib import Path
 DEFAULT_SQLITE_TIMEOUT_SECONDS = 30.0
 
 
+def ensure_rollback_journal(database_path: str | Path) -> str:
+    """Persist and verify rollback-journal mode before shared-NFS startup."""
+
+    path = Path(database_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(str(path), timeout=DEFAULT_SQLITE_TIMEOUT_SECONDS)
+    try:
+        mode = str(connection.execute("PRAGMA journal_mode = DELETE").fetchone()[0])
+        if mode.lower() != "delete":
+            raise RuntimeError(f"SQLite refused rollback journal mode: {mode}")
+    finally:
+        connection.close()
+    path.chmod(0o600)
+    return mode.lower()
+
+
 def connect_sqlite(
     database_path: str | Path,
     *,

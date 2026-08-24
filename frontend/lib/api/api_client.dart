@@ -5,6 +5,7 @@
 // 当 config.dart 里 kOfflineMode == true 时 所有方法走本地假数据 完全不发网络请求
 
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -13,6 +14,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../config.dart';
+import '../models/hust_import_models.dart';
 import '../models/models.dart';
 
 /// 后端返回的错误 statusCode + detail(取自 {"detail": ...})
@@ -35,6 +37,73 @@ class ChatStreamEvent {
   final Map<String, dynamic> data;
 }
 
+class CodeExecutionResult {
+  const CodeExecutionResult({
+    required this.ok,
+    required this.language,
+    required this.code,
+    required this.codeChanged,
+    required this.dependencies,
+    required this.rejectedDependencies,
+    required this.notes,
+    required this.warnings,
+    required this.modelUsed,
+    required this.attemptCount,
+    required this.result,
+    required this.installResults,
+  });
+
+  factory CodeExecutionResult.fromJson(Map<String, dynamic> json) =>
+      CodeExecutionResult(
+        ok: json['ok'] == true,
+        language: json['language']?.toString() ?? 'plaintext',
+        code: json['code']?.toString() ?? '',
+        codeChanged: json['code_changed'] == true,
+        dependencies: _stringValues(json['dependencies']),
+        rejectedDependencies: _stringValues(json['rejected_dependencies']),
+        notes: _stringValues(json['notes']),
+        warnings: _stringValues(json['warnings']),
+        modelUsed: json['model_used'] == true,
+        attemptCount: (json['attempt_count'] as num?)?.toInt() ?? 0,
+        result: json['result'] is Map
+            ? Map<String, dynamic>.from(json['result'] as Map)
+            : const {},
+        installResults: json['install_results'] is List
+            ? (json['install_results'] as List)
+                  .whereType<Map>()
+                  .map(Map<String, dynamic>.from)
+                  .toList()
+            : const [],
+      );
+
+  static List<String> _stringValues(Object? value) => value is List
+      ? value.whereType<Object>().map((item) => item.toString()).toList()
+      : const [];
+
+  final bool ok;
+  final String language;
+  final String code;
+  final bool codeChanged;
+  final List<String> dependencies;
+  final List<String> rejectedDependencies;
+  final List<String> notes;
+  final List<String> warnings;
+  final bool modelUsed;
+  final int attemptCount;
+  final Map<String, dynamic> result;
+  final List<Map<String, dynamic>> installResults;
+
+  String get stdout => result['stdout']?.toString() ?? '';
+  String get stderr => result['stderr']?.toString() ?? '';
+  String get error => result['error']?.toString() ?? '';
+  double get durationSeconds {
+    final seconds = result['duration_seconds'];
+    if (seconds is num) return seconds.toDouble();
+    final milliseconds = result['duration_ms'];
+    return milliseconds is num ? milliseconds.toDouble() / 1000 : 0;
+  }
+}
+
 class AttachmentContent {
   const AttachmentContent({
     required this.bytes,
@@ -47,9 +116,81 @@ class AttachmentContent {
   final String filename;
 }
 
+class RequestCancellation {
+  bool _cancelled = false;
+  void Function()? _activeCancel;
+
+  bool get isCancelled => _cancelled;
+
+  void cancel() {
+    if (_cancelled) return;
+    _cancelled = true;
+    _activeCancel?.call();
+    _activeCancel = null;
+  }
+
+  void attach(void Function() callback) {
+    if (_cancelled) {
+      callback();
+    } else {
+      _activeCancel = callback;
+    }
+  }
+
+  void detach() => _activeCancel = null;
+}
+
+class AttachmentTransfer {
+  AttachmentTransfer._({
+    required http.Client client,
+    required http.StreamedResponse response,
+    required this.mediaType,
+    required this.filename,
+  }) : contentLength = response.contentLength {
+    _client = client;
+    chunks = _closeAfter(response.stream);
+  }
+
+  late final http.Client _client;
+  late final Stream<List<int>> chunks;
+  final int? contentLength;
+  final String mediaType;
+  final String filename;
+  bool _closed = false;
+
+  Stream<List<int>> _closeAfter(Stream<List<int>> source) async* {
+    try {
+      await for (final chunk in source) {
+        yield chunk;
+      }
+    } finally {
+      cancel();
+    }
+  }
+
+  void cancel() {
+    if (_closed) return;
+    _closed = true;
+    _client.close();
+  }
+}
+
+class KnowledgeBaseUploadFile {
+  const KnowledgeBaseUploadFile({
+    required this.filename,
+    required this.stream,
+    required this.length,
+  });
+
+  final String filename;
+  final Stream<List<int>> stream;
+  final int length;
+}
+
 class ApiClient {
-  ApiClient({String? baseUrl})
-    : baseUrl = _normalizeBaseUrl(baseUrl ?? _defaultBaseUrl);
+  ApiClient({String? baseUrl, http.Client Function()? clientFactory})
+    : baseUrl = _normalizeBaseUrl(baseUrl ?? _defaultBaseUrl),
+      _clientFactory = clientFactory ?? http.Client.new;
 
   static const String _configuredBaseUrl = String.fromEnvironment(
     'ESA_API_BASE',
@@ -65,6 +206,14 @@ class ApiClient {
       value.endsWith('/') ? value.substring(0, value.length - 1) : value;
 
   final String baseUrl;
+  final http.Client Function() _clientFactory;
+
+  static const int _personalPreviewMaxBytes = 8 * 1024 * 1024;
+  static const int _personalPreviewCacheMaxBytes = 24 * 1024 * 1024;
+  final LinkedHashMap<String, AttachmentContent> _personalPreviewCache =
+      LinkedHashMap<String, AttachmentContent>();
+  int _personalPreviewCacheBytes = 0;
+  String? _personalPreviewCacheOwner;
 
   String? sessionId;
   String? userId;
@@ -74,6 +223,33 @@ class ApiClient {
   DateTime? sessionExpiresAt;
 
   bool get isLoggedIn => sessionId != null;
+
+  /// 教务密码只能发往 HTTPS，或明确的本机开发地址。
+  /// 临时联调可用 --dart-define=ESA_ALLOW_INSECURE_CREDENTIALS=true 覆盖。
+  bool get allowsCredentialSubmission {
+    const allowInsecure = bool.fromEnvironment(
+      'ESA_ALLOW_INSECURE_CREDENTIALS',
+      defaultValue: false,
+    );
+    if (allowInsecure) return true;
+    final configuredUri = Uri.tryParse(baseUrl);
+    if (configuredUri == null) return false;
+    // Flutter Web 默认使用同源相对地址 `/api`。它的实际传输协议由当前
+    // 页面决定，因此必须先解析到页面来源，不能把生产 HTTPS 误判为明文。
+    final uri = configuredUri.hasScheme
+        ? configuredUri
+        : kIsWeb
+        ? Uri.base.resolveUri(configuredUri)
+        : configuredUri;
+    if (uri.scheme.toLowerCase() == 'https') return true;
+    return const {
+      'localhost',
+      '127.0.0.1',
+      '::1',
+      '10.0.2.2',
+      'host.docker.internal',
+    }.contains(uri.host.toLowerCase());
+  }
 
   Map<String, String> _headers({bool auth = false}) => {
     'Content-Type': 'application/json',
@@ -100,6 +276,19 @@ class ApiClient {
       detail = '请求失败（${r.statusCode}）';
     }
     throw ApiException(r.statusCode, detail);
+  }
+
+  /// 检测后端进程是否可达：GET /health 无需认证，成功返回 200。
+  Future<bool> checkHealth() async {
+    if (kOfflineMode) return true;
+    try {
+      final r = await http
+          .get(_uri('/health'), headers: _headers())
+          .timeout(const Duration(seconds: 8));
+      return r.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   // ---------- 认证 ----------
@@ -190,9 +379,13 @@ class ApiClient {
       username = null;
       email = null;
       sessionExpiresAt = null;
+      clearPersonalKnowledgeBasePreviewCache();
       return;
     }
-    if (sessionId == null) return;
+    if (sessionId == null) {
+      clearPersonalKnowledgeBasePreviewCache();
+      return;
+    }
     try {
       await http.post(_uri('/auth/logout'), headers: _headers(auth: true));
     } catch (_) {
@@ -203,6 +396,7 @@ class ApiClient {
       username = null;
       email = null;
       sessionExpiresAt = null;
+      clearPersonalKnowledgeBasePreviewCache();
     }
   }
 
@@ -657,10 +851,17 @@ class ApiClient {
       'tif' || 'tiff' => 'image/tiff',
       'docx' =>
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'doc' => 'application/msword',
       'pptx' =>
         'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'ppt' => 'application/vnd.ms-powerpoint',
       'xlsx' =>
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'xls' => 'application/vnd.ms-excel',
+      'csv' => 'text/csv',
+      'txt' => 'text/plain',
+      'md' => 'text/markdown',
+      'json' => 'application/json',
       'html' || 'htm' => 'text/html',
       _ => 'application/octet-stream',
     };
@@ -708,6 +909,10 @@ class ApiClient {
             )
             .toList(),
         skippedCount: (data['skipped_count'] as num?)?.toInt() ?? 0,
+        importedCount: (data['imported_count'] as num?)?.toInt(),
+        warnings: (data['warnings'] as List? ?? const [])
+            .map((item) => item.toString())
+            .toList(),
         documentPipeline:
             (data['document'] as Map?)?['pipeline']?.toString() ?? 'legacy',
         documentId: (data['document'] as Map?)?['document_id']?.toString(),
@@ -717,6 +922,76 @@ class ApiClient {
     } on http.ClientException {
       throw ApiException(0, '网络异常，请检查网络后重试');
     }
+  }
+
+  Future<HustImportChallenge> startHustImport() async {
+    if (!allowsCredentialSubmission) {
+      throw ApiException(400, '当前后端不是 HTTPS，已阻止发送教务密码。请改用 HTTPS 或本机后端。');
+    }
+    final r = await http.post(
+      _uri('/me/schedule/import/hust/challenge'),
+      headers: _headers(auth: true),
+      body: '{}',
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) _fail(r);
+    return HustImportChallenge.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<ScheduleImportResult> completeHustImport({
+    required String challengeId,
+    required String username,
+    required String password,
+    required String captcha,
+    required String semesterName,
+    required DateTime startDate,
+    required DateTime endDate,
+    bool toNewTable = false,
+    String? newTableName,
+  }) async {
+    if (!allowsCredentialSubmission) {
+      throw ApiException(400, '当前后端不是 HTTPS，已阻止发送教务密码。请改用 HTTPS 或本机后端。');
+    }
+    final r = await http.post(
+      _uri('/me/schedule/import/hust/complete'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'challenge_id': challengeId,
+        'username': username,
+        'password': password,
+        'captcha': captcha,
+        'semester_name': semesterName,
+        'start_date': _dateOnly(startDate),
+        'end_date': _dateOnly(endDate),
+        'target': toNewTable ? 'new' : 'current',
+        if (toNewTable && newTableName?.trim().isNotEmpty == true)
+          'table_name': newTableName!.trim(),
+      }),
+    );
+    if (r.statusCode != 200) _fail(r);
+    final data = _decode(r) as Map<String, dynamic>;
+    final courses = (data['courses'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => ScheduleCourse.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+    return ScheduleImportResult(
+      courses: courses,
+      skippedCount:
+          (data['skipped_count'] as num?)?.toInt() ??
+          (data['skipped_entries'] as num?)?.toInt() ??
+          0,
+      importedCount:
+          (data['imported_count'] as num?)?.toInt() ??
+          (data['imported_entries'] as num?)?.toInt() ??
+          courses.length,
+      warnings: (data['warnings'] as List? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+    );
+  }
+
+  String _dateOnly(DateTime date) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${date.year}-${two(date.month)}-${two(date.day)}';
   }
 
   Future<ScheduleTable> createScheduleTable(String name) async {
@@ -1588,15 +1863,52 @@ class ApiClient {
         .toList();
   }
 
+  Future<CodeExecutionResult> executeCode(
+    String conversationId, {
+    required String code,
+    required String language,
+  }) async {
+    if (kOfflineMode) {
+      return CodeExecutionResult.fromJson({
+        'ok': false,
+        'language': language,
+        'code': code,
+        'code_changed': false,
+        'warnings': ['离线模式未启用沙箱'],
+        'result': {'ok': false, 'error': 'sandbox_disabled'},
+      });
+    }
+    final response = await http.post(
+      _uri('/conversations/$conversationId/code/execute'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'code': code, 'language': language}),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return CodeExecutionResult.fromJson(
+      _decode(response) as Map<String, dynamic>,
+    );
+  }
+
   Future<List<ChatMessage>> sendMessageWithAttachments(
     String id,
     String content,
-    List<String> attachmentIds,
-  ) async {
+    List<String> attachmentIds, {
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+  }) async {
+    if (kOfflineMode) return _offlineSend(id, content);
     final r = await http.post(
       _uri('/conversations/$id/messages'),
       headers: _headers(auth: true),
-      body: jsonEncode({'content': content, 'attachment_ids': attachmentIds}),
+      body: jsonEncode({
+        'content': content,
+        'attachment_ids': attachmentIds,
+        'knowledge_sources': knowledgeSources
+            .map((item) => item.wireName)
+            .toList(),
+      }),
     );
     if (r.statusCode != 200) _fail(r);
     final list = _decode(r) as List;
@@ -1610,6 +1922,10 @@ class ApiClient {
     String content,
     String taskMode, {
     List<String> attachmentIds = const [],
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
   }) async {
     if (kOfflineMode) return _offlineSend(id, content);
     final r = await http.post(
@@ -1619,6 +1935,9 @@ class ApiClient {
         'content': content,
         'task_mode': taskMode,
         'attachment_ids': attachmentIds,
+        'knowledge_sources': knowledgeSources
+            .map((item) => item.wireName)
+            .toList(),
       }),
     );
     if (r.statusCode != 200) _fail(r);
@@ -1679,6 +1998,242 @@ class ApiClient {
     if (r.statusCode != 204 && r.statusCode != 404) _fail(r);
   }
 
+  // ---------- 个人知识库 ----------
+  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase() async {
+    if (kOfflineMode) return const PersonalKnowledgeBase.empty();
+    final response = await http.get(
+      _uri('/me/knowledge-base'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return PersonalKnowledgeBase.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<PersonalKnowledgeBase> uploadPersonalKnowledgeBaseFiles(
+    List<KnowledgeBaseUploadFile> files,
+  ) async {
+    if (files.isEmpty) return getPersonalKnowledgeBase();
+    if (kOfflineMode) return const PersonalKnowledgeBase.empty();
+    final request = http.MultipartRequest(
+      'POST',
+      _uri('/me/knowledge-base/files'),
+    );
+    if (sessionId != null) {
+      request.headers['Authorization'] = 'Bearer $sessionId';
+    }
+    for (final file in files) {
+      request.files.add(
+        http.MultipartFile(
+          'files',
+          file.stream,
+          file.length,
+          filename: file.filename,
+          contentType: MediaType.parse(_mimeFor(file.filename, Uint8List(0))),
+        ),
+      );
+    }
+    try {
+      final streamed = await request.send().timeout(
+        const Duration(minutes: 15),
+      );
+      final response = await http.Response.fromStream(
+        streamed,
+      ).timeout(const Duration(minutes: 2));
+      if (response.statusCode != 202) _fail(response);
+      return PersonalKnowledgeBase.fromJson(
+        Map<String, dynamic>.from(_decode(response) as Map),
+      );
+    } on TimeoutException {
+      throw ApiException(0, '文件上传超时，请稍后重试');
+    } on http.ClientException {
+      throw ApiException(0, '网络异常，请检查网络后重试');
+    }
+  }
+
+  Future<AttachmentTransfer> fetchPersonalKnowledgeBaseFile(
+    KnowledgeBaseFile file, {
+    bool download = false,
+    String? range,
+    RequestCancellation? cancellation,
+  }) => _openPersonalKnowledgeBaseTransfer(
+    file,
+    endpoint: download ? 'download' : 'content',
+    range: range,
+    cancellation: cancellation,
+  );
+
+  Future<AttachmentContent> fetchPersonalKnowledgeBasePreview(
+    KnowledgeBaseFile file, {
+    RequestCancellation? cancellation,
+  }) async {
+    final owner = userId ?? '';
+    if (_personalPreviewCacheOwner != owner) {
+      clearPersonalKnowledgeBasePreviewCache();
+      _personalPreviewCacheOwner = owner;
+    }
+    final cacheKey = '$owner:${file.id}';
+    final cached = _personalPreviewCache.remove(cacheKey);
+    if (cached != null) {
+      _personalPreviewCache[cacheKey] = cached;
+      return cached;
+    }
+    final transfer = await _openPersonalKnowledgeBaseTransfer(
+      file,
+      endpoint: 'preview',
+      cancellation: cancellation,
+    );
+    cancellation?.attach(transfer.cancel);
+    if (cancellation?.isCancelled ?? false) {
+      throw ApiException(0, '预览请求已取消');
+    }
+    final declared = transfer.contentLength;
+    if (declared != null && declared > _personalPreviewMaxBytes) {
+      transfer.cancel();
+      cancellation?.detach();
+      throw ApiException(413, '预览派生文件超过客户端安全限制');
+    }
+    final builder = BytesBuilder(copy: false);
+    var received = 0;
+    try {
+      await for (final chunk in transfer.chunks) {
+        received += chunk.length;
+        if (received > _personalPreviewMaxBytes) {
+          transfer.cancel();
+          throw ApiException(413, '预览派生文件超过客户端安全限制');
+        }
+        builder.add(chunk);
+      }
+    } on http.ClientException {
+      if (cancellation?.isCancelled ?? false) {
+        throw ApiException(0, '预览请求已取消');
+      }
+      throw ApiException(0, '预览传输中断，请重试');
+    } finally {
+      cancellation?.detach();
+      transfer.cancel();
+    }
+    if (cancellation?.isCancelled ?? false) {
+      throw ApiException(0, '预览请求已取消');
+    }
+    final content = AttachmentContent(
+      bytes: builder.takeBytes(),
+      mediaType: transfer.mediaType,
+      filename: transfer.filename,
+    );
+    _personalPreviewCache[cacheKey] = content;
+    _personalPreviewCacheBytes += content.bytes.length;
+    while (_personalPreviewCacheBytes > _personalPreviewCacheMaxBytes &&
+        _personalPreviewCache.isNotEmpty) {
+      final oldest = _personalPreviewCache.keys.first;
+      _personalPreviewCacheBytes -= _personalPreviewCache
+          .remove(oldest)!
+          .bytes
+          .length;
+    }
+    return content;
+  }
+
+  Future<AttachmentTransfer> _openPersonalKnowledgeBaseTransfer(
+    KnowledgeBaseFile file, {
+    required String endpoint,
+    String? range,
+    RequestCancellation? cancellation,
+  }) async {
+    final client = _clientFactory();
+    cancellation?.attach(client.close);
+    if (cancellation?.isCancelled ?? false) {
+      throw ApiException(0, '文件请求已取消');
+    }
+    final request = http.Request(
+      'GET',
+      _uri(
+        '/me/knowledge-base/files/${Uri.encodeComponent(file.id)}/$endpoint',
+      ),
+    );
+    if (sessionId != null) {
+      request.headers['Authorization'] = 'Bearer $sessionId';
+    }
+    if (range != null && range.trim().isNotEmpty) {
+      request.headers['Range'] = range.trim();
+    }
+    try {
+      final response = await client
+          .send(request)
+          .timeout(const Duration(seconds: 30));
+      if (response.statusCode != 200 && response.statusCode != 206) {
+        final body = BytesBuilder(copy: false);
+        var total = 0;
+        await for (final chunk in response.stream) {
+          if (total < 64 * 1024) {
+            final retained = chunk.take(64 * 1024 - total).toList();
+            body.add(retained);
+            total += retained.length;
+          }
+          if (total >= 64 * 1024) break;
+        }
+        _fail(
+          http.Response.bytes(
+            body.takeBytes(),
+            response.statusCode,
+            headers: response.headers,
+          ),
+        );
+      }
+      final transfer = AttachmentTransfer._(
+        client: client,
+        response: response,
+        mediaType: response.headers['content-type'] ?? file.mediaType,
+        filename: file.filename,
+      );
+      cancellation?.attach(transfer.cancel);
+      return transfer;
+    } on TimeoutException {
+      client.close();
+      cancellation?.detach();
+      throw ApiException(0, '文件请求超时，请重试');
+    } on http.ClientException {
+      client.close();
+      cancellation?.detach();
+      if (cancellation?.isCancelled ?? false) {
+        throw ApiException(0, '文件请求已取消');
+      }
+      throw ApiException(0, '网络异常，请检查网络后重试');
+    } catch (_) {
+      client.close();
+      cancellation?.detach();
+      rethrow;
+    }
+  }
+
+  void clearPersonalKnowledgeBasePreviewCache() {
+    _personalPreviewCache.clear();
+    _personalPreviewCacheBytes = 0;
+    _personalPreviewCacheOwner = null;
+  }
+
+  Future<void> deletePersonalKnowledgeBaseFile(String fileId) async {
+    final response = await http.delete(
+      _uri('/me/knowledge-base/files/${Uri.encodeComponent(fileId)}'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 204 && response.statusCode != 404) {
+      _fail(response);
+    }
+  }
+
+  Future<PersonalKnowledgeBase> rebuildPersonalKnowledgeBase() async {
+    final response = await http.post(
+      _uri('/me/knowledge-base/rebuild'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 202) _fail(response);
+    return PersonalKnowledgeBase.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
   Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
     if (kOfflineMode) {
       final messages = await _offlineSend(id, content);
@@ -1719,14 +2274,21 @@ class ApiClient {
   Stream<ChatStreamEvent> streamMessageWithAttachments(
     String id,
     String content,
-    List<String> attachmentIds,
-  ) async* {
+    List<String> attachmentIds, {
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+  }) async* {
     final request =
         http.Request('POST', _uri('/conversations/$id/messages/stream'))
           ..headers.addAll(_headers(auth: true))
           ..body = jsonEncode({
             'content': content,
             'attachment_ids': attachmentIds,
+            'knowledge_sources': knowledgeSources
+                .map((item) => item.wireName)
+                .toList(),
           });
 
     final response = await request.send();
@@ -1742,6 +2304,10 @@ class ApiClient {
     String content,
     String taskMode, {
     List<String> attachmentIds = const [],
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
   }) async* {
     if (kOfflineMode) {
       yield* streamMessage(id, content);
@@ -1754,6 +2320,9 @@ class ApiClient {
             'content': content,
             'task_mode': taskMode,
             'attachment_ids': attachmentIds,
+            'knowledge_sources': knowledgeSources
+                .map((item) => item.wireName)
+                .toList(),
           });
     final response = await request.send();
     if (response.statusCode != 200) {
@@ -1767,14 +2336,21 @@ class ApiClient {
     String id,
     String content,
     int messageId,
-    List<String> attachmentIds,
-  ) async* {
+    List<String> attachmentIds, {
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+  }) async* {
     final request =
         http.Request('POST', _uri('/conversations/$id/messages/stream'))
           ..headers.addAll(_headers(auth: true))
           ..body = jsonEncode({
             'content': content,
             'attachment_ids': attachmentIds,
+            'knowledge_sources': knowledgeSources
+                .map((item) => item.wireName)
+                .toList(),
             'replace_message_id': messageId,
           });
     final response = await request.send();
@@ -1979,6 +2555,26 @@ class ApiClient {
     );
     if (response.statusCode != 200) _fail(response);
     return Map<String, dynamic>.from(_decode(response) as Map);
+  }
+
+  Future<Map<String, dynamic>> getTeachingStudent(
+    String classId,
+    String studentId,
+  ) async {
+    final response = await http.get(
+      _uri('/teaching/classes/$classId/students/$studentId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return Map<String, dynamic>.from(_decode(response) as Map);
+  }
+
+  Future<void> removeTeachingStudent(String classId, String studentId) async {
+    final response = await http.delete(
+      _uri('/teaching/classes/$classId/members/$studentId'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 204) _fail(response);
   }
 
   Future<List<TeachingClass>> listStudentClasses() async {

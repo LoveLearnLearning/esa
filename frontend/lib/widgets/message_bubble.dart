@@ -21,6 +21,7 @@ class UserBubble extends StatefulWidget {
     this.codeOverrideFor,
     this.onOpenCodeEditorWithId,
     this.onCodeChangedWithId,
+    this.onRunCode,
     this.codeOverrideVersion = 0,
     this.attachments = const [],
     this.onOpenAttachment,
@@ -35,6 +36,7 @@ class UserBubble extends StatefulWidget {
   onOpenCodeEditorWithId;
   final void Function(String blockId, String code, String language)?
   onCodeChangedWithId;
+  final CodeRunCallback? onRunCode;
   final int codeOverrideVersion;
   final List<DocumentAttachment> attachments;
   final ValueChanged<DocumentAttachment>? onOpenAttachment;
@@ -139,6 +141,7 @@ class _UserBubbleState extends State<UserBubble> {
                                 onOpenCodeEditorWithId:
                                     widget.onOpenCodeEditorWithId,
                                 onCodeChangedWithId: widget.onCodeChangedWithId,
+                                onRunCode: widget.onRunCode,
                                 codeOverrideVersion: widget.codeOverrideVersion,
                               )
                             : CopyableSelectionArea(

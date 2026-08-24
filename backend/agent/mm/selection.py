@@ -1,4 +1,10 @@
-"""Conservative admission policy for visual-enrichment candidates."""
+# backend/agent/mm/selection.py
+
+"""无标签视觉候选准入。
+
+选择器只看运行时契约、独立证据和校验结果；不读取参考答案、人工评分
+或模型自报置信度。
+"""
 
 from __future__ import annotations
 
@@ -7,6 +13,7 @@ from .contracts import (
     VisualEnrichmentCandidate,
     VisualEnrichmentOutcome,
     VisualEnrichmentRequest,
+    VisualRisk,
     VisualRoute,
     VisualRouteDecision,
 )
@@ -17,61 +24,101 @@ MM_VISUAL_SELECTION_VERSION = "mm-visual-selection-0.1"
 
 def select_visual_candidate(
     request: VisualEnrichmentRequest,
-    route: VisualRouteDecision,
-    candidate: VisualEnrichmentCandidate | None,
+    route_decision: VisualRouteDecision,
+    candidate: VisualEnrichmentCandidate | None = None,
     *,
     error: Exception | None = None,
 ) -> VisualEnrichmentOutcome:
-    """Admit descriptive text while holding unsupported structure for review."""
+    """根据无标签证据决定候选是否可写入 DocIR。"""
 
-    if route.route is VisualRoute.MANUAL_REVIEW:
+    if error is not None:
         return VisualEnrichmentOutcome(
-            request,
-            route,
-            VisualDecision.REVIEW,
-            candidate=candidate,
-            reason=route.reason,
+            request=request,
+            route_decision=route_decision,
+            decision=VisualDecision.REJECT,
+            reason=f"visual provider failed: {type(error).__name__}",
         )
-    if route.route is VisualRoute.SKIP_EXISTING_STRUCTURE:
+    if route_decision.route is VisualRoute.MANUAL_REVIEW:
+        if candidate is not None:
+            return _review(request, route_decision, candidate, route_decision.reason)
         return VisualEnrichmentOutcome(
-            request,
-            route,
-            VisualDecision.REJECT,
-            reason=route.reason,
+            request=request,
+            route_decision=route_decision,
+            decision=VisualDecision.REVIEW,
+            reason=route_decision.reason,
         )
-    if error is not None or candidate is None:
-        return VisualEnrichmentOutcome(
-            request,
-            route,
-            VisualDecision.REJECT,
-            reason=(
-                f"visual provider failed: {type(error).__name__}"
-                if error is not None
-                else "visual provider returned no candidate"
-            ),
+    if not route_decision.should_analyze:
+        decision = (
+            VisualDecision.REVIEW
+            if route_decision.route is VisualRoute.MANUAL_REVIEW
+            else VisualDecision.REJECT
         )
-    if candidate.validator_findings or candidate.unresolved_items:
         return VisualEnrichmentOutcome(
-            request,
-            route,
-            VisualDecision.REVIEW,
-            candidate=candidate,
-            reason="candidate contains unresolved or validator findings",
+            request=request,
+            route_decision=route_decision,
+            decision=decision,
+            reason=route_decision.reason,
         )
-    if candidate.structure is not None and not candidate.evidence:
+    if candidate is None:
         return VisualEnrichmentOutcome(
+            request=request,
+            route_decision=route_decision,
+            decision=VisualDecision.REJECT,
+            reason="visual provider returned no candidate",
+        )
+    if route_decision.route is VisualRoute.GENERIC_VLM and route_decision.risk in {
+        VisualRisk.MEDIUM,
+        VisualRisk.HIGH,
+    }:
+        return _review(
             request,
-            route,
-            VisualDecision.REVIEW,
-            candidate=candidate,
-            reason="structured visual claims require independent evidence",
+            route_decision,
+            candidate,
+            "generic VLM output for a medium/high-risk route requires review",
+        )
+    if candidate.structure is not None:
+        if route_decision.route is not VisualRoute.SPECIALIST:
+            return _review(
+                request,
+                route_decision,
+                candidate,
+                "structured visual claims require a specialist route",
+            )
+        if not candidate.evidence:
+            return _review(
+                request,
+                route_decision,
+                candidate,
+                "structured visual claims have no independent evidence",
+            )
+    if candidate.unresolved_items or candidate.validator_findings:
+        return _review(
+            request,
+            route_decision,
+            candidate,
+            "candidate contains unresolved items or validator findings",
         )
     return VisualEnrichmentOutcome(
-        request,
-        route,
-        VisualDecision.ACCEPT,
+        request=request,
+        route_decision=route_decision,
+        decision=VisualDecision.ACCEPT,
         candidate=candidate,
-        reason="descriptive VLM output accepted as non-authoritative text",
+        reason="non-structural visual description passed the current gate",
         write_to_docir=True,
         retrieval_eligible=True,
+    )
+
+
+def _review(
+    request: VisualEnrichmentRequest,
+    route_decision: VisualRouteDecision,
+    candidate: VisualEnrichmentCandidate,
+    reason: str,
+) -> VisualEnrichmentOutcome:
+    return VisualEnrichmentOutcome(
+        request=request,
+        route_decision=route_decision,
+        decision=VisualDecision.REVIEW,
+        candidate=candidate,
+        reason=reason,
     )

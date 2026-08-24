@@ -110,7 +110,7 @@ _EXACT_REFERENCE = re.compile(
 _VERSION = re.compile(r"(?iu)(?:\bv?\d+(?:\.\d+){1,3}\b|\b\d{4}\b)")
 _ACRONYM = re.compile(r"(?<!\w)[A-Z][A-Z0-9-]{1,9}(?!\w)")
 _PROPER_NAME = re.compile(r"(?<!\w)[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+(?!\w)")
-_SPECIAL = re.compile(r"[-_/#§:]|[A-Za-z]+\.\d+")
+_SPECIAL = re.compile(r"[-_/#§:]|\b[A-Za-z]+\.\d+")
 
 
 def lexical_confidence(

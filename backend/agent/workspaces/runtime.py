@@ -12,6 +12,7 @@ from backend.agent.workspaces.learning_adapter import LearningAdapter
 from backend.agent.workspaces.models import AgentRunSpec, AgentTurnInput, ExecutableAgentRun
 from backend.agent.workspaces.profile_registry import DEFAULT_PROFILE_REGISTRY, WorkspaceProfileRegistry
 from backend.agent.workspaces.run_spec_builder import RunSpecBuilder
+from backend.core.utils.config import WORKSPACE_CONTEXT_MAX_TOKENS
 
 
 class WorkspaceRuntime:
@@ -26,7 +27,7 @@ class WorkspaceRuntime:
         self.dependencies = dependencies
         self.profiles = profiles
         self.capabilities = CapabilityRuntime()
-        self.composer = ContextComposer()
+        self.composer = ContextComposer(max_tokens=WORKSPACE_CONTEXT_MAX_TOKENS)
         self.learning = LearningAdapter()
         self.builder = RunSpecBuilder()
 
@@ -80,6 +81,7 @@ class WorkspaceRuntime:
             conversation_mode=turn.conversation_mode,
             has_research_project=route.resource_scope.project_id is not None,
             has_attachments=bool(route.resource_scope.attachment_ids),
+            knowledge_sources=turn.knowledge_sources,
         )
         strategy = (
             self.learning.augment(turn, view.skills, turn.profile_snapshot)
@@ -101,6 +103,7 @@ class WorkspaceRuntime:
             request_id=request_id,
             run_id=str(turn.request_metadata.get("run_id") or request_id),
             total_weeks=turn.request_metadata.get("total_weeks"),
+            knowledge_sources=turn.knowledge_sources,
         )
         return self.builder.build(
             turn=turn,

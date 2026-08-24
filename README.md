@@ -21,6 +21,7 @@ ESA（Efficient Study Agent）服务于计算机学科的一流本科建设：�
 - **教师主导的作业诊断**：支持简答题和代码文本题、批量 AI 分析、逐题教师复核、反馈发布及班级薄弱知识点和前置根因分析。AI 不会自动发布成绩或提前改写学生掌握度。
 - **有边界的科研辅助**：研究项目、项目画像、文献检索、前沿追踪、研究数据与写作任务均有资源范围；写作助手仅使用已提供材料，不编造引用、实验数据或结论。
 - **可追溯、可治理**：RAG 返回来源定位；学习、教学和科研空间使用独立身份、资源和能力视图；关键教学操作写入只追加审计记录。
+- **统一课表入口**：支持文件识别与华科统一身份认证导入；教务凭据仅用于当次 HTTPS 请求，不写入 ESA 数据库。
 - **可运行的工程基础**：FastAPI、vLLM、Flutter 和 SQLite 支持多用户认证、持久化、SSE 流式交互、受控工具调用、跨 Worker 对话串行化和 Web/macOS/iOS 构建。
 
 ## 推荐 Demo
@@ -56,6 +57,7 @@ API.md                    前后端接口约定
 TODO.md                   唯一待办清单与已知边界
 DATASET_GENERATION.md     Qwen3.5/LLaMA-Factory 数据集方案
 OPTIMIZATION_NOTES.md     已完成的工程优化、修复与验证记录
+documents/HUST_TIMETABLE_IMPORT.md  华科教务导入调研、配置与验收说明
 REQUEST.md                项目需求和阶段状态
 ```
 
@@ -137,14 +139,15 @@ docker build -t esa-mail-service .
 docker run --env-file .env -p 127.0.0.1:8080:8080 esa-mail-service
 ```
 
-超算不需要 `.env`。在 `backend/core/utils/config.py` 的邮件配置区填写：
+超算不需要 `.env`。复制只在服务器本地存在、已被 Git 忽略的私有配置：
 
-```python
-EMAIL_PROVIDER = "service"
-EMAIL_SERVICE_URL = "https://mail-api.lovelearnlearning.cn"
-EMAIL_SERVICE_TOKEN = "与邮件服务器 MAIL_SERVICE_TOKEN 完全相同"
-EMAIL_VERIFICATION_SECRET = "另一个 openssl rand -hex 32 生成值"
+```bash
+cp backend/core/utils/config_private.example.py backend/core/utils/config_private.py
+chmod 600 backend/core/utils/config_private.py
 ```
+
+然后在 `config_private.py` 中填写邮件服务地址、服务令牌和验证码 Secret。
+不要修改受 Git 跟踪的 `config.py` 来保存密钥。
 
 `EMAIL_VERIFICATION_SECRET` 和服务令牌必须使用两个不同的随机值。Resend API Key
 只放在独立邮件服务器，不能放在超算或前端。未配置时验证码接口返回 `503`；投递失败

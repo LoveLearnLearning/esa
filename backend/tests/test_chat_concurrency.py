@@ -128,6 +128,32 @@ def test_same_conversation_turns_are_serialized(tmp_path):
     assert chat_store.query_one("SELECT COUNT(*) FROM conversation_turn_leases")[0] == 0
 
 
+def test_tool_result_channels_are_persisted_without_leaking_audit_to_history(tmp_path):
+    database_path = tmp_path / "chat.db"
+    _users, chat_store, conversation_id = _setup(database_path)
+    chat_store.append_messages(
+        conversation_id,
+        [
+            {
+                "role": "tool",
+                "name": "retrieve_knowledge",
+                "content": '{"display":"source"}',
+                "model_content": '{"model":"compact"}',
+                "tool_call_id": "tool-test",
+                "audit_metadata": {"evidence": ["full"]},
+                "request_id": "request-test",
+                "run_id": "run-test",
+            }
+        ],
+    )
+
+    assert chat_store.get_history(conversation_id)[0]["content"] == '{"display":"source"}'
+    assert chat_store.get_model_messages(conversation_id)[0]["content"] == '{"model":"compact"}'
+    assert chat_store.get_tool_audit("tool-test") == {"evidence": ["full"]}
+    assert chat_store.delete_conversation(conversation_id, "u1") is True
+    assert chat_store.get_tool_audit("tool-test") is None
+
+
 def test_different_conversations_can_run_in_parallel(tmp_path):
     """验证 `different_conversations_can_run_in_parallel` 场景。"""
     database_path = tmp_path / "chat.db"

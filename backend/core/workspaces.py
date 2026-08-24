@@ -42,12 +42,8 @@ WORKSPACE_CATALOG: dict[WorkspaceType, WorkspaceDescriptor] = {
 }
 
 ROLE_WORKSPACES: dict[AccountRole, tuple[WorkspaceType, ...]] = {
-    role: tuple(
-        workspace_type
-        for workspace_type, definition in WORKSPACE_DEFINITIONS.items()
-        if role in definition.allowed_roles
-    )
-    for role in VALID_ACCOUNT_ROLES
+    "student": ("learning", "research"),
+    "teacher": ("learning", "research", "teaching"),
 }
 
 
@@ -81,7 +77,7 @@ class WorkspaceAccessPolicy:
             raise ValueError(f"unsupported account role: {account_role!r}")
         return {
             "account_role": account_role,
-            "default_workspace": allowed[0],
+            "default_workspace": "teaching" if account_role == "teacher" else allowed[0],
             "workspaces": [WORKSPACE_CATALOG[item].to_payload() for item in allowed],
         }
 

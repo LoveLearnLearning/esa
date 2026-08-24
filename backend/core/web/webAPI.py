@@ -2,8 +2,10 @@
 
 """提供 `webAPI` 相关功能。"""
 
+import asyncio
 import logging
 import os
+import tempfile
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI, Request
@@ -32,12 +34,32 @@ from backend.agent.mm import (
     MMConfig,
     MultimodalIngestionService,
     MultimodalSessionService,
+    OpenAICompatibleVisionProvider,
+    VisualEnrichmentService,
 )
+from backend.agent.mm.parser import MinerUDocumentParser
+from backend.agent.rag.indexes import PersonalQdrantIndex
 from backend.agent.rag.lifecycle import RAGApplicationLifecycle
+from backend.agent.rag.personal import (
+    LOCATOR_SCHEMA_VERSION,
+    LibreOfficePreviewConverter,
+    PersonalCollectionRecovery,
+    PersonalJournalReplayUnavailable,
+    PersonalKnowledgeBaseIngestion,
+    PersonalKnowledgeBaseMutationPipeline,
+    PersonalKnowledgeBaseUserPurger,
+    PersonalKnowledgeRetrievalService,
+    PersonalQdrantSnapshotManager,
+    PersonalKnowledgeBaseWorker,
+    PersonalUploadPipeline,
+)
+from backend.agent.rag.runtime import create_embedding_provider
+from backend.sandbox.sandbox import SandboxLimits, SandboxService
 from backend.agent.tools.learning.mastery import EsaMasteryStore
 from backend.core.services.auth_service import AuthService
 from backend.core.services.agent_action_service import AgentActionService
 from backend.core.services.auxiliary_llm_service import AuxiliaryLLMClient
+from backend.core.services.code_execution_service import CodeExecutionService
 from backend.core.services.conversation_compression_service import (
     ConversationCompressionService,
 )
@@ -52,6 +74,10 @@ from backend.core.services.email_verification_service import (
 from backend.core.services.frontier_tracking_service import FrontierTrackingService
 from backend.core.services.lsp_service import LspService
 from backend.core.services.mcp_service import MCPClientManager, MCPServerConfig
+from backend.core.services.personal_knowledge_base_service import (
+    PersonalKnowledgeBaseFileStorage,
+    PersonalKnowledgeBaseService,
+)
 from backend.core.services.research_data_service import ResearchDataService
 from backend.core.services.research_project_profile_service import (
     ResearchProjectProfileService,
@@ -69,6 +95,10 @@ from backend.core.stores.frontier_tracking_store import FrontierTrackingStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.migrations import run_migrations
 from backend.core.stores.planner_store import PlannerStore
+from backend.core.stores.sqlite_connection import ensure_rollback_journal
+from backend.core.stores.personal_knowledge_base_store import (
+    PersonalKnowledgeBaseStore,
+)
 from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.research_data_store import ResearchDataStore
 from backend.core.stores.research_project_store import ResearchProjectStore
@@ -82,6 +112,7 @@ from backend.core.stores.teaching_store import TeachingStore
 from backend.core.stores.user_course_store import UserCourseStore
 from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.stores.user_store import UserStore
+from backend.core.timetable.hust import HustImporter
 from backend.core.utils.config import (
     API_PREFIX,
     AUXILIARY_MODEL_BASE_URL,
@@ -121,11 +152,18 @@ from backend.core.utils.config import (
     LSP_SERVER_COMMANDS,
     MODEL_DTYPE,
     MODEL_GPU_MEMORY_UTILIZATION,
+    MODEL_ENFORCE_EAGER,
     MODEL_KV_CACHE_DTYPE,
+    MODEL_LORA_FULLY_SHARDED,
+    MODEL_LORA_MAX_RANK,
+    MODEL_LORA_NAME,
+    MODEL_LORA_PATH,
+    MODEL_LORA_SPECIALIZE_ACTIVE,
     MODEL_MAX_MODEL_LENGTH,
     MODEL_MAX_NUM_SEQS,
     MODEL_MAX_OUTPUT_TOKENS,
     MODEL_PATH,
+    MODEL_PERFORMANCE_MODE,
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
     MCP_CALL_TIMEOUT_SECONDS,
@@ -137,12 +175,63 @@ from backend.core.utils.config import (
     MCP_YOU_ARGS,
     MCP_YOU_COMMAND,
     MCP_YOU_SERVER_NAME,
+    PERSONAL_KB_ENABLED,
+    PERSONAL_KB_MAX_BATCH_BYTES,
+    PERSONAL_KB_MAX_BATCH_FILES,
+    PERSONAL_KB_MAX_EXPANDED_BYTES,
+    PERSONAL_KB_MAX_FILE_BYTES,
+    PERSONAL_KB_MAX_IMAGE_PIXELS,
+    PERSONAL_KB_MAX_IMAGES,
+    PERSONAL_KB_MIN_FREE_BYTES,
+    PERSONAL_KB_ORPHAN_RETENTION_SECONDS,
+    PERSONAL_KB_MAX_PAGES,
+    PERSONAL_KB_MAX_REQUEST_BYTES,
+    PERSONAL_KB_MAX_USER_BYTES,
+    PERSONAL_KB_MAX_USER_FILES,
+    PERSONAL_KB_EMBEDDING_CONCURRENCY,
+    PERSONAL_KB_MAX_RETRIES,
+    PERSONAL_KB_MINERU_API_URL,
+    PERSONAL_KB_MINERU_ATTEMPTS,
+    PERSONAL_KB_MINERU_COMMAND,
+    PERSONAL_KB_MINERU_TIMEOUT_SECONDS,
+    PERSONAL_KB_LIBREOFFICE_BIN,
+    PERSONAL_KB_OFFICE_PREVIEW_MAX_BYTES,
+    PERSONAL_KB_OFFICE_PREVIEW_TIMEOUT_SECONDS,
+    PERSONAL_KB_QDRANT_COLLECTION,
+    PERSONAL_KB_RESTORE_ON_STARTUP,
+    PERSONAL_KB_ROOT,
+    PERSONAL_KB_SNAPSHOT_MAX_DELAY_SECONDS,
+    PERSONAL_KB_SNAPSHOT_RETENTION,
+    PERSONAL_KB_SNAPSHOT_ROOT,
+    PERSONAL_KB_TEMP_ROOT,
+    PERSONAL_KB_VISION_ENABLED,
+    PERSONAL_KB_WORKERS,
+    RAG_EMBEDDING_DIMENSION,
+    RAG_QDRANT_BASE_URL,
+    RAG_QDRANT_TIMEOUT,
+    RAG_QDRANT_UPSERT_BATCH_SIZE,
+    SANDBOX_CPU_SECONDS,
+    SANDBOX_ENABLED,
+    SANDBOX_FILE_SIZE_BYTES,
+    SANDBOX_MAX_COMMAND_CHARS,
+    SANDBOX_MAX_OUTPUT_CHARS,
+    SANDBOX_MAX_TIMEOUT_SECONDS,
+    SANDBOX_MEMORY_BYTES,
+    SANDBOX_PACKAGE_INSTALL_ENABLED,
+    SANDBOX_PROCESS_COUNT,
+    SANDBOX_PYTHON_PACKAGE_ALLOWLIST,
+    SANDBOX_ROOT,
+    SANDBOX_RUNTIME,
     TRUSTED_HOSTS,
     USER_ATTACHMENT_MAX_BYTES,
     USER_ATTACHMENT_ROOT,
     validate_startup_config,
+    validate_durable_path,
 )
 from backend.core.web.concurrency import ConversationTurnCoordinator
+from backend.core.web.request_size import (
+    PersonalKnowledgeBaseRequestSizeMiddleware,
+)
 from backend.core.web.routers import (
     agent_actions,
     auth,
@@ -152,10 +241,12 @@ from backend.core.web.routers import (
     lsp,
     memories,
     planner,
+    personal_knowledge_base,
     preferences,
     research,
     research_capabilities,
     schedule,
+    schedule_hust,
     student_teaching,
     teaching,
     workspaces,
@@ -181,7 +272,18 @@ async def lifespan(app: FastAPI):
     Returns:
         object => 处理结果。
     """
+    if PERSONAL_KB_ENABLED:
+        PERSONAL_KB_TEMP_ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
+        multipart_root = PERSONAL_KB_TEMP_ROOT / "multipart"
+        multipart_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(multipart_root, 0o700)
+        # Starlette's UploadFile uses tempfile.SpooledTemporaryFile; setting
+        # the process temp root here keeps spill files on Job-local storage.
+        tempfile.tempdir = str(multipart_root)
     validate_startup_config()
+    if PERSONAL_KB_ENABLED:
+        validate_durable_path("USER_DB_PATH", DB_PATH)
+        ensure_rollback_journal(DB_PATH)
     mm_config = MMConfig.from_env()
     mm_config.validate_startup()
     # 先让各 Store 补齐老库的新增列，再由版本迁移原子重建外键表。
@@ -211,6 +313,38 @@ async def lifespan(app: FastAPI):
     )
 
     run_migrations(DB_PATH)
+    app.state.personal_knowledge_base_store = PersonalKnowledgeBaseStore(DB_PATH)
+    # This deployment is deliberately single-writer. Any surviving reservation
+    # belongs to a process that can no longer be streaming an upload.
+    app.state.personal_knowledge_base_store.clear_upload_reservations()
+    personal_kb_storage = (
+        PersonalKnowledgeBaseFileStorage(
+            PERSONAL_KB_ROOT,
+            max_file_bytes=PERSONAL_KB_MAX_FILE_BYTES,
+            max_batch_files=PERSONAL_KB_MAX_BATCH_FILES,
+            max_batch_bytes=PERSONAL_KB_MAX_BATCH_BYTES,
+            max_expanded_bytes=PERSONAL_KB_MAX_EXPANDED_BYTES,
+            max_pages=PERSONAL_KB_MAX_PAGES,
+            max_image_pixels=PERSONAL_KB_MAX_IMAGE_PIXELS,
+            min_free_bytes=PERSONAL_KB_MIN_FREE_BYTES,
+        )
+        if PERSONAL_KB_ENABLED
+        else None
+    )
+    app.state.personal_knowledge_base_service = PersonalKnowledgeBaseService(
+        app.state.personal_knowledge_base_store,
+        personal_kb_storage,
+        enabled=PERSONAL_KB_ENABLED,
+        max_user_bytes=PERSONAL_KB_MAX_USER_BYTES,
+        max_user_files=PERSONAL_KB_MAX_USER_FILES,
+    )
+    if personal_kb_storage is not None:
+        personal_kb_storage.cleanup_orphans(
+            retained_file_ids=(
+                app.state.personal_knowledge_base_store.list_retained_file_ids()
+            ),
+            retention_seconds=PERSONAL_KB_ORPHAN_RETENTION_SECONDS,
+        )
     app.state.core_memory_store = CoreMemoryStore(DB_PATH)
     app.state.profile_projection = ProfileProjection(
         app.state.user_store,
@@ -273,6 +407,7 @@ async def lifespan(app: FastAPI):
         )
     app.state.user_course_store = UserCourseStore(DB_PATH)
     app.state.schedule_store = ScheduleStore(DB_PATH)
+    app.state.hust_importer = HustImporter()
     app.state.user_presence_store = UserPresenceStore(DB_PATH)
     app.state.lsp_service = LspService(
         commands=LSP_SERVER_COMMANDS,
@@ -369,6 +504,36 @@ async def lifespan(app: FastAPI):
         max_num_seqs=MODEL_MAX_NUM_SEQS,
         quantization=MODEL_QUANTIZATION,
         tensor_parallel_size=MODEL_TENSOR_PARALLEL_SIZE,
+        lora_path=MODEL_LORA_PATH,
+        lora_name=MODEL_LORA_NAME,
+        lora_max_rank=MODEL_LORA_MAX_RANK,
+        enforce_eager=MODEL_ENFORCE_EAGER,
+        performance_mode=MODEL_PERFORMANCE_MODE,
+        fully_sharded_loras=MODEL_LORA_FULLY_SHARDED,
+        specialize_active_lora=MODEL_LORA_SPECIALIZE_ACTIVE,
+    )
+    if SANDBOX_ENABLED:
+        SANDBOX_ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(SANDBOX_ROOT, 0o700)
+    app.state.sandbox_service = SandboxService(
+        SANDBOX_ROOT,
+        enabled=SANDBOX_ENABLED,
+        runtime=SANDBOX_RUNTIME,
+        limits=SandboxLimits(
+            max_timeout_seconds=SANDBOX_MAX_TIMEOUT_SECONDS,
+            max_output_chars=SANDBOX_MAX_OUTPUT_CHARS,
+            max_command_chars=SANDBOX_MAX_COMMAND_CHARS,
+            cpu_seconds=SANDBOX_CPU_SECONDS,
+            memory_bytes=SANDBOX_MEMORY_BYTES,
+            file_size_bytes=SANDBOX_FILE_SIZE_BYTES,
+            process_count=SANDBOX_PROCESS_COUNT,
+        ),
+    )
+    app.state.code_execution_service = CodeExecutionService(
+        llm_client=app.state.auxiliary_llm_client,
+        sandbox_service=app.state.sandbox_service,
+        package_install_enabled=SANDBOX_PACKAGE_INSTALL_ENABLED,
+        allowed_python_packages=SANDBOX_PYTHON_PACKAGE_ALLOWLIST,
     )
     app.state.mcp_client_manager = None
     if MCP_ENABLED:
@@ -389,6 +554,7 @@ async def lifespan(app: FastAPI):
             "https_proxy",
             "no_proxy",
             "NODE_EXTRA_CA_CERTS",
+            "NODE_USE_ENV_PROXY",
             "SSL_CERT_FILE",
         ):
             value = os.environ.get(env_name)
@@ -430,6 +596,169 @@ async def lifespan(app: FastAPI):
     app.state.conversation_compression_service.start()
     app.state.rag_lifecycle = RAGApplicationLifecycle()
     app.state.rag_service = app.state.rag_lifecycle.start()
+    app.state.personal_knowledge_base_worker = None
+    app.state.personal_knowledge_base_snapshot_manager = None
+    app.state.personal_knowledge_retrieval_service = None
+    if PERSONAL_KB_ENABLED:
+        personal_embedding = (
+            app.state.rag_service.embedding
+            if app.state.rag_service is not None
+            else create_embedding_provider()
+        )
+        if app.state.rag_service is None:
+            warmup = getattr(personal_embedding, "warmup", None)
+            if callable(warmup):
+                warmup()
+        personal_index = PersonalQdrantIndex(
+            base_url=RAG_QDRANT_BASE_URL,
+            collection=PERSONAL_KB_QDRANT_COLLECTION,
+            api_key=os.environ.get("QDRANT_API_KEY"),
+            timeout=RAG_QDRANT_TIMEOUT,
+            upsert_batch_size=RAG_QDRANT_UPSERT_BATCH_SIZE,
+        )
+        personal_parser = MinerUDocumentParser(
+            command=PERSONAL_KB_MINERU_COMMAND,
+            timeout_seconds=PERSONAL_KB_MINERU_TIMEOUT_SECONDS,
+            attempts=PERSONAL_KB_MINERU_ATTEMPTS,
+            api_url=PERSONAL_KB_MINERU_API_URL,
+        )
+        await asyncio.to_thread(personal_parser.check_available)
+        personal_ingestion = PersonalKnowledgeBaseIngestion(
+            PERSONAL_KB_ROOT / "artifacts",
+            mineru_parser=personal_parser,
+            visual_enrichment=(
+                VisualEnrichmentService(
+                    OpenAICompatibleVisionProvider(
+                        base_url=mm_config.vlm_base_url,
+                        model_name=mm_config.vlm_model,
+                        model_revision=mm_config.vlm_model_revision,
+                        api_key=mm_config.vlm_api_key,
+                        timeout=mm_config.vlm_timeout_seconds,
+                        attempts=mm_config.vlm_attempts,
+                    ),
+                    max_concurrency=mm_config.vlm_max_concurrency,
+                )
+                if PERSONAL_KB_VISION_ENABLED
+                else None
+            ),
+            office_preview_converter=(
+                LibreOfficePreviewConverter(
+                    PERSONAL_KB_LIBREOFFICE_BIN,
+                    timeout_seconds=PERSONAL_KB_OFFICE_PREVIEW_TIMEOUT_SECONDS,
+                    max_output_bytes=PERSONAL_KB_OFFICE_PREVIEW_MAX_BYTES,
+                )
+                if PERSONAL_KB_LIBREOFFICE_BIN is not None
+                else None
+            ),
+            max_pages=PERSONAL_KB_MAX_PAGES,
+            max_assets=PERSONAL_KB_MAX_IMAGES,
+        )
+        personal_mutation_lock = asyncio.Lock()
+        personal_embedding_semaphore = asyncio.Semaphore(
+            PERSONAL_KB_EMBEDDING_CONCURRENCY
+        )
+        personal_upload_pipeline = PersonalUploadPipeline(
+            store=app.state.personal_knowledge_base_store,
+            ingestion=personal_ingestion,
+            embedding=personal_embedding,
+            index=personal_index,
+            dense_dimension=RAG_EMBEDDING_DIMENSION,
+            embedding_semaphore=personal_embedding_semaphore,
+            mutation_lock=personal_mutation_lock,
+        )
+        app.state.personal_knowledge_base_snapshot_manager = (
+            PersonalQdrantSnapshotManager(
+                store=app.state.personal_knowledge_base_store,
+                index=personal_index,
+                snapshot_root=PERSONAL_KB_SNAPSHOT_ROOT,
+                mutation_lock=personal_mutation_lock,
+                embedding_fingerprint=(
+                    personal_upload_pipeline.embedding_fingerprint
+                ),
+                locator_schema_version=LOCATOR_SCHEMA_VERSION,
+                max_delay_seconds=PERSONAL_KB_SNAPSHOT_MAX_DELAY_SECONDS,
+                retention=PERSONAL_KB_SNAPSHOT_RETENTION,
+                discard_file_artifacts=personal_kb_storage.discard_artifacts,
+            )
+        )
+        app.state.personal_knowledge_base_service.user_purger = (
+            PersonalKnowledgeBaseUserPurger(
+                store=app.state.personal_knowledge_base_store,
+                index=personal_index,
+                mutation_lock=personal_mutation_lock,
+                discard_source=personal_kb_storage.discard,
+                discard_artifacts=personal_kb_storage.discard_artifacts,
+                flush_snapshot=(
+                    app.state.personal_knowledge_base_snapshot_manager
+                    .create_if_dirty
+                ),
+            )
+        )
+        recovery_mode, restore_cursor = await (
+            app.state.personal_knowledge_base_snapshot_manager.restore_or_initialize(
+                dense_dimension=RAG_EMBEDDING_DIMENSION,
+                restore_enabled=PERSONAL_KB_RESTORE_ON_STARTUP,
+            )
+        )
+        recovery = PersonalCollectionRecovery(
+            store=app.state.personal_knowledge_base_store,
+            ingestion=personal_ingestion,
+            embedding=personal_embedding,
+            index=personal_index,
+            dense_dimension=RAG_EMBEDDING_DIMENSION,
+            embedding_fingerprint=(
+                personal_upload_pipeline.embedding_fingerprint
+            ),
+            embedding_semaphore=personal_embedding_semaphore,
+            mutation_lock=personal_mutation_lock,
+        )
+        if recovery_mode == "replay_required":
+            try:
+                await recovery.replay_from(restore_cursor)
+            except PersonalJournalReplayUnavailable:
+                logger.exception(
+                    "personal mutation replay unavailable; falling back to "
+                    "full authoritative rebuild"
+                )
+                await recovery.rebuild()
+        elif recovery_mode == "rebuild_required":
+            await recovery.rebuild()
+        app.state.personal_knowledge_base_snapshot_manager.start()
+        app.state.personal_knowledge_retrieval_service = (
+            PersonalKnowledgeRetrievalService(
+                store=app.state.personal_knowledge_base_store,
+                index=personal_index,
+                embedding=personal_embedding,
+                embedding_semaphore=personal_embedding_semaphore,
+            )
+        )
+        personal_pipeline = PersonalKnowledgeBaseMutationPipeline(
+            upload=personal_upload_pipeline,
+            store=app.state.personal_knowledge_base_store,
+            ingestion=personal_ingestion,
+            index=personal_index,
+            mutation_lock=personal_mutation_lock,
+            discard_source=personal_kb_storage.discard,
+            notify_snapshot=(
+                app.state.personal_knowledge_base_snapshot_manager.notify
+            ),
+        )
+        app.state.personal_knowledge_base_worker = PersonalKnowledgeBaseWorker(
+            app.state.personal_knowledge_base_store,
+            personal_pipeline,
+            worker_count=PERSONAL_KB_WORKERS,
+            max_retries=PERSONAL_KB_MAX_RETRIES,
+        )
+        app.state.personal_knowledge_base_service.notify_worker = (
+            app.state.personal_knowledge_base_worker.notify
+        )
+        recovered_jobs = app.state.personal_knowledge_base_worker.start()
+        if recovered_jobs:
+            logger.warning(
+                "personal knowledge-base recovered %s interrupted job(s); "
+                "reconciliation continues in the background",
+                recovered_jobs,
+            )
     app.state.mm_sessions = (
         MultimodalSessionService(MultimodalIngestionService(mm_config))
         if mm_config.enabled
@@ -443,6 +772,17 @@ async def lifespan(app: FastAPI):
             await app.state.mcp_client_manager.start()
         yield
     finally:
+        if app.state.personal_knowledge_base_worker is not None:
+            await app.state.personal_knowledge_base_worker.stop()
+        if app.state.personal_knowledge_base_snapshot_manager is not None:
+            try:
+                await app.state.personal_knowledge_base_snapshot_manager.stop()
+            except Exception:
+                logger.exception(
+                    "personal knowledge-base shutdown snapshot failed; "
+                    "durable mutation state remains dirty"
+                )
+        await app.state.hust_importer.close()
         if app.state.mcp_client_manager is not None:
             await app.state.mcp_client_manager.close()
         await app.state.frontier_tracking_service.stop()
@@ -469,8 +809,10 @@ business_router.include_router(preferences.memory_settings_router)
 business_router.include_router(learning.router)
 business_router.include_router(lsp.router)
 business_router.include_router(schedule.router)
+business_router.include_router(schedule_hust.router)
 business_router.include_router(memories.router)
 business_router.include_router(planner.router)
+business_router.include_router(personal_knowledge_base.router)
 business_router.include_router(workspaces.router)
 business_router.include_router(research.router)
 business_router.include_router(research_capabilities.router)
@@ -496,6 +838,19 @@ def get_internal_metrics(request: Request):
     if profile_builder is None:
         return {"error": "profile_builder not initialized"}
     return profile_builder.get_metrics_snapshot()
+
+
+@api_router.get("/internal/metrics/personal-knowledge-base", tags=["operations"])
+def get_personal_knowledge_base_metrics(request: Request):
+    """Expose SQLite-only personal queue and recovery readiness counters."""
+
+    store = getattr(request.app.state, "personal_knowledge_base_store", None)
+    if store is None:
+        return {"enabled": False, "error": "personal store not initialized"}
+    return {
+        "enabled": PERSONAL_KB_ENABLED,
+        **store.get_operational_metrics(),
+    }
 
 
 @api_router.get(
@@ -547,6 +902,10 @@ def create_app(
     application.add_middleware(
         ProxyHeadersMiddleware,
         trusted_hosts=list(forwarded_allow_ips),
+    )
+    application.add_middleware(
+        PersonalKnowledgeBaseRequestSizeMiddleware,
+        max_bytes=PERSONAL_KB_MAX_REQUEST_BYTES,
     )
 
     # Canonical production API.  Nginx must preserve this prefix upstream.

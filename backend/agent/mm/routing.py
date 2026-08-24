@@ -1,4 +1,10 @@
-"""Deterministic routing policy for DocIR visual elements."""
+# backend/agent/mm/routing.py
+
+"""确定性视觉资产路由。
+
+第一阶段不引入图片分类模型。路由只相信 DocIR 已明确提供的结构，
+未知图片类别保持 unknown 风险，不会因为模型标签而自动升级为结构事实。
+"""
 
 from __future__ import annotations
 
@@ -10,55 +16,61 @@ from .contracts import VisualRisk, VisualRoute, VisualRouteDecision
 MM_VISUAL_ROUTING_VERSION = "mm-visual-routing-0.1"
 
 
-def route_visual_element(element: object, *, asset_present: bool) -> VisualRouteDecision:
-    """Choose a conservative visual route without inspecting image pixels."""
+def route_visual_element(
+    element: object,
+    *,
+    asset_present: bool,
+) -> VisualRouteDecision:
+    """根据现有 DocIR 结构选择视觉资产路线。
 
-    if isinstance(element, TableElement) and (element.html or "").strip():
+    这里不读取 VLM 输出，也不把 ``content_type`` 当成调用前分类器。
+    """
+
+    if isinstance(element, TableElement) and element.html and element.html.strip():
         return VisualRouteDecision(
             VisualRoute.SKIP_EXISTING_STRUCTURE,
             VisualRisk.LOW,
-            "table already has machine-readable HTML",
+            "table already has HTML structure",
             False,
         )
-    if isinstance(element, FormulaElement) and (element.latex or "").strip():
+    if isinstance(element, FormulaElement) and element.latex and element.latex.strip():
         return VisualRouteDecision(
             VisualRoute.SKIP_EXISTING_STRUCTURE,
             VisualRisk.LOW,
-            "formula already has machine-readable LaTeX",
+            "formula already has LaTeX structure",
             False,
         )
-    if isinstance(element, FigureElement) and (
-        element.structured_content or ""
-    ).strip():
+    if isinstance(element, FigureElement) and element.structured_content and element.structured_content.strip():
         return VisualRouteDecision(
             VisualRoute.SKIP_EXISTING_STRUCTURE,
             VisualRisk.LOW,
-            "figure already has machine-readable structure",
+            "figure already has structured content",
             False,
         )
-    if not isinstance(element, (TableElement, FormulaElement, FigureElement)):
+    if not asset_present or not getattr(element, "asset_id", None):
         return VisualRouteDecision(
             VisualRoute.MANUAL_REVIEW,
             VisualRisk.UNKNOWN,
-            "element type is not supported by visual enrichment",
+            "visual element has no resolvable asset",
             False,
         )
-    if not asset_present:
+    if isinstance(element, FigureElement):
         return VisualRouteDecision(
-            VisualRoute.MANUAL_REVIEW,
-            VisualRisk.HIGH,
-            "visual element has no verifiable asset",
-            False,
+            VisualRoute.GENERIC_VLM,
+            VisualRisk.UNKNOWN,
+            "figure lacks verified structured content; use generic VLM description",
+            True,
         )
-
-    risk = (
-        VisualRisk.MEDIUM
-        if isinstance(element, (TableElement, FormulaElement))
-        else VisualRisk.LOW
-    )
+    if isinstance(element, (TableElement, FormulaElement)):
+        return VisualRouteDecision(
+            VisualRoute.GENERIC_VLM,
+            VisualRisk.MEDIUM,
+            "structured table/formula content is unavailable; use generic fallback",
+            True,
+        )
     return VisualRouteDecision(
-        VisualRoute.GENERIC_VLM,
-        risk,
-        "visual asset needs a non-authoritative semantic description",
-        True,
+        VisualRoute.MANUAL_REVIEW,
+        VisualRisk.UNKNOWN,
+        "element is not a supported visual enrichment type",
+        False,
     )

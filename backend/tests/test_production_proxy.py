@@ -123,7 +123,15 @@ def test_api_auth_contract_and_health(tmp_path):
     assert logged_in.json()["account_role"] == "teacher"
     assert rejected.status_code == 401
     assert wrong_method.status_code == 405
-    assert all(path.startswith("/api/") for path in app.openapi()["paths"])
+    openapi = app.openapi()
+    assert all(path.startswith("/api/") for path in openapi["paths"])
+    operation_ids = [
+        operation["operationId"]
+        for path in openapi["paths"].values()
+        for operation in path.values()
+        if isinstance(operation, dict) and "operationId" in operation
+    ]
+    assert len(operation_ids) == len(set(operation_ids))
 
     token = logged_in.json()["session_id"]
     logged_out = client.post(

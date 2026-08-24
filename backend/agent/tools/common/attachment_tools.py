@@ -11,7 +11,6 @@ from backend.agent.tools.context import ToolExecutionContext
 from backend.agent.tools.tools import tr
 from backend.core.log.logger import get_pipeline_logger, pipeline_log_context
 
-
 logger = get_pipeline_logger("MM", __name__)
 
 
@@ -90,8 +89,7 @@ async def _parse_attachment(
         "token_count": prepared.token_count,
         "element_count": len(prepared.document.elements),
         "page_count": (
-            prepared.document.source_page_count
-            or prepared.document.parsed_page_count
+            prepared.document.source_page_count or prepared.document.parsed_page_count
         ),
         "content": content[:120_000],
     }
@@ -122,7 +120,9 @@ def _schema(name: str, description: str) -> dict:
     }
 
 
-async def parse_pdf_attachment(context: ToolExecutionContext, attachment_id: str, query: str) -> dict[str, object]:
+async def parse_pdf_attachment(
+    context: ToolExecutionContext, attachment_id: str, query: str
+) -> dict[str, object]:
     """解析 `pdf attachment` 相关数据。
 
     Args:
@@ -142,7 +142,9 @@ async def parse_pdf_attachment(context: ToolExecutionContext, attachment_id: str
     )
 
 
-async def parse_word_attachment(context: ToolExecutionContext, attachment_id: str, query: str) -> dict[str, object]:
+async def parse_word_attachment(
+    context: ToolExecutionContext, attachment_id: str, query: str
+) -> dict[str, object]:
     """解析 `word attachment` 相关数据。
 
     Args:
@@ -210,7 +212,9 @@ async def parse_spreadsheet_attachment(
     )
 
 
-async def parse_image_attachment(context: ToolExecutionContext, attachment_id: str, query: str) -> dict[str, object]:
+async def parse_image_attachment(
+    context: ToolExecutionContext, attachment_id: str, query: str
+) -> dict[str, object]:
     """解析 `image attachment` 相关数据。
 
     Args:
@@ -263,17 +267,33 @@ async def execute_attachment_tool(
 
 
 ATTACHMENT_TOOL_SCHEMAS = (
-    _schema("parse_pdf_attachment", "读取当前消息已授权的 PDF 附件"),
-    _schema("parse_word_attachment", "读取当前消息已授权的 Word 附件"),
-    _schema("parse_presentation_attachment", "读取当前消息已授权的演示文稿附件"),
-    _schema("parse_spreadsheet_attachment", "读取当前消息已授权的电子表格附件"),
-    _schema("parse_image_attachment", "读取当前消息已授权的图片附件"),
+    _schema(
+        "parse_pdf_attachment",
+        "读取当前消息已授权的 PDF 附件。用户要求解释、总结、阅读、分析或检索这篇论文/这个 PDF 时必须调用",
+    ),
+    _schema(
+        "parse_word_attachment",
+        "读取当前消息已授权的 Word 附件。用户要求解释、总结、阅读或分析这个文档时必须调用",
+    ),
+    _schema(
+        "parse_presentation_attachment",
+        "读取当前消息已授权的演示文稿附件。用户要求解释、总结或分析这个演示文稿时必须调用",
+    ),
+    _schema(
+        "parse_spreadsheet_attachment",
+        "读取当前消息已授权的电子表格附件。用户要求读取、分析或总结表格时必须调用",
+    ),
+    _schema(
+        "parse_image_attachment",
+        "读取当前消息已授权的图片附件。用户要求识别、解释或分析这张图片时必须调用",
+    ),
 )
 
 
 def register_attachment_schemas() -> None:
     """注册 `attachment schemas` 相关数据。"""
     for schema in ATTACHMENT_TOOL_SCHEMAS:
+
         def unavailable(**_arguments):
             """处理 `unavailable` 相关逻辑。"""
             raise RuntimeError("attachment tool requires BoundToolExecutor")

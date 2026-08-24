@@ -7,6 +7,7 @@ import sys
 from importlib import import_module
 
 from backend.agent.agent import (
+    _tool_result_channels,
     sanitize_qwen_history,
     serialize_tool_result,
 )
@@ -16,7 +17,7 @@ from backend.agent.memories.memory_models import (
     ProfileSnapshot,
 )
 from backend.core.message.build_prompt import build_system_prompt
-from backend.core.utils.models import PromptContext
+from backend.core.utils.models import PromptContext, ToolExecutionResult
 
 
 def test_agent_module_imports_without_vllm():
@@ -38,6 +39,20 @@ def test_tool_observation_is_standard_json():
         '{"allowed": true, "result": null, "message": "已记录"}'
     )
     assert json.loads(serialized) == payload
+
+
+def test_tool_result_channels_keep_audit_out_of_model_and_display():
+    result = ToolExecutionResult(
+        model_content={"content": "compact"},
+        display_content={"source": "book"},
+        audit_metadata={"evidence": "full"},
+    )
+
+    model, display, audit = _tool_result_channels(result)
+
+    assert model == {"content": "compact"}
+    assert display == {"source": "book"}
+    assert audit == {"evidence": "full"}
 
 
 def test_sanitize_qwen_history_removes_unsupported_tool_protocol_turn():

@@ -356,7 +356,9 @@ def test_context_composer_order_trust_and_deterministic_clipping():
         conversation_summary="S" * 1000,
         authorized_attachments=({"attachment_id": "a1", "status": "stored"},),
     )
-    composer = ContextComposer(max_tokens=2000)
+    # Keep enough budget for the profile/group ordering assertions while still
+    # forcing the long summary to be clipped deterministically.
+    composer = ContextComposer(max_tokens=2200)
     first = composer.compose(turn, LEARNING_PROFILE, capabilities)
     second = composer.compose(turn, LEARNING_PROFILE, capabilities)
     assert first == second
@@ -372,7 +374,36 @@ def test_context_composer_order_trust_and_deterministic_clipping():
     assert first.rendered.index("# User profile data") < first.rendered.index(
         "# Group instructions"
     )
-    assert first.estimated_tokens <= 2000
+    assert first.estimated_tokens <= 2200
+
+
+def test_context_composer_requires_parsing_referenced_attachments():
+    """附件被用户指代时，提示必须要求先解析而不是追问文件元数据。"""
+    route = _route(capabilities=frozenset({"attachments"}))
+    turn = _turn(
+        route,
+        current_message="解释一下这篇论文",
+        authorized_attachments=(
+            {
+                "attachment_id": "a1",
+                "filename": "VideoMimic.pdf",
+                "suffix": ".pdf",
+                "status": "stored_unparsed",
+            },
+        ),
+    )
+    capabilities = ResolvedCapabilities(
+        skill_index="parse_pdf_attachment",
+        autoload_skills="parse_pdf_attachment\n概括全文的主要内容",
+        tool_schemas=(),
+        skill_names=frozenset({"parse_pdf_attachment"}),
+        tool_names=frozenset({"parse_pdf_attachment"}),
+        fingerprint="f",
+    )
+    composed = ContextComposer().compose(turn, LEARNING_PROFILE, capabilities)
+    assert "硬性规则" in composed.rendered
+    assert "不得因为用户没有重复输入标题或作者而追问" in composed.rendered
+    assert "概括全文的主要内容" in composed.rendered
 
 
 def test_context_composer_uses_cjk_aware_token_budget():
@@ -488,17 +519,20 @@ def test_bound_rag_tool_uses_the_turn_runtime_dependency(monkeypatch):
     )
     captured = {}
 
-    def fake_retrieve(query, top_k=5, similarity_threshold=None, service=None):
+    def fake_retrieve(
+        query, top_k=5, similarity_threshold=None, service=None, token_counter=None
+    ):
         captured.update(
             query=query,
             top_k=top_k,
             similarity_threshold=similarity_threshold,
             service=service,
+            token_counter=token_counter,
         )
         return {"query": query, "result_count": 0}
 
     monkeypatch.setattr(
-        "backend.agent.rag.agent_api.retrieve_knowledge_payload",
+        "backend.agent.rag.agent_api.retrieve_knowledge_result",
         fake_retrieve,
     )
     result = asyncio.run(
@@ -510,3 +544,54 @@ def test_bound_rag_tool_uses_the_turn_runtime_dependency(monkeypatch):
     assert result == {"query": "binary search", "result_count": 0}
     assert captured["service"] is sentinel
     assert captured["top_k"] == 3
+
+
+def test_personal_knowledge_tool_uses_context_identity_not_model_argument():
+    register_builtin_tools()
+    route = _route()
+    captured = {}
+
+    class PersonalRetrieval:
+        async def search(self, *, user_id, query, top_k):
+            captured.update(user_id=user_id, query=query, top_k=top_k)
+            return {"query": query, "result_count": 0}
+
+    context = ToolExecutionContext(
+        user_id="trusted-user",
+        conversation_id="c1",
+        workspace_route=route,
+        authorized_resources=route.resource_scope,
+        conversation_mode="normal",
+        runtime_dependencies=AgentRuntimeDependencies(
+            personal_knowledge_retrieval_service=PersonalRetrieval()
+        ),
+        request_id="r1",
+    )
+    compiled = CapabilityRuntime().compile(
+        skill_scopes=route.skill_scopes,
+        tool_scopes=route.tool_scopes,
+        profile_fingerprint="learning:1",
+        policy_versions=("p1",),
+    )
+
+    rejected = asyncio.run(
+        compiled.bind(context).execute(
+            "retrieve_personal_knowledge",
+            {"query": "my notes", "top_k": 3, "user_id": "attacker"},
+        )
+    )
+    result = asyncio.run(
+        compiled.bind(context).execute(
+            "retrieve_personal_knowledge",
+            {"query": "my notes", "top_k": 3},
+        )
+    )
+
+    assert rejected["error"] == "invalid_tool_arguments"
+    assert "user_id" in rejected["detail"]
+    assert result == {"query": "my notes", "result_count": 0}
+    assert captured == {
+        "user_id": "trusted-user",
+        "query": "my notes",
+        "top_k": 3,
+    }

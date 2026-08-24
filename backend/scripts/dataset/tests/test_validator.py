@@ -176,6 +176,7 @@ def corpus_cases() -> list[tuple[str, bool]]:
         check_no_collect_placeholder,
         check_revision_uses_latest,
         check_topic_known,
+        check_unmarked_failures,
         check_verified_facts,
     )
 
@@ -465,6 +466,40 @@ def corpus_cases() -> list[tuple[str, bool]]:
     results.append(("自我介绍里列能力不算承认（曾误报寒暄样本）",
                     not check_negative_not_positive(
                         [neg("我是 ESA，可以帮你规划练习、查学情、讲知识点。", "n3")])))
+
+    # ---- 失败观测没标 is_error（2026-08-19 新增的闸门，四条反向用例）----
+    #
+    # 加这道闸门是因为 fixtures 对非法 kp_id 从「抛 ToolError」改成了
+    # 「返回后端真实的 ok=false dict」—— 忠实是对的，但它把一个**响的**失败
+    # 变成了**静的**失败：一条 single_tool_call 里混进失败观测，原来所有检查都是绿的。
+    # 三条注入必须都抓到，第四条（空结果）必须**不**误报 ——
+    # 只会误报的检查和不报警的检查一样糟（5.9）。
+    def obs(content, sid, is_error=False):
+        """一条正常的单工具样本，观测内容可替换。"""
+        return make(id=sid, turns=[
+            Turn(role="user", content="算一下 2+2"),
+            Turn(role="tool_call", calls=[ToolCall("calculator", {"expression": "2+2"})]),
+            Turn(role="tool_result",
+                 results=[ToolResult("calculator", content, is_error=is_error)]),
+            Turn(role="assistant", content="结果是 $4$。"),
+        ])
+
+    results.append(("执行器包出来的 ok=false 混进正常样本 → 抓到", bool(
+        check_unmarked_failures([obs(
+            {"ok": False, "error": "tool_execution_error", "tool": "calculator",
+             "detail": "unknown knowledge point 'x'"}, "u1")]))))
+    results.append(("学情阻断 allowed=false 没标 is_error → 抓到", bool(
+        check_unmarked_failures([obs(
+            {"allowed": False, "action": "get_mastery_report", "reason": "isolated mode"},
+            "u2")]))))
+    results.append(("[Error]: 字符串没标 is_error → 抓到", bool(
+        check_unmarked_failures([obs("[Error]: arXiv API 返回 HTTP 503", "u3")]))))
+    results.append(("空结果 count=0 是正常返回，不得误报", not
+        check_unmarked_failures([obs(
+            {"allowed": True, "count": 0, "recommendations": [],
+             "note": "未找到课程 '高等数学' 的知识点，请确认课程名"}, "u4")])))
+    results.append(("标了 is_error 的失败观测不重复报", not
+        check_unmarked_failures([obs("[Error]: arXiv API 返回 HTTP 503", "u5", is_error=True)])))
     return results
 
 

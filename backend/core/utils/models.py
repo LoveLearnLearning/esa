@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     from backend.agent.memories.memory_models import ProfileSnapshot
@@ -15,13 +15,24 @@ if TYPE_CHECKING:
 @dataclass
 class ToolCall:
     """封装 `ToolCall` 的状态与行为。"""
+
     name: str
     arguments: dict
+
+
+@dataclass(frozen=True, slots=True)
+class ToolExecutionResult:
+    """Separate model, display, and audit projections of one tool result."""
+
+    model_content: Any
+    display_content: Any
+    audit_metadata: Any | None = None
 
 
 @dataclass
 class ParsedOutput:
     """表示 `parsed output` 数据结构。"""
+
     reasoning: str | None = None
     content: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
@@ -30,6 +41,7 @@ class ParsedOutput:
 @dataclass
 class AgentStreamEvent:
     """封装 `AgentStreamEvent` 的状态与行为。"""
+
     event: str
     data: dict
 
@@ -141,3 +153,4 @@ class MessageContext:
     user_message_id: int | None = None
     resolved_kp_ids: tuple[str, ...] = ()
     pending_practice_kp_id: str | None = None
+    knowledge_sources: tuple[str, ...] = ("personal", "public")
