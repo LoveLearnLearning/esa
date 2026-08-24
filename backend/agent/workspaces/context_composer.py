@@ -95,7 +95,7 @@ class StrategyAugmentation:
 
 class ContextComposer:
     """封装 `ContextComposer` 的状态与行为。"""
-    def __init__(self, *, max_tokens: int = 8000) -> None:
+    def __init__(self, *, max_tokens: int = 16_000) -> None:
         """初始化 `ContextComposer` 实例。"""
         self.max_tokens = max_tokens
 

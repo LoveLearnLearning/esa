@@ -63,7 +63,7 @@ class MMConfig:
                 os.environ.get("MM_ARTIFACT_ROOT", root / "runtime/mm")
             ).expanduser().resolve(),
             direct_context_token_limit=_positive_int(
-                "MM_DIRECT_CONTEXT_TOKEN_LIMIT", 48_000
+                "MM_DIRECT_CONTEXT_TOKEN_LIMIT", 80_000
             ),
             tokenizer_path=os.environ.get(
                 "MM_TOKENIZER_PATH", str(app_config.MODEL_PATH)

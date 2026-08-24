@@ -12,6 +12,7 @@ from backend.agent.workspaces.learning_adapter import LearningAdapter
 from backend.agent.workspaces.models import AgentRunSpec, AgentTurnInput, ExecutableAgentRun
 from backend.agent.workspaces.profile_registry import DEFAULT_PROFILE_REGISTRY, WorkspaceProfileRegistry
 from backend.agent.workspaces.run_spec_builder import RunSpecBuilder
+from backend.core.utils.config import WORKSPACE_CONTEXT_MAX_TOKENS
 
 
 class WorkspaceRuntime:
@@ -26,7 +27,7 @@ class WorkspaceRuntime:
         self.dependencies = dependencies
         self.profiles = profiles
         self.capabilities = CapabilityRuntime()
-        self.composer = ContextComposer()
+        self.composer = ContextComposer(max_tokens=WORKSPACE_CONTEXT_MAX_TOKENS)
         self.learning = LearningAdapter()
         self.builder = RunSpecBuilder()
 
