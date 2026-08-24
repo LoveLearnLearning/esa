@@ -30,6 +30,7 @@ class Composer extends StatefulWidget {
     this.onSendWithAttachment,
     this.onOpenCodeEditor,
     this.onCodeBlockChanged,
+    this.onRunCode,
     this.onSelectedAttachmentsChanged,
     this.courseNames = const [],
     this.toolsOn = true,
@@ -63,6 +64,7 @@ class Composer extends StatefulWidget {
   onOpenCodeEditor;
   final void Function(String blockId, String code, String language)?
   onCodeBlockChanged;
+  final CodeRunCallback? onRunCode;
   final ValueChanged<List<DocumentAttachment>>? onSelectedAttachmentsChanged;
   final List<String> courseNames;
   final bool toolsOn;
@@ -302,6 +304,7 @@ class ComposerState extends State<Composer> {
                             data: _controller.text,
                             codeBlockPrefix: 'composer',
                             onOpenCodeEditorWithId: widget.onOpenCodeEditor,
+                            onRunCode: widget.onRunCode,
                           ),
                         ),
                       ),

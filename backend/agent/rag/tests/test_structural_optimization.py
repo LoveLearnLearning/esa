@@ -12,7 +12,11 @@ from backend.agent.DocIR.core.enums import TextOrigin
 from backend.agent.rag.chunk import Chunk, ChunkEvidence, ContentRole
 from backend.agent.rag.inference import HashingEmbeddingProvider
 from backend.agent.rag.indexes import QdrantIndex
-from backend.agent.rag.retrieval.context import ContextBuilder, estimate_tokens
+from backend.agent.rag.retrieval.context import (
+    ContextBuilder,
+    estimate_tokens,
+    query_aware_excerpt,
+)
 from backend.agent.rag.retrieval.contracts import (
     ContextLevel,
     RankedItem,
@@ -97,6 +101,8 @@ def test_reranker_micro_batches_all_candidates_then_sorts_globally() -> None:
     ).select("query", fused)
     assert scorer.batch_sizes == [4, 4, 4, 4, 4, 3]
     assert len(selection.rerank_scores) == 23
+    assert selection.ranking[0].chunk_id == "c22"
+    assert selection.ranking[0].score == 22.0
 
 
 def test_reranker_batch_size_does_not_change_score_semantics() -> None:
@@ -119,6 +125,45 @@ def test_reranker_batch_size_does_not_change_score_semantics() -> None:
             .ranking
         )
     assert rankings[0] == rankings[1] == rankings[2]
+
+
+def test_adjacent_ranked_chunks_merge_without_losing_their_context() -> None:
+    chunks = {name: _chunk(name, order) for order, name in enumerate(("A", "B", "C"))}
+    chunks["X"] = _chunk("X", 10)
+    selection = CandidateReranker(
+        chunks,
+        None,
+        RetrievalConfig(final_limit=5, reranker_enabled=False),
+    ).select(
+        "query",
+        [
+            RankedItem("B", 4.0),
+            RankedItem("A", 3.0),
+            RankedItem("C", 2.0),
+            RankedItem("X", 1.0),
+        ],
+    )
+
+    assert [item.chunk_id for item in selection.final_candidates] == ["B"]
+    assert selection.merged_context_chunk_ids == {"B": ("A", "C", "X")}
+    plan = ContextBuilder(tuple(chunks.values()), section_window=0).plan(
+        [chunks["B"]],
+        ContextLevel.EVIDENCE,
+        max_tokens=10,
+        merged_context_chunk_ids=selection.merged_context_chunk_ids,
+    )
+    assert [chunk.chunk_id for chunk in plan["B"]] == ["A", "B", "C", "X"]
+
+
+def test_query_aware_excerpt_keeps_answer_near_the_end() -> None:
+    text = "无关背景。" * 80 + "慢启动期间拥塞窗口会指数增长。" + "附加背景。" * 20
+
+    excerpt = query_aware_excerpt(text, "慢启动时拥塞窗口如何增长？", 24)
+
+    assert estimate_tokens(excerpt) <= 24
+    assert "拥塞窗口" in excerpt
+    assert excerpt.startswith("…")
+    assert excerpt.endswith("…")
 
 
 class _StaticIndex:
@@ -343,6 +388,7 @@ def test_qdrant_queries_filter_by_content_role() -> None:
     """验证 `qdrant_queries_filter_by_content_role` 场景。"""
     index = _CapturingQdrant()
     index.bm25_body("query", 5, frozenset({ContentRole.BODY, ContentRole.TABLE}))
+    assert index.payload["with_payload"] == {"include": ["chunk_id"]}
     assert index.payload["filter"]["must"][0] == {
         "key": "content_role",
         "match": {"any": ["body", "table"]},

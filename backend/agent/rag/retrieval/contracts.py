@@ -29,11 +29,11 @@ class ContextLevel(str, Enum):
 class RetrievalConfig:
     """Frozen production baseline; experiments must override fields explicitly."""
 
-    dense_limit: int = 20
-    bm25_body_limit: int = 20
-    bm25_heading_limit: int = 20
-    rrf_limit: int = 30
-    rerank_limit: int = 20
+    dense_limit: int = 50
+    bm25_body_limit: int = 50
+    bm25_heading_limit: int = 50
+    rrf_limit: int = 50
+    rerank_limit: int = 50
     reranker_batch_size: int = 4
     final_limit: int = 5
     rrf_k: int = 60
@@ -44,7 +44,8 @@ class RetrievalConfig:
     dense_weight: float = 1.0
     lexical_body_weight: float = 0.75
     lexical_gate_enabled: bool = True
-    reranker_enabled: bool = False
+    reranker_enabled: bool = True
+    # Deprecated compatibility field. Sequential reranking ignores it.
     reranker_prior_weight: float = 0.90
 
     def __post_init__(self) -> None:
@@ -211,7 +212,7 @@ class SearchHit:
     """表示一个最终命中及其分层分数、引用和章节上下文。"""
 
     chunk_id: str
-    rrf_score: float
+    retrieval_score: float
     rerank_score: float | None
     evidence: tuple[Evidence, ...]
     context_chunk_ids: tuple[str, ...]
@@ -226,6 +227,7 @@ class SearchTrace:
     degraded: tuple[str, ...] = field(default_factory=tuple)
     raw_scores: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
     fusion: Mapping[str, float | str | bool] = field(default_factory=dict)
+    reranker_applied: bool = False
 
 
 @dataclass(frozen=True)

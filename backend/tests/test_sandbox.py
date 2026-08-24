@@ -84,3 +84,14 @@ def test_trusted_install_can_share_network_without_changing_default(
 
     assert argv.index("--share-net") > argv.index("--unshare-all")
     assert "/opt/esa-installer/pip" in argv
+
+
+def test_code_command_quotes_source_and_normalizes_languages() -> None:
+    command = SandboxService._code_command("print('a\n$HOME')", "py")
+    assert command.startswith("python3 -c ")
+    assert "$HOME" in command
+    assert SandboxService._code_command("console.log('ok')", "js").startswith(
+        "node -e "
+    )
+    with pytest.raises(SandboxError, match="暂不支持"):
+        SandboxService._code_command("int main() {}", "cpp")

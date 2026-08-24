@@ -109,6 +109,38 @@ final answer = 42;
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('code block run button forwards block identity and code', (
+    tester,
+  ) async {
+    String? receivedBlockId;
+    String? receivedCode;
+    String? receivedLanguage;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(
+          body: EsaMarkdown(
+            data: '''```python
+print('hello')
+```''',
+            onRunCode: (blockId, code, language) async {
+              receivedBlockId = blockId;
+              receivedCode = code;
+              receivedLanguage = language;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('运行代码'));
+    await tester.pumpAndSettle();
+
+    expect(receivedBlockId, 'markdown:0');
+    expect(receivedCode, "print('hello')");
+    expect(receivedLanguage, 'python');
+  });
+
   testWidgets('code preview follows streaming markdown updates', (
     tester,
   ) async {
@@ -216,7 +248,7 @@ int main() { return 0; }
       find.byType(TextField),
       '#include <iostream>\nint main() { return 0; }',
     );
-    await tester.tap(find.byTooltip('使用辅助模型修复并在沙箱运行'));
+    await tester.tap(find.byTooltip('运行代码'));
     await tester.pump();
 
     expect(blockId, 'message-2:0');

@@ -67,7 +67,9 @@ def collection() -> LoadedChunkCollection:
     try:
         return load_chunk_collection(MANIFEST)
     except ValueError as exc:
-        pytest.skip(f"external chunk artifacts predate the current DocIR contract: {exc}")
+        pytest.skip(
+            f"external chunk artifacts predate the current DocIR contract: {exc}"
+        )
 
 
 @pytest.fixture(scope="module")
@@ -158,8 +160,8 @@ def test_three_routes_are_visible(service: RetrievalService) -> None:
         "dense",
         "bm25_body",
         "bm25_heading",
-        "rrf",
-        "reranker",
+        "fusion",
+        "final",
     }
     assert response.hits
 
@@ -215,6 +217,14 @@ def test_reference_reranker_prefers_overlap() -> None:
     assert scores[0] > scores[1]
 
 
+def test_transformers_reranker_instruction_allows_cross_language_relevance() -> None:
+    """Reranker instruction must not require query/document language matching."""
+    instruction = TransformersReranker().instruction.lower()
+    assert "different languages" in instruction
+    assert "cross-lingual semantic relevance" in instruction
+    assert "lexical or language matching" in instruction
+
+
 def test_collection_loader_rejects_document_hash_tamper(tmp_path: Path) -> None:
     """验证 `collection_loader_rejects_document_hash_tamper` 场景。"""
     manifest_path = _copy_collection(tmp_path)
@@ -263,8 +273,8 @@ def test_evaluation_case_enforces_positive_and_negative_gold() -> None:
     assert not negative.answerable
 
 
-def test_layer_evaluation_ignores_negative_cases() -> None:
-    """验证 `layer_evaluation_ignores_negative_cases` 场景。"""
+def test_layer_evaluation_reports_unanswerable_false_positives() -> None:
+    """Every layer must expose acceptance and abstention behavior on negatives."""
     positive = EvaluationCase(
         "p",
         "q",
@@ -287,16 +297,67 @@ def test_layer_evaluation_ignores_negative_cases() -> None:
     )
     layers = {
         name: ["a"]
-        for name in ("dense", "bm25_body", "bm25_heading", "rrf", "reranker")
+        for name in (
+            "dense",
+            "bm25_body",
+            "bm25_heading",
+            "fusion",
+            "reranker",
+            "final",
+        )
     }
     metrics = evaluate_layers([positive, negative], lambda _query: layers)
     assert all(
-        value.query_count == 1 and value.hit_at_5 == 1.0 for value in metrics.values()
+        value.query_count == 2
+        and value.answerable_query_count == 1
+        and value.unanswerable_query_count == 1
+        and value.hit_at_5 == 1.0
+        and value.answerable_acceptance_rate == 1.0
+        and value.unanswerable_abstention_rate == 0.0
+        and value.unanswerable_false_positive_rate == 1.0
+        and value.answerability_accuracy == 0.5
+        for value in metrics.values()
     )
+
+
+def test_layer_evaluation_counts_empty_negative_ranking_as_abstention() -> None:
+    positive = EvaluationCase(
+        "p",
+        "q",
+        True,
+        frozenset({"a"}),
+        frozenset({"e"}),
+        frozenset({"d"}),
+        ("body",),
+        "note",
+    )
+    negative = EvaluationCase(
+        "n",
+        "x",
+        False,
+        frozenset(),
+        frozenset(),
+        frozenset(),
+        ("unanswerable",),
+        "note",
+    )
+    layer_names = ("dense", "bm25_body", "bm25_heading", "fusion", "reranker", "final")
+
+    metrics = evaluate_layers(
+        [positive, negative],
+        lambda query: {name: (["a"] if query == "q" else []) for name in layer_names},
+    )
+
+    assert all(value.unanswerable_abstention_rate == 1.0 for value in metrics.values())
+    assert all(
+        value.unanswerable_false_positive_rate == 0.0 for value in metrics.values()
+    )
+    assert all(value.answerability_accuracy == 1.0 for value in metrics.values())
 
 
 class CapturingQdrant(QdrantIndex):
     """封装 `CapturingQdrant` 的状态与行为。"""
+
     calls: ClassVar[list[tuple[str, str, dict[str, Any] | None]]] = []
 
     def _request(
@@ -336,14 +397,17 @@ def test_online_failures_degrade_to_bm25_and_rrf(
     collection: LoadedChunkCollection,
 ) -> None:
     """验证 `online_failures_degrade_to_bm25_and_rrf` 场景。"""
+
     class FailingEmbedding(HashingEmbeddingProvider):
         """封装 `FailingEmbedding` 的状态与行为。"""
+
         def embed_query(self, query: str) -> list[float]:
             """处理 `embed_query` 相关逻辑。"""
             raise InferenceUnavailable("offline")
 
     class FailingReranker(LexicalOverlapReranker):
         """封装 `FailingReranker` 的状态与行为。"""
+
         def score(self, query: str, documents: Sequence[str]) -> list[float]:
             """处理 `score` 相关逻辑。
 
@@ -368,10 +432,12 @@ def test_online_failures_degrade_to_bm25_and_rrf(
     )
     response = service.search("反向传播")
     assert response.trace.rankings["dense"] == ()
-    assert (
-        response.trace.rankings["reranker"]
-        == response.trace.rankings["rrf"][: service.config.rerank_limit]
-    )
+    assert "reranker" not in response.trace.rankings
+    assert response.trace.rankings["final"]
+    assert response.trace.fusion["applied_method"] == "lexical_rrf_fallback"
+    assert response.trace.fusion["dense_weight"] == 0.0
+    assert response.trace.fusion["bm25_body_weight"] == 1.0
+    assert response.trace.fusion["bm25_heading_weight"] == 1.0
     assert {item.split(":", 1)[0] for item in response.trace.degraded} == {
         "dense_unavailable",
         "reranker_unavailable",
@@ -433,8 +499,10 @@ def test_indexing_service_does_not_rebuild_same_instance(
     collection: LoadedChunkCollection,
 ) -> None:
     """验证 `indexing_service_does_not_rebuild_same_instance` 场景。"""
+
     class CountingIndex(ReferenceIndex):
         """封装 `CountingIndex` 的状态与行为。"""
+
         build_count = 0
 
         def build(
@@ -541,8 +609,10 @@ def test_qdrant_lifecycle_reuses_complete_generation_across_services(
     collection: LoadedChunkCollection,
 ) -> None:
     """验证 `qdrant_lifecycle_reuses_complete_generation_across_services` 场景。"""
+
     class CountingEmbedding:
         """封装 `CountingEmbedding` 的状态与行为。"""
+
         model_name = "counting-reference-embedding"
         dimensions = 384
 

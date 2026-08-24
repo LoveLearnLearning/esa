@@ -282,9 +282,9 @@ class ApiClient {
   Future<bool> checkHealth() async {
     if (kOfflineMode) return true;
     try {
-      final r = await http.get(_uri('/health'), headers: _headers()).timeout(
-        const Duration(seconds: 8),
-      );
+      final r = await http
+          .get(_uri('/health'), headers: _headers())
+          .timeout(const Duration(seconds: 8));
       return r.statusCode == 200;
     } catch (_) {
       return false;

@@ -356,7 +356,9 @@ def test_context_composer_order_trust_and_deterministic_clipping():
         conversation_summary="S" * 1000,
         authorized_attachments=({"attachment_id": "a1", "status": "stored"},),
     )
-    composer = ContextComposer(max_tokens=2000)
+    # Keep enough budget for the profile/group ordering assertions while still
+    # forcing the long summary to be clipped deterministically.
+    composer = ContextComposer(max_tokens=2200)
     first = composer.compose(turn, LEARNING_PROFILE, capabilities)
     second = composer.compose(turn, LEARNING_PROFILE, capabilities)
     assert first == second
@@ -372,7 +374,36 @@ def test_context_composer_order_trust_and_deterministic_clipping():
     assert first.rendered.index("# User profile data") < first.rendered.index(
         "# Group instructions"
     )
-    assert first.estimated_tokens <= 2000
+    assert first.estimated_tokens <= 2200
+
+
+def test_context_composer_requires_parsing_referenced_attachments():
+    """附件被用户指代时，提示必须要求先解析而不是追问文件元数据。"""
+    route = _route(capabilities=frozenset({"attachments"}))
+    turn = _turn(
+        route,
+        current_message="解释一下这篇论文",
+        authorized_attachments=(
+            {
+                "attachment_id": "a1",
+                "filename": "VideoMimic.pdf",
+                "suffix": ".pdf",
+                "status": "stored_unparsed",
+            },
+        ),
+    )
+    capabilities = ResolvedCapabilities(
+        skill_index="parse_pdf_attachment",
+        autoload_skills="parse_pdf_attachment\n概括全文的主要内容",
+        tool_schemas=(),
+        skill_names=frozenset({"parse_pdf_attachment"}),
+        tool_names=frozenset({"parse_pdf_attachment"}),
+        fingerprint="f",
+    )
+    composed = ContextComposer().compose(turn, LEARNING_PROFILE, capabilities)
+    assert "硬性规则" in composed.rendered
+    assert "不得因为用户没有重复输入标题或作者而追问" in composed.rendered
+    assert "概括全文的主要内容" in composed.rendered
 
 
 def test_context_composer_uses_cjk_aware_token_budget():
@@ -440,11 +471,8 @@ def test_concept_explanation_runtime_exposes_rag_and_direct_answer_policy():
     )
 
     system_prompt = spec.messages[0]["content"]
-    assert "retrieve_federated_knowledge" in spec.run_metadata["tool_names"]
-    assert "retrieve_personal_knowledge" in spec.run_metadata["tool_names"]
     assert "retrieve_knowledge" in spec.run_metadata["tool_names"]
-    assert "默认调用 `retrieve_federated_knowledge`" in system_prompt
-    assert "同时检索" in system_prompt
+    assert "先调用 `retrieve_knowledge`" in system_prompt
     assert "本轮直接回答" in system_prompt
     assert "正式讲解前，先问" not in system_prompt
 
@@ -471,17 +499,20 @@ def test_bound_rag_tool_uses_the_turn_runtime_dependency(monkeypatch):
     )
     captured = {}
 
-    def fake_retrieve(query, top_k=5, similarity_threshold=None, service=None):
+    def fake_retrieve(
+        query, top_k=5, similarity_threshold=None, service=None, token_counter=None
+    ):
         captured.update(
             query=query,
             top_k=top_k,
             similarity_threshold=similarity_threshold,
             service=service,
+            token_counter=token_counter,
         )
         return {"query": query, "result_count": 0}
 
     monkeypatch.setattr(
-        "backend.agent.rag.agent_api.retrieve_knowledge_payload",
+        "backend.agent.rag.agent_api.retrieve_knowledge_result",
         fake_retrieve,
     )
     result = asyncio.run(
@@ -493,58 +524,6 @@ def test_bound_rag_tool_uses_the_turn_runtime_dependency(monkeypatch):
     assert result == {"query": "binary search", "result_count": 0}
     assert captured["service"] is sentinel
     assert captured["top_k"] == 3
-
-
-def test_bound_federated_rag_uses_both_turn_dependencies(monkeypatch):
-    """联合检索必须绑定可信用户，并使用本轮注入的两个检索服务。"""
-    register_builtin_tools()
-    route = _route()
-    public_service = object()
-    personal_service = object()
-    captured = {}
-
-    async def fake_federated(**values):
-        captured.update(values)
-        return {"query": values["query"], "result_count": 0}
-
-    monkeypatch.setattr(
-        "backend.agent.rag.federated.retrieve_federated_knowledge_payload",
-        fake_federated,
-    )
-    context = ToolExecutionContext(
-        user_id="trusted-user",
-        conversation_id="c1",
-        workspace_route=route,
-        authorized_resources=route.resource_scope,
-        conversation_mode="normal",
-        runtime_dependencies=AgentRuntimeDependencies(
-            rag_service=public_service,
-            personal_knowledge_retrieval_service=personal_service,
-        ),
-        request_id="r1",
-    )
-    compiled = CapabilityRuntime().compile(
-        skill_scopes=route.skill_scopes,
-        tool_scopes=route.tool_scopes,
-        profile_fingerprint="learning:1",
-        policy_versions=("p1",),
-    )
-
-    result = asyncio.run(
-        compiled.bind(context).execute(
-            "retrieve_federated_knowledge",
-            {"query": "Rust lifetimes", "top_k": 4},
-        )
-    )
-
-    assert result == {"query": "Rust lifetimes", "result_count": 0}
-    assert captured == {
-        "user_id": "trusted-user",
-        "public_service": public_service,
-        "personal_service": personal_service,
-        "query": "Rust lifetimes",
-        "top_k": 4,
-    }
 
 
 def test_personal_knowledge_tool_uses_context_identity_not_model_argument():

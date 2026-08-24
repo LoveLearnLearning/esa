@@ -325,7 +325,10 @@ class QdrantIndex:
             "query": query,
             "using": using,
             "limit": limit,
-            "with_payload": True,
+            # Ranking only needs the stable domain identifier.  Evidence and
+            # retrieval text are resolved from the already loaded collection,
+            # so transferring the complete Chunk payload wastes bandwidth.
+            "with_payload": {"include": ["chunk_id"]},
         }
         if content_roles is not None:
             payload["filter"] = {

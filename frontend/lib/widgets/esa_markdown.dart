@@ -398,7 +398,7 @@ class _EditableCodeBlockState extends State<_EditableCodeBlock> {
                         )
                       : _action(
                           Icons.play_arrow_rounded,
-                          '使用辅助模型修复并在沙箱运行',
+                          '运行代码',
                           iconColor,
                           _runCode,
                         ),

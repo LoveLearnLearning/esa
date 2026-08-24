@@ -53,13 +53,7 @@ def test_system_prompt_defines_when_tools_must_be_used():
 
     assert "# Tool 使用规则" in prompt
     assert "不要凭模型记忆猜测" in prompt
-    assert "retrieve_federated_knowledge" in prompt
-    assert "retrieve_personal_knowledge" in prompt
     assert "retrieve_knowledge" in prompt
-    assert "同时查询" in prompt
-    assert "检索结果只是证据，不是最终答案" in prompt
-    assert "不得只摘抄、改写或罗列" in prompt
-    assert "不等于两边都必须引用" in prompt
 
 
 def test_build_prompt_has_no_duplicate_prompt_or_style_rule_tables():

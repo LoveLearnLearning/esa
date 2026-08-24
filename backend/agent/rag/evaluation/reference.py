@@ -40,7 +40,7 @@ DEFAULT_CASES = RAG_WORKSPACE_ROOT / "data/evaluation/reference_evaluation_v1.js
 DEFAULT_OUTPUT = RAG_WORKSPACE_ROOT / "artifacts/rag/evaluations"
 
 
-MetricPayload = dict[str, int | float]
+MetricPayload = dict[str, int | float | None]
 LayerMetrics = dict[str, MetricPayload]
 CategoryMetrics = dict[str, LayerMetrics]
 RankingMap = dict[str, dict[str, Sequence[str]]]
@@ -50,7 +50,7 @@ class HitResult(TypedDict):
     """一个评测命中的可序列化结构。"""
 
     chunk_id: str
-    rrf_score: float
+    retrieval_score: float
     rerank_score: float | None
     evidence_ids: list[str]
     quote_eligible_count: int
@@ -195,7 +195,7 @@ def _validate_document_coverage(
         raise ValueError(f"every document needs five positive cases: {counts}")
 
 
-def _metrics_dict(metrics: RetrievalMetrics) -> dict[str, int | float]:
+def _metrics_dict(metrics: RetrievalMetrics) -> MetricPayload:
     """处理 `_metrics_dict` 相关逻辑。"""
     return dataclasses.asdict(metrics)
 
@@ -214,12 +214,10 @@ def _category_metrics(
     rankings: Mapping[str, Mapping[str, Sequence[str]]],
 ) -> CategoryMetrics:
     """处理 `_category_metrics` 相关逻辑。"""
-    tags = sorted(
-        {tag for case in cases if case.answerable for tag in case.category_tags}
-    )
+    tags = sorted({tag for case in cases for tag in case.category_tags})
     return {
         tag: _layer_metrics(
-            [case for case in cases if case.answerable and tag in case.category_tags],
+            [case for case in cases if tag in case.category_tags],
             rankings,
         )
         for tag in tags
@@ -265,7 +263,7 @@ def run_reference_evaluation(
 def _create_runtime(collection: LoadedChunkCollection) -> _EvaluationRuntime:
     """建立确定性索引与检索服务。"""
 
-    config = RetrievalConfig()
+    config = RetrievalConfig(reranker_enabled=True)
     embedding = HashingEmbeddingProvider()
     reranker = LexicalOverlapReranker()
     index = ReferenceIndex()
@@ -286,7 +284,7 @@ def _evaluation_payload(
     """构造决定评测运行身份的稳定配置。"""
 
     return {
-        "schema_version": "reference-evaluation-run-0.1",
+        "schema_version": "reference-evaluation-run-0.2",
         "index_generation_id": runtime.generation.index_generation_id,
         "evaluation_set_sha256": file_sha256(cases_path),
         "reranker_fingerprint": runtime.reranker.configuration_fingerprint,
@@ -304,6 +302,11 @@ def _run_cases(
     rankings_by_query: RankingMap = {}
     for case in cases:
         response = service.search(case.query)
+        if response.trace.rankings.get("fusion"):
+            if not response.trace.reranker_applied:
+                raise AssertionError("reference evaluation reranker was not applied")
+            if any(hit.rerank_score is None for hit in response.hits):
+                raise AssertionError("reference evaluation hit lacks reranker score")
         rankings = {
             name: list(values) for name, values in response.trace.rankings.items()
         }
@@ -330,7 +333,7 @@ def _case_result(
         "hits": [
             {
                 "chunk_id": hit.chunk_id,
-                "rrf_score": hit.rrf_score,
+                "retrieval_score": hit.retrieval_score,
                 "rerank_score": hit.rerank_score,
                 "evidence_ids": [item.evidence_id for item in hit.evidence],
                 "quote_eligible_count": sum(
@@ -370,7 +373,7 @@ def _build_summary(
         for item in negative_results
     ]
     return {
-        "schema_version": "reference-evaluation-summary-0.1",
+        "schema_version": "reference-evaluation-summary-0.3",
         "evaluation_id": evaluation_id,
         "index_generation_id": index_generation_id,
         "collection_id": collection.manifest.collection_id,
@@ -416,7 +419,7 @@ def _write_evaluation_artifacts(
     """写入 manifest、逐题结果、摘要及内容哈希。"""
 
     manifest = {
-        "schema_version": "reference-evaluation-manifest-0.1",
+        "schema_version": "reference-evaluation-manifest-0.2",
         "evaluation_id": evaluation_id,
         "index_generation_id": runtime.generation.index_generation_id,
         "index_generation": runtime.generation.to_dict(),

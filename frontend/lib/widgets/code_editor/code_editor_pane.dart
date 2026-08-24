@@ -226,7 +226,7 @@ class _CodeEditorPaneState extends State<CodeEditorPane> {
                       : _action(
                           context,
                           LucideIcons.play,
-                          '使用辅助模型修复并在沙箱运行',
+                          '运行代码',
                           _runCode,
                         ),
                 _action(

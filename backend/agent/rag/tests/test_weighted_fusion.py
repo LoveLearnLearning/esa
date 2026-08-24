@@ -1,6 +1,6 @@
 # backend/agent/rag/tests/test_weighted_fusion.py
 
-"""Dense 主导融合、词法 gate、Reranker prior 与查询职责拆分测试。"""
+"""Dense 主导融合、词法 gate、串行 Reranker 与查询职责拆分测试。"""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from backend.agent.rag.retrieval.query import (
 )
 from backend.agent.rag.retrieval.reranking import (
     aggregate_chunk_scores,
-    blend_retrieval_and_reranker,
+    rerank_by_score,
 )
 
 
@@ -113,7 +113,7 @@ def test_supervised_calibrators_fit_only_explicit_samples() -> None:
 
 @pytest.mark.parametrize(
     "query",
-    ["TCP", "RFC 793", "Figure 3", "Section 2.1", "BKT", "2024"],
+    ["TCP", "RFC 793", "Figure 3", "Section 2.1", "ABC.1", "BKT", "2024"],
 )
 def test_exact_lexical_queries_receive_more_confidence(query: str) -> None:
     """验证 `exact_lexical_queries_receive_more_confidence` 场景。"""
@@ -123,13 +123,12 @@ def test_exact_lexical_queries_receive_more_confidence(query: str) -> None:
     assert lexical_confidence(query, results, calibrator) > ordinary
 
 
-def test_reranker_is_disabled_by_default_and_lambda_one_restores_prior() -> None:
-    """验证 `reranker_is_disabled_by_default_and_lambda_one_restores_prior` 场景。"""
-    assert RetrievalConfig().reranker_enabled is False
-    prior = [RankedItem("a", 0.8), RankedItem("b", 0.7)]
+def test_reranker_is_enabled_by_default_and_ignores_fusion_score_scale() -> None:
+    """验证默认启用串行 Reranker 且不混入 fusion 分数。"""
+    assert RetrievalConfig().reranker_enabled is True
+    prior = [RankedItem("a", 1000.0), RankedItem("b", 0.001)]
     scores = {"a": 0.0, "b": 1.0}
-    assert blend_retrieval_and_reranker(prior, scores, 1.0) == prior
-    assert blend_retrieval_and_reranker(prior, scores, 0.8)[0].chunk_id == "a"
+    assert [item.chunk_id for item in rerank_by_score(prior, scores)] == ["b", "a"]
 
 
 def test_multi_chunk_aggregation_supports_max_and_mean() -> None:

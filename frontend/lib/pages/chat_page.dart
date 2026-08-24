@@ -434,9 +434,7 @@ class _ChatPageState extends State<ChatPage> {
       }
     } catch (_) {
       if (mounted) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('代码执行失败，请稍后重试')),
-        );
+        messenger.showSnackBar(const SnackBar(content: Text('代码执行失败，请稍后重试')));
       }
     }
   }
@@ -559,6 +557,13 @@ class _ChatPageState extends State<ChatPage> {
         source: _CodeSource.composer,
       ),
       onCodeBlockChanged: _syncComposerCodeBlock,
+      onRunCode: (blockId, code, language) => _executeCode(
+        app,
+        blockId,
+        code,
+        language,
+        source: _CodeSource.composer,
+      ),
       onSelectedAttachmentsChanged: widget.onSelectedAttachmentsChanged,
       courseNames: <String>{
         ...app.learningCourses.map((item) => item.name),
@@ -664,13 +669,8 @@ class _ChatPageState extends State<ChatPage> {
           onSendToAgent: code.source == _CodeSource.assistant
               ? () => _sendEditedAgentCode(app)
               : null,
-          onRunCode: (value, language) => _executeCode(
-            app,
-            code.id,
-            value,
-            language,
-            source: code.source,
-          ),
+          onRunCode: (value, language) =>
+              _executeCode(app, code.id, value, language, source: code.source),
           onClose: _closeCodeEditor,
         );
       }
@@ -1153,9 +1153,6 @@ class _CodeExecutionDialog extends StatelessWidget {
                 children: [
                   Chip(label: Text(result.language.toUpperCase())),
                   Chip(label: Text('尝试 ${result.attemptCount} 次')),
-                  Chip(
-                    label: Text(result.modelUsed ? '辅助 9B 已检查' : '辅助模型降级'),
-                  ),
                   if (result.codeChanged) const Chip(label: Text('代码已自动修复')),
                   if (result.durationSeconds > 0)
                     Chip(
@@ -1200,10 +1197,14 @@ class _CodeExecutionDialog extends StatelessWidget {
                         installFailures
                             .map(
                               (item) =>
-                                  item['stderr']?.toString().trim().isNotEmpty ==
+                                  item['stderr']
+                                          ?.toString()
+                                          .trim()
+                                          .isNotEmpty ==
                                       true
                                   ? item['stderr'].toString()
-                                  : item['error']?.toString() ?? 'unknown error',
+                                  : item['error']?.toString() ??
+                                        'unknown error',
                             )
                             .join('\n'),
                         code: true,

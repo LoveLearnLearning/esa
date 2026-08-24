@@ -7,9 +7,9 @@ import sys
 from importlib import import_module
 
 from backend.agent.agent import (
+    _tool_result_channels,
     sanitize_qwen_history,
     serialize_tool_result,
-    serialize_tool_result_for_model,
 )
 from backend.agent.memories.memory_models import (
     ProfileField,
@@ -17,7 +17,7 @@ from backend.agent.memories.memory_models import (
     ProfileSnapshot,
 )
 from backend.core.message.build_prompt import build_system_prompt
-from backend.core.utils.models import PromptContext
+from backend.core.utils.models import PromptContext, ToolExecutionResult
 
 
 def test_agent_module_imports_without_vllm():
@@ -41,59 +41,18 @@ def test_tool_observation_is_standard_json():
     assert json.loads(serialized) == payload
 
 
-def test_knowledge_tool_observation_adds_model_only_explanation_contract():
-    """知识检索结果必须提醒模型把证据转化为讲解。"""
-    payload = {
-        "query": "Rust 数据结构",
-        "results": [
-            {
-                "rank": 1,
-                "knowledge_scope": "personal",
-                "source": "Rust.pdf",
-                "section": "集合",
-                "content": "证据",
-                "score": 0.9,
-                "evidence": [{"large": "metadata"}],
-            }
-        ],
-        "context_text": "重复证据",
-        "rankings": {"dense": ["chunk-1"]},
-    }
-
-    serialized = serialize_tool_result_for_model(
-        "retrieve_federated_knowledge",
-        payload,
+def test_tool_result_channels_keep_audit_out_of_model_and_display():
+    result = ToolExecutionResult(
+        model_content={"content": "compact"},
+        display_content={"source": "book"},
+        audit_metadata={"evidence": "full"},
     )
-    model_payload = json.loads(serialized)
 
-    assert payload["results"][0]["evidence"] == [{"large": "metadata"}]
-    assert model_payload["query"] == "Rust 数据结构"
-    assert model_payload["results"] == [
-        {
-            "rank": 1,
-            "knowledge_scope": "personal",
-            "source": "Rust.pdf",
-            "section": "集合",
-            "content": "证据",
-        }
-    ]
-    assert "context_text" not in model_payload
-    assert "rankings" not in model_payload
-    assert "evidence" not in model_payload["results"][0]
-    assert "score" not in model_payload["results"][0]
-    contract = model_payload["_response_contract"]
-    assert contract["kind"] == "evidence_to_explanation"
-    assert any("具体例子" in item for item in contract["requirements"])
-    assert any("只摘抄" in item for item in contract["forbidden"])
+    model, display, audit = _tool_result_channels(result)
 
-
-def test_non_knowledge_tool_observation_is_not_wrapped():
-    """非知识工具不应收到无关的教学回答契约。"""
-    payload = {"value": 4}
-
-    serialized = serialize_tool_result_for_model("calculator", payload)
-
-    assert json.loads(serialized) == payload
+    assert model == {"content": "compact"}
+    assert display == {"source": "book"}
+    assert audit == {"evidence": "full"}
 
 
 def test_sanitize_qwen_history_removes_unsupported_tool_protocol_turn():

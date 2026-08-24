@@ -138,6 +138,11 @@ class LLMProvider:
             add_generation_prompt=True,
         )
 
+    def count_tokens(self, text: str) -> int:
+        """Count serialized observation tokens with the actual Agent tokenizer."""
+
+        return len(self.tokenizer.encode(text, add_special_tokens=False))
+
     def parse_output(
         self,
         raw_text: str,

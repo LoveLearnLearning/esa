@@ -617,6 +617,7 @@ def _runtime_dependencies(
         learning_evidence_store=getattr(state, "learning_evidence_store", None),
         learning_state_service=getattr(state, "learning_state_service", None),
         rag_service=getattr(state, "rag_service", None),
+        token_counter=getattr(getattr(state, "agent", None), "llm_provider", None),
         personal_knowledge_retrieval_service=getattr(
             state, "personal_knowledge_retrieval_service", None
         ),
@@ -1279,7 +1280,12 @@ async def send_message(
         finally:
             await _cancel_title_generation(title_task)
 
-    return [message for message in new_messages if message.get("is_visible", True)]
+    private_tool_fields = {"model_content", "audit_metadata", "request_id", "run_id"}
+    return [
+        {key: value for key, value in message.items() if key not in private_tool_fields}
+        for message in new_messages
+        if message.get("is_visible", True)
+    ]
 
 
 @router.post("/{conversation_id}/messages/stream")

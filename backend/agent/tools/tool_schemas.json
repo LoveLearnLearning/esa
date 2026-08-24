@@ -88,7 +88,7 @@
     "type": "function",
     "function": {
       "name": "retrieve_knowledge",
-      "description": "从已配置的公共知识库检索证据、上下文和可回查来源。用户明确指定公共库，或个人知识库无结果、不可用、证据不足时调用。该工具只读，不会隐式建立或修改索引。",
+      "description": "从知识库检索紧凑证据。返回语义明确、受最终 JSON token 预算约束的结果；完整来源和审计数据由服务端分离处理。必须遵守每条结果的 citation_mode：paraphrase_only_unverified 只能转述并说明文字提取未经验证，禁止逐字引用。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -103,37 +103,7 @@
           },
           "similarity_threshold": {
             "type": "number",
-            "description": "可选的 Reranker 概率阈值；未启用 Reranker 时不能使用"
-          }
-        },
-        "required": [
-          "query"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "retrieve_federated_knowledge",
-      "description": "同时检索当前用户的个人知识库和平台公共知识库，并把两边证据合并排序为一个结果集。学习空间的知识点、概念和原理检索默认调用；仅当用户明确要求限定范围时才改用个人库或公共库的单独工具。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "需要同时从个人资料和公共资料检索的问题"
-          },
-          "top_k": {
-            "type": "integer",
-            "description": "联合排序后最多返回多少条结果，范围 1 到 20，默认 5",
-            "default": 5,
-            "minimum": 1,
-            "maximum": 20
-          },
-          "similarity_threshold": {
-            "type": "number",
-            "description": "仅应用于公共库 Reranker 的可选概率阈值；不影响个人库候选"
+            "description": "可选的原始 Reranker 分数阈值；未启用时不能使用"
           }
         },
         "required": [
@@ -158,7 +128,7 @@
     "type": "function",
     "function": {
       "name": "retrieve_personal_knowledge",
-      "description": "检索当前登录用户主动上传的个人知识库，并返回文件名和可回查证据。仅在用户明确要求只查个人资料时单独调用；默认知识检索应调用联合检索工具。用户身份由服务端会话绑定，参数中不接受 user_id。",
+      "description": "检索当前登录用户主动上传的个人知识库，并返回文件名和可回查证据。用户身份由服务端会话绑定，参数中不接受 user_id。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -894,7 +864,7 @@
     "type": "function",
     "function": {
       "name": "parse_pdf_attachment",
-      "description": "读取当前消息已授权的 PDF 附件",
+      "description": "读取当前消息已授权的 PDF 附件。用户要求解释、总结、阅读、分析或检索这篇论文/这个 PDF 时必须调用",
       "parameters": {
         "type": "object",
         "properties": {
@@ -918,7 +888,7 @@
     "type": "function",
     "function": {
       "name": "parse_word_attachment",
-      "description": "读取当前消息已授权的 Word 附件",
+      "description": "读取当前消息已授权的 Word 附件。用户要求解释、总结、阅读或分析这个文档时必须调用",
       "parameters": {
         "type": "object",
         "properties": {
@@ -942,7 +912,7 @@
     "type": "function",
     "function": {
       "name": "parse_presentation_attachment",
-      "description": "读取当前消息已授权的演示文稿附件",
+      "description": "读取当前消息已授权的演示文稿附件。用户要求解释、总结或分析这个演示文稿时必须调用",
       "parameters": {
         "type": "object",
         "properties": {
@@ -966,7 +936,7 @@
     "type": "function",
     "function": {
       "name": "parse_spreadsheet_attachment",
-      "description": "读取当前消息已授权的电子表格附件",
+      "description": "读取当前消息已授权的电子表格附件。用户要求读取、分析或总结表格时必须调用",
       "parameters": {
         "type": "object",
         "properties": {
@@ -990,7 +960,7 @@
     "type": "function",
     "function": {
       "name": "parse_image_attachment",
-      "description": "读取当前消息已授权的图片附件",
+      "description": "读取当前消息已授权的图片附件。用户要求识别、解释或分析这张图片时必须调用",
       "parameters": {
         "type": "object",
         "properties": {

@@ -1,13 +1,13 @@
 {
-  "captured_at": "2026-08-22T21:17:34+00:00",
+  "captured_at": "2026-08-23T17:15:01+00:00",
   "source": "github.com/LoveLearnLearning/esa",
-  "source_repo": "local-clone@885029d",
+  "source_repo": "local-clone@4816244",
   "workspace": "learning",
   "tool_scopes": [
     "common",
     "learning"
   ],
-  "schema_version": "e37b194b",
+  "schema_version": "8641ccac",
   "with_attachments": false,
   "kept": [
     "arxiv_search",
@@ -29,7 +29,6 @@
     "recommend_practice",
     "record_answer",
     "record_learning_evidence",
-    "retrieve_federated_knowledge",
     "retrieve_knowledge",
     "retrieve_personal_knowledge",
     "run_in_sandbox",
