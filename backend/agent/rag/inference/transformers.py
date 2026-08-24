@@ -152,7 +152,10 @@ class TransformersReranker:
     device: str = "cuda"
     max_length: int = 8192
     instruction: str = (
-        "Given a web search query, retrieve relevant passages that answer the query"
+        "Given a search query and a candidate passage, judge whether the passage "
+        "can answer the query. The query and passage may be written in different "
+        "languages; assess cross-lingual semantic relevance and do not require "
+        "lexical or language matching."
     )
     _tokenizer: Any = field(init=False, default=None, repr=False)
     _model: Any = field(init=False, default=None, repr=False)
@@ -215,7 +218,9 @@ class TransformersReranker:
             "<|im_start|>system\n"
             "Judge whether the Document meets the requirements based on "
             "the Query and the Instruct provided. Note that the answer can "
-            'only be "yes" or "no".'
+            'only be "yes" or "no". The Query and Document may be written '
+            "in different languages; judge semantic relevance across languages "
+            "rather than requiring the same language or exact word overlap."
             "<|im_end|>\n<|im_start|>user\n"
         )
         suffix = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"

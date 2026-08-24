@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     from backend.agent.memories.memory_models import ProfileSnapshot
@@ -18,6 +18,15 @@ class ToolCall:
 
     name: str
     arguments: dict
+
+
+@dataclass(frozen=True, slots=True)
+class ToolExecutionResult:
+    """Separate model, display, and audit projections of one tool result."""
+
+    model_content: Any
+    display_content: Any
+    audit_metadata: Any | None = None
 
 
 @dataclass

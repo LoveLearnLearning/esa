@@ -25,6 +25,7 @@ class ContextBuilder:
     section_window: int
     token_counter: Callable[[str], int] | None = None
     _sections: Mapping[tuple[str, str], list[Chunk]] = field(init=False, repr=False)
+    _chunks: Mapping[str, Chunk] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         """按 section_id 分组，并固定章节内的 Chunk 顺序。"""
@@ -35,6 +36,7 @@ class ContextBuilder:
         for section_chunks in sections.values():
             section_chunks.sort(key=lambda chunk: chunk.document_order)
         self._sections = sections
+        self._chunks = {chunk.chunk_id: chunk for chunk in self.chunks}
 
     def select(
         self,
@@ -63,8 +65,9 @@ class ContextBuilder:
         hits: Sequence[Chunk],
         level: ContextLevel,
         max_tokens: int,
+        merged_context_chunk_ids: Mapping[str, Sequence[str]] | None = None,
     ) -> Mapping[str, tuple[Chunk, ...]]:
-        """先装载全部 primary，再按命中顺序装邻居并执行全局去重。"""
+        """Load primaries, merged adjacent candidates, then optional neighbors."""
 
         selected: dict[str, list[Chunk]] = {hit.chunk_id: [] for hit in hits}
         used: set[str] = set()
@@ -96,6 +99,13 @@ class ContextBuilder:
             if add(hit.chunk_id, hit):
                 active_hits.append(hit)
 
+        merged = merged_context_chunk_ids or {}
+        for hit in active_hits:
+            for chunk_id in merged.get(hit.chunk_id, ()):
+                chunk = self._chunks.get(chunk_id)
+                if chunk is not None:
+                    add(hit.chunk_id, chunk)
+
         for hit in active_hits:
             for chunk in self.select(hit, level):
                 if chunk.chunk_id != hit.chunk_id:
@@ -121,6 +131,8 @@ class ContextBuilder:
 
 _TOKEN = re.compile(r"[\u3400-\u9fff]|[A-Za-z0-9_]+|[^\s]")
 _SAFE_BREAK = re.compile(r"\n{2,}|[。！？!?；;]")
+_ASCII_QUERY_TERM = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.:/#-]*")
+_CJK_QUERY_RUN = re.compile(r"[\u3400-\u9fff]+")
 _TRUNCATION_MARKER = "…"
 
 
@@ -128,6 +140,126 @@ def estimate_tokens(text: str) -> int:
     """无模型依赖的保守 token 估算；CJK、词和标点分别计数。"""
 
     return len(_TOKEN.findall(text))
+
+
+def query_relevance_score(query: str, text: str) -> float:
+    """Return a deterministic lexical relevance score for local projection work."""
+
+    value = text.casefold()
+    score = 0.0
+    for term in _query_terms(query):
+        occurrences = min(3, value.count(term))
+        if occurrences:
+            score += occurrences * max(1.0, len(term) / 2)
+    return score
+
+
+def rank_evidence_for_query(
+    query: str,
+    evidence: Sequence[Evidence],
+) -> tuple[Evidence, ...]:
+    """Put the most query-relevant Evidence first without losing stable order."""
+
+    values = tuple(evidence)
+    scored = [
+        query_relevance_score(query, f"{' '.join(item.section_path)}\n{item.evidence_text}")
+        for item in values
+    ]
+    if not scored or max(scored) <= 0:
+        return values
+    return tuple(
+        item
+        for _index, item in sorted(
+            enumerate(values),
+            key=lambda pair: (-scored[pair[0]], pair[0]),
+        )
+    )
+
+
+def _query_terms(query: str) -> tuple[str, ...]:
+    terms: list[str] = []
+    terms.extend(
+        match.group(0).casefold()
+        for match in _ASCII_QUERY_TERM.finditer(query)
+        if len(match.group(0)) >= 2
+    )
+    for match in _CJK_QUERY_RUN.finditer(query):
+        run = match.group(0)
+        if len(run) <= 4:
+            terms.append(run)
+        for size in (3, 2):
+            terms.extend(run[index : index + size] for index in range(len(run) - size + 1))
+    return tuple(dict.fromkeys(term for term in terms if term))
+
+
+def query_aware_excerpt(text: str, query: str, max_tokens: int) -> str:
+    """Extract a bounded window around the passage most related to the query."""
+
+    if max_tokens < 0:
+        raise ValueError("max_tokens cannot be negative")
+    value = text.strip()
+    tokens = list(_TOKEN.finditer(value))
+    if not value or max_tokens == 0:
+        return ""
+    if len(tokens) <= max_tokens:
+        return value
+    if max_tokens <= 2:
+        return truncate_text_to_token_budget(value, max_tokens)
+
+    terms = _query_terms(query)
+    anchors: list[tuple[float, int, int]] = []
+    folded = value.casefold()
+    for term in terms:
+        start = folded.find(term)
+        while start >= 0:
+            anchors.append((max(1.0, len(term) / 2), start, start + len(term)))
+            start = folded.find(term, start + 1)
+    if not anchors:
+        return truncate_text_to_token_budget(value, max_tokens)
+
+    best = max(
+        anchors,
+        key=lambda anchor: (
+            sum(
+                weight
+                for weight, start, end in anchors
+                if start < anchor[2] + 160 and end > anchor[1] - 160
+            ),
+            anchor[0],
+            -anchor[1],
+        ),
+    )
+    center = (best[1] + best[2]) // 2
+    center_index = next(
+        (index for index, token in enumerate(tokens) if token.end() >= center),
+        len(tokens) - 1,
+    )
+    start = max(0, center_index - max_tokens // 2)
+    end = min(len(tokens), start + max_tokens)
+    start = max(0, end - max_tokens)
+
+    while True:
+        marker_count = int(start > 0) + int(end < len(tokens))
+        if end - start + marker_count <= max_tokens:
+            break
+        if center_index - start >= end - center_index:
+            start += 1
+        else:
+            end -= 1
+    while end - start + int(start > 0) + int(end < len(tokens)) < max_tokens:
+        if start > 0:
+            start -= 1
+        elif end < len(tokens):
+            end += 1
+        else:
+            break
+
+    excerpt = value[tokens[start].start() : tokens[end - 1].end()].strip()
+    if start > 0:
+        excerpt = f"{_TRUNCATION_MARKER}{excerpt}"
+    if end < len(tokens):
+        excerpt = f"{excerpt}{_TRUNCATION_MARKER}"
+    return excerpt
 
 
 def truncate_text_to_token_budget(text: str, max_tokens: int) -> str:

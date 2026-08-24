@@ -28,6 +28,7 @@ from backend.core.utils.models import (
     AgentStreamEvent,
     ParsedOutput,
     ToolCall,
+    ToolExecutionResult,
 )
 
 
@@ -36,51 +37,6 @@ logger = logging.getLogger(__name__)
 _TERMINAL_TOOL_ERRORS = frozenset(
     {"tool_not_available", "resource_capability_required"}
 )
-
-_KNOWLEDGE_RETRIEVAL_TOOLS = frozenset(
-    {
-        "retrieve_federated_knowledge",
-        "retrieve_personal_knowledge",
-        "retrieve_knowledge",
-    }
-)
-
-_KNOWLEDGE_RESPONSE_CONTRACT = {
-    "kind": "evidence_to_explanation",
-    "requirements": [
-        "先直接回答用户原问题，再解释关键概念及其机制或因果关系",
-        "至少给出一个贴合原问题的具体例子；必要时补充边界条件或易错点",
-        "只引用与原问题真正相关的证据，并标注其真实来源",
-        "证据不足或偏题时明确舍弃该证据，并用通用知识补足讲解",
-    ],
-    "forbidden": [
-        "只摘抄、改写或罗列知识库片段和来源",
-        "为了覆盖个人库和公共库而强行使用不相关证据",
-        "用‘根据检索结果’开头后立即结束而不解释",
-    ],
-}
-
-_KNOWLEDGE_MODEL_TOP_LEVEL_KEYS = (
-    "ok",
-    "error",
-    "message",
-    "query",
-    "result_count",
-    "results",
-    "sources",
-    "degraded",
-    "federation",
-)
-
-_KNOWLEDGE_MODEL_RESULT_KEYS = (
-    "rank",
-    "knowledge_scope",
-    "source",
-    "section",
-    "page",
-    "content",
-)
-
 
 def _terminal_tool_error(result: object) -> str | None:
     """Return an error that cannot be fixed by retrying tool arguments."""
@@ -162,37 +118,12 @@ def serialize_tool_result(result: object) -> str:
     return json.dumps(result, ensure_ascii=False, default=str)
 
 
-def serialize_tool_result_for_model(name: str, result: object) -> str:
-    """Add a trusted answer contract to knowledge observations for the model.
+def _tool_result_channels(result: object) -> tuple[object, object, object | None]:
+    """Normalize legacy single-channel results into the three-channel protocol."""
 
-    The persisted/UI-facing Tool result remains the original payload.  This
-    model-only envelope keeps retrieval evidence from being mistaken for a
-    finished explanation without changing the public Tool contract.
-    """
-
-    if name not in _KNOWLEDGE_RETRIEVAL_TOOLS:
-        return serialize_tool_result(result)
-    if isinstance(result, Mapping):
-        payload = {
-            key: result[key]
-            for key in _KNOWLEDGE_MODEL_TOP_LEVEL_KEYS
-            if key in result
-        }
-        raw_results = result.get("results")
-        if isinstance(raw_results, list):
-            payload["results"] = [
-                {
-                    key: item[key]
-                    for key in _KNOWLEDGE_MODEL_RESULT_KEYS
-                    if key in item
-                }
-                for item in raw_results
-                if isinstance(item, Mapping)
-            ]
-    else:
-        payload = {"result": result}
-    payload["_response_contract"] = _KNOWLEDGE_RESPONSE_CONTRACT
-    return serialize_tool_result(payload)
+    if isinstance(result, ToolExecutionResult):
+        return result.model_content, result.display_content, result.audit_metadata
+    return result, result, None
 
 
 class Agent:
@@ -358,6 +289,7 @@ class Agent:
                     )
                     stop_loop = True
                     break
+                tool_call_id = f"tool-{uuid4().hex}"
                 result = await asyncio.wait_for(
                     run_spec.tool_executor.execute(
                         tool_call.name,
@@ -365,28 +297,33 @@ class Agent:
                     ),
                     timeout=run_spec.loop_policy.tool_timeout_seconds,
                 )
-                result_text = serialize_tool_result(result)
-                model_result_text = serialize_tool_result_for_model(
-                    tool_call.name,
-                    result,
+                model_result, display_result, audit_metadata = (
+                    _tool_result_channels(result)
                 )
+                model_text = serialize_tool_result(model_result)
+                display_text = serialize_tool_result(display_result)
 
                 messages.append(
                     {
                         "role": "tool",
                         "name": tool_call.name,
-                        "content": model_result_text,
+                        "content": model_text,
                     }
                 )
                 new_messages.append(
                     {
                         "role": "tool",
                         "name": tool_call.name,
-                        "content": result_text,
+                        "content": display_text,
+                        "model_content": model_text,
+                        "tool_call_id": tool_call_id,
+                        "audit_metadata": audit_metadata,
+                        "request_id": run_spec.run_metadata.get("request_id"),
+                        "run_id": run_spec.run_metadata.get("run_id"),
                         "is_visible": True,
                     }
                 )
-                terminal_error = _terminal_tool_error(result)
+                terminal_error = _terminal_tool_error(model_result)
                 if terminal_error is not None:
                     terminal_tool_errors[tool_call.name] = terminal_error
 
@@ -616,16 +553,21 @@ class Agent:
                                 "name": tool_call.name,
                             },
                         )
-                result_text = serialize_tool_result(result)
-                model_result_text = serialize_tool_result_for_model(
-                    tool_call.name,
-                    result,
+                model_result, display_result, audit_metadata = (
+                    _tool_result_channels(result)
                 )
+                model_text = serialize_tool_result(model_result)
+                display_text = serialize_tool_result(display_result)
 
                 tool_message = {
                     "role": "tool",
                     "name": tool_call.name,
-                    "content": result_text,
+                    "content": display_text,
+                    "model_content": model_text,
+                    "tool_call_id": tool_call_id,
+                    "audit_metadata": audit_metadata,
+                    "request_id": run_spec.run_metadata.get("request_id"),
+                    "run_id": run_spec.run_metadata.get("run_id"),
                     "is_visible": True,
                 }
 
@@ -633,7 +575,7 @@ class Agent:
                     {
                         "role": "tool",
                         "name": tool_call.name,
-                        "content": model_result_text,
+                        "content": model_text,
                     }
                 )
                 new_messages.append(tool_message)
@@ -643,10 +585,10 @@ class Agent:
                     data={
                         "id": tool_call_id,
                         "name": tool_call.name,
-                        "content": result_text,
+                        "content": display_text,
                     },
                 )
-                terminal_error = _terminal_tool_error(result)
+                terminal_error = _terminal_tool_error(model_result)
                 if terminal_error is not None:
                     terminal_tool_errors[tool_call.name] = terminal_error
 

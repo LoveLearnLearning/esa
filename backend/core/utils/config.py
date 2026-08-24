@@ -528,8 +528,8 @@ LSP_DOCUMENT_FILENAMES: dict[str, str] = {
 
 # collection and deployment
 RAG_ENABLED: bool = _bool_from_env("RAG_ENABLED", False)
-RAG_COLLECTION_ID = "collection_e55166f798ef1c361c72de9a"
-RAG_DEPLOYMENT_ID = "deployment_357bd9c84d8404fae42c2740"
+RAG_COLLECTION_ID = "collection_f645d539e0ae078ba11d7e88"
+RAG_DEPLOYMENT_ID = "deployment_57fdb5e345322c2181e16ee1"
 RAG_COLLECTION_MANIFEST_PATH: Path = _path_from_env(
     "RAG_COLLECTION_MANIFEST_PATH",
     RAG_WORKSPACE_ROOT
@@ -542,7 +542,7 @@ RAG_INDEX_DEPLOYMENT_ROOT: Path = _path_from_env(
 # qdrant
 RAG_QDRANT_BASE_URL: str = _str_from_env("RAG_QDRANT_BASE_URL", "http://127.0.0.1:6333")
 RAG_QDRANT_COLLECTION: str = _str_from_env(
-    "RAG_QDRANT_COLLECTION", "rag_qwen3_embedding_4b_v2"
+    "RAG_QDRANT_COLLECTION", "cs_textbooks_qwen3_20260822"
 )
 RAG_QDRANT_TIMEOUT: float = _float_from_env("RAG_QDRANT_TIMEOUT", 30.0, minimum=0.001)
 RAG_QDRANT_UPSERT_BATCH_SIZE: int = _int_from_env("RAG_QDRANT_UPSERT_BATCH_SIZE", 64)
@@ -571,7 +571,7 @@ RAG_EMBEDDING_TIMEOUT: float = _float_from_env(
 
 # reranker
 RerankerBackend = Literal["none", "transformers", "vllm"]
-RAG_RERANKER_ENABLED: bool = _bool_from_env("RAG_RERANKER_ENABLED", False)
+RAG_RERANKER_ENABLED: bool = _bool_from_env("RAG_RERANKER_ENABLED", True)
 RAG_RERANKER_BACKEND: RerankerBackend = _choice_from_env(
     "RAG_RERANKER_BACKEND",
     "transformers" if RAG_RERANKER_ENABLED else "none",
@@ -588,11 +588,13 @@ RAG_RERANKER_TIMEOUT: float = _float_from_env(
 )
 
 # retrieval
-RAG_DENSE_LIMIT: int = _int_from_env("RAG_DENSE_LIMIT", 20)
-RAG_BM25_BODY_LIMIT: int = _int_from_env("RAG_BM25_BODY_LIMIT", 20)
-RAG_BM25_HEADING_LIMIT: int = _int_from_env("RAG_BM25_HEADING_LIMIT", 20)
-RAG_RRF_LIMIT: int = _int_from_env("RAG_RRF_LIMIT", 30)
-RAG_RERANK_LIMIT: int = _int_from_env("RAG_RERANK_LIMIT", 20)
+# Keep a wider recall pool so relevant chunks beyond the old top-20 are
+# available to fusion/reranking without increasing the final response size.
+RAG_DENSE_LIMIT: int = _int_from_env("RAG_DENSE_LIMIT", 50)
+RAG_BM25_BODY_LIMIT: int = _int_from_env("RAG_BM25_BODY_LIMIT", 50)
+RAG_BM25_HEADING_LIMIT: int = _int_from_env("RAG_BM25_HEADING_LIMIT", 50)
+RAG_RRF_LIMIT: int = _int_from_env("RAG_RRF_LIMIT", 50)
+RAG_RERANK_LIMIT: int = _int_from_env("RAG_RERANK_LIMIT", 50)
 RAG_RERANKER_BATCH_SIZE: int = _int_from_env("RAG_RERANKER_BATCH_SIZE", 4)
 RAG_FINAL_LIMIT: int = _int_from_env("RAG_FINAL_LIMIT", 5)
 RAG_RRF_K: int = _int_from_env("RAG_RRF_K", 60)
@@ -616,7 +618,7 @@ RAG_LEXICAL_BODY_WEIGHT: float = _float_from_env(
     "RAG_LEXICAL_BODY_WEIGHT", 0.75, minimum=0.0, maximum=1.0
 )
 RAG_LEXICAL_GATE_ENABLED: bool = _bool_from_env("RAG_LEXICAL_GATE_ENABLED", True)
-# prior_weight 是融合排序先验的权重；其余权重交给 Reranker 分数。
+# 保留旧环境项以兼容部署配置；串行 Reranker 不再使用该权重。
 RAG_RERANKER_PRIOR_WEIGHT: float = _float_from_env(
     "RAG_RERANKER_PRIOR_WEIGHT", 0.90, minimum=0.0, maximum=1.0
 )

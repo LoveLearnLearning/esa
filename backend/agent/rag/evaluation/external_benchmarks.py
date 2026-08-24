@@ -705,6 +705,7 @@ def evaluate_benchmark(
         rerank_limit=20,
         final_limit=10,
         section_window=0,
+        reranker_enabled=use_reranker,
     )
     service = RetrievalService(
         collection,
@@ -721,6 +722,13 @@ def evaluate_benchmark(
     for position, case in enumerate(cases, 1):
         query_started = time.perf_counter()
         response = service.search(case.query)
+        if use_reranker and response.trace.rankings.get("fusion"):
+            if not response.trace.reranker_applied:
+                raise AssertionError("benchmark reranker was not applied")
+            if any(hit.rerank_score is None for hit in response.hits):
+                raise AssertionError("benchmark hit lacks reranker score")
+        if not use_reranker and "reranker" in response.trace.rankings:
+            raise AssertionError("disabled benchmark exposed a reranker ranking")
         latencies.append(time.perf_counter() - query_started)
         rankings = {
             layer: _deduplicated_documents(ranking, chunk_to_document)
@@ -760,7 +768,7 @@ def evaluate_benchmark(
     sorted_latencies = sorted(latencies)
     p95_index = min(len(sorted_latencies) - 1, math.ceil(len(sorted_latencies) * 0.95) - 1)
     summary: dict[str, Any] = {
-        "schema_version": "esa-external-retrieval-evaluation-0.1",
+        "schema_version": "esa-external-retrieval-evaluation-0.2",
         "dataset": data.name,
         "scope": data.scope,
         "source": dict(data.source),

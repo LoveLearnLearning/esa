@@ -11,6 +11,7 @@ from .agent_api import (
     get_retrieval_service,
     knowledge_base_stats,
     retrieve_knowledge_payload,
+    retrieve_knowledge_result,
 )
 from .collection import LoadedChunkCollection, load_chunk_collection
 from .evaluation import EvaluationCase, RetrievalMetrics, evaluate_layers
@@ -97,4 +98,5 @@ __all__ = [
     "load_chunk_collection",
     "load_deployment",
     "retrieve_knowledge_payload",
+    "retrieve_knowledge_result",
 ]
