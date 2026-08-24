@@ -10,6 +10,8 @@ from dataclasses import dataclass
 
 from backend.agent.tools.catalog import capability_declaration
 from backend.agent.tools.skills import SkillDefinition, list_skill_definitions
+from backend.core.message.budget import DEFAULT_PROMPT_BUDGET
+from backend.core.utils.token_estimation import estimate_tokens
 
 SKILL_CATALOG_VERSION = 1
 COMMON_CATEGORIES = frozenset({"attachment", "reasoning"})
@@ -119,11 +121,14 @@ class ScopedSkillView:
         """构建 `index` 相关数据。"""
         if not self.definitions:
             return "暂无可用 skill"
-        return "\n".join(
-            f"- {item.name}: {item.description}"
-            for item in self.definitions
-            if not item.autoload
-        )
+        lines: list[str] = []
+        for item in self.definitions:
+            if item.autoload:
+                continue
+            candidate = "\n".join((*lines, f"{item.name}: {item.description}"))
+            if estimate_tokens(candidate) <= DEFAULT_PROMPT_BUDGET.skill_index_max_tokens:
+                lines.append(f"{item.name}: {item.description}")
+        return "\n".join(lines) or "暂无可用 skill"
 
     def build_autoload(self) -> str:
         """构建 `autoload` 相关数据。"""

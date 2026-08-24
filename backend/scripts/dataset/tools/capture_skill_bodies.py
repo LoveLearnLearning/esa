@@ -72,13 +72,13 @@ def capture(repo: Path) -> dict:
     index_order = [
         line.removeprefix("- ").split(":", 1)[0].strip()
         for line in index_block.splitlines()
-        if line.startswith("- ")
+        if ":" in line
     ]
     candidates = {
         skill.name for skill in list_skill_definitions() if not skill.autoload
     }
-    assert set(index_order) == candidates, (
-        f"索引里的候选 Skill 名对不上：{index_order} vs {sorted(candidates)}"
+    assert set(index_order) <= candidates, (
+        f"索引出现未知或 autoload Skill：{index_order} vs {sorted(candidates)}"
     )
 
     for name in sorted(bodies):

@@ -277,11 +277,14 @@ def build_skills_context(*, categories: set[str] | None = None) -> str:
     if not skills:
         return "暂无可用 skill"
 
-    return "\n".join(
-        f"- {skill.name}: {skill.description}"
-        for skill in skills
-        if not skill.autoload
-    )
+    lines: list[str] = []
+    for skill in skills:
+        if skill.autoload:
+            continue
+        candidate = "\n".join((*lines, f"{skill.name}: {skill.description}"))
+        if estimate_tokens(candidate) <= DEFAULT_PROMPT_BUDGET.skill_index_max_tokens:
+            lines.append(f"{skill.name}: {skill.description}")
+    return "\n".join(lines) or "暂无可用 skill"
 
 
 def build_autoload_skills_context() -> str:

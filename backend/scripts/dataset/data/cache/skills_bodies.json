@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "captured_at": "2026-08-24T15:06:53+00:00",
+    "captured_at": "2026-08-24T15:13:10+00:00",
     "source": "github.com/LoveLearnLearning/esa",
-    "source_repo": "local-clone@54c7147",
+    "source_repo": "local-clone@fc09618",
     "source_sha256": {
       "common/math_problem_solving.md": "1ee9311519562caae895e59912f0ae965b77d7eb6c0cc5a54532e477215ec8d9",
       "common/parse_image_attachment.md": "9bbe03f120598d2a7ab2dbbaa531a0cd551e820c3a80e0f3f1290a7a87230335",
@@ -42,10 +42,9 @@
       "practice_recommendation",
       "study_plan",
       "grounded_explanation",
-      "teach_back",
-      "sandbox_execution"
+      "teach_back"
     ],
-    "skills_index_block": "- adaptive_practice: 出题或批改上一练习\n- parse_image_attachment: 读取图片附件\n- parse_pdf_attachment: 读取 PDF 附件\n- parse_presentation_attachment: 读取演示文稿附件\n- parse_spreadsheet_attachment: 读取电子表格附件\n- parse_word_attachment: 读取 Word 附件\n- homework_review: 批改作业或答案\n- progressive_hint: 卡住时逐级提示\n- error_diagnosis: 定位错误和误区\n- math_problem_solving: 数学和位运算\n- profile_personalization: 按学情调难度\n- mastery_report: 查询掌握度\n- practice_recommendation: 推荐下一练习\n- study_plan: 制定学习计划\n- grounded_explanation: 基于课程库讲解\n- teach_back: 复述检查理解\n- sandbox_execution: 在隔离沙箱运行代码"
+    "skills_index_block": "adaptive_practice: 出题或批改上一练习\nparse_image_attachment: 读取图片附件\nparse_pdf_attachment: 读取 PDF 附件\nparse_presentation_attachment: 读取演示文稿附件\nparse_spreadsheet_attachment: 读取电子表格附件\nparse_word_attachment: 读取 Word 附件\nhomework_review: 批改作业或答案\nprogressive_hint: 卡住时逐级提示\nerror_diagnosis: 定位错误和误区\nmath_problem_solving: 数学和位运算\nprofile_personalization: 按学情调难度\nmastery_report: 查询掌握度\npractice_recommendation: 推荐下一练习\nstudy_plan: 制定学习计划\ngrounded_explanation: 基于课程库讲解\nteach_back: 复述检查理解"
   },
   "descriptions": {
     "math_problem_solving": "数学和位运算",

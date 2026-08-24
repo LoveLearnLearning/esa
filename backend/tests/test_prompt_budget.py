@@ -13,6 +13,7 @@ from backend.agent.memories.memory_models import (
 )
 from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.context import AgentRuntimeDependencies
+from backend.agent.workspaces.capability_runtime import CapabilityRuntime
 from backend.agent.workspaces.models import AgentTurnInput, LearningTurnContext
 from backend.agent.workspaces.runtime import WorkspaceRuntime
 from backend.core.message.budget import (
@@ -145,3 +146,19 @@ def test_fake_tokenizer_covers_soft_and_physical_budget_branches():
     assert set(physical.measurement.estimated_sections) == {
         "system", "messages", "tools", "template_overhead"
     }
+
+
+def test_skill_index_uses_complete_lines_within_fixed_budget():
+    register_builtin_tools()
+    compiled = CapabilityRuntime().compile(
+        skill_scopes=frozenset({"common", "learning"}),
+        tool_scopes=frozenset({"common", "learning"}),
+        profile_fingerprint="learning:budget",
+        policy_versions=("learning.v1",),
+        resource_capabilities=frozenset({"attachments"}),
+        has_attachments=True,
+    )
+    index = compiled.capabilities.skill_index
+    assert estimate_tokens(index) <= 250
+    assert all(":" in line for line in index.splitlines())
+    assert "learning_policy" not in index
