@@ -110,6 +110,8 @@ class ConversationSummaryStore(BaseSQLiteStore):
         self,
         conversation_id: str,
         message_id: int,
+        *,
+        before_message_id: int | None = None,
     ) -> list[dict]:
         """获取 `messages after` 相关数据。
 
@@ -120,17 +122,85 @@ class ConversationSummaryStore(BaseSQLiteStore):
         Returns:
             list[dict] => 处理结果。
         """
-        rows = self.query_all(
-            """
+        sql = """
             SELECT id, role, COALESCE(model_content, content) AS content,
                    name, is_visible, created_at
             FROM messages
             WHERE conversation_id = ? AND id > ?
-            ORDER BY id ASC
-            """,
-            (conversation_id, message_id),
-        )
+        """
+        params: tuple[object, ...] = (conversation_id, message_id)
+        if before_message_id is not None:
+            sql += " AND id < ?"
+            params += (before_message_id,)
+        sql += " ORDER BY id ASC"
+        rows = self.query_all(sql, params)
         return [dict(row) for row in rows]
+
+    def upsert_if_turn_owned(
+        self,
+        *,
+        conversation_id: str,
+        owner_token: str,
+        summarized_through_message_id: int,
+        summary: str,
+        source_message_count: int,
+    ) -> bool:
+        """Advance a summary only while the caller owns the live turn lease."""
+        now = self._now()
+        connection = self._connect()
+        connection.isolation_level = None
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            owned = connection.execute(
+                """
+                SELECT 1 FROM conversation_turn_leases
+                WHERE conversation_id = ? AND owner_token = ? AND expires_at > ?
+                """,
+                (conversation_id, owner_token, now),
+            ).fetchone()
+            if owned is None:
+                connection.rollback()
+                return False
+            boundary_exists = connection.execute(
+                """
+                SELECT 1 FROM messages
+                WHERE conversation_id = ? AND id = ?
+                """,
+                (conversation_id, summarized_through_message_id),
+            ).fetchone()
+            if boundary_exists is None:
+                connection.rollback()
+                return False
+            cursor = connection.execute(
+                """
+                INSERT INTO conversation_summaries (
+                    conversation_id, summarized_through_message_id, summary,
+                    source_message_count, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(conversation_id) DO UPDATE SET
+                    summarized_through_message_id = excluded.summarized_through_message_id,
+                    summary = excluded.summary,
+                    source_message_count = excluded.source_message_count,
+                    updated_at = excluded.updated_at
+                WHERE excluded.summarized_through_message_id
+                      > conversation_summaries.summarized_through_message_id
+                """,
+                (
+                    conversation_id,
+                    summarized_through_message_id,
+                    summary,
+                    source_message_count,
+                    now,
+                    now,
+                ),
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def upsert(
         self,

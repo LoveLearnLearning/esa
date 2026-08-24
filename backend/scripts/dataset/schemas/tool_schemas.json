@@ -2,271 +2,8 @@
   {
     "type": "function",
     "function": {
-      "name": "arxiv_search",
-      "description": "搜索 arXiv 学术论文，返回标题、作者、摘要、PDF链接等结构化信息。适用于学术研究、文献调研、论文写作等场景。search_field 可选: all(全文), title(标题), author(作者), abstract(摘要), category(分类)。sort_by 可选: relevance(相关度), lastUpdated(最后更新), submitted(提交时间)。示例: 搜索大语言模型论文 query='large language model' search_field='all' sort_by='relevance'",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "搜索关键词，如 'transformer attention' 或 'Yann LeCun'"
-          },
-          "search_field": {
-            "type": "string",
-            "enum": [
-              "all",
-              "title",
-              "author",
-              "abstract",
-              "category"
-            ],
-            "description": "搜索字段: all=全文, title=标题, author=作者, abstract=摘要, category=分类。默认 all",
-            "default": "all"
-          },
-          "max_results": {
-            "type": "integer",
-            "description": "最大返回结果数量，默认 5，最多 20",
-            "default": 5
-          },
-          "sort_by": {
-            "type": "string",
-            "enum": [
-              "relevance",
-              "lastUpdated",
-              "submitted"
-            ],
-            "description": "排序方式: relevance=相关度, lastUpdated=最后更新时间, submitted=提交时间。默认 relevance",
-            "default": "relevance"
-          },
-          "sort_order": {
-            "type": "string",
-            "enum": [
-              "ascending",
-              "descending"
-            ],
-            "description": "排序方向: ascending=升序, descending=降序。默认 descending",
-            "default": "descending"
-          }
-        },
-        "required": [
-          "query"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "bitwise_calculator",
-      "description": "位运算与布尔运算计算器，适用于计算机组成、数字逻辑、密码学等课程。位运算符: & | ^ ~ << >>。布尔运算符: and or not。算术运算符: + - * / // % **。函数: bin, oct, hex, int, abs, bit_length, popcount。常量: True, False。支持 0b/0o/0x 进制前缀，如 0xFF, 0b1010。示例: '0xFF & 0xAA', '0b1010 | 0b0101', '~0', '5 ^ 3', 'True and False', 'bin(255)'",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "expression": {
-            "type": "string",
-            "description": "位运算表达式，例如 '0xFF & 0xAA', '0b1010 | 0b0101', '~0', '5 ^ 3', 'True and False'"
-          }
-        },
-        "required": [
-          "expression"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "calculator",
-      "description": "数学计算器，支持四则运算、幂运算、科学函数和数学常量。运算符: + - * / // % **（或 ^）。函数: sqrt, cbrt, exp, ln(自然对数), log(常用对数底10), log2, log10, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, degrees, radians, abs, round, floor, ceil, trunc, factorial, gcd, hypot, min, max。常量: pi, e, tau, inf。示例: '2+3*4', 'sqrt(16)', 'sin(pi/2)', 'log(e)', '2^10'",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "expression": {
-            "type": "string",
-            "description": "数学表达式，例如 '2 + 3 * 4', 'sqrt(16)', 'sin(pi/2)', 'log(e)'"
-          }
-        },
-        "required": [
-          "expression"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "delete_core_memory",
-      "description": "删除当前用户的一条核心记忆。只有用户明确要求忘掉某条记忆时才能调用；no_write/isolated 会话不可删除。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "memory_id": {
-            "type": "string",
-            "description": "由 search_core_memories 或 get_core_memories 返回的记忆 ID"
-          }
-        },
-        "required": [
-          "memory_id"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "get_core_memories",
-      "description": "列出当前用户全部核心记忆。仅当用户明确要求查看、管理或核对系统记住了什么时调用；一般任务应优先使用 search_core_memories。isolated 会话不可读取。",
-      "parameters": {
-        "type": "object",
-        "properties": {},
-        "required": []
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "get_knowledge_base_stats",
-      "description": "读取当前知识库、模型、索引后端和检索配置。",
-      "parameters": {
-        "type": "object",
-        "properties": {},
-        "required": []
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "get_learning_evidence_summary",
-      "description": "读取当前用户近期学习证据摘要，包含独立完成率、平均提示等级、自评信心、解释/迁移得分和常见误区。只有制定教学策略或学习诊断时才调用。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "kp_id": {
-            "type": "string",
-            "description": "可选知识点 id；留空表示用户整体近期证据"
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 200,
-            "description": "最多统计最近多少条证据，默认 50"
-          }
-        },
-        "required": []
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "get_mastery_level",
-      "description": "读取当前用户某个知识点的掌握度和练习统计；支持 canonical id、知识点名称或已登记别名，返回 canonical kp_id。生成自适应练习题前应调用；普通概念回答只有在掌握度会实质改变讲解时才调用。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "kp_id": {
-            "type": "string",
-            "description": "知识点 canonical id、名称或已登记别名"
-          }
-        },
-        "required": [
-          "kp_id"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "get_mastery_report",
-      "description": "获取当前用户的掌握度报告，包含平均掌握度、薄弱/优势知识点以及超过 7 天未练习的知识点。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "course": {
-            "type": "string",
-            "description": "课程名；留空返回全部课程"
-          }
-        },
-        "required": []
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "get_review_timing",
-      "description": "预测某知识点当前回忆概率以及推荐复习日期；用于学习计划和间隔复习，而不是替代掌握度。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "kp_id": {
-            "type": "string",
-            "description": "知识点 id"
-          },
-          "threshold": {
-            "type": "number",
-            "minimum": 0.1,
-            "maximum": 0.99,
-            "description": "回忆概率低于该阈值时触发复习，默认 0.7"
-          }
-        },
-        "required": [
-          "kp_id"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "get_time",
-      "description": "获取当前时间",
-      "parameters": {
-        "type": "object",
-        "properties": {},
-        "required": []
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "get_weak_prerequisites",
-      "description": "追溯某知识点的薄弱前置知识点，按依赖深度优先返回；用于判断应该直接练当前知识点还是先补前置。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "kp_id": {
-            "type": "string",
-            "description": "目标知识点 id"
-          },
-          "mastery_threshold": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100,
-            "description": "低于该掌握度视为薄弱，默认 50"
-          },
-          "max_depth": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 10,
-            "description": "最大追溯深度，默认 5"
-          }
-        },
-        "required": [
-          "kp_id"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
       "name": "get_weather",
-      "description": "获取城市天气",
+      "description": "查询指定城市天气。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -283,18 +20,217 @@
   {
     "type": "function",
     "function": {
-      "name": "load_skill",
-      "description": "加载某个 Skill 的详细操作说明；只有任务匹配时才调用",
+      "name": "get_time",
+      "description": "查询当前时间。",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "arxiv_search",
+      "description": "搜索 arXiv 论文并返回结构化结果。",
       "parameters": {
         "type": "object",
         "properties": {
-          "name": {
+          "query": {
+            "type": "string"
+          },
+          "search_field": {
             "type": "string",
-            "description": "Skill 名称"
+            "enum": [
+              "all",
+              "title",
+              "author",
+              "abstract",
+              "category"
+            ],
+            "default": "all"
+          },
+          "max_results": {
+            "type": "integer",
+            "default": 5
+          },
+          "sort_by": {
+            "type": "string",
+            "enum": [
+              "relevance",
+              "lastUpdated",
+              "submitted"
+            ],
+            "default": "relevance"
+          },
+          "sort_order": {
+            "type": "string",
+            "enum": [
+              "ascending",
+              "descending"
+            ],
+            "default": "descending"
           }
         },
         "required": [
-          "name"
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "retrieve_knowledge",
+      "description": "检索公共课程知识库以取得回答证据。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "top_k": {
+            "type": "integer",
+            "default": 5
+          },
+          "similarity_threshold": {
+            "type": "number",
+            "description": "最低相似度阈值。"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_knowledge_base_stats",
+      "description": "读取当前可见知识库的统计信息。",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "retrieve_personal_knowledge",
+      "description": "检索当前用户获授权的个人知识库。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "top_k": {
+            "type": "integer",
+            "default": 5
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "run_in_sandbox",
+      "description": "在隔离沙箱运行受控代码或命令。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "workdir": {
+            "type": "string",
+            "default": "."
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "default": 30
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "web_search",
+      "description": "搜索需要实时或公开网络信息的内容。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "max_results": {
+            "type": "integer",
+            "default": 5
+          },
+          "language": {
+            "type": "string",
+            "default": "zh-CN"
+          },
+          "time_range": {
+            "type": "string",
+            "enum": [
+              "day",
+              "month",
+              "year"
+            ]
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "bitwise_calculator",
+      "description": "执行整数位运算。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expression"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "calculator",
+      "description": "计算确定的数值表达式。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expression"
         ]
       }
     }
@@ -303,7 +239,7 @@
     "type": "function",
     "function": {
       "name": "math_solver",
-      "description": "符号计算工具，适用于高等数学、线性代数、离散数学等课程。支持求导、积分、极限、级数展开、解方程、化简、展开、因式分解、组合数、排列数、求和。operation 可选: diff, integrate, limit, series, solve, simplify, expand, factor, binomial, permutation, summation。示例: 求导 operation='diff' expression='x**3' variable='x'；定积分 operation='integrate' expression='x**2' variable='x' lower=0 upper=1",
+      "description": "执行符号求导、积分、求解或化简。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -321,33 +257,26 @@
               "binomial",
               "permutation",
               "summation"
-            ],
-            "description": "运算类型: diff=求导, integrate=积分, limit=极限, series=级数, solve=解方程, simplify=化简, expand=展开, factor=因式分解, binomial=组合数, permutation=排列数, summation=求和"
+            ]
           },
           "expression": {
-            "type": "string",
-            "description": "数学表达式，例如 'x**3 + 2*x', 'sin(x)'"
+            "type": "string"
           },
           "variable": {
-            "type": "string",
-            "description": "运算变量，例如 'x'。diff/integrate/limit/series/solve/summation 需要"
+            "type": "string"
           },
           "order": {
             "type": "integer",
-            "description": "求导阶数（diff 使用），默认 1",
             "default": 1
           },
           "lower": {
-            "type": "string",
-            "description": "定积分下界或求和起点，例如 '0'。可选"
+            "type": "string"
           },
           "upper": {
-            "type": "string",
-            "description": "定积分上界或求和终点，例如 '1'。可选"
+            "type": "string"
           },
           "point": {
             "type": "string",
-            "description": "极限点或级数展开点，例如 '0'。默认 '0'",
             "default": "0"
           },
           "direction": {
@@ -356,12 +285,10 @@
               "+",
               "-"
             ],
-            "description": "极限方向: '+' 从右侧逼近, '-' 从左侧逼近。默认 '+'",
             "default": "+"
           },
           "n": {
             "type": "integer",
-            "description": "级数展开项数（series 使用），默认 6",
             "default": 6
           }
         },
@@ -375,18 +302,98 @@
   {
     "type": "function",
     "function": {
-      "name": "propose_core_memory",
-      "description": "把对话中推断出的长期稳定信息提交为待用户确认的记忆候选，不会直接写入正式核心记忆。仅在信息可能对未来任务有持续价值时调用；不得提交秘密、短期状态或未经依据的猜测。",
+      "name": "start_frontier_tracking",
+      "description": "创建需审批的科研前沿跟踪动作。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "time_window_years": {
+            "type": "integer",
+            "default": 5
+          },
+          "max_results": {
+            "type": "integer",
+            "default": 20
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "start_research_writing",
+      "description": "创建需审批的科研写作动作。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "document_id": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "instruction": {
+            "type": "string",
+            "default": ""
+          },
+          "source_text": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "required": [
+          "document_id",
+          "operation"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "start_dataset_analysis",
+      "description": "创建需审批的数据集分析动作。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "dataset_id": {
+            "type": "string"
+          },
+          "analysis_type": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "analysis_type",
+          "parameters"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "save_core_memory",
+      "description": "按用户明确要求写入正式长期记忆。",
       "parameters": {
         "type": "object",
         "properties": {
           "memory_key": {
-            "type": "string",
-            "description": "稳定、可复用的记忆键，例如 preferred_code_language"
+            "type": "string"
           },
           "content": {
-            "type": "string",
-            "description": "建议用户确认的长期记忆内容"
+            "type": "string"
           },
           "category": {
             "type": "string",
@@ -398,7 +405,6 @@
               "constraint",
               "general"
             ],
-            "description": "记忆分类",
             "default": "general"
           },
           "scope_type": {
@@ -407,7 +413,6 @@
               "global",
               "workspace"
             ],
-            "description": "global=跨 Workspace 可见；workspace=仅当前 Workspace 可见。默认 global",
             "default": "global"
           }
         },
@@ -421,253 +426,16 @@
   {
     "type": "function",
     "function": {
-      "name": "recommend_practice",
-      "description": "推荐当前用户在某课程中需要重点练习的知识点；综合掌握度、考试权重、距期末时间和前置依赖。当用户问今天练什么、制定刷题计划或请求练习推荐时调用。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "course": {
-            "type": "string",
-            "description": "课程名，例如 数据结构 / 操作系统"
-          },
-          "weeks_to_exam": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "距考试周数，0 表示本周考试"
-          }
-        },
-        "required": [
-          "course",
-          "weeks_to_exam"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "record_answer",
-      "description": "已弃用的兼容练习写入入口，仅为旧客户端保留。新学习流程必须使用 record_learning_evidence；同一次作答不得同时调用两种写入工具。服务端会对同一请求的完全相同重试做幂等处理，但这不允许重复调用。confidence 是证据可靠性，不是学生主观自信。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "kp_id": {
-            "type": "string",
-            "description": "知识点 id"
-          },
-          "correct": {
-            "type": "boolean",
-            "description": "是否答对"
-          },
-          "confidence": {
-            "type": "number",
-            "minimum": 0.0,
-            "maximum": 1.0,
-            "description": "证据可靠性 0-1；填空/编程/证明通常高，选择题可能因猜测而降低。默认 1.0"
-          }
-        },
-        "required": [
-          "kp_id",
-          "correct"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "record_learning_evidence",
-      "description": "学习场景的统一写入入口，同时更新 Learning Evidence 和掌握度。只有学生已实际作答、复述或尝试且能够可靠评价时才调用；上层批改/练习 Skill 每次表现只写一次，子 Skill 不重复写。同一请求的完全相同重试由服务端幂等处理。同一次作答不得再调用 record_answer。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "kp_id": {
-            "type": "string",
-            "description": "知识点 id"
-          },
-          "activity_type": {
-            "type": "string",
-            "enum": [
-              "practice",
-              "homework",
-              "retrieval",
-              "hint",
-              "teach_back",
-              "transfer",
-              "review"
-            ],
-            "description": "产生该证据的学习活动类型"
-          },
-          "correct": {
-            "type": "boolean",
-            "description": "是否正确；无法二值判断时可不传"
-          },
-          "self_confidence": {
-            "type": "number",
-            "minimum": 0.0,
-            "maximum": 1.0,
-            "description": "学生本人明确表达的答题信心 0-1；学生没有提供时不要猜测、不要传"
-          },
-          "evidence_reliability": {
-            "type": "number",
-            "minimum": 0.0,
-            "maximum": 1.0,
-            "description": "这次表现作为掌握证据的可靠性；它不是学生自评信心。默认 1.0"
-          },
-          "hint_level": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 5,
-            "description": "实际使用的最高提示等级，0=未使用提示"
-          },
-          "attempts": {
-            "type": "integer",
-            "minimum": 1,
-            "description": "完成本次活动前的实际尝试次数"
-          },
-          "independent": {
-            "type": "boolean",
-            "description": "是否在没有实质性提示/答案泄露的情况下独立完成"
-          },
-          "recall_score": {
-            "type": "number",
-            "minimum": 0.0,
-            "maximum": 1.0,
-            "description": "主动回忆完整度 0-1"
-          },
-          "explanation_score": {
-            "type": "number",
-            "minimum": 0.0,
-            "maximum": 1.0,
-            "description": "Teach-back 解释质量 0-1"
-          },
-          "transfer_score": {
-            "type": "number",
-            "minimum": 0.0,
-            "maximum": 1.0,
-            "description": "迁移到新情境的表现 0-1"
-          },
-          "error_type": {
-            "type": "string",
-            "enum": [
-              "conceptual",
-              "procedural",
-              "strategic",
-              "representation",
-              "prerequisite",
-              "careless",
-              "unknown"
-            ],
-            "description": "错误类型；只有确有错误证据时填写"
-          },
-          "misconception": {
-            "type": "string",
-            "description": "可复用的具体误解描述；不要写泛泛的“粗心”"
-          }
-        },
-        "required": [
-          "kp_id",
-          "activity_type"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "retrieve_knowledge",
-      "description": "从知识库检索紧凑证据。返回语义明确、受最终 JSON token 预算约束的结果；完整来源和审计数据由服务端分离处理。必须遵守每条结果的 citation_mode：paraphrase_only_unverified 只能转述并说明文字提取未经验证，禁止逐字引用。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "需要检索的自然语言问题"
-          },
-          "top_k": {
-            "type": "integer",
-            "description": "最多返回多少条结果，默认 5",
-            "default": 5
-          },
-          "similarity_threshold": {
-            "type": "number",
-            "description": "可选的原始 Reranker 分数阈值；未启用时不能使用"
-          }
-        },
-        "required": [
-          "query"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "retrieve_personal_knowledge",
-      "description": "检索当前登录用户主动上传的个人知识库，并返回文件名和可回查证据。用户身份由服务端会话绑定，参数中不接受 user_id。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "需要从个人资料中检索的自然语言问题"
-          },
-          "top_k": {
-            "type": "integer",
-            "description": "最多返回多少条结果，范围 1 到 20，默认 5",
-            "default": 5
-          }
-        },
-        "required": [
-          "query"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "run_in_sandbox",
-      "description": "在当前用户和对话专属的隔离沙箱中执行命令。沙箱默认无网络，只能读系统运行库并读写 /workspace；适合运行代码、测试和受控的数据处理。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "command": {
-            "type": "string",
-            "description": "要执行的 shell 命令；工作文件放在 /workspace"
-          },
-          "workdir": {
-            "type": "string",
-            "description": "/workspace 内的相对目录，默认为根目录",
-            "default": "."
-          },
-          "timeout_seconds": {
-            "type": "number",
-            "description": "本次命令超时时间，由服务端限制最大值",
-            "default": 30
-          }
-        },
-        "required": [
-          "command"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "save_core_memory",
-      "description": "应用户本轮明确提出的记住、保存或长期保留请求，保存一条正式核心记忆。不得仅因信息看似稳定就调用；从对话中推断出的稳定信息必须使用 propose_core_memory，等待用户确认。不要保存密码、API Key、访问令牌或其他认证秘密。",
+      "name": "propose_core_memory",
+      "description": "提交推断出的长期信息供用户确认，不直接写入。",
       "parameters": {
         "type": "object",
         "properties": {
           "memory_key": {
-            "type": "string",
-            "description": "稳定、可复用的记忆键，例如 preferred_code_language"
+            "type": "string"
           },
           "content": {
-            "type": "string",
-            "description": "需要长期保存的记忆内容"
+            "type": "string"
           },
           "category": {
             "type": "string",
@@ -679,7 +447,6 @@
               "constraint",
               "general"
             ],
-            "description": "记忆分类",
             "default": "general"
           },
           "scope_type": {
@@ -688,7 +455,6 @@
               "global",
               "workspace"
             ],
-            "description": "global=跨 Workspace 可见；workspace=仅当前 Workspace 可见。默认 global",
             "default": "global"
           }
         },
@@ -703,23 +469,20 @@
     "type": "function",
     "function": {
       "name": "search_core_memories",
-      "description": "按需检索与当前任务相关的少量长期核心记忆。仅当当前问题确实依赖过去的偏好、目标、项目、约束或已记住事实时调用；不要在每轮对话开始时例行调用。isolated 会话不可读取。",
+      "description": "按当前任务检索少量相关长期记忆。",
       "parameters": {
         "type": "object",
         "properties": {
           "query": {
-            "type": "string",
-            "description": "要检索的具体主题"
+            "type": "string"
           },
           "category": {
-            "type": "string",
-            "description": "可选记忆类别过滤；不确定时留空"
+            "type": "string"
           },
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 20,
-            "description": "最多返回多少条，默认 5"
+            "maximum": 20
           }
         },
         "required": [
@@ -731,36 +494,386 @@
   {
     "type": "function",
     "function": {
-      "name": "web_search",
-      "description": "通过互联网搜索信息",
+      "name": "get_core_memories",
+      "description": "按用户明确要求列出长期记忆。",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delete_core_memory",
+      "description": "按用户明确要求删除指定长期记忆。",
       "parameters": {
         "type": "object",
         "properties": {
-          "query": {
-            "type": "string",
-            "description": "搜索内容"
-          },
-          "max_results": {
-            "type": "integer",
-            "description": "最大搜索结果，默认为 5 ",
-            "default": 5
-          },
-          "language": {
-            "type": "string",
-            "description": "搜索结果便好语言，默认为中文",
-            "default": "zh-CN"
-          },
-          "time_range": {
-            "type": "string",
-            "enum": [
-              "day",
-              "month",
-              "year"
-            ],
-            "description": "搜索时间范围，可选天月年"
+          "memory_id": {
+            "type": "string"
           }
         },
         "required": [
+          "memory_id"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "recommend_practice",
+      "description": "根据课程、掌握度和考试进度推荐练习。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "course": {
+            "type": "string"
+          },
+          "weeks_to_exam": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "course",
+          "weeks_to_exam"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_mastery_report",
+      "description": "读取当前用户的掌握度概览。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "course": {
+            "type": "string"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_mastery_level",
+      "description": "读取当前用户指定知识点的掌握状态。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kp_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kp_id"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_weak_prerequisites",
+      "description": "读取指定知识点的薄弱前置依赖。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kp_id": {
+            "type": "string"
+          },
+          "mastery_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "max_depth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "kp_id"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_review_timing",
+      "description": "计算指定知识点的建议复习时间。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kp_id": {
+            "type": "string"
+          },
+          "threshold": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 0.99
+          }
+        },
+        "required": [
+          "kp_id"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "record_learning_evidence",
+      "description": "在真实且可评价的学习表现后写入一次学习证据。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kp_id": {
+            "type": "string"
+          },
+          "activity_type": {
+            "type": "string",
+            "enum": [
+              "practice",
+              "homework",
+              "retrieval",
+              "hint",
+              "teach_back",
+              "transfer",
+              "review"
+            ]
+          },
+          "correct": {
+            "type": "boolean",
+            "description": "仅在可判定正误时填写。"
+          },
+          "self_confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "description": "学生主观自信 0-1。"
+          },
+          "evidence_reliability": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "description": "本次证据可靠性 0-1。"
+          },
+          "hint_level": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "independent": {
+            "type": "boolean"
+          },
+          "recall_score": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "explanation_score": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "transfer_score": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "error_type": {
+            "type": "string",
+            "enum": [
+              "conceptual",
+              "procedural",
+              "strategic",
+              "representation",
+              "prerequisite",
+              "careless",
+              "unknown"
+            ]
+          },
+          "misconception": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kp_id",
+          "activity_type"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_learning_evidence_summary",
+      "description": "读取当前用户近期学习证据摘要。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kp_id": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "load_skill",
+      "description": "加载一个尚未注入的候选 Skill 正文。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_teaching_context",
+      "description": "读取当前获授权的班级与作业上下文。",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "parse_pdf_attachment",
+      "description": "解析当前获授权的 PDF 附件。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attachment_id": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "parse_word_attachment",
+      "description": "解析当前获授权的 Word 附件。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attachment_id": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "parse_presentation_attachment",
+      "description": "解析当前获授权的演示文稿附件。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attachment_id": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "parse_spreadsheet_attachment",
+      "description": "解析当前获授权的表格附件。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attachment_id": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "parse_image_attachment",
+      "description": "解析当前获授权的图片附件。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attachment_id": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attachment_id",
           "query"
         ]
       }

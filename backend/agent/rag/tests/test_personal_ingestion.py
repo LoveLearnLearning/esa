@@ -66,10 +66,12 @@ def test_native_formats_produce_docir_chunks_and_versioned_locators(
     }
     for current_root, _directories, files in os.walk(result.artifact_root):
         current = Path(current_root)
-        assert current.stat().st_uid == os.geteuid()
-        assert current.stat().st_mode & 0o777 == 0o700
+        if os.name == "posix":
+            assert current.stat().st_uid == os.geteuid()
+            assert current.stat().st_mode & 0o777 == 0o700
         for name in files:
-            assert (current / name).stat().st_mode & 0o777 == 0o600
+            if os.name == "posix":
+                assert (current / name).stat().st_mode & 0o777 == 0o600
 
 
 def test_personal_locator_rejects_missing_or_invalid_required_fields():

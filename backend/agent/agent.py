@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 
 from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.skills import validate_skill_contracts
+from backend.agent.tool_observation import (
+    compact_tool_observations,
+    project_tool_result,
+)
 from backend.agent.workspaces.models import ExecutableAgentRun
 from backend.agent.workspaces.history import sanitize_qwen_history as sanitize_qwen_history
 from backend.core.utils.config import AGENT_STREAM_HEARTBEAT_SECONDS, DEBUG_MODE
@@ -182,6 +186,13 @@ class Agent:
             performance_mode=performance_mode,
             fully_sharded_loras=fully_sharded_loras,
             specialize_active_lora=specialize_active_lora,
+        )
+
+    def inspect_prompt(self, run_spec: ExecutableAgentRun):
+        """Measure one fully compiled run without invoking the model."""
+        return self.llm_provider.inspect_prompt(
+            [dict(item) for item in run_spec.messages],
+            [dict(item) for item in run_spec.tool_schemas],
         )
 
     @staticmethod
@@ -351,7 +362,7 @@ class Agent:
                 model_result, display_result, audit_metadata = (
                     _tool_result_channels(result)
                 )
-                model_text = serialize_tool_result(model_result)
+                model_text = project_tool_result(tool_call.name, model_result)
                 display_text = serialize_tool_result(display_result)
 
                 messages.append(
@@ -361,6 +372,7 @@ class Agent:
                         "content": model_text,
                     }
                 )
+                compact_tool_observations(messages)
                 new_messages.append(
                     {
                         "role": "tool",
@@ -608,7 +620,7 @@ class Agent:
                 model_result, display_result, audit_metadata = (
                     _tool_result_channels(result)
                 )
-                model_text = serialize_tool_result(model_result)
+                model_text = project_tool_result(tool_call.name, model_result)
                 display_text = serialize_tool_result(display_result)
 
                 tool_message = {
@@ -630,6 +642,7 @@ class Agent:
                         "content": model_text,
                     }
                 )
+                compact_tool_observations(messages)
                 new_messages.append(tool_message)
 
                 yield AgentStreamEvent(

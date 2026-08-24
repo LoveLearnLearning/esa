@@ -290,6 +290,7 @@ class PedagogyRouter:
         profile: "ProfileSnapshot | None" = None,
         resolved_kp_ids: tuple[str, ...] = (),
         pending_practice_kp_id: str | None = None,
+        task_mode: str | None = None,
     ) -> PedagogyDecision:
         """处理 `route` 相关逻辑。
 
@@ -346,7 +347,22 @@ class PedagogyRouter:
                 learning_notes=learning_notes,
             )
 
-        # Flutter TaskMode 的显式指令优先，避免前后端各自猜一遍意图。
+        explicit_mode_trigger = {
+            "review_homework": "homework_review",
+            "mastery_report": "mastery_report",
+            "practice_recommendation": "practice_recommendation",
+            "study_plan": "study_plan",
+            "concept": "concept_learning",
+        }.get(task_mode or "")
+        if explicit_mode_trigger:
+            return decision(
+                cls._skill(explicit_mode_trigger),
+                "服务端 Task Mode 已明确用户意图",
+                1.0,
+                "learning",
+            )
+
+        # 兼容历史客户端写入消息正文的 TaskMode 标记。
         task_mode_mapping = (
             ("任务模式：批改作业", "homework_review"),
             ("任务模式：学习情况报告", "mastery_report"),

@@ -21,7 +21,7 @@ def test_official_rag_identity_and_retrieval_defaults_are_frozen() -> None:
     assert config.RAG_RRF_LIMIT == 50
     assert config.RAG_RERANK_LIMIT == 50
     assert config.RAG_FINAL_LIMIT == 5
-    assert config.RAG_MAX_CONTEXT_TOKENS == 8192
+    assert config.RAG_MAX_CONTEXT_TOKENS == 16_384
 
 
 def test_retrieval_config_defaults_match_central_config() -> None:

@@ -190,7 +190,8 @@ def gen_hard_negatives(seeds, rng, all_names, version, systems) -> list[Sample]:
     tool_names 里必须放上那个「诱饵工具」，否则模型根本没机会学会不调它。
     """
     lures = ["calculator", "math_solver", "bitwise_calculator", "get_time", "recommend_practice",
-             "get_mastery_report", "save_core_memory", "get_core_memories", "record_answer"]
+             "get_mastery_report", "save_core_memory", "get_core_memories",
+             "record_learning_evidence"]
     out = []
     for idx, seed in enumerate(seeds):
         # 一个种子只出一条。曾经为了「增强信号」把同一句话配不同诱饵渲染两次，

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import backend.agent.skills.catalog as skill_catalog
 from backend.agent.skills.catalog import ScopedSkillView
-from backend.agent.tools.catalog import ScopedToolView
+from backend.agent.tools.catalog import compact_tool_schema
 from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.skills import (
     SkillDefinition,
@@ -43,8 +43,8 @@ def test_required_tools_have_actionable_skill_instructions():
     assert {name: tools for name, tools in missing.items() if tools} == {}
 
 
-def test_tool_schema_snapshots_match_their_runtime_scopes():
-    """全局快照与运行时一致，数据集快照只保留学习空间静态工具。"""
+def test_tool_schema_snapshots_are_compact_and_byte_equivalent():
+    """运行时与当前数据集必须使用完全相同的紧凑 Tool 合同。"""
     register_builtin_tools()
     repository_root = Path(__file__).resolve().parents[2]
     backend_snapshot = repository_root / "backend/agent/tools/tool_schemas.json"
@@ -54,41 +54,28 @@ def test_tool_schema_snapshots_match_their_runtime_scopes():
 
     backend_schemas = json.loads(backend_snapshot.read_text(encoding="utf-8"))
     dataset_schemas = json.loads(dataset_snapshot.read_text(encoding="utf-8"))
-    assert backend_schemas == tr.schemas
-
-    attachment_tools = frozenset(
-        name
-        for name in tr.registered_tools
-        if name.startswith("parse_") and name.endswith("_attachment")
-    )
-    learning_view = ScopedToolView.compile(
-        tr,
-        frozenset({"common", "learning"}),
-        excluded_names=attachment_tools,
-    )
-    assert dataset_schemas == list(learning_view.schemas)
+    assert backend_snapshot.read_bytes() == dataset_snapshot.read_bytes()
+    assert backend_schemas == [compact_tool_schema(item) for item in tr.schemas]
+    assert dataset_schemas == backend_schemas
     assert any(
         schema["function"]["name"] == "retrieve_personal_knowledge"
         for schema in dataset_schemas
     )
-
-    record_answer = next(
-        schema
+    assert all(
+        schema["function"]["name"] != "record_answer"
         for schema in backend_schemas
-        if schema["function"]["name"] == "record_answer"
     )
-    assert "已弃用" in record_answer["function"]["description"]
 
 
 def test_new_pedagogy_skills_are_loadable():
     """验证 `new_pedagogy_skills_are_loadable` 场景。"""
     body = load_skill("progressive_hint")
-    assert "Level 1" in body
-    assert "Level 5" in body
+    assert "一级指出目标/方向" in body
+    assert "三级展示核心步骤" in body
 
     body = load_skill("error_diagnosis")
-    assert "conceptual" in body
-    assert "prerequisite" in body
+    assert "概念" in body
+    assert "前置" in body
 
     body = load_skill("adaptive_practice")
     assert "【练习题｜知识点" in body
@@ -109,10 +96,10 @@ def test_concept_explanation_skill_answers_now_and_uses_rag():
     )
 
     assert "retrieve_knowledge" in definition.requires_tools
-    assert "先调用 `retrieve_knowledge`" in definition.body
-    assert "本轮直接回答" in definition.body
-    assert "不能代替讲解" in definition.body
-    assert "删掉所有引文和来源名" in definition.body
+    assert "调用 `retrieve_knowledge`" in definition.body
+    assert "直接回答结论" in definition.body
+    assert "来源只作证据" in definition.body
+    assert "paraphrase_only_unverified" in definition.body
     assert "正式讲解前，先问" not in definition.body
 
 
@@ -121,7 +108,7 @@ def test_profile_policy_is_actually_autoloaded():
     context = build_autoload_skills_context()
     assert "learning_policy" in context
     assert "profile_personalization" not in context
-    assert "工程任务" in context
+    assert "工程、部署、调试和仓库任务" in context
 
 
 def test_global_learning_policy_has_no_tool_dependency():

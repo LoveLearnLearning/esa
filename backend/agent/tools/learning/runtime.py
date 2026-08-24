@@ -108,9 +108,7 @@ def execute_learning_tool(
     user_name = context.username
     if context.conversation_mode == "isolated":
         return {"allowed": False, "action": name, "reason": "isolated mode"}
-    if context.conversation_mode != "normal" and name in {
-        "record_answer", "record_learning_evidence"
-    }:
+    if context.conversation_mode != "normal" and name == "record_learning_evidence":
         return {"saved": False, "reason": "conversation mode forbids writes"}
     if name == "recommend_practice":
         kg = _dependency(context, "knowledge_graph_store")
@@ -179,21 +177,13 @@ def execute_learning_tool(
                 arguments, "threshold", default=0.7, lower=0.1, upper=0.99
             ),
         )}
-    if name in {"record_answer", "record_learning_evidence"}:
+    if name == "record_learning_evidence":
         service = _dependency(context, "learning_state_service")
         values = dict(arguments)
-        if name == "record_answer":
-            values = {
-                "kp_id": _canonical_kp_id(context, arguments["kp_id"]),
-                "activity_type": "practice",
-                "correct": _strict_bool(arguments["correct"], "correct"),
-                "evidence_reliability": float(arguments.get("confidence", 1.0)),
-            }
-        else:
-            values["kp_id"] = _canonical_kp_id(context, values["kp_id"])
-            for key in ("correct", "independent"):
-                if key in values and values[key] is not None:
-                    values[key] = _strict_bool(values[key], key)
+        values["kp_id"] = _canonical_kp_id(context, values["kp_id"])
+        for key in ("correct", "independent"):
+            if key in values and values[key] is not None:
+                values[key] = _strict_bool(values[key], key)
         result = service.record_event(
             user_name=user_name,
             idempotency_key=_idempotency_key(context, values),

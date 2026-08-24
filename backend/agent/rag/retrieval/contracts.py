@@ -38,7 +38,7 @@ class RetrievalConfig:
     final_limit: int = 5
     rrf_k: int = 60
     section_window: int = 1
-    max_context_tokens: int = 8192
+    max_context_tokens: int = 16_384
     rerank_threshold: float | None = None
     fusion_method: Literal["dense", "equal_rrf", "weighted_rrf", "score"] = "dense"
     dense_weight: float = 1.0

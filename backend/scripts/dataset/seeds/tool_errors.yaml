@@ -481,19 +481,11 @@ blocked:
       我不会照着印象编一份报告给你，那比不给更误导。换普通会话再问我一次就能查到；
       要是你现在就想过一遍，可以口头跟我说说哪几章有把握、哪几章没有，我帮你梳理。
 
-  # ⚠️ 2026-08-19 删掉了 `blocked_record_answer`（第一次调用是 record_answer）。
-  # 后端已把 record_answer 标成「**已弃用**的兼容练习写入入口，仅为旧客户端保留。
-  # 新学习流程**必须**使用 record_learning_evidence」，autoload 的 learning_policy
-  # 里也写着「不得再调用兼容入口 record_answer」。
-  # 那条样本的第一次调用因此不再满足本文件第二节那条硬规矩
-  # （「换成谁都会这么调」）—— 它教的是先调一个线上不该调的工具，再教怎么擦屁股。
-  # 同一种失败长相由紧接着的 blocked_record_learning_evidence 覆盖，没有缺口。
-
   - id: blocked_record_learning_evidence
     tool: record_learning_evidence
     mode: isolated
     args: { kp_id: "死锁", activity_type: "teach_back", explanation_score: 0.7 }
-    lures: [record_learning_evidence, record_answer, get_learning_evidence_summary]
+    lures: [record_learning_evidence, get_learning_evidence_summary]
     q: "我把死锁的四个条件给室友讲了一遍，讲得挺顺的，帮我记一下"
     a: |
       这次记不进去：隔离会话下学习证据是写不了的（`allowed: false`，`isolated mode`）。

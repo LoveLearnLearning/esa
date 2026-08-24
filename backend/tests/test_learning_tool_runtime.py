@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from backend.agent.learning.evidence_store import LearningEvidenceStore
 from backend.agent.learning.learning_state_service import LearningStateService
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
@@ -75,31 +77,15 @@ def test_learning_write_retries_are_idempotent_per_request(tmp_path):
     )["evidence_count"] == 1
 
 
-def test_legacy_and_canonical_practice_writes_share_the_same_event_key(tmp_path):
-    context, mastery, evidence = _runtime(tmp_path)
+def test_removed_record_answer_has_no_runtime_alias(tmp_path):
+    context, _, _ = _runtime(tmp_path)
 
-    first = execute_learning_tool(
-        context,
-        "record_answer",
-        {"kp_id": "DP", "correct": True, "confidence": 1.0},
-    )
-    second = execute_learning_tool(
-        context,
-        "record_learning_evidence",
-        {
-            "kp_id": "DP",
-            "activity_type": "practice",
-            "correct": True,
-            "evidence_reliability": 1.0,
-        },
-    )
-
-    assert first["duplicate"] is False
-    assert second["duplicate"] is True
-    assert mastery.get("alice", "dynamic_programming")["practice_count"] == 1
-    assert evidence.get_summary(
-        "alice", kp_id="dynamic_programming"
-    )["evidence_count"] == 1
+    with pytest.raises(KeyError):
+        execute_learning_tool(
+            context,
+            "record_answer",
+            {"kp_id": "DP", "correct": True, "confidence": 1.0},
+        )
 
 
 def test_evidence_summary_only_requires_the_evidence_store(tmp_path):
@@ -118,19 +104,6 @@ def test_evidence_summary_only_requires_the_evidence_store(tmp_path):
 
     assert result["allowed"] is True
     assert result["evidence_count"] == 0
-
-
-def test_legacy_boolean_string_is_not_coerced_by_python_truthiness(tmp_path):
-    context, mastery, _ = _runtime(tmp_path)
-
-    execute_learning_tool(
-        context,
-        "record_answer",
-        {"kp_id": "DP", "correct": "false", "confidence": 1.0},
-    )
-
-    state = mastery.get("alice", "dynamic_programming")
-    assert state["correct_count"] == 0
 
 
 def test_canonical_boolean_strings_are_parsed_strictly(tmp_path):

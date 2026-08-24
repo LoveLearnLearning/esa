@@ -1,4 +1,4 @@
-"""按 workspace scope 导出工具 schema —— **取代交接文档里那句「cp 过来」**。
+"""导出与运行时逐字节一致的规范 Tool schema 快照。
 
     python3 dataset/tools/capture_tool_schemas.py
 
@@ -17,7 +17,8 @@
 而学习空间的路由是 `tool_scopes = {"common", workspace}`
 （`core/router/workspace_profiles.py:18`，`core/web/routers/learning.py:52` 也明写）。
 
-所以本脚本 = 跑后端真实注册表 → 用后端真实的 `tool_scope()` 过滤 → 落盘。
+所以本脚本跑后端真实注册表并复用运行时的字段投影函数。Workspace 和资源
+过滤仍由 `ScopedToolView` 在每轮编译时完成，不能通过维护第二份参数合同实现。
 
 附件工具为什么排除
 ------------------
@@ -55,24 +56,11 @@ def capture(repo: Path, with_attachments: bool) -> tuple[list, dict]:
     from backend.agent.tools.bootstrap import register_builtin_tools  # noqa: PLC0415
 
     register_builtin_tools()
-    from backend.agent.tools.catalog import tool_scope  # noqa: PLC0415
+    from backend.agent.tools.catalog import compact_tool_schema  # noqa: PLC0415
 
-    allowed = {"common", WORKSPACE}
-    kept, dropped = [], {}
-    for schema in tr.schemas:
-        name = (schema.get("function", schema))["name"]
-        scope = tool_scope(name)
-        is_attachment = name.startswith(ATTACHMENT_PREFIX) and name.endswith(ATTACHMENT_SUFFIX)
-        if scope not in allowed:
-            dropped.setdefault(f"scope={scope}", []).append(name)
-            continue
-        if is_attachment and not with_attachments:
-            dropped.setdefault("按轮动态注入的附件工具", []).append(name)
-            continue
-        kept.append(schema)
-
-    kept.sort(key=lambda s: (s.get("function", s))["name"])
-    return kept, dropped
+    # Keep registry order exactly like backend.agent.tools.export_schemas.
+    kept = [compact_tool_schema(schema) for schema in tr.schemas]
+    return kept, {}
 
 
 def main() -> int:
@@ -114,17 +102,15 @@ def main() -> int:
                     "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                     "source": "github.com/LoveLearnLearning/esa",
                     "source_repo": backend.describe(),
-                    "workspace": WORKSPACE,
-                    "tool_scopes": sorted({"common", WORKSPACE}),
+                    "workspace": "all (runtime filters per turn)",
+                    "tool_scopes": ["common", "learning", "research", "teaching"],
                     "schema_version": version,
                     "with_attachments": args.with_attachments,
                     "kept": [(s.get("function", s))["name"] for s in kept],
                     "dropped": dropped,
                     "note": (
-                        "由 dataset/tools/capture_tool_schemas.py 用后端真实 "
-                        "catalog.tool_scope() 过滤产出，禁止手改，也不要再直接 cp "
-                        "backend/agent/tools/tool_schemas.json —— 那份是全局目录，"
-                        "含科研/教学工具。"
+                        "由 dataset/tools/capture_tool_schemas.py 复用后端真实 "
+                        "compact_tool_schema() 产出；必须与运行时快照字节一致。"
                     ),
                 },
                 ensure_ascii=False,

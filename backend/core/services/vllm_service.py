@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 from collections.abc import AsyncIterator
@@ -20,6 +21,13 @@ from vllm.model_executor.layers.quantization import QuantizationMethods
 from vllm.sampling_params import RequestOutputKind
 from vllm.v1.engine.async_llm import AsyncLLM
 
+from backend.core.message.budget import (
+    DEFAULT_PROMPT_BUDGET,
+    PromptArtifact,
+    PromptBudgetExceeded,
+    PromptBudgetPolicy,
+    measure_prompt_artifact,
+)
 from backend.core.utils.config import LOG_PROMPTS
 from backend.core.utils.models import ParsedOutput
 from backend.core.utils.parser import StreamOutputParser, parse_output
@@ -76,6 +84,7 @@ class LLMProvider:
         ] = "interactivity",
         fully_sharded_loras: bool = False,
         specialize_active_lora: bool = True,
+        prompt_budget: PromptBudgetPolicy = DEFAULT_PROMPT_BUDGET,
     ) -> None:
         """初始化 `LLMProvider` 实例。"""
         self.model_path = Path(model_path)
@@ -84,6 +93,8 @@ class LLMProvider:
         if lora_max_rank <= 0:
             raise ValueError("lora_max_rank 必须大于 0")
         self.max_output_tokens = max_output_tokens
+        self.max_model_len = max_model_len
+        self.prompt_budget = prompt_budget
         self.lora_request: LoRARequest | None = None
         if lora_path is not None:
             resolved_lora_path = Path(lora_path).expanduser().resolve()
@@ -171,6 +182,19 @@ class LLMProvider:
 
         return len(self.tokenizer.encode(text, add_special_tokens=False))
 
+    def inspect_prompt(self, messages: list[dict], tools: list[dict]) -> PromptArtifact:
+        """Render and count the complete Qwen template without model execution."""
+        prompt = self.build_prompt(messages, tools)
+        return measure_prompt_artifact(
+            prompt=prompt,
+            messages=messages,
+            tools=tools,
+            count_tokens=self.count_tokens,
+            max_model_len=self.max_model_len,
+            max_output_tokens=self.max_output_tokens,
+            policy=self.prompt_budget,
+        )
+
     def parse_output(
         self,
         raw_text: str,
@@ -234,7 +258,25 @@ class LLMProvider:
         """
         request_id = request_id or str(uuid.uuid4())
 
-        prompt = self.build_prompt(messages, tools)
+        artifact = self.inspect_prompt(messages, tools)
+        measurement = artifact.measurement
+        logger.info(
+            "prompt measured request_id=%s conversation_id=%s input_tokens=%s "
+            "target=%s hard_limit=%s target_exceeded=%s schema_count=%s "
+            "sections=%s fingerprint=%s",
+            request_id,
+            conversation_id or "-",
+            measurement.input_tokens,
+            measurement.target_tokens,
+            measurement.hard_input_limit,
+            measurement.target_exceeded,
+            len(tools),
+            dict(measurement.estimated_sections),
+            hashlib.sha256(artifact.prompt.encode("utf-8")).hexdigest()[:12],
+        )
+        if measurement.hard_exceeded:
+            raise PromptBudgetExceeded(measurement)
+        prompt = artifact.prompt
         _log_model_prompt(request_id, conversation_id, prompt)
 
         sampling_params = SamplingParams(

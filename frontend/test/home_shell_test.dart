@@ -38,6 +38,9 @@ class _ScheduleApi extends ApiClient {
   @override
   Future<PersonalKnowledgeBase> getPersonalKnowledgeBase() async =>
       const PersonalKnowledgeBase.empty();
+
+  @override
+  Future<List<ChatMessage>> getMessages(String id) async => const [];
 }
 
 void main() {
@@ -170,6 +173,65 @@ void main() {
     await tester.tap(find.byTooltip('日程'));
     await tester.pumpAndSettle();
     expect(find.text('添加课程'), findsOneWidget);
+  });
+
+  testWidgets(
+    'new conversation opens the real chat instead of returning home',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final state = createState();
+      addTearDown(state.dispose);
+      await tester.pumpWidget(app(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('new-conversation')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('learning-chat')), findsOneWidget);
+      expect(find.byKey(const ValueKey('learning-home')), findsNothing);
+    },
+  );
+
+  testWidgets('continue learning resumes the latest real conversation', (
+    tester,
+  ) async {
+    final state = createState()
+      ..conversations.add(
+        ChatConversation(
+          id: 'recent-conversation',
+          title: '最短路径复习',
+          updatedAt: DateTime(2026, 8, 24),
+        ),
+      );
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    final continueButton = find.widgetWithText(FilledButton, '继续');
+    await tester.ensureVisible(continueButton);
+    await tester.tap(continueButton);
+    await tester.pumpAndSettle();
+
+    expect(state.activeId, 'recent-conversation');
+    expect(find.byKey(const ValueKey('learning-chat')), findsOneWidget);
+  });
+
+  testWidgets('continue learning is disabled without a course or history', (
+    tester,
+  ) async {
+    final state = createState();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '继续'),
+    );
+    expect(button.onPressed, isNull);
   });
 
   testWidgets('workspace sidebar keeps history and omits primary navigation', (

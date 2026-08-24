@@ -51,4 +51,36 @@ void main() {
     expect(requestBody['attachment_ids'], isEmpty);
     expect(requestBody['knowledge_sources'], ['personal']);
   });
+
+  test('task-mode request keeps the selected knowledge sources', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(server.close);
+    late Map<String, dynamic> requestBody;
+    final handled = server.first.then((request) async {
+      requestBody =
+          jsonDecode(await utf8.decoder.bind(request).join())
+              as Map<String, dynamic>;
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType.json
+        ..write('[]');
+      await request.response.close();
+    });
+    final api = ApiClient(
+      baseUrl: 'http://${server.address.host}:${server.port}/api',
+    );
+
+    await api.sendTaskMessage(
+      'conversation-1',
+      '解释这段材料',
+      'concept',
+      attachmentIds: const ['attachment-1'],
+      knowledgeSources: const {KnowledgeSource.public},
+    );
+    await handled;
+
+    expect(requestBody['task_mode'], 'concept');
+    expect(requestBody['attachment_ids'], ['attachment-1']);
+    expect(requestBody['knowledge_sources'], ['public']);
+  });
 }

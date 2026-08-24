@@ -443,36 +443,6 @@ def get_mastery_level(kp_id: str, user_name: str = "stu_demo") -> dict[str, Any]
     return {"allowed": True, **st}
 
 
-def record_answer(kp_id: str, correct: bool, confidence: float = 1.0,
-                  user_name: str = "stu_demo") -> dict[str, Any]:
-    """处理 `record_answer` 相关逻辑。
-
-    Args:
-        kp_id: str => kp ID。
-        correct: bool => `correct` 参数。
-        confidence: float => `confidence` 参数。
-        user_name: str => `user_name` 参数。
-
-    Returns:
-        dict[str, Any] => 处理结果。
-    """
-    err = _kp_error("record_answer", kp_id)
-    if err is not None:
-        return err
-    if not 0.0 <= confidence <= 1.0:
-        raise ToolError(f"confidence 必须在 0.0-1.0 之间，收到 {confidence}")
-    st = load_states(user_name).get(kp_id)
-    before = float(st["mastery_level"]) if st else PRIOR_MASTERY
-    if correct:
-        after = min(MAX_MASTERY, before + (MAX_MASTERY - before) * 0.25 * confidence)
-    else:
-        after = max(MIN_MASTERY, before - (before - MIN_MASTERY) * 0.30 * confidence)
-    return _apply_evidence_payload(
-        kp_id=kp_id, user_name=user_name, correct=correct, before=before, after=after,
-        prev=st, activity_type="practice", evidence_reliability=confidence,
-    )
-
-
 def _apply_evidence_payload(
     *, kp_id: str, user_name: str, correct: bool, before: float, after: float,
     prev: dict[str, Any] | None, activity_type: str, evidence_reliability: float,
@@ -481,7 +451,7 @@ def _apply_evidence_payload(
     explanation_score: Any = None, transfer_score: Any = None,
     error_type: Any = None, misconception: Any = None,
 ) -> dict[str, Any]:
-    """`record_answer` / `record_learning_evidence` 的共同返回体。
+    """`record_learning_evidence` 的规范返回体。
 
     ⚠️ 结构逐字对齐 `data/cache/learning_real.json` 里 `apply_evidence` 的真实返回：
     `{saved, evidence{16 字段}, state{20 字段}}`。
@@ -615,35 +585,46 @@ def record_learning_evidence(kp_id: str, activity_type: str, user_name: str = "s
     if err is not None and err not in ERROR_TYPES:
         raise ToolError(f"error_type 必须是 {ERROR_TYPES} 之一，收到 {err!r}")
 
-    evidence = {
-        "user_name": user_name, "kp_id": kp_id, "activity_type": activity_type,
-        "correct": kw.get("correct"),
-        "self_confidence": kw.get("self_confidence"),
-        "evidence_reliability": max(0.0, min(1.0, float(kw.get("evidence_reliability", 1.0)))),
-        "hint_level": max(0, min(5, int(kw.get("hint_level", 0)))),
-        "attempts": max(1, int(kw.get("attempts", 1))),
-        "independent": kw.get("independent"),
-        "recall_score": kw.get("recall_score"),
-        "explanation_score": kw.get("explanation_score"),
-        "transfer_score": kw.get("transfer_score"),
-        "error_type": err,
-        "misconception": kw.get("misconception"),
-        "created_at": NOW.isoformat(sep=" ", timespec="seconds"),
-    }
+    reliability = max(
+        0.0,
+        min(1.0, float(kw.get("evidence_reliability", 1.0))),
+    )
+    hint_level = max(0, min(5, int(kw.get("hint_level", 0))))
+    attempts = max(1, int(kw.get("attempts", 1)))
     st = load_states(user_name).get(kp_id)
     before = float(st["mastery_level"]) if st else PRIOR_MASTERY
     correct = kw.get("correct")
-    rel = evidence["evidence_reliability"]
     if correct is True:
-        after = min(MAX_MASTERY, before + (MAX_MASTERY - before) * 0.25 * rel)
+        after = min(
+            MAX_MASTERY,
+            before + (MAX_MASTERY - before) * 0.25 * reliability,
+        )
     elif correct is False:
-        after = max(MIN_MASTERY, before - (before - MIN_MASTERY) * 0.30 * rel)
+        after = max(
+            MIN_MASTERY,
+            before - (before - MIN_MASTERY) * 0.30 * reliability,
+        )
     else:
         after = before
-    state = dict(st) if st else {"user_name": user_name, "kp_id": kp_id, "practice_count": 0}
-    state["mastery_level"] = round(after, 2)
-    state["practice_count"] = state.get("practice_count", 0) + 1
-    return {"saved": True, "evidence": evidence, "state": state}
+    return _apply_evidence_payload(
+        kp_id=kp_id,
+        user_name=user_name,
+        correct=correct,
+        before=before,
+        after=after,
+        prev=st,
+        activity_type=activity_type,
+        evidence_reliability=reliability,
+        hint_level=hint_level,
+        attempts=attempts,
+        independent=kw.get("independent"),
+        self_confidence=kw.get("self_confidence"),
+        recall_score=kw.get("recall_score"),
+        explanation_score=kw.get("explanation_score"),
+        transfer_score=kw.get("transfer_score"),
+        error_type=err,
+        misconception=kw.get("misconception"),
+    )
 
 
 def get_learning_evidence_summary(kp_id: str = "", limit: int = 50,
@@ -1010,8 +991,8 @@ def search_core_memories(query: str, category: str = "", limit: int = 5) -> list
 LEARNING_READ_BLOCKED = "isolated mode"
 LEARNING_WRITE_BLOCKED = "conversation mode forbids writes"
 
-# 写工具：非 normal 模式一律走这一支（record_answer / record_learning_evidence）
-LEARNING_WRITE_TOOLS = {"record_answer", "record_learning_evidence"}
+# 写工具：非 normal 模式一律走这一支。
+LEARNING_WRITE_TOOLS = {"record_learning_evidence"}
 
 
 def blocked_learning_read(action: str) -> dict[str, Any]:
@@ -1030,12 +1011,7 @@ def blocked_learning(tool: str, mode: str = "isolated") -> dict[str, Any]:
     分支顺序照抄后端（`learning/runtime.py:108-114`）：
     **isolated 先判、对所有工具一视同仁**，然后才是「非 normal 且是写工具」。
 
-    ⚠️ 2026-08-19 改：上一版这里写着 `mode == "isolated" and tool != "record_answer"`，
-    复刻的是后端**当时**的不对称行为（isolated 下 record_answer 落到写阻断）。
-    后端在 `ce37198..2aea243` 之间把 runtime.py 重写了，那个不对称没了 ——
-    `test_fixture_contract` 当场判红（线上 `{allowed, action, reason}`、
-    我们 `{saved, reason}`）。这就是那个契约测试存在的理由：
-    手抄的行为会过期，而**过期了没有任何东西会说话**（5.16）。
+    分支应持续与后端学习运行时保持一致。
     """
     if mode == "isolated":
         return blocked_learning_read(tool)
@@ -1052,7 +1028,6 @@ BLOCKED_BUILDERS = {
     "get_review_timing": lambda **kw: blocked_learning("get_review_timing", **kw),
     "get_learning_evidence_summary":
         lambda **kw: blocked_learning("get_learning_evidence_summary", **kw),
-    "record_answer": lambda **kw: blocked_learning("record_answer", **kw),
     "record_learning_evidence": lambda **kw: blocked_learning("record_learning_evidence", **kw),
 }
 
@@ -1144,7 +1119,6 @@ FIXTURE_FUNCTIONS = {
     "recommend_practice": recommend_practice,
     "get_mastery_report": get_mastery_report,
     "get_mastery_level": get_mastery_level,
-    "record_answer": record_answer,
     "get_weak_prerequisites": get_weak_prerequisites_tool,
     "get_review_timing": get_review_timing,
     "record_learning_evidence": record_learning_evidence,

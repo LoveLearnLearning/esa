@@ -51,8 +51,8 @@ def test_system_prompt_defines_when_tools_must_be_used():
     """工具不能只被暴露；Prompt 必须给出可执行的调用判据。"""
     prompt = build_system_prompt(prompt_ctx=PromptContext())
 
-    assert "# Tool 使用规则" in prompt
-    assert "不要凭模型记忆猜测" in prompt
+    assert "任务依赖" in prompt
+    assert "不猜测" in prompt
     assert "retrieve_knowledge" in prompt
 
 

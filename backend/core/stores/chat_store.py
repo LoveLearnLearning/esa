@@ -869,6 +869,43 @@ class ChatStore(BaseSQLiteStore):
             use_summary=True,
         )
 
+    def get_compressed_model_history_before(
+        self,
+        conversation_id: str,
+        before_message_id: int,
+    ) -> tuple[str | None, list[dict]]:
+        """Reload summarized history without re-appending the current user turn."""
+        summary_row = self.query_one(
+            """
+            SELECT summary, summarized_through_message_id
+            FROM conversation_summaries
+            WHERE conversation_id = ?
+            """,
+            (conversation_id,),
+        )
+        summary = str(summary_row["summary"]) if summary_row is not None else None
+        boundary = (
+            int(summary_row["summarized_through_message_id"])
+            if summary_row is not None
+            else 0
+        )
+        rows = self.query_all(
+            """
+            SELECT role, COALESCE(model_content, content) AS content, name
+            FROM messages
+            WHERE conversation_id = ? AND id > ? AND id < ?
+            ORDER BY id ASC
+            """,
+            (conversation_id, boundary, before_message_id),
+        )
+        history: list[dict] = []
+        for row in rows:
+            message = {"role": row["role"], "content": row["content"]}
+            if row["name"] is not None:
+                message["name"] = row["name"]
+            history.append(message)
+        return summary, history
+
     def _get_model_context_and_append(
         self,
         conversation_id: str,

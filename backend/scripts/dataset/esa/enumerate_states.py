@@ -283,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--xlsx", default=str(DEFAULT_XLSX))
     ap.add_argument("--verify-against-sheet", action="store_true")
     ap.add_argument("--scenario", help="为该 scenario_id 导出候选状态 CSV")
-    ap.add_argument("--gated", action="store_true", help="该场景涉及 gate（记忆修改 / record_answer 等）")
+    ap.add_argument("--gated", action="store_true", help="该场景涉及 gate（记忆或学习证据写入等）")
     ap.add_argument("--allow-no-tool", action="store_true", help="纳入「不需要工具」分支")
     ap.add_argument("--out", default=str(in_dataset("data/states_candidates.csv")))
     args = ap.parse_args(argv)

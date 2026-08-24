@@ -145,45 +145,10 @@ class ConversationCompressionService:
             str(candidate["conversation_id"]),
             boundary,
         )
-        previous_summary = str(candidate.get("summary") or "").strip()
-
-        required = (
-            self.keep_recent_messages + self.min_new_messages
-            if previous_summary
-            else self.min_messages
-        )
-        if len(messages) < required:
+        summarized = await self._summarize(candidate, messages)
+        if summarized is None:
             return False
-
-        compressible = messages[: -self.keep_recent_messages]
-        included, transcript = self._bounded_transcript(
-            compressible,
-            previous_summary=previous_summary,
-        )
-        if not included:
-            logger.warning(
-                "单条消息超过压缩输入上限，保持原始上下文：conversation_id=%s",
-                candidate["conversation_id"],
-            )
-            return False
-
-        prompt = self._messages_for_summary(
-            previous_summary=previous_summary,
-            transcript=transcript,
-        )
-        summary = await self.llm_client.chat(
-            prompt,
-            max_tokens=self.max_output_tokens,
-            temperature=0.1,
-        )
-        summary = self._clean_summary(summary)
-        if not summary:
-            raise AuxiliaryLLMUnavailable("辅助模型返回了空摘要")
-
-        last_message_id = int(included[-1]["id"])
-        source_count = int(candidate.get("source_message_count") or 0) + len(
-            included
-        )
+        summary, last_message_id, source_count = summarized
         changed = self.summary_store.upsert_if_offline(
             conversation_id=str(candidate["conversation_id"]),
             summarized_through_message_id=last_message_id,
@@ -199,6 +164,97 @@ class ConversationCompressionService:
                 source_count,
             )
         return changed
+
+    async def compress_active_turn(
+        self,
+        *,
+        conversation_id: str,
+        owner_token: str,
+        before_message_id: int,
+    ) -> bool:
+        """Compress prior history synchronously under the current turn lease."""
+        if not self.enabled:
+            return False
+        stored = self.summary_store.get(conversation_id)
+        candidate = stored or {
+            "conversation_id": conversation_id,
+            "summarized_through_message_id": 0,
+            "summary": "",
+            "source_message_count": 0,
+        }
+        boundary = int(candidate["summarized_through_message_id"])
+        messages = self.summary_store.get_messages_after(
+            conversation_id,
+            boundary,
+            before_message_id=before_message_id,
+        )
+        summarized = await self._summarize(candidate, messages)
+        if summarized is None:
+            return False
+        summary, last_message_id, source_count = summarized
+        changed = self.summary_store.upsert_if_turn_owned(
+            conversation_id=conversation_id,
+            owner_token=owner_token,
+            summarized_through_message_id=last_message_id,
+            summary=summary,
+            source_message_count=source_count,
+        )
+        if changed:
+            logger.info(
+                "活跃对话已同步压缩：conversation_id=%s through_message_id=%s "
+                "source_messages=%s",
+                conversation_id,
+                last_message_id,
+                source_count,
+            )
+        return changed
+
+    async def _summarize(
+        self,
+        candidate: dict,
+        messages: list[dict],
+    ) -> tuple[str, int, int] | None:
+        """Build one summary using the shared offline/active compression path."""
+        previous_summary = str(candidate.get("summary") or "").strip()
+
+        required = (
+            self.keep_recent_messages + self.min_new_messages
+            if previous_summary
+            else self.min_messages
+        )
+        if len(messages) < required:
+            return None
+
+        compressible = messages[: -self.keep_recent_messages]
+        included, transcript = self._bounded_transcript(
+            compressible,
+            previous_summary=previous_summary,
+        )
+        if not included:
+            logger.warning(
+                "单条消息超过压缩输入上限，保持原始上下文：conversation_id=%s",
+                candidate["conversation_id"],
+            )
+            return None
+
+        prompt = self._messages_for_summary(
+            previous_summary=previous_summary,
+            transcript=transcript,
+        )
+        summary = await self.llm_client.chat(
+            prompt,
+            max_tokens=self.max_output_tokens,
+            temperature=0.1,
+        )
+        summary = self._clean_summary(summary)
+        if not summary:
+            raise AuxiliaryLLMUnavailable("辅助模型返回了空摘要")
+
+        return (
+            summary,
+            int(included[-1]["id"]),
+            int(candidate.get("source_message_count") or 0) + len(included),
+        )
 
     def _bounded_transcript(
         self,

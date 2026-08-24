@@ -46,6 +46,7 @@ class LearningAdapter:
                 profile=profile_snapshot,
                 resolved_kp_ids=turn.learning_context.resolved_kp_ids,
                 pending_practice_kp_id=turn.learning_context.pending_practice_kp_id,
+                task_mode=turn.task_mode,
             )
             body = (
                 skills.load(decision.skill_name)

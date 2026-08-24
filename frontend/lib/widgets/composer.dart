@@ -180,8 +180,21 @@ class ComposerState extends State<Composer> {
       ),
     );
     _markdownMode = nextDraft.markdownMode;
-    if (_attachment != null) _removeAttachment();
-    widget.onSelectedAttachmentsChanged?.call(const []);
+    final attachment = _attachment;
+    final attachmentConversationId = _attachmentConversationId;
+    _attachment = null;
+    _attachmentConversationId = null;
+    if (attachment != null &&
+        attachmentConversationId != null &&
+        widget.onRemoveAttachment != null) {
+      unawaited(
+        widget.onRemoveAttachment!(attachment, attachmentConversationId),
+      );
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onSelectedAttachmentsChanged?.call(const []);
+    });
   }
 
   String _draftKey(String? conversationId) =>

@@ -174,7 +174,14 @@ class ProfileSnapshot:
         for section_name, items in (
             ("goals", self.active_goals),
             ("constraints", self.relevant_constraints),
-            ("patterns", self.inferred_patterns[:3]),
+            (
+                "patterns",
+                sorted(
+                    self.inferred_patterns,
+                    key=lambda field: field.confidence,
+                    reverse=True,
+                )[:3],
+            ),
         ):
             for item in sorted(items, key=lambda field: field.confidence, reverse=True):
                 if item.value in (None, ""):
@@ -191,9 +198,9 @@ class ProfileSnapshot:
                 )
 
         payload: dict[str, list[dict]] = {}
-        for section_name, item in candidates:
+        for section_name, candidate in candidates:
             trial = {key: list(value) for key, value in payload.items()}
-            trial.setdefault(section_name, []).append(item)
+            trial.setdefault(section_name, []).append(candidate)
             serialized = json.dumps(
                 trial,
                 ensure_ascii=False,

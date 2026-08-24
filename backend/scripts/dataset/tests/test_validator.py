@@ -412,7 +412,7 @@ def corpus_cases() -> list[tuple[str, bool]]:
 
     # 5) 答对/答错的标签极性
     #
-    # 这条检查是被组长审出来的 bug 逼出来的：生成器把 record_answer 的 correct
+    # 这条检查防止生成器把学习证据的 correct
     # 写死成 True，于是「刚做完哈希表的练习，答错了」的 gold 也是 correct=True。
     # 结构全合法、schema 全通过、grounding 也过 —— 全绿，只有语义是反的。
     def answered(q: str, correct: bool, sid: str) -> Sample:
@@ -426,10 +426,15 @@ def corpus_cases() -> list[tuple[str, bool]]:
         Returns:
             Sample => 处理结果。
         """
-        return make(id=sid, tool_names=["record_answer"], turns=[
+        args = {
+            "kp_id": "哈希表",
+            "activity_type": "practice",
+            "correct": correct,
+        }
+        return make(id=sid, tool_names=["record_learning_evidence"], turns=[
             Turn(role="user", content=q),
-            Turn(role="tool_call", calls=[ToolCall("record_answer", {"kp_id": "哈希表", "correct": correct})]),
-            Turn(role="tool_result", results=[ToolResult("record_answer", {"kp_id": "哈希表", "correct": correct})]),
+            Turn(role="tool_call", calls=[ToolCall("record_learning_evidence", args)]),
+            Turn(role="tool_result", results=[ToolResult("record_learning_evidence", args)]),
             Turn(role="assistant", content="记下了。"),
         ])
 

@@ -201,7 +201,7 @@ class _HomeShellState extends State<HomeShell> {
     if (!mounted) return;
     setState(() {
       _section = StudentSection.home;
-      _learningChatOpen = false;
+      _learningChatOpen = true;
       _researchProjectChatOpen = false;
       _selectedAttachments = const [];
     });
@@ -213,19 +213,29 @@ class _HomeShellState extends State<HomeShell> {
     setState(() => _learningChatOpen = true);
   }
 
-  /// 首页“继续学习”按钮：先检测与后端的连通性，再切回对话视图继续学习。
+  /// 首页“继续学习”优先恢复最近对话；没有历史时，按真实课程启动学习。
   Future<void> _continueLearning() async {
     if (!mounted || _learningChatOpen) return;
     final app = AppScope.of(context);
-    final connectionError = await app.checkBackendConnection();
-    if (!mounted) return;
-    if (connectionError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(connectionError)),
-      );
+    final recent = app.conversations.firstOrNull;
+    if (recent != null) {
+      await _openLearningConversation(recent.id);
       return;
     }
+    final courseName =
+        app.learningCourses.firstOrNull?.name ??
+        app.scheduleCourseNames.firstOrNull;
+    if (courseName == null) return;
+    final focusName =
+        app.masteryReport?.stalePoints.firstOrNull?.name ??
+        app.masteryReport?.weakPoints.firstOrNull?.name;
+    await app.newConversation();
+    if (!mounted) return;
     setState(() => _learningChatOpen = true);
+    final target = focusName == null
+        ? '继续学习“$courseName”，请结合我的学习记录建议本次最合适的下一步。'
+        : '继续学习“$courseName”中的“$focusName”，请结合我的掌握度和学习证据继续讲解。';
+    await app.send(target, displayText: '继续学习：${focusName ?? courseName}');
   }
 
   @override

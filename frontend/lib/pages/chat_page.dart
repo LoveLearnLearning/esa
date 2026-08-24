@@ -1628,7 +1628,9 @@ class _LearningHome extends StatelessWidget {
                 focusName: focusPoint?.name,
                 progress: progress,
                 lastStudiedAt: app.conversations.firstOrNull?.updatedAt,
-                onContinue: onContinue,
+                onContinue: courseName == '尚未选择课程' && app.conversations.isEmpty
+                    ? null
+                    : onContinue,
               ),
               const SizedBox(height: 12),
               _HomeSection(
@@ -1657,8 +1659,6 @@ class _LearningHome extends StatelessWidget {
               const SizedBox(height: 12),
               _HomeSection(
                 title: '最近',
-                actionLabel: '查看全部',
-                onAction: recent.isEmpty ? null : onContinue,
                 child: recent.isEmpty
                     ? const _HomeEmptyRow(label: '暂无最近学习记录')
                     : Column(
@@ -1693,39 +1693,18 @@ class _LearningHome extends StatelessWidget {
   }
 
   List<_HomeRecentItem> _recentItems(AppState app) {
-    final items = <_HomeRecentItem>[];
-    for (final attachment in app.recentAttachments.take(2)) {
-      items.add(
-        _HomeRecentItem(
-          icon: LucideIcons.fileText,
-          title: attachment.filename,
-          meta: '资料 · ${_formatFileSize(attachment.sizeBytes)}',
-          time: '最近使用',
-        ),
-      );
-    }
-    for (final conversation in app.conversations.take(4 - items.length)) {
-      items.add(
-        _HomeRecentItem(
-          icon: LucideIcons.messageSquare,
-          title: conversation.title,
-          meta: '对话 · 学习空间',
-          time: _relativeTime(conversation.updatedAt),
-          conversationId: conversation.id,
-        ),
-      );
-    }
-    if (items.length < 4 && app.learningCourses.isNotEmpty) {
-      items.add(
-        _HomeRecentItem(
-          icon: LucideIcons.bookOpen,
-          title: app.learningCourses.first.name,
-          meta: '课程内容',
-          time: '继续学习',
-        ),
-      );
-    }
-    return items.take(4).toList();
+    return app.conversations
+        .take(4)
+        .map(
+          (conversation) => _HomeRecentItem(
+            icon: LucideIcons.messageSquare,
+            title: conversation.title,
+            meta: '对话 · 学习空间',
+            time: _relativeTime(conversation.updatedAt),
+            conversationId: conversation.id,
+          ),
+        )
+        .toList();
   }
 }
 
@@ -1967,12 +1946,6 @@ String _relativeTime(DateTime value) {
   if (days == 0) return '今天 $time';
   if (days == 1) return '昨天 $time';
   return '${local.month} 月 ${local.day} 日';
-}
-
-String _formatFileSize(int bytes) {
-  if (bytes <= 0) return '文件';
-  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }
 
 class _EmptyState extends StatelessWidget {

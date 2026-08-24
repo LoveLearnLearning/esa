@@ -279,7 +279,7 @@ def test_text_and_image_preview_are_bounded_derived_responses(tmp_path):
     chunks = artifact / "chunks.json"
     chunks.write_text("{}", encoding="utf-8")
     preview = artifact / "preview.txt"
-    preview.write_text("bounded extracted preview\n", encoding="utf-8")
+    preview.write_bytes(b"bounded extracted preview\n")
     os.chmod(chunks, 0o600)
     os.chmod(preview, 0o600)
     service.store.execute(
@@ -339,7 +339,7 @@ def test_text_and_image_preview_are_bounded_derived_responses(tmp_path):
     thumbnail = client.get(
         f"/api/me/knowledge-base/files/{image_id}/preview", headers=user_two
     )
-    assert thumbnail.status_code == 200
+    assert thumbnail.status_code == 200, thumbnail.text
     assert thumbnail.headers["content-type"].startswith("image/jpeg")
     with Image.open(io.BytesIO(thumbnail.content)) as rendered:
         assert rendered.size == (32, 16)

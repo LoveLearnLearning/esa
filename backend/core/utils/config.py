@@ -135,17 +135,17 @@ WORKSPACE_CONTEXT_MAX_TOKENS: int = _positive_int_from_env(
 # Prompt budgets are soft quality targets except for the physical context limit.
 # All values remain environment-overridable so deployments can tune them without
 # changing the workspace/tool protocol.
-PROMPT_TARGET_INPUT_TOKENS: int = int(
-    os.environ.get("ESA_PROMPT_TARGET_INPUT_TOKENS", "5000")
+PROMPT_TARGET_INPUT_TOKENS: int = _positive_int_from_env(
+    "ESA_PROMPT_TARGET_INPUT_TOKENS", 5000
 )
-PROMPT_TOOL_SCHEMA_TARGET_TOKENS: int = int(
-    os.environ.get("ESA_PROMPT_TOOL_SCHEMA_TARGET_TOKENS", "2800")
+PROMPT_TOOL_SCHEMA_TARGET_TOKENS: int = _positive_int_from_env(
+    "ESA_PROMPT_TOOL_SCHEMA_TARGET_TOKENS", 2800
 )
-PROMPT_TOOL_SCHEMA_MAX_TOKENS: int = int(
-    os.environ.get("ESA_PROMPT_TOOL_SCHEMA_MAX_TOKENS", "3000")
+PROMPT_TOOL_SCHEMA_MAX_TOKENS: int = _positive_int_from_env(
+    "ESA_PROMPT_TOOL_SCHEMA_MAX_TOKENS", 3000
 )
-PROMPT_SAFETY_MARGIN_TOKENS: int = int(
-    os.environ.get("ESA_PROMPT_SAFETY_MARGIN_TOKENS", "512")
+PROMPT_SAFETY_MARGIN_TOKENS: int = _positive_int_from_env(
+    "ESA_PROMPT_SAFETY_MARGIN_TOKENS", 512
 )
 PROMPT_BASE_TARGET_TOKENS: int = 350
 PROMPT_LEARNING_POLICY_TARGET_TOKENS: int = 350
@@ -701,11 +701,12 @@ def validate_private_storage_capacity(
 
     if not path.is_dir() or not os.access(path, os.R_OK | os.W_OK | os.X_OK):
         raise RuntimeError(f"{name} is not an accessible directory: {path}")
-    stat = path.stat()
-    if stat.st_uid != os.geteuid():
-        raise RuntimeError(f"{name} is not owned by the ESA service account")
-    if stat.st_mode & 0o077:
-        raise RuntimeError(f"{name} permissions must not allow group/other access")
+    if os.name == "posix" and hasattr(os, "geteuid"):
+        stat = path.stat()
+        if stat.st_uid != os.geteuid():
+            raise RuntimeError(f"{name} is not owned by the ESA service account")
+        if stat.st_mode & 0o077:
+            raise RuntimeError(f"{name} permissions must not allow group/other access")
     if shutil.disk_usage(path).free < required_bytes:
         raise RuntimeError(f"{name} does not have the configured safe free space")
 

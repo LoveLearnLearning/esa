@@ -9,7 +9,6 @@ import uuid
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Iterable
 
 from backend.core.stores.base_sqlite_store import BaseSQLiteStore

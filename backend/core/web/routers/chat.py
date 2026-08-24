@@ -51,6 +51,10 @@ from backend.core.services.teaching_context_adapter import TeachingContextAdapte
 from backend.core.services.conversation_title_service import (
     ConversationTitleService,
 )
+from backend.core.services.auxiliary_llm_service import AuxiliaryLLMUnavailable
+from backend.core.services.conversation_compression_service import (
+    ConversationCompressionService,
+)
 from backend.core.services.code_execution_service import CodeExecutionService
 from backend.core.services.user_attachment_service import (
     AttachmentTooLarge,
@@ -62,6 +66,7 @@ from backend.core.utils.models import (
     SessionPrincipal,
     UserRecord,
 )
+from backend.core.message.budget import PromptBudgetExceeded
 from backend.core.web.concurrency import (
     ConversationTurnCoordinator,
     ConversationTurnLease,
@@ -557,6 +562,117 @@ def _prepare_message(
         pending_practice_kp_id=pending_practice_kp_id,
         knowledge_sources=tuple(body.knowledge_sources),
     )
+
+
+def _reload_context_after_compression(
+    request: Request,
+    conversation_id: str,
+    body: SendMessageRequest,
+    ctx: MessageContext,
+) -> MessageContext:
+    """Rebuild history-dependent context without appending the current turn."""
+    if ctx.user_message_id is None:
+        return ctx
+    chat_store: ChatStore = request.app.state.chat_store
+    summary, history = chat_store.get_compressed_model_history_before(
+        conversation_id,
+        ctx.user_message_id,
+    )
+    ctx.history = history
+    ctx.conversation_summary = summary or ""
+    kp_resolver = getattr(request.app.state, "kp_resolver", None)
+    ctx.pending_practice_kp_id = (
+        _resolve_pending_practice_kp_id(history, kp_resolver)
+        if ctx.workspace_type == "learning"
+        else None
+    )
+    ctx.user_profile_context = (
+        None
+        if ctx.conversation_mode == "isolated" or ctx.workspace_type != "learning"
+        else request.app.state.profile_builder.build(
+            ProfileQuery(
+                user_id=ctx.user.id,
+                username=ctx.user.username,
+                conversation_id=conversation_id,
+                current_message=body.content,
+                recent_messages=history,
+                resolved_kp_ids=list(ctx.resolved_kp_ids),
+                group_style=ctx.group_style,
+                group_tone=ctx.group_tone,
+                group_custom_instruction=ctx.group_custom_instruction,
+            )
+        )
+    )
+    return ctx
+
+
+async def _preflight_with_active_compression(
+    request: Request,
+    session: SessionPrincipal,
+    conversation_id: str,
+    body: SendMessageRequest,
+    ctx: MessageContext,
+    authorized_attachments: tuple[dict, ...],
+    lease: ConversationTurnLease,
+):
+    """Measure, compress prior history once if useful, rebuild, and remeasure."""
+    agent: Agent = request.app.state.agent
+    run_spec = _build_run_spec(
+        request,
+        session,
+        conversation_id,
+        body,
+        ctx,
+        authorized_attachments,
+    )
+    inspect_prompt = getattr(agent, "inspect_prompt", None)
+    if not callable(inspect_prompt):
+        # Lightweight test/alternate agents do not own a tokenizer. Production
+        # Agent always provides this interface and every provider call rechecks.
+        return ctx, run_spec
+    measurement = inspect_prompt(run_spec).measurement
+    compression_service = getattr(
+        request.app.state,
+        "conversation_compression_service",
+        None,
+    )
+    if (
+        measurement.target_exceeded
+        and ctx.user_message_id is not None
+        and isinstance(compression_service, ConversationCompressionService)
+    ):
+        try:
+            changed = await compression_service.compress_active_turn(
+                conversation_id=conversation_id,
+                owner_token=lease.claim.owner_token,
+                before_message_id=ctx.user_message_id,
+            )
+        except AuxiliaryLLMUnavailable as error:
+            changed = False
+            logger.warning(
+                "同步对话压缩不可用 conversation_id=%s error=%s",
+                conversation_id,
+                error,
+            )
+        if changed:
+            ctx = _reload_context_after_compression(
+                request,
+                conversation_id,
+                body,
+                ctx,
+            )
+            run_spec = _build_run_spec(
+                request,
+                session,
+                conversation_id,
+                body,
+                ctx,
+                authorized_attachments,
+            )
+            measurement = inspect_prompt(run_spec).measurement
+    if measurement.hard_exceeded:
+        raise PromptBudgetExceeded(measurement)
+    return ctx, run_spec
 
 
 def _start_title_generation(
@@ -1308,14 +1424,21 @@ async def send_message(
         chat_store: ChatStore = request.app.state.chat_store
         agent: Agent = request.app.state.agent
 
-        run_spec = _build_run_spec(
-            request,
-            session,
-            conversation_id,
-            body,
-            ctx,
-            authorized_attachments,
-        )
+        try:
+            ctx, run_spec = await _preflight_with_active_compression(
+                request,
+                session,
+                conversation_id,
+                body,
+                ctx,
+                authorized_attachments,
+                lease,
+            )
+        except PromptBudgetExceeded as error:
+            raise HTTPException(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                "对话上下文过长且无法安全压缩",
+            ) from error
         title_task = _start_title_generation(
             request,
             conversation=conversation,
@@ -1378,14 +1501,21 @@ async def stream_message(
             ) from error
         chat_store: ChatStore = request.app.state.chat_store
         agent: Agent = request.app.state.agent
-        run_spec = _build_run_spec(
-            request,
-            session,
-            conversation_id,
-            body,
-            ctx,
-            authorized_attachments,
-        )
+        try:
+            ctx, run_spec = await _preflight_with_active_compression(
+                request,
+                session,
+                conversation_id,
+                body,
+                ctx,
+                authorized_attachments,
+                lease,
+            )
+        except PromptBudgetExceeded as error:
+            raise HTTPException(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                "对话上下文过长且无法安全压缩",
+            ) from error
         title_task = _start_title_generation(
             request,
             conversation=conversation,
@@ -1442,6 +1572,16 @@ async def stream_message(
                 )
         except asyncio.CancelledError:
             raise
+
+        except PromptBudgetExceeded as error:
+            logger.exception("工具循环后的 Prompt 超过物理预算")
+            yield encode_sse(
+                "error",
+                {
+                    "detail": "工具调用产生的上下文过长，无法继续生成",
+                    "type": type(error).__name__,
+                },
+            )
 
         except (RuntimeError, ValueError, KeyError, sqlite3.Error) as error:
             logger.exception("agent 推理失败")

@@ -52,9 +52,6 @@ CONFUSION_TARGET = {
     "混淆_应调get_mastery_report": "get_mastery_report",
     "混淆_应调recommend_practice": "recommend_practice",
     "混淆_应调get_mastery_level": "get_mastery_level",
-    # 2026-08-19：翻面。record_answer 已被后端标为弃用，正解是 record_learning_evidence，
-    # 它自己退回诱饵位（gen_confusion 会把 wrong_tool 一起放进 tool_names）。
-    "混淆_已弃用record_answer": "record_learning_evidence",
     "混淆_应调get_core_memories": "get_core_memories",
 }
 
@@ -65,7 +62,7 @@ CONFUSION_TARGET = {
 # 共用 `correct: False`，等于把用户说对的记成错的。
 # 生成器改成按话术轮流取之后，这 10 条当场被 validate 的 answer_polarity 抓出来。
 #
-# 和 `混淆_应调record_answer` 是同一条规矩：**语义标签从种子读，不在生成器里猜**。
+# 语义标签从种子读，不在生成器里猜。
 # 生成器只负责把种子里除 q 之外的键原样填进参数。
 EVIDENCE_KEYS_FROM_SEED = {
     "activity_type", "correct", "self_confidence", "evidence_reliability",
@@ -177,17 +174,6 @@ def _answer_for(tool: str, result: dict, kp: str) -> str:
         # 同样是 **list**，没有 count 键 —— 要数数量就 len()。
         items = "；".join(f"{m['memory_key']}：{m['content']}" for m in result[:3])
         return f"我一共保存了 {len(result)} 条关于你的核心记忆，包括：{items}。"
-    if tool == "record_answer":
-        # 答对和答错要给不同的回应 —— 用同一句话打发，等于告诉模型对错无所谓。
-        # 字段全在 evidence / state 两层里（顶层只有 saved/evidence/state），
-        # 上一版按 {correct, kp_id, mastery_before, mastery_after, practice_count}
-        # 七个平铺的键写，一个都对不上。
-        ev, st = result["evidence"], result["state"]
-        head = "记下了。" if ev["correct"] else "记下了，这次没做对。"
-        tail = ("" if ev["correct"]
-                else f"要不要我帮你看看「{st['kp_id']}」是卡在哪一步？")
-        return (f"{head}「{st['kp_id']}」的掌握度从 {st['old_mastery']} "
-                f"更新到 **{st['mastery_level']}**，累计练习 {st['practice_count']} 次。{tail}")
     return "好的。"
 
 
@@ -278,23 +264,10 @@ def gen_positive(cfg, tool, group, phrasings, rng, all_names, version, out, budg
         print(f"    {tool}/{group}: {n}/{budget}，需补话术种子")
 
 
-# 各工具的最小合法参数。缺了必填参数会抛 TypeError，
-# 而之前那个 `except Exception: continue` 会把整批样本静默吞掉 ——
-# record_answer 的混淆样本就是这么一条都没生成的，直到覆盖率报告显示 0 才发现。
-# 第三个参数 meta 是种子里显式给出的语义标签（目前只有 record_answer 的 correct 用到）。
-#
-# ⚠️ `record_answer` 原来写死 `"correct": True`，不管用户说的是做对了还是答错了 ——
-# 「刚做完哈希表的练习，答错了」的 gold 也成了 correct=True，等于教模型把错的记成对的。
-# 凡是**语义标签**，一律从种子里读，不在生成器里猜：生成器能程序化决定的是参数怎么填，
-# 不是用户到底答对没答对。
-# 少数组的「诱饵」不是种子的顶层 key（见 gen_confusion 里的说明）。
-CONFUSION_LURE = {"混淆_已弃用record_answer": "record_answer"}
-
 CONFUSION_ARGS = {
     "recommend_practice": lambda course, kp, meta: {"course": course, "weeks_to_exam": 4},
     "get_mastery_report": lambda course, kp, meta: {"course": course},
     "get_core_memories": lambda course, kp, meta: {},
-    "record_answer": lambda course, kp, meta: {"kp_id": kp, "correct": meta["correct"]},
     "record_learning_evidence": lambda course, kp, meta: {
         "kp_id": kp, "activity_type": meta["activity_type"], "correct": meta["correct"]},
     "get_mastery_level": lambda course, kp, meta: {"kp_id": kp},
@@ -323,14 +296,10 @@ def gen_confusion(cfg, wrong_tool, group, phrasings, right_tool, rng, all_names,
             print(f"    ⚠️  {group} → {right_tool}({args}) 执行失败，已跳过：{exc}")
             continue
         answer = _answer_for(right_tool, result, kp)
-        # 诱饵与正解同时在场。多数组里「诱饵」就是种子的顶层 key（wrong_tool），
-        # 但 `混淆_已弃用record_answer` 是翻过面的：顶层 key 是正解，
-        # 真正的诱饵是那个已弃用的 record_answer，用 `lure` 显式指定。
-        lure = CONFUSION_LURE.get(group, wrong_tool)
         out.append(mk(
             f"{wrong_tool}_conf_{j:03d}", f"{wrong_tool}__{group}__{j:03d}",
             "single_tool_call", SYSTEM,
-            [right_tool, lure],
+            [right_tool, wrong_tool],
             [Turn(role="user", content=query),
              Turn(role="tool_call", calls=[ToolCall(right_tool, args)]),
              Turn(role="tool_result", results=[ToolResult(right_tool, result)]),
@@ -347,7 +316,7 @@ def gen_gate_negative(cfg, tool, group, phrasings, rng, all_names, version, out,
         out.append(mk(
             f"{tool}_gate_{j:03d}", f"{tool}__{group}__{j:03d}",
             "hard_negative", SYSTEM,
-            [tool, "record_answer", "get_mastery_level"],
+            [tool, "get_mastery_level"],
             [Turn(role="user", content=query),
              Turn(role="assistant", content=reply.format(kp=kp))],
             version, rng, all_names, topic=kp))

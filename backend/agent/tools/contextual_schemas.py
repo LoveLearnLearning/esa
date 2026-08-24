@@ -16,7 +16,7 @@ CONTEXTUAL_TOOL_NAMES = frozenset(
         "delete_core_memory", "recommend_practice",
         "get_mastery_report",
         "get_mastery_level", "get_weak_prerequisites", "get_review_timing",
-        "record_answer", "record_learning_evidence",
+        "record_learning_evidence",
         "get_learning_evidence_summary", "parse_pdf_attachment",
         "parse_word_attachment", "parse_presentation_attachment",
         "parse_spreadsheet_attachment", "parse_image_attachment",

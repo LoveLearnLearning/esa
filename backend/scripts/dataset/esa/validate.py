@@ -358,7 +358,7 @@ def check_topic_known(samples: list[Sample], kp_ids: set[str]) -> list[Finding]:
 
     ⚠️ 本仓库里 `topic` 混着**两套**知识点命名空间，两套都是真的：
       - 根目录 KG（479 个，中文 id，如 `TCP协议` / `并查集`）—— 线上工具校验 `kp_id`
-        用的就是这套，样本里 `record_answer(kp_id=...)` 传的也是它
+        用的就是这套，学习证据样本里的 `kp_id` 也来自它
       - `seeds/knowledge_points.yaml`（120 个，snake_case，如 `quicksort_analysis`）
         —— 数据编写用的更细粒度分类，`verified_facts.yaml` 就是按它登记的
     所以这里两套都认。**能对上不等于被校验了** —— 真正被校验的是登记进
@@ -427,7 +427,7 @@ def _answer_polarity(text: str) -> bool | None:
 def check_answer_polarity(samples: list[Sample]) -> list[Finding]:
     """「用户说答错了，工具却记成答对了」——语义反转，所有结构校验都抓不到。
 
-    这条检查是补出来的：`gen_new_tools.py` 曾把 `record_answer` 的 `correct` 写死成 True，
+    这条检查是补出来的：生成器曾把学习证据的 `correct` 写死成 True，
     于是「刚做完哈希表的练习，答错了」的 gold 也是 `correct=True`。
     JSON 合法、schema 合法、参数齐全、grounding 通过 —— 全绿，只有语义是反的。
     这类错误比缺参数危险得多：它直接教模型把错的记成对的。

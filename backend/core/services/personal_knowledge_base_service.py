@@ -40,6 +40,33 @@ SUPPORTED_MEDIA_TYPES = {
     ".webp": "image/webp",
 }
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
+_POSIX_PERMISSION_CHECKS = os.name == "posix" and hasattr(os, "geteuid")
+
+
+def _owner_mode_is_private(metadata: os.stat_result) -> bool:
+    if not _POSIX_PERMISSION_CHECKS:
+        return True
+    return metadata.st_uid == os.geteuid() and metadata.st_mode & 0o077 == 0
+
+
+def _sync_directory(path: Path) -> None:
+    """Durably sync a directory where the platform exposes directory fds."""
+
+    if os.name != "posix":
+        return
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _read_descriptor_at(descriptor: int, size: int, offset: int) -> bytes:
+    pread = getattr(os, "pread", None)
+    if pread is not None:
+        return pread(descriptor, size, offset)
+    os.lseek(descriptor, offset, os.SEEK_SET)
+    return os.read(descriptor, size)
 _OLE_MAGIC = bytes.fromhex("d0cf11e0a1b11ae1")
 
 
@@ -133,13 +160,12 @@ class PersonalKnowledgeBaseFileStorage:
     def validate_permissions(self) -> None:
         """Fail closed on foreign-owned, group-visible, or symlinked data."""
 
-        expected_uid = os.geteuid()
         for current_root, directories, files in os.walk(self.root):
             current = Path(current_root)
             if current.is_symlink():
                 raise RuntimeError("personal knowledge-base root contains a symlink")
             stat = current.stat()
-            if stat.st_uid != expected_uid or stat.st_mode & 0o077:
+            if not _owner_mode_is_private(stat):
                 raise RuntimeError(
                     "personal knowledge-base directory owner/mode is not private"
                 )
@@ -155,7 +181,7 @@ class PersonalKnowledgeBaseFileStorage:
                         "personal knowledge-base root contains a symlink"
                     )
                 file_stat = path.stat()
-                if file_stat.st_uid != expected_uid or file_stat.st_mode & 0o077:
+                if not _owner_mode_is_private(file_stat):
                     raise RuntimeError(
                         "personal knowledge-base file owner/mode is not private"
                     )
@@ -301,11 +327,7 @@ class PersonalKnowledgeBaseFileStorage:
                     raise InvalidKnowledgeBaseFile("文件为空")
                 self._validate_content(temporary_path, suffix)
                 os.replace(temporary_path, source_path)
-                directory_fd = os.open(directory, os.O_RDONLY)
-                try:
-                    os.fsync(directory_fd)
-                finally:
-                    os.close(directory_fd)
+                _sync_directory(directory)
                 committed.append(
                     NewPersonalKnowledgeBaseFile(
                         file_id=file_id,
@@ -364,7 +386,12 @@ class PersonalKnowledgeBaseFileStorage:
                 )
         except (FileNotFoundError, OSError) as exc:
             raise FileNotFoundError("personal knowledge-base source is missing") from exc
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
         descriptor = os.open(expected, flags)
         try:
             metadata = os.fstat(descriptor)
@@ -372,7 +399,7 @@ class PersonalKnowledgeBaseFileStorage:
                 raise PersonalKnowledgeBaseStorageIntegrityError(
                     "personal knowledge-base source is not a regular file"
                 )
-            if metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077:
+            if not _owner_mode_is_private(metadata):
                 raise PersonalKnowledgeBaseStorageIntegrityError(
                     "personal knowledge-base source owner/mode is not private"
                 )
@@ -400,7 +427,11 @@ class PersonalKnowledgeBaseFileStorage:
         digest = hashlib.sha256()
         offset = 0
         while offset < metadata.st_size:
-            chunk = os.pread(descriptor, min(1024 * 1024, metadata.st_size - offset), offset)
+            chunk = _read_descriptor_at(
+                descriptor,
+                min(1024 * 1024, metadata.st_size - offset),
+                offset,
+            )
             if not chunk:
                 raise PersonalKnowledgeBaseStorageIntegrityError(
                     "personal preview artifact truncated"
@@ -437,7 +468,12 @@ class PersonalKnowledgeBaseFileStorage:
             raise PersonalKnowledgeBaseStorageIntegrityError(
                 "personal preview artifact path drift"
             ) from exc
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
         descriptor = os.open(resolved, flags)
         try:
             metadata = os.fstat(descriptor)
@@ -445,7 +481,7 @@ class PersonalKnowledgeBaseFileStorage:
                 raise PersonalKnowledgeBaseStorageIntegrityError(
                     "personal preview artifact is not a regular file"
                 )
-            if metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077:
+            if not _owner_mode_is_private(metadata):
                 raise PersonalKnowledgeBaseStorageIntegrityError(
                     "personal preview artifact owner/mode is not private"
                 )
@@ -530,7 +566,7 @@ class PersonalKnowledgeBaseFileStorage:
                                 quality=85,
                             )
                             os.chmod(temporary, 0o600)
-                            with temporary.open("rb") as saved:
+                            with temporary.open("r+b") as saved:
                                 os.fsync(saved.fileno())
                             os.replace(temporary, final_path)
                         finally:

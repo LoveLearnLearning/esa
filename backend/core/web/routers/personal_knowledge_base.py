@@ -35,6 +35,14 @@ ResourceStatus = Literal["idle", "queued", "building", "ready", "failed"]
 _STREAM_CHUNK_BYTES = 64 * 1024
 
 
+def _read_at(descriptor: int, size: int, offset: int) -> bytes:
+    pread = getattr(os, "pread", None)
+    if pread is not None:
+        return pread(descriptor, size, offset)
+    os.lseek(descriptor, offset, os.SEEK_SET)
+    return os.read(descriptor, size)
+
+
 class KnowledgeBaseFileResponse(BaseModel):
     id: str
     filename: str
@@ -181,7 +189,7 @@ class _OpenFileResponse(Response):
             offset = self.start
             while offset <= self.end:
                 chunk = await anyio.to_thread.run_sync(
-                    os.pread,
+                    _read_at,
                     self.descriptor,
                     min(_STREAM_CHUNK_BYTES, self.end - offset + 1),
                     offset,

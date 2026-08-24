@@ -230,7 +230,7 @@ def main() -> int:
 # 手抄的东西会过期，而过期了**没有任何东西会说话**：
 #
 #   2026-08-15 发现 167 条样本的 observation 结构与线上不符，其中
-#   100 条学情样本（record_answer 七个键全不同、get_review_timing 多两个键、
+#   多条学情样本（旧写入载荷键不同、get_review_timing 多两个键、
 #   get_weak_prerequisites 少了外层包装）**从一开始就是错的**，
 #   而这个文件的 33 项契约一直全绿 —— 因为它钉的是 fixtures 自己的形状。
 #
@@ -299,7 +299,9 @@ CAPTURE_CASES = {
         "get_mastery_level": lambda: fixtures.get_mastery_level("进程调度"),
         "get_weak_prerequisites": lambda: fixtures.get_weak_prerequisites_tool("死锁"),
         "get_review_timing": lambda: fixtures.get_review_timing("进程调度"),
-        "record_answer": lambda: fixtures.record_answer("进程调度", True),
+        "record_learning_evidence": lambda: fixtures.record_learning_evidence(
+            "进程调度", "practice", correct=True
+        ),
         "get_learning_evidence_summary": fixtures.get_learning_evidence_summary,
         # ↓ 2026-08-19 补。这三条是**执行器包出来的失败观测**，不是工具返回值：
         # 后端 `_canonical_kp_id` / `weeks_to_exam` 校验抛 ValueError，被
@@ -481,8 +483,13 @@ def check_memory_behaviour(root: Path) -> list[bool]:
     lpath = root / "dataset/data/cache/learning_real.json"
     if lpath.exists():
         lcalls = json.loads(lpath.read_text(encoding="utf-8"))["calls"]
-        real_blocked = {(c["mode"], c["tool"]): c["result"]
-                        for c in lcalls if c["mode"] != "normal" and "result" in c}
+        real_blocked = {
+            (c["mode"], c["tool"]): c["result"]
+            for c in lcalls
+            if c["mode"] != "normal"
+            and "result" in c
+            and c["tool"] in fixtures.BLOCKED_BUILDERS
+        }
         bad = []
         for (mode, tool), want in real_blocked.items():
             if not isinstance(want, dict) or want.get("allowed", True) and want.get("saved", True):

@@ -26,6 +26,18 @@ from backend.core.stores.personal_knowledge_base_store import (
 logger = logging.getLogger(__name__)
 
 
+def _sync_directory(path: Path) -> None:
+    """Durably sync a directory on platforms that expose directory fds."""
+
+    if os.name != "posix":
+        return
+    directory_fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
 class PersonalQdrantSnapshotManager:
     """Coalesce mutations into checksummed snapshots on persistent storage."""
 
@@ -325,11 +337,7 @@ class PersonalQdrantSnapshotManager:
                 os.fsync(stream.fileno())
             os.chmod(partial, 0o600)
             os.replace(partial, final_path)
-            directory_fd = os.open(final_path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
+            _sync_directory(final_path.parent)
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             partial.unlink(missing_ok=True)
             raise IndexUnavailable(f"Qdrant snapshot download failed: {exc}") from exc
@@ -438,11 +446,7 @@ class PersonalQdrantSnapshotManager:
                 os.fsync(stream.fileno())
             os.chmod(partial, 0o600)
             os.replace(partial, path)
-            directory_fd = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
+            _sync_directory(path.parent)
         except BaseException:
             partial.unlink(missing_ok=True)
             raise

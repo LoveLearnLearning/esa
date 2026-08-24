@@ -3,6 +3,7 @@
 """验证 `conversation_compression_service` 相关行为与回归场景。"""
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 from backend.core.services.conversation_compression_service import (
     ConversationCompressionService,
@@ -165,3 +166,118 @@ def test_summary_is_not_committed_after_user_returns_online(tmp_path):
 
     assert asyncio.run(service.run_once()) == 0
     assert summary_store.get(conversation_id) is None
+
+
+def test_active_compression_requires_live_owner_and_excludes_current_turn(tmp_path):
+    database_path = tmp_path / "active-compression.db"
+    user_store = UserStore(database_path)
+    assert user_store.create(
+        UserRecord(id="u1", username="alice", password_hash="hash", status="active")
+    )
+    chat_store = ChatStore(database_path)
+    run_migrations(database_path)
+    conversation_id = chat_store.create_conversation("u1")["conversation_id"]
+    chat_store.append_messages(
+        conversation_id,
+        [{"role": "user", "content": f"prior-{index}"} for index in range(12)],
+    )
+    chat_store.append_messages(
+        conversation_id,
+        [{"role": "user", "content": "CURRENT-MUST-NOT-BE-SUMMARIZED"}],
+    )
+    current_id = chat_store.latest_message_id(conversation_id)
+    assert current_id is not None
+
+    summary_store = ConversationSummaryStore(database_path)
+    now = datetime.now(timezone.utc)
+    summary_store.execute(
+        """
+        INSERT INTO conversation_turn_leases (
+            conversation_id, owner_token, acquired_at, expires_at
+        ) VALUES (?, ?, ?, ?)
+        """,
+        (
+            conversation_id,
+            "owner",
+            now.isoformat(),
+            (now + timedelta(minutes=5)).isoformat(),
+        ),
+    )
+    llm = _AuxiliaryLLM()
+    service = ConversationCompressionService(
+        llm_client=llm,
+        summary_store=summary_store,
+        offline_after_seconds=300,
+        scan_interval_seconds=30,
+        min_messages=4,
+        min_new_messages=2,
+        keep_recent_messages=2,
+        max_input_chars=60000,
+        max_output_tokens=768,
+    )
+
+    assert asyncio.run(service.compress_active_turn(
+        conversation_id=conversation_id,
+        owner_token="wrong-owner",
+        before_message_id=current_id,
+    )) is False
+    assert summary_store.get(conversation_id) is None
+
+    assert asyncio.run(service.compress_active_turn(
+        conversation_id=conversation_id,
+        owner_token="owner",
+        before_message_id=current_id,
+    )) is True
+    stored = summary_store.get(conversation_id)
+    assert stored is not None
+    assert stored["summarized_through_message_id"] < current_id
+    serialized_calls = str(llm.calls)
+    assert "CURRENT-MUST-NOT-BE-SUMMARIZED" not in serialized_calls
+
+    summary, history = chat_store.get_compressed_model_history_before(
+        conversation_id,
+        current_id,
+    )
+    assert summary == stored["summary"]
+    assert all(item["content"] != "CURRENT-MUST-NOT-BE-SUMMARIZED" for item in history)
+
+
+def test_owner_bound_summary_rejects_foreign_boundary(tmp_path):
+    database_path = tmp_path / "foreign-boundary.db"
+    user_store = UserStore(database_path)
+    for user_id in ("u1", "u2"):
+        assert user_store.create(
+            UserRecord(
+                id=user_id,
+                username=user_id,
+                password_hash="hash",
+                status="active",
+            )
+        )
+    chat_store = ChatStore(database_path)
+    run_migrations(database_path)
+    first = chat_store.create_conversation("u1")["conversation_id"]
+    second = chat_store.create_conversation("u2")["conversation_id"]
+    chat_store.append_messages(first, [{"role": "user", "content": "first"}])
+    chat_store.append_messages(second, [{"role": "user", "content": "second"}])
+    foreign_id = chat_store.latest_message_id(second)
+    assert foreign_id is not None
+    store = ConversationSummaryStore(database_path)
+    now = datetime.now(timezone.utc)
+    store.execute(
+        """
+        INSERT INTO conversation_turn_leases (
+            conversation_id, owner_token, acquired_at, expires_at
+        ) VALUES (?, 'owner', ?, ?)
+        """,
+        (first, now.isoformat(), (now + timedelta(minutes=5)).isoformat()),
+    )
+
+    assert store.upsert_if_turn_owned(
+        conversation_id=first,
+        owner_token="owner",
+        summarized_through_message_id=foreign_id,
+        summary="bad",
+        source_message_count=1,
+    ) is False
+    assert store.get(first) is None

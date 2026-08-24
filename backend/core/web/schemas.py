@@ -71,6 +71,16 @@ class SendMessageRequest(BaseModel):
         "research_planning",
     ] | None = None
 
+    @model_validator(mode="after")
+    def validate_knowledge_sources(self) -> "SendMessageRequest":
+        received = {item.strip().lower() for item in self.knowledge_sources}
+        if not received <= {"personal", "public"}:
+            raise ValueError("knowledge_sources 只能包含 personal 或 public")
+        self.knowledge_sources = [
+            source for source in ("personal", "public") if source in received
+        ]
+        return self
+
 
 class PlannerTodoCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
@@ -95,17 +105,6 @@ class PlannerGoalUpdateRequest(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     target_at: datetime | None = None
     progress: int | None = Field(default=None, ge=0, le=100)
-
-    @model_validator(mode="after")
-    def validate_knowledge_sources(self) -> "SendMessageRequest":
-        received = {item.strip().lower() for item in self.knowledge_sources}
-        if not received <= {"personal", "public"}:
-            raise ValueError("knowledge_sources 只能包含 personal 或 public")
-        self.knowledge_sources = [
-            source for source in ("personal", "public") if source in received
-        ]
-        return self
-
 
 class CodeExecutionRequest(BaseModel):
     """Code block submitted to the auxiliary-model sandbox pipeline."""

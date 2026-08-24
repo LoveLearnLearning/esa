@@ -87,11 +87,7 @@ get_review_timing:
     - "我{kp}的正确率是多少"
 
 # ---------------------------------------------------------------------------
-# record_learning_evidence —— 记录学习过程证据
-# 对照：record_answer（只记对错并更新掌握度）
-#
-# 判别点：只有对错 → record_answer；
-#         涉及独立完成/提示等级/自评信心/复述/迁移/错误类型 → record_learning_evidence
+# record_learning_evidence —— 真实且可评价的学习表现统一写入入口
 # ---------------------------------------------------------------------------
 # ⚠️ 2026-08-15：这一段的每条话术现在都自带参数。
 #
@@ -101,7 +97,6 @@ get_review_timing:
 # 这个错误以前看不见 —— budget 截断让每组只有第一条话术进得了数据，
 # 直到 2026-08-15 生成器改成按话术轮流取，10 条样本当场被 answer_polarity 抓出来。
 #
-# 规矩和 `混淆_应调record_answer` 那组一样，而且是同一条：
 # **凡是语义标签，一律从种子里读，不在生成器里猜。**
 # 生成器能程序化决定的是"参数怎么填进 JSON"，不是"学生到底做对没做对、
 # 用了几级提示、有多少把握"。
@@ -184,27 +179,7 @@ record_learning_evidence:
       error_type: careless
       misconception: "读题时漏掉了题干给出的限制条件"
 
-  # ⚠️ 2026-08-19 整组翻了个面。原来叫 `混淆_应调record_answer`，判据写的是
-  # 「只有对错，没有过程信息 → record_answer 更合适」——**那条判据现在是错的**。
-  #
-  # 后端把 record_answer 的描述改成了：
-  #   「**已弃用**的兼容练习写入入口，仅为旧客户端保留。
-  #     新学习流程**必须**使用 record_learning_evidence；
-  #     同一次作答不得同时调用两种写入工具。」
-  # 线上 system prompt 的 autoload learning_policy 里也有一句：
-  #   「同一次表现只调用一次 `record_learning_evidence`，不得再调用兼容入口 `record_answer`。」
-  #
-  # 也就是说这三条样本原本在教模型去调一个线上明写「不得调用」的工具。
-  # 现在正解改成 record_learning_evidence（activity_type=practice），
-  # record_answer 退回**诱饵**的位置 —— 它词面上仍然最像，
-  # 这组考的就是「词面像但已弃用」这条边界。
-  #
-  # ⚠️ `correct` / `activity_type` 必须逐条显式写出来，不能让生成器去猜。
-  # 之前这三条是纯字符串，生成器把 correct 写死成 True，
-  # 于是「答错了」和「我选 B、答案是 C」两条的 gold 都成了 correct=True ——
-  # 用户说错了，数据教模型记成对的。结构全合法、schema 全通过、所有校验都绿，
-  # 只有语义是反的。
-  混淆_已弃用record_answer:
+  正例_practice:
     - q: "{kp}这题我做对了"
       activity_type: practice
       correct: true
