@@ -378,6 +378,35 @@ def test_context_composer_order_trust_and_deterministic_clipping():
     assert first.estimated_tokens <= 2200
 
 
+def test_context_composer_requires_parsing_referenced_attachments():
+    """附件被用户指代时，提示必须要求先解析而不是追问文件元数据。"""
+    route = _route(capabilities=frozenset({"attachments"}))
+    turn = _turn(
+        route,
+        current_message="解释一下这篇论文",
+        authorized_attachments=(
+            {
+                "attachment_id": "a1",
+                "filename": "VideoMimic.pdf",
+                "suffix": ".pdf",
+                "status": "stored_unparsed",
+            },
+        ),
+    )
+    capabilities = ResolvedCapabilities(
+        skill_index="parse_pdf_attachment",
+        autoload_skills="parse_pdf_attachment\n概括全文的主要内容",
+        tool_schemas=(),
+        skill_names=frozenset({"parse_pdf_attachment"}),
+        tool_names=frozenset({"parse_pdf_attachment"}),
+        fingerprint="f",
+    )
+    composed = ContextComposer().compose(turn, LEARNING_PROFILE, capabilities)
+    assert "硬性规则" in composed.rendered
+    assert "不得因为用户没有重复输入标题或作者而追问" in composed.rendered
+    assert "概括全文的主要内容" in composed.rendered
+
+
 def test_context_composer_uses_cjk_aware_token_budget():
     """Chinese content must not be estimated with the ASCII chars/4 rule."""
     text = "你" * 10_000

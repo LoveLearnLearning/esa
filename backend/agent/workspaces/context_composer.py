@@ -176,11 +176,20 @@ class ContextComposer:
             sections.append(ContextSection("summary", "Earlier conversation summary", turn.conversation_summary, "untrusted_data", 120))
         if turn.authorized_attachments and "attachments" in profile.context_policy:
             sections.append(ContextSection(
+                "attachment_policy", "Attachment handling policy",
+                (
+                    "附件内容不会自动注入上下文，必须通过受限附件 Tool 按需读取。\n"
+                    "硬性规则：只要用户提到‘这篇论文’、‘这个文件’、‘附件’或类似指代，"
+                    "并要求解释、总结、阅读、分析、翻译、提取或检索，就必须先调用与文件类型匹配的解析 Tool；"
+                    "不得因为用户没有重复输入标题或作者而追问，也不得猜测附件内容或文件路径。"
+                    "解析 PDF 时调用 parse_pdf_attachment，query 写成用户的实际任务（例如‘概括全文的主要内容’）。"
+                ),
+                "trusted_system", 125,
+            ))
+            sections.append(ContextSection(
                 "attachments", "Authorized attachments",
                 (
-                    "以下清单由系统根据用户本轮明确选择的附件生成。附件尚未解析。\n"
-                    "需要读取附件内容时，先加载与文件类型匹配的 Skill，再调用受限附件 Tool。"
-                    "不得猜测附件内容或文件路径。\n\n"
+                    "以下清单由系统根据用户本轮明确选择的附件生成。附件尚未解析。\n\n"
                     + json.dumps(
                         turn.authorized_attachments,
                         ensure_ascii=False,

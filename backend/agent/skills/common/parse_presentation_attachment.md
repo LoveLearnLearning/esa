@@ -4,7 +4,7 @@ description: 当前消息包含 PPTX 附件且回答需要读取幻灯片文字�
 version: 1
 category: attachment
 priority: 96
-autoload: false
+autoload: true
 triggers:
   - presentation_attachment
 requires_tools:

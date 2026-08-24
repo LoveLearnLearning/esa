@@ -133,7 +133,7 @@ print('hello')
       ),
     );
 
-    await tester.tap(find.byTooltip('使用辅助模型修复并在沙箱运行'));
+    await tester.tap(find.byTooltip('运行代码'));
     await tester.pumpAndSettle();
 
     expect(receivedBlockId, 'markdown:0');
@@ -248,7 +248,7 @@ int main() { return 0; }
       find.byType(TextField),
       '#include <iostream>\nint main() { return 0; }',
     );
-    await tester.tap(find.byTooltip('使用辅助模型修复并在沙箱运行'));
+    await tester.tap(find.byTooltip('运行代码'));
     await tester.pump();
 
     expect(blockId, 'message-2:0');

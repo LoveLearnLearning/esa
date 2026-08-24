@@ -894,7 +894,7 @@
     "type": "function",
     "function": {
       "name": "parse_pdf_attachment",
-      "description": "读取当前消息已授权的 PDF 附件",
+      "description": "读取当前消息已授权的 PDF 附件。用户要求解释、总结、阅读、分析或检索这篇论文/这个 PDF 时必须调用",
       "parameters": {
         "type": "object",
         "properties": {
@@ -918,7 +918,7 @@
     "type": "function",
     "function": {
       "name": "parse_word_attachment",
-      "description": "读取当前消息已授权的 Word 附件",
+      "description": "读取当前消息已授权的 Word 附件。用户要求解释、总结、阅读或分析这个文档时必须调用",
       "parameters": {
         "type": "object",
         "properties": {
@@ -942,7 +942,7 @@
     "type": "function",
     "function": {
       "name": "parse_presentation_attachment",
-      "description": "读取当前消息已授权的演示文稿附件",
+      "description": "读取当前消息已授权的演示文稿附件。用户要求解释、总结或分析这个演示文稿时必须调用",
       "parameters": {
         "type": "object",
         "properties": {
@@ -966,7 +966,7 @@
     "type": "function",
     "function": {
       "name": "parse_spreadsheet_attachment",
-      "description": "读取当前消息已授权的电子表格附件",
+      "description": "读取当前消息已授权的电子表格附件。用户要求读取、分析或总结表格时必须调用",
       "parameters": {
         "type": "object",
         "properties": {
@@ -990,7 +990,7 @@
     "type": "function",
     "function": {
       "name": "parse_image_attachment",
-      "description": "读取当前消息已授权的图片附件",
+      "description": "读取当前消息已授权的图片附件。用户要求识别、解释或分析这张图片时必须调用",
       "parameters": {
         "type": "object",
         "properties": {

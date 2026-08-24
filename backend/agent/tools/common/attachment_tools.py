@@ -267,11 +267,26 @@ async def execute_attachment_tool(
 
 
 ATTACHMENT_TOOL_SCHEMAS = (
-    _schema("parse_pdf_attachment", "读取当前消息已授权的 PDF 附件"),
-    _schema("parse_word_attachment", "读取当前消息已授权的 Word 附件"),
-    _schema("parse_presentation_attachment", "读取当前消息已授权的演示文稿附件"),
-    _schema("parse_spreadsheet_attachment", "读取当前消息已授权的电子表格附件"),
-    _schema("parse_image_attachment", "读取当前消息已授权的图片附件"),
+    _schema(
+        "parse_pdf_attachment",
+        "读取当前消息已授权的 PDF 附件。用户要求解释、总结、阅读、分析或检索这篇论文/这个 PDF 时必须调用",
+    ),
+    _schema(
+        "parse_word_attachment",
+        "读取当前消息已授权的 Word 附件。用户要求解释、总结、阅读或分析这个文档时必须调用",
+    ),
+    _schema(
+        "parse_presentation_attachment",
+        "读取当前消息已授权的演示文稿附件。用户要求解释、总结或分析这个演示文稿时必须调用",
+    ),
+    _schema(
+        "parse_spreadsheet_attachment",
+        "读取当前消息已授权的电子表格附件。用户要求读取、分析或总结表格时必须调用",
+    ),
+    _schema(
+        "parse_image_attachment",
+        "读取当前消息已授权的图片附件。用户要求识别、解释或分析这张图片时必须调用",
+    ),
 )
 
 

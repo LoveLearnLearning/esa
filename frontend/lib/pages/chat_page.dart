@@ -1153,7 +1153,6 @@ class _CodeExecutionDialog extends StatelessWidget {
                 children: [
                   Chip(label: Text(result.language.toUpperCase())),
                   Chip(label: Text('尝试 ${result.attemptCount} 次')),
-                  Chip(label: Text(result.modelUsed ? '辅助 9B 已检查' : '辅助模型降级')),
                   if (result.codeChanged) const Chip(label: Text('代码已自动修复')),
                   if (result.durationSeconds > 0)
                     Chip(
