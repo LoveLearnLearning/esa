@@ -591,8 +591,13 @@ def test_personal_knowledge_tool_uses_context_identity_not_model_argument():
     captured = {}
 
     class PersonalRetrieval:
-        async def search(self, *, user_id, query, top_k):
-            captured.update(user_id=user_id, query=query, top_k=top_k)
+        async def search(self, *, user_id, query, top_k, knowledge_base_id):
+            captured.update(
+                user_id=user_id,
+                query=query,
+                top_k=top_k,
+                knowledge_base_id=knowledge_base_id,
+            )
             return {"query": query, "result_count": 0}
 
     context = ToolExecutionContext(
@@ -605,6 +610,7 @@ def test_personal_knowledge_tool_uses_context_identity_not_model_argument():
             personal_knowledge_retrieval_service=PersonalRetrieval()
         ),
         request_id="r1",
+        personal_knowledge_base_id="trusted-kb",
     )
     compiled = CapabilityRuntime().compile(
         skill_scopes=route.skill_scopes,
@@ -633,4 +639,5 @@ def test_personal_knowledge_tool_uses_context_identity_not_model_argument():
         "user_id": "trusted-user",
         "query": "my notes",
         "top_k": 3,
+        "knowledge_base_id": "trusted-kb",
     }

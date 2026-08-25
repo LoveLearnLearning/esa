@@ -36,8 +36,9 @@ class _ScheduleApi extends ApiClient {
   }
 
   @override
-  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase() async =>
-      const PersonalKnowledgeBase.empty();
+  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase({
+    String? knowledgeBaseId,
+  }) async => const PersonalKnowledgeBase.empty();
 
   @override
   Future<List<ChatMessage>> getMessages(String id) async => const [];
@@ -109,7 +110,11 @@ class _KnowledgeShellApi extends _ScheduleApi {
   Future<void> renameConversation(String id, String title) async {}
 
   @override
-  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
     streamedInputs.add(content);
     yield const ChatStreamEvent('start', {});
     yield const ChatStreamEvent('done', {});

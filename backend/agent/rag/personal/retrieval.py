@@ -37,7 +37,12 @@ class PersonalKnowledgeRetrievalService:
         self.route_limit = route_limit
 
     async def search(
-        self, *, user_id: str, query: str, top_k: int = 5
+        self,
+        *,
+        user_id: str,
+        query: str,
+        knowledge_base_id: str | None = None,
+        top_k: int = 5,
     ) -> dict[str, Any]:
         """Return Agent-ready evidence without accepting identity from the model."""
 
@@ -47,7 +52,11 @@ class PersonalKnowledgeRetrievalService:
             raise ValueError("query cannot be blank")
         if not 1 <= top_k <= 20:
             raise ValueError("top_k must be between 1 and 20")
-        state = await asyncio.to_thread(self.store.get_retrieval_state, user_id)
+        state = await asyncio.to_thread(
+            self.store.get_retrieval_state,
+            user_id,
+            *(() if knowledge_base_id is None else (knowledge_base_id,)),
+        )
         generation_id = state["generation_id"]
         filenames: dict[str, str] = state["files"]
         if not state["collection_ready"]:

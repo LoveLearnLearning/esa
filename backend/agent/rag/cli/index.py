@@ -131,7 +131,9 @@ def query_deployment(arguments: argparse.Namespace) -> dict[str, Any]:
         index,
         embedding,
         reranker=reranker,
-        config=_retrieval_config(),
+        config=_retrieval_config(
+            reranker_enabled=arguments.reranker_backend != "none"
+        ),
     ).search(arguments.query)
     payload = dataclasses.asdict(response)
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2))
@@ -204,8 +206,11 @@ def _reranker(
     )
 
 
-def _retrieval_config() -> RetrievalConfig:
+def _retrieval_config(*, reranker_enabled: bool | None = None) -> RetrievalConfig:
     """把集中配置转换为核心检索链的稳定配置对象。"""
+
+    if reranker_enabled is None:
+        reranker_enabled = core_config.RAG_RERANKER_ENABLED
 
     return RetrievalConfig(
         dense_limit=core_config.RAG_DENSE_LIMIT,
@@ -223,7 +228,7 @@ def _retrieval_config() -> RetrievalConfig:
         dense_weight=core_config.RAG_DENSE_WEIGHT,
         lexical_body_weight=core_config.RAG_LEXICAL_BODY_WEIGHT,
         lexical_gate_enabled=core_config.RAG_LEXICAL_GATE_ENABLED,
-        reranker_enabled=core_config.RAG_RERANKER_ENABLED,
+        reranker_enabled=reranker_enabled,
         reranker_prior_weight=core_config.RAG_RERANKER_PRIOR_WEIGHT,
     )
 

@@ -45,11 +45,13 @@ void main() {
       '只查个人资料',
       const [],
       knowledgeSources: const {KnowledgeSource.personal},
+      personalKnowledgeBaseId: 'personal-kb-a',
     );
     await handled;
 
     expect(requestBody['attachment_ids'], isEmpty);
     expect(requestBody['knowledge_sources'], ['personal']);
+    expect(requestBody['personal_knowledge_base_id'], 'personal-kb-a');
   });
 
   test('task-mode request keeps the selected knowledge sources', () async {
@@ -82,5 +84,34 @@ void main() {
     expect(requestBody['task_mode'], 'concept');
     expect(requestBody['attachment_ids'], ['attachment-1']);
     expect(requestBody['knowledge_sources'], ['public']);
+    expect(requestBody, isNot(contains('personal_knowledge_base_id')));
   });
+
+  test(
+    'stream message preserves a string detail from a 503 response',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(server.close);
+      final handled = server.first.then((request) async {
+        request.response
+          ..statusCode = HttpStatus.serviceUnavailable
+          ..headers.contentType = ContentType.json
+          ..write(jsonEncode({'detail': '所选知识库服务暂不可用：公共知识库'}));
+        await request.response.close();
+      });
+      final api = ApiClient(
+        baseUrl: 'http://${server.address.host}:${server.port}/api',
+      );
+
+      await expectLater(
+        api.streamMessage('conversation-1', '问题').drain<void>(),
+        throwsA(
+          isA<ApiException>()
+              .having((error) => error.statusCode, 'statusCode', 503)
+              .having((error) => error.detail, 'detail', '所选知识库服务暂不可用：公共知识库'),
+        ),
+      );
+      await handled;
+    },
+  );
 }

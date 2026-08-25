@@ -1849,12 +1849,19 @@ class ApiClient {
         .toList();
   }
 
-  Future<List<ChatMessage>> sendMessage(String id, String content) async {
+  Future<List<ChatMessage>> sendMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async {
     if (kOfflineMode) return _offlineSend(id, content);
     final r = await http.post(
       _uri('/conversations/$id/messages'),
       headers: _headers(auth: true),
-      body: jsonEncode({'content': content}),
+      body: jsonEncode({
+        'content': content,
+        'personal_knowledge_base_id': ?personalKnowledgeBaseId,
+      }),
     );
     if (r.statusCode != 200) _fail(r);
     final list = _decode(r) as List;
@@ -1897,6 +1904,7 @@ class ApiClient {
       KnowledgeSource.personal,
       KnowledgeSource.public,
     },
+    String? personalKnowledgeBaseId,
   }) async {
     if (kOfflineMode) return _offlineSend(id, content);
     final r = await http.post(
@@ -1908,6 +1916,7 @@ class ApiClient {
         'knowledge_sources': knowledgeSources
             .map((item) => item.wireName)
             .toList(),
+        'personal_knowledge_base_id': ?personalKnowledgeBaseId,
       }),
     );
     if (r.statusCode != 200) _fail(r);
@@ -1926,6 +1935,7 @@ class ApiClient {
       KnowledgeSource.personal,
       KnowledgeSource.public,
     },
+    String? personalKnowledgeBaseId,
   }) async {
     if (kOfflineMode) return _offlineSend(id, content);
     final r = await http.post(
@@ -1938,6 +1948,7 @@ class ApiClient {
         'knowledge_sources': knowledgeSources
             .map((item) => item.wireName)
             .toList(),
+        'personal_knowledge_base_id': ?personalKnowledgeBaseId,
       }),
     );
     if (r.statusCode != 200) _fail(r);
@@ -1999,10 +2010,48 @@ class ApiClient {
   }
 
   // ---------- 个人知识库 ----------
-  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase() async {
+  Future<List<PersonalKnowledgeBaseSummary>>
+  listPersonalKnowledgeBases() async {
+    if (kOfflineMode) return const [];
+    final response = await http.get(
+      _uri('/me/knowledge-base/libraries'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map(
+          (item) => PersonalKnowledgeBaseSummary.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList();
+  }
+
+  Future<PersonalKnowledgeBaseSummary> createPersonalKnowledgeBase(
+    String name,
+  ) async {
+    final response = await http.post(
+      _uri('/me/knowledge-base/libraries'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'name': name}),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return PersonalKnowledgeBaseSummary.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase({
+    String? knowledgeBaseId,
+  }) async {
     if (kOfflineMode) return const PersonalKnowledgeBase.empty();
     final response = await http.get(
-      _uri('/me/knowledge-base'),
+      _uri(
+        knowledgeBaseId == null
+            ? '/me/knowledge-base'
+            : '/me/knowledge-base/libraries/${Uri.encodeComponent(knowledgeBaseId)}',
+      ),
       headers: _headers(auth: true),
     );
     if (response.statusCode != 200) _fail(response);
@@ -2012,13 +2061,20 @@ class ApiClient {
   }
 
   Future<PersonalKnowledgeBase> uploadPersonalKnowledgeBaseFiles(
-    List<KnowledgeBaseUploadFile> files,
-  ) async {
-    if (files.isEmpty) return getPersonalKnowledgeBase();
+    List<KnowledgeBaseUploadFile> files, {
+    String? knowledgeBaseId,
+  }) async {
+    if (files.isEmpty) {
+      return getPersonalKnowledgeBase(knowledgeBaseId: knowledgeBaseId);
+    }
     if (kOfflineMode) return const PersonalKnowledgeBase.empty();
     final request = http.MultipartRequest(
       'POST',
-      _uri('/me/knowledge-base/files'),
+      _uri(
+        knowledgeBaseId == null
+            ? '/me/knowledge-base/files'
+            : '/me/knowledge-base/libraries/${Uri.encodeComponent(knowledgeBaseId)}/files',
+      ),
     );
     if (sessionId != null) {
       request.headers['Authorization'] = 'Bearer $sessionId';
@@ -2223,9 +2279,15 @@ class ApiClient {
     }
   }
 
-  Future<PersonalKnowledgeBase> rebuildPersonalKnowledgeBase() async {
+  Future<PersonalKnowledgeBase> rebuildPersonalKnowledgeBase({
+    String? knowledgeBaseId,
+  }) async {
     final response = await http.post(
-      _uri('/me/knowledge-base/rebuild'),
+      _uri(
+        knowledgeBaseId == null
+            ? '/me/knowledge-base/rebuild'
+            : '/me/knowledge-base/libraries/${Uri.encodeComponent(knowledgeBaseId)}/rebuild',
+      ),
       headers: _headers(auth: true),
     );
     if (response.statusCode != 202) _fail(response);
@@ -2234,7 +2296,11 @@ class ApiClient {
     );
   }
 
-  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
     if (kOfflineMode) {
       final messages = await _offlineSend(id, content);
       yield const ChatStreamEvent('start', {});
@@ -2260,7 +2326,10 @@ class ApiClient {
     final request =
         http.Request('POST', _uri('/conversations/$id/messages/stream'))
           ..headers.addAll(_headers(auth: true))
-          ..body = jsonEncode({'content': content});
+          ..body = jsonEncode({
+            'content': content,
+            'personal_knowledge_base_id': ?personalKnowledgeBaseId,
+          });
 
     final response = await request.send();
     if (response.statusCode != 200) {
@@ -2279,6 +2348,7 @@ class ApiClient {
       KnowledgeSource.personal,
       KnowledgeSource.public,
     },
+    String? personalKnowledgeBaseId,
   }) async* {
     final request =
         http.Request('POST', _uri('/conversations/$id/messages/stream'))
@@ -2289,6 +2359,7 @@ class ApiClient {
             'knowledge_sources': knowledgeSources
                 .map((item) => item.wireName)
                 .toList(),
+            'personal_knowledge_base_id': ?personalKnowledgeBaseId,
           });
 
     final response = await request.send();
@@ -2308,6 +2379,7 @@ class ApiClient {
       KnowledgeSource.personal,
       KnowledgeSource.public,
     },
+    String? personalKnowledgeBaseId,
   }) async* {
     if (kOfflineMode) {
       yield* streamMessage(id, content);
@@ -2323,6 +2395,7 @@ class ApiClient {
             'knowledge_sources': knowledgeSources
                 .map((item) => item.wireName)
                 .toList(),
+            'personal_knowledge_base_id': ?personalKnowledgeBaseId,
           });
     final response = await request.send();
     if (response.statusCode != 200) {
@@ -2341,6 +2414,7 @@ class ApiClient {
       KnowledgeSource.personal,
       KnowledgeSource.public,
     },
+    String? personalKnowledgeBaseId,
   }) async* {
     final request =
         http.Request('POST', _uri('/conversations/$id/messages/stream'))
@@ -2351,6 +2425,7 @@ class ApiClient {
             'knowledge_sources': knowledgeSources
                 .map((item) => item.wireName)
                 .toList(),
+            'personal_knowledge_base_id': ?personalKnowledgeBaseId,
             'replace_message_id': messageId,
           });
     final response = await request.send();

@@ -23,9 +23,12 @@ class PersonalKnowledgeBasePage extends StatefulWidget {
 
 class _PersonalKnowledgeBasePageState extends State<PersonalKnowledgeBasePage> {
   PersonalKnowledgeBase _snapshot = const PersonalKnowledgeBase.empty();
+  List<PersonalKnowledgeBaseSummary> _knowledgeBases = const [];
+  String? _knowledgeBaseId;
   KnowledgeBaseFile? _selected;
   Timer? _pollTimer;
   bool _loading = true;
+  bool _loadInFlight = false;
   bool _uploading = false;
   String? _error;
   String _query = '';
@@ -48,11 +51,28 @@ class _PersonalKnowledgeBasePageState extends State<PersonalKnowledgeBasePage> {
   }
 
   Future<void> _load({bool quiet = false}) async {
+    if (_loadInFlight) return;
+    _loadInFlight = true;
     if (!quiet && mounted) setState(() => _loading = true);
     try {
-      final value = await AppScope.of(context).api.getPersonalKnowledgeBase();
+      final api = AppScope.of(context).api;
+      var knowledgeBases = _knowledgeBases;
+      if (knowledgeBases.isEmpty) {
+        knowledgeBases = await api.listPersonalKnowledgeBases();
+      }
+      final selectedId =
+          knowledgeBases
+              .where((item) => item.id == _knowledgeBaseId)
+              .map((item) => item.id)
+              .firstOrNull ??
+          knowledgeBases.firstOrNull?.id;
+      final value = await api.getPersonalKnowledgeBase(
+        knowledgeBaseId: selectedId,
+      );
       if (!mounted) return;
       setState(() {
+        _knowledgeBases = knowledgeBases;
+        _knowledgeBaseId = selectedId;
         _snapshot = value;
         _loading = false;
         _error = null;
@@ -75,6 +95,71 @@ class _PersonalKnowledgeBasePageState extends State<PersonalKnowledgeBasePage> {
         _loading = false;
         _error = '知识库加载失败，请稍后重试';
       });
+    } finally {
+      _loadInFlight = false;
+    }
+  }
+
+  Future<void> _selectKnowledgeBase(String? knowledgeBaseId) async {
+    if (knowledgeBaseId == null || knowledgeBaseId == _knowledgeBaseId) return;
+    _previewCancellation?.cancel();
+    setState(() {
+      _knowledgeBaseId = knowledgeBaseId;
+      _selected = null;
+      _snapshot = const PersonalKnowledgeBase.empty();
+      _loading = true;
+    });
+    await _load();
+  }
+
+  Future<void> _createKnowledgeBase() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('新建个人知识库'),
+        content: TextField(
+          key: const ValueKey('knowledge-base-name-input'),
+          controller: controller,
+          autofocus: true,
+          maxLength: 80,
+          decoration: const InputDecoration(hintText: '例如：机器学习课程资料'),
+          onSubmitted: (value) {
+            if (value.trim().isNotEmpty) Navigator.pop(dialogContext, value);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                Navigator.pop(dialogContext, controller.text);
+              }
+            },
+            child: const Text('创建'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || !mounted) return;
+    try {
+      final created = await AppScope.of(
+        context,
+      ).api.createPersonalKnowledgeBase(name.trim());
+      if (!mounted) return;
+      setState(() {
+        _knowledgeBases = [..._knowledgeBases, created];
+        _knowledgeBaseId = created.id;
+        _selected = null;
+        _snapshot = const PersonalKnowledgeBase.empty();
+      });
+      await _load();
+    } on ApiException catch (error) {
+      if (mounted) _showError(error.detail);
     }
   }
 
@@ -124,9 +209,11 @@ class _PersonalKnowledgeBasePageState extends State<PersonalKnowledgeBasePage> {
           )
           .toList();
       setState(() => _uploading = true);
-      final value = await AppScope.of(
-        context,
-      ).api.uploadPersonalKnowledgeBaseFiles(files);
+      final value = await AppScope.of(context).api
+          .uploadPersonalKnowledgeBaseFiles(
+            files,
+            knowledgeBaseId: _knowledgeBaseId,
+          );
       if (!mounted) return;
       setState(() {
         _snapshot = value;
@@ -251,7 +338,7 @@ class _PersonalKnowledgeBasePageState extends State<PersonalKnowledgeBasePage> {
     try {
       final value = await AppScope.of(
         context,
-      ).api.rebuildPersonalKnowledgeBase();
+      ).api.rebuildPersonalKnowledgeBase(knowledgeBaseId: _knowledgeBaseId);
       if (!mounted) return;
       setState(() => _snapshot = value);
       _schedulePolling();
@@ -285,7 +372,11 @@ class _PersonalKnowledgeBasePageState extends State<PersonalKnowledgeBasePage> {
         children: [
           _KnowledgeBaseHeader(
             snapshot: _snapshot,
+            knowledgeBases: _knowledgeBases,
+            knowledgeBaseId: _knowledgeBaseId,
             uploading: _uploading,
+            onKnowledgeBaseChanged: _selectKnowledgeBase,
+            onCreateKnowledgeBase: _createKnowledgeBase,
             onAdd: _pickFiles,
             onRebuild: _snapshot.files.isEmpty ? null : _rebuild,
           ),
@@ -527,13 +618,21 @@ class _PersonalPreviewPane extends StatelessWidget {
 class _KnowledgeBaseHeader extends StatelessWidget {
   const _KnowledgeBaseHeader({
     required this.snapshot,
+    required this.knowledgeBases,
+    required this.knowledgeBaseId,
     required this.uploading,
+    required this.onKnowledgeBaseChanged,
+    required this.onCreateKnowledgeBase,
     required this.onAdd,
     required this.onRebuild,
   });
 
   final PersonalKnowledgeBase snapshot;
+  final List<PersonalKnowledgeBaseSummary> knowledgeBases;
+  final String? knowledgeBaseId;
   final bool uploading;
+  final ValueChanged<String?> onKnowledgeBaseChanged;
+  final VoidCallback onCreateKnowledgeBase;
   final VoidCallback onAdd;
   final VoidCallback? onRebuild;
 
@@ -587,6 +686,40 @@ class _KnowledgeBaseHeader extends StatelessWidget {
                       )
                     : const Icon(LucideIcons.filePlus2, size: 17),
                 label: Text(uploading ? '上传中' : '添加文件'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  key: const ValueKey('personal-knowledge-base-selector'),
+                  initialValue:
+                      knowledgeBases.any((item) => item.id == knowledgeBaseId)
+                      ? knowledgeBaseId
+                      : null,
+                  decoration: const InputDecoration(
+                    labelText: '当前个人知识库',
+                    isDense: true,
+                  ),
+                  items: knowledgeBases
+                      .map(
+                        (item) => DropdownMenuItem(
+                          value: item.id,
+                          child: Text(item.name),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: onKnowledgeBaseChanged,
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                key: const ValueKey('personal-knowledge-base-create'),
+                onPressed: onCreateKnowledgeBase,
+                icon: const Icon(LucideIcons.plus, size: 16),
+                label: const Text('新建'),
               ),
             ],
           ),

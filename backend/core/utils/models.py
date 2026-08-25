@@ -154,3 +154,4 @@ class MessageContext:
     resolved_kp_ids: tuple[str, ...] = ()
     pending_practice_kp_id: str | None = None
     knowledge_sources: tuple[str, ...] = ("personal", "public")
+    personal_knowledge_base_id: str | None = None

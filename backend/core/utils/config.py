@@ -620,7 +620,7 @@ RAG_EMBEDDING_TIMEOUT: float = _float_from_env(
 
 # reranker
 RerankerBackend = Literal["none", "transformers", "vllm"]
-RAG_RERANKER_ENABLED: bool = _bool_from_env("RAG_RERANKER_ENABLED", True)
+RAG_RERANKER_ENABLED: bool = _bool_from_env("RAG_RERANKER_ENABLED", False)
 RAG_RERANKER_BACKEND: RerankerBackend = _choice_from_env(
     "RAG_RERANKER_BACKEND",
     "transformers" if RAG_RERANKER_ENABLED else "none",
@@ -640,12 +640,11 @@ RAG_RERANKER_TIMEOUT: float = _float_from_env(
 )
 
 # retrieval
-# Keep a wider recall pool so relevant chunks beyond the old top-20 are
-# available to fusion/reranking without increasing the final response size.
-RAG_DENSE_LIMIT: int = _int_from_env("RAG_DENSE_LIMIT", 50)
-RAG_BM25_BODY_LIMIT: int = _int_from_env("RAG_BM25_BODY_LIMIT", 50)
-RAG_BM25_HEADING_LIMIT: int = _int_from_env("RAG_BM25_HEADING_LIMIT", 50)
-RAG_RRF_LIMIT: int = _int_from_env("RAG_RRF_LIMIT", 50)
+# Recall 100 candidates, diversity-preselect 50 for reranking, and return 5.
+RAG_DENSE_LIMIT: int = _int_from_env("RAG_DENSE_LIMIT", 100)
+RAG_BM25_BODY_LIMIT: int = _int_from_env("RAG_BM25_BODY_LIMIT", 100)
+RAG_BM25_HEADING_LIMIT: int = _int_from_env("RAG_BM25_HEADING_LIMIT", 100)
+RAG_RRF_LIMIT: int = _int_from_env("RAG_RRF_LIMIT", 100)
 RAG_RERANK_LIMIT: int = _int_from_env("RAG_RERANK_LIMIT", 50)
 RAG_RERANKER_BATCH_SIZE: int = _int_from_env("RAG_RERANKER_BATCH_SIZE", 4)
 RAG_FINAL_LIMIT: int = _int_from_env("RAG_FINAL_LIMIT", 5)

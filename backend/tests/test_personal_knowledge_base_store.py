@@ -7,10 +7,12 @@ from datetime import datetime, timezone
 
 import pytest
 
+from backend.core.stores import migrations
 from backend.core.stores.migrations import run_migrations
 from backend.core.stores.personal_knowledge_base_store import (
     NewPersonalKnowledgeBaseFile,
     PersonalKnowledgeBaseConflict,
+    PersonalKnowledgeBaseNotFound,
     PersonalKnowledgeBaseQuotaExceeded,
     PersonalKnowledgeBaseStore,
 )
@@ -45,10 +47,92 @@ def test_personal_knowledge_base_migration_creates_tenant_schema(tmp_path):
             "personal_knowledge_base_upload_reservations",
             "personal_knowledge_base_job_stage_events",
             "personal_knowledge_base_user_purges",
+            "personal_knowledge_base_catalogs",
         } <= tables
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         connection.close()
+
+
+def test_catalog_migration_backfills_existing_files(tmp_path, monkeypatch):
+    database = tmp_path / "legacy.db"
+    UserStore(database)
+    all_migrations = migrations.MIGRATIONS
+    monkeypatch.setattr(
+        migrations,
+        "MIGRATIONS",
+        [item for item in all_migrations if item[0] < 20],
+    )
+    run_migrations(database)
+    connection = sqlite3.connect(database)
+    now = "2026-08-21T00:00:00+00:00"
+    connection.execute(
+        "INSERT INTO users (id, username, password_hash) VALUES ('u1', 'one', 'hash')"
+    )
+    connection.execute(
+        """
+        INSERT INTO personal_knowledge_bases (user_id, created_at, updated_at)
+        VALUES ('u1', ?, ?)
+        """,
+        (now, now),
+    )
+    connection.execute(
+        """
+        INSERT INTO personal_knowledge_base_files (
+            file_id, user_id, filename, suffix, media_type, size_bytes,
+            sha256, source_path, ingestion_revision, uploaded_at, updated_at
+        ) VALUES ('file-1', 'u1', 'notes.txt', '.txt', 'text/plain', 1,
+                  ?, '/durable/file-1/source.txt', 1, ?, ?)
+        """,
+        ("a" * 64, now, now),
+    )
+    connection.commit()
+    connection.close()
+
+    monkeypatch.setattr(migrations, "MIGRATIONS", all_migrations)
+    assert run_migrations(database) == 2
+
+    connection = sqlite3.connect(database)
+    try:
+        catalog_id = connection.execute(
+            "SELECT knowledge_base_id FROM personal_knowledge_base_catalogs WHERE user_id = 'u1'"
+        ).fetchone()[0]
+        assert connection.execute(
+            "SELECT knowledge_base_id FROM personal_knowledge_base_files WHERE file_id = 'file-1'"
+        ).fetchone() == (catalog_id,)
+    finally:
+        connection.close()
+
+
+def test_catalogs_keep_independent_active_generations(tmp_path):
+    database = _database(tmp_path)
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "INSERT INTO users (id, username, password_hash) VALUES ('u1', 'one', 'hash')"
+    )
+    connection.commit()
+    connection.close()
+
+    store = PersonalKnowledgeBaseStore(database)
+    first = store.resolve_knowledge_base_id(user_id="u1")
+    second = store.create_knowledge_base(user_id="u1", name="第二库")["id"]
+    kwargs = {
+        "collection_name": "personal",
+        "embedding_fingerprint": "e",
+        "chunk_fingerprint": "c",
+        "index_fingerprint": "i",
+        "locator_schema_version": "l",
+    }
+    first_generation = store.ensure_active_generation(
+        user_id="u1", knowledge_base_id=first, **kwargs
+    )
+    second_generation = store.ensure_active_generation(
+        user_id="u1", knowledge_base_id=second, **kwargs
+    )
+
+    assert first_generation != second_generation
+    assert store.get_retrieval_state("u1", first)["generation_id"] == first_generation
+    assert store.get_retrieval_state("u1", second)["generation_id"] == second_generation
 
 
 def test_user_purge_is_replayable_and_survives_main_user_deletion(tmp_path):
@@ -186,28 +270,36 @@ def test_upload_quota_reservations_prevent_concurrent_oversell(tmp_path):
     ) is False
 
 
-def test_live_file_sha_is_unique_only_within_user(tmp_path):
+def test_live_file_sha_is_unique_only_within_logical_knowledge_base(tmp_path):
     database = _database(tmp_path)
     connection = sqlite3.connect(database)
+    connection.executemany(
+        """
+        INSERT INTO users (id, username, password_hash)
+        VALUES (?, ?, 'hash')
+        """,
+        (("u1", "user-one"), ("u2", "user-two")),
+    )
+    connection.commit()
+    connection.close()
+    store = PersonalKnowledgeBaseStore(database)
+    first_kb = store.resolve_knowledge_base_id(user_id="u1")
+    second_kb = store.create_knowledge_base(user_id="u1", name="第二知识库")["id"]
+    other_user_kb = store.resolve_knowledge_base_id(user_id="u2")
+
+    connection = sqlite3.connect(database)
     try:
-        connection.executemany(
-            """
-            INSERT INTO users (id, username, password_hash)
-            VALUES (?, ?, 'hash')
-            """,
-            (("u1", "user-one"), ("u2", "user-two")),
-        )
         now = "2026-08-21T00:00:00+00:00"
         row = (
-            "u1-file", "u1", "first.txt", ".txt", "text/plain", 1,
+            "u1-file", "u1", first_kb, "first.txt", ".txt", "text/plain", 1,
             "a" * 64, "/durable/u1-file/source.txt", 1, now, now,
         )
         connection.execute(
             """
             INSERT INTO personal_knowledge_base_files (
-                file_id, user_id, filename, suffix, media_type, size_bytes,
+                file_id, user_id, knowledge_base_id, filename, suffix, media_type, size_bytes,
                 sha256, source_path, ingestion_revision, uploaded_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             row,
         )
@@ -215,23 +307,107 @@ def test_live_file_sha_is_unique_only_within_user(tmp_path):
             connection.execute(
                 """
                 INSERT INTO personal_knowledge_base_files (
-                    file_id, user_id, filename, suffix, media_type, size_bytes,
+                    file_id, user_id, knowledge_base_id, filename, suffix, media_type, size_bytes,
                     sha256, source_path, ingestion_revision, uploaded_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 ("u1-copy", *row[1:]),
             )
         connection.execute(
             """
             INSERT INTO personal_knowledge_base_files (
-                file_id, user_id, filename, suffix, media_type, size_bytes,
+                file_id, user_id, knowledge_base_id, filename, suffix, media_type, size_bytes,
                 sha256, source_path, ingestion_revision, uploaded_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("u2-file", "u2", *row[2:]),
+            ("u1-other-kb", "u1", second_kb, *row[3:]),
+        )
+        connection.execute(
+            """
+            INSERT INTO personal_knowledge_base_files (
+                file_id, user_id, knowledge_base_id, filename, suffix, media_type, size_bytes,
+                sha256, source_path, ingestion_revision, uploaded_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("u2-file", "u2", other_user_kb, *row[3:]),
         )
     finally:
         connection.close()
+
+
+def test_catalog_listing_and_ownership_are_tenant_scoped(tmp_path):
+    database = _database(tmp_path)
+    connection = sqlite3.connect(database)
+    connection.executemany(
+        "INSERT INTO users (id, username, password_hash) VALUES (?, ?, 'hash')",
+        (("u1", "user-one"), ("u2", "user-two")),
+    )
+    connection.commit()
+    connection.close()
+    store = PersonalKnowledgeBaseStore(database)
+
+    default_id = store.resolve_knowledge_base_id(user_id="u1")
+    created = store.create_knowledge_base(user_id="u1", name="课程 A")
+
+    assert [(item["id"], item["name"]) for item in store.list_knowledge_bases("u1")] == [
+        (default_id, "默认知识库"),
+        (created["id"], "课程 A"),
+    ]
+    with pytest.raises(PersonalKnowledgeBaseConflict):
+        store.create_knowledge_base(user_id="u1", name="课程 a")
+    with pytest.raises(PersonalKnowledgeBaseNotFound):
+        store.resolve_knowledge_base_id(
+            user_id="u2",
+            knowledge_base_id=created["id"],
+        )
+
+
+def test_retrieval_state_exposes_only_selected_library_file_ids(tmp_path):
+    database = _database(tmp_path)
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "INSERT INTO users (id, username, password_hash) VALUES ('u1', 'one', 'hash')"
+    )
+    connection.commit()
+    connection.close()
+    store = PersonalKnowledgeBaseStore(database)
+    kb_a = store.resolve_knowledge_base_id(user_id="u1")
+    kb_b = store.create_knowledge_base(user_id="u1", name="知识库 B")["id"]
+    store.ensure_collection_state("personal")
+    store.ensure_active_generation(
+        user_id="u1",
+        collection_name="personal",
+        embedding_fingerprint="embedding",
+        chunk_fingerprint="chunk",
+        index_fingerprint="index",
+        locator_schema_version="locator",
+    )
+    store.mark_collection_ready(ready=True)
+    now = "2026-08-21T00:00:00+00:00"
+    connection = sqlite3.connect(database)
+    connection.executemany(
+        """
+        INSERT INTO personal_knowledge_base_files (
+            file_id, user_id, knowledge_base_id, filename, suffix, media_type,
+            size_bytes, sha256, source_path, ingestion_revision, status,
+            uploaded_at, updated_at
+        ) VALUES (?, 'u1', ?, ?, '.txt', 'text/plain', 1, ?, ?, 1,
+                  'ready', ?, ?)
+        """,
+        (
+            ("file-a", kb_a, "a.txt", "a" * 64, "/durable/a", now, now),
+            ("file-b", kb_b, "b.txt", "b" * 64, "/durable/b", now, now),
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    assert store.get_retrieval_state("u1", kb_a)["files"] == {
+        "file-a": "a.txt"
+    }
+    assert store.get_retrieval_state("u1", kb_b)["files"] == {
+        "file-b": "b.txt"
+    }
 
 
 def test_snapshot_commit_preserves_dirty_when_sequence_advanced(tmp_path):

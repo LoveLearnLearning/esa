@@ -340,7 +340,8 @@ PATCH 可传 `name`、`description`、`status`，其中 `status` 为 `active` �
 {
   "content": "用户输入的内容",
   "attachment_ids": ["本对话内已上传的 attachment_id"],
-  "knowledge_sources": ["personal", "public"]
+  "knowledge_sources": ["personal", "public"],
+  "personal_knowledge_base_id": "personal_kb_..."
 }
 ```
 
@@ -350,7 +351,13 @@ PATCH 可传 `name`、`description`、`status`，其中 `status` 为 `active` �
 
 `knowledge_sources` 可省略，默认同时启用个人知识库和公共知识库。可传
 `["personal"]` 或 `["public"]` 限制本轮检索来源，也可传空数组表示本轮不使用知识库。
+选择 `personal` 时，`personal_knowledge_base_id` 指向当前用户拥有的一个具体个人知识库；
+一轮最多只能提供一个个人知识库 ID，公共知识库可独立开启或关闭。省略该 ID 时使用
+该用户最早创建的默认知识库，以兼容旧客户端。未选择 `personal` 却提供 ID 返回 `422`；
+ID 不存在或属于其他用户返回 `404`。这些校验发生在会话租约和消息持久化之前。
 后端会从本轮 Agent 的 Tool Schema 中移除未选择来源对应的检索工具。
+若任一已选来源的检索服务未启动，接口在获取会话租约和持久化用户消息之前返回
+`503`，响应 `detail` 为可直接展示的字符串；空数组不依赖任何检索服务。
 
 响应 `200`: 本轮新产生的消息列表(用户消息 + 助手回复 + 工具结果) 结构同历史消息
 
@@ -379,7 +386,8 @@ DOCX、PPTX、XLSX 及 PNG/JPEG/WebP/BMP/GIF/TIFF。上传请求仅将源文件�
 ```json
 {
   "content": "用户输入的内容",
-  "knowledge_sources": ["personal", "public"]
+  "knowledge_sources": ["personal", "public"],
+  "personal_knowledge_base_id": "personal_kb_..."
 }
 ```
 
@@ -393,6 +401,9 @@ event: content
 data: {"delta":"回答正文"}
 
 ```
+
+若已选知识库服务不可用，接口在 SSE 建连和消息持久化之前直接返回普通 JSON `503`
+响应，不会发送 `start` 事件。
 
 事件类型:
 
@@ -1080,6 +1091,27 @@ Demo 没有预计算快照；无直接证据的前置点标记为 `needs_diagnos
 提交 `user_id`。完整字段、配额、状态机与删除恢复要求以
 `PERSONAL_KNOWLEDGE_BASE_API.md` 为准。
 
+### GET/POST /me/knowledge-base/libraries
+
+GET 返回当前用户拥有的个人知识库目录，每项包含
+`id/name/file_count/chunk_count/index_count/updated_at`；首次访问会创建“默认知识库”。
+POST 使用 `{ "name": "课程资料" }` 创建命名知识库，返回 `201`。名称在同一用户内
+不区分大小写且唯一。
+
+### GET /me/knowledge-base/libraries/{knowledge_base_id}
+
+返回指定个人知识库的完整快照。ID 不属于当前用户时统一返回 `404`。
+
+### POST /me/knowledge-base/libraries/{knowledge_base_id}/files
+
+向指定个人知识库上传文件，请求和响应结构与旧版 `/me/knowledge-base/files` 相同。
+SHA-256 去重范围是“同一用户的同一个个人知识库”，因此不同个人知识库可包含同一文件。
+
+### POST /me/knowledge-base/libraries/{knowledge_base_id}/rebuild
+
+校验指定知识库归属后排队重建。底层个人向量 collection 和 active generation 仍按用户
+维护，但检索时会用该知识库当前有效的 `file_id` 集合做 Qdrant 白名单过滤。
+
 ### GET /me/knowledge-base
 
 返回当前用户的完整知识库快照；空库也返回 `200`。快照包含
@@ -1091,7 +1123,7 @@ Demo 没有预计算快照；无直接证据的前置点标记为 `needs_diagnos
 使用 `multipart/form-data` 的重复 `files` 字段批量上传，成功保存并持久化异步任务后
 返回 `202` 和完整快照。MVP 支持 `pdf, doc, docx, ppt, pptx, xls, xlsx, csv, txt,
 md, json, png, jpg, jpeg, webp`。限制为单文件 200 MB、单批 20 个/1 GB、单用户
-1000 个/10 GB；相同用户内按 SHA-256 去重。
+1000 个/10 GB；同一用户的同一个个人知识库内按 SHA-256 去重。
 
 缺少 `files` 返回 `422`，空文件返回 `400`，格式或内容不匹配返回 `415`/`400`，配额
 超限返回 `413`，同用户已有上传或重建任务返回 `409`，功能或依赖不可用返回 `503`。

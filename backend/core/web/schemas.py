@@ -66,6 +66,7 @@ class SendMessageRequest(BaseModel):
     knowledge_sources: list[str] = Field(
         default_factory=lambda: ["personal", "public"], max_length=2
     )
+    personal_knowledge_base_id: str | None = Field(default=None, max_length=128)
     replace_message_id: int | None = Field(default=None, ge=1)
     task_mode: Literal[
         "explain_problem",
@@ -90,6 +91,13 @@ class SendMessageRequest(BaseModel):
         self.knowledge_sources = [
             source for source in ("personal", "public") if source in received
         ]
+        if (
+            self.personal_knowledge_base_id is not None
+            and "personal" not in received
+        ):
+            raise ValueError(
+                "personal_knowledge_base_id 仅能与 personal 来源一起使用"
+            )
         return self
 
 

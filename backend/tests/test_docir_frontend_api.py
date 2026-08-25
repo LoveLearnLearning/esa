@@ -198,6 +198,8 @@ def _state(tmp_path):
         mm_sessions=mm_sessions,
         user_attachment_store=attachment_store,
         agent=agent,
+        rag_service=object(),
+        personal_knowledge_retrieval_service=object(),
     )
     return state, agent, chat_store, conversation_id
 

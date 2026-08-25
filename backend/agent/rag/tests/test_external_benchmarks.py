@@ -11,11 +11,17 @@ from backend.agent.rag.evaluation.external_benchmarks import (
     BenchmarkCase,
     BenchmarkData,
     CorpusPart,
+    _parser,
     evaluate_benchmark,
     load_m3docvqa,
     load_scifact,
     load_xor_tydi_gold,
 )
+
+
+def test_external_benchmark_reranker_is_opt_in() -> None:
+    assert _parser().parse_args(["scifact"]).reranker is False
+    assert _parser().parse_args(["scifact", "--reranker"]).reranker is True
 
 
 def test_load_scifact_uses_positive_test_qrels(tmp_path: Path) -> None:
@@ -88,7 +94,9 @@ def test_evaluate_benchmark_calls_rag_and_writes_layered_metrics(tmp_path: Path)
     output, summary = evaluate_benchmark(data, tmp_path)
 
     assert summary["metrics"]["final"]["hit_rate@1"] == 1.0
-    assert summary["metrics"]["bm25_body"]["hit_rate@1"] == 1.0
+    assert summary["metrics"]["bm25_body"]["hit_rate@1"] == 0.0
+    assert summary["retrieval"]["bm25_enabled"] is False
+    assert summary["reranker"] == "disabled"
     assert (output / "summary.json").is_file()
     assert (output / "results.jsonl").is_file()
 

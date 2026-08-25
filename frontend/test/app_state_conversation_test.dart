@@ -8,6 +8,7 @@ class _ConversationApi extends ApiClient {
 
   int createCalls = 0;
   final List<String> deleteCalls = [];
+  String? streamedPersonalKnowledgeBaseId;
 
   @override
   Future<ChatConversation> createConversation({String? groupId}) async {
@@ -32,7 +33,12 @@ class _ConversationApi extends ApiClient {
   Future<List<ChatMessage>> getMessages(String conversationId) async => [];
 
   @override
-  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
+    streamedPersonalKnowledgeBaseId = personalKnowledgeBaseId;
     yield const ChatStreamEvent('start', {});
     yield const ChatStreamEvent('content', {'delta': '收到'});
     yield ChatStreamEvent('title', {'conversation_id': id, 'title': '小模型生成标题'});
@@ -42,7 +48,11 @@ class _ConversationApi extends ApiClient {
 
 class _InterruptedToolApi extends _ConversationApi {
   @override
-  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
     yield const ChatStreamEvent('start', {});
     yield const ChatStreamEvent('tool_start', {
       'id': 'tool-1',
@@ -54,11 +64,54 @@ class _InterruptedToolApi extends _ConversationApi {
   Future<List<ChatMessage>> getMessages(String conversationId) async => [];
 }
 
+class _KnowledgeUnavailableApi extends _ConversationApi {
+  Set<KnowledgeSource>? revisedKnowledgeSources;
+  String? revisedPersonalKnowledgeBaseId;
+  final List<ChatMessage> persistedMessages = [
+    ChatMessage(id: '1', role: MessageRole.user, text: '旧问题'),
+    ChatMessage(id: '2', role: MessageRole.assistant, text: '旧回答'),
+  ];
+
+  @override
+  Future<List<ChatMessage>> getMessages(String conversationId) async =>
+      List<ChatMessage>.of(persistedMessages);
+
+  @override
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
+    throw ApiException(503, '所选知识库服务暂不可用：公共知识库');
+  }
+
+  @override
+  Stream<ChatStreamEvent> streamRevisedMessage(
+    String id,
+    String content,
+    int messageId,
+    List<String> attachmentIds, {
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+    String? personalKnowledgeBaseId,
+  }) async* {
+    revisedKnowledgeSources = knowledgeSources;
+    revisedPersonalKnowledgeBaseId = personalKnowledgeBaseId;
+    throw ApiException(503, '所选知识库服务暂不可用：公共知识库');
+  }
+}
+
 class _RepeatedToolIdApi extends _ConversationApi {
   int streamCalls = 0;
 
   @override
-  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
     streamCalls++;
     yield const ChatStreamEvent('start', {});
     yield const ChatStreamEvent('tool_start', {
@@ -77,7 +130,11 @@ class _RepeatedToolIdApi extends _ConversationApi {
 
 class _DoneWithoutToolResultApi extends _ConversationApi {
   @override
-  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
     yield const ChatStreamEvent('start', {});
     yield const ChatStreamEvent('tool_start', {
       'id': 'tool-without-result',
@@ -90,7 +147,11 @@ class _DoneWithoutToolResultApi extends _ConversationApi {
 
 class _RepeatedUnavailableToolApi extends _ConversationApi {
   @override
-  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
     yield const ChatStreamEvent('start', {});
     for (final toolId in ['tool-1', 'tool-2']) {
       yield ChatStreamEvent('tool_start', {
@@ -113,7 +174,11 @@ class _LegacyConversationApi extends _ConversationApi {
   final Map<String, String> renamed = {};
 
   @override
-  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
     yield const ChatStreamEvent('start', {});
     yield const ChatStreamEvent('content', {'delta': '收到'});
     yield const ChatStreamEvent('done', {});
@@ -185,6 +250,26 @@ void main() {
     expect(api.deleteCalls, isEmpty);
   });
 
+  test('发送消息把具体个人知识库 ID 传给流式 API', () async {
+    final api = _ConversationApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+
+    await state.send(
+      '只查知识库 A',
+      knowledgeSources: const {
+        KnowledgeSource.personal,
+        KnowledgeSource.public,
+      },
+      personalKnowledgeBaseId: 'kb-a',
+    );
+
+    expect(api.streamedPersonalKnowledgeBaseId, 'kb-a');
+  });
+
   test('切走服务端已有的空白新对话时会自动删除', () async {
     final api = _ConversationApi()
       ..sessionId = 'session'
@@ -219,6 +304,76 @@ void main() {
     final tool = state.messages.singleWhere((message) => message.isTool);
     expect(tool.toolRunning, isFalse);
     expect(tool.text, '工具调用未完成：连接已中断');
+  });
+
+  test('知识库预检 503 会撤销首次发送的乐观消息并显示原因', () async {
+    final api = _KnowledgeUnavailableApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+
+    await state.send('新问题');
+
+    expect(state.messages.where((message) => message.isUser), isEmpty);
+    expect(state.messages, hasLength(1));
+    expect(state.messages.single.text, '（出错了：所选知识库服务暂不可用：公共知识库）');
+  });
+
+  test('已有对话中的知识库预检 503 不会被中断恢复吞掉', () async {
+    final api = _KnowledgeUnavailableApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+    final conversation = ChatConversation(
+      id: 'existing',
+      title: '已有对话',
+      updatedAt: DateTime(2026),
+    );
+    state.conversations.add(conversation);
+    await state.setActive(conversation.id);
+
+    await state.send('新问题');
+
+    expect(state.messages.map((message) => message.text), [
+      '旧问题',
+      '旧回答',
+      '（出错了：所选知识库服务暂不可用：公共知识库）',
+    ]);
+  });
+
+  test('修改消息遇到知识库预检 503 时恢复原始本地历史', () async {
+    final api = _KnowledgeUnavailableApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+    final conversation = ChatConversation(
+      id: 'existing',
+      title: '已有对话',
+      updatedAt: DateTime(2026),
+    );
+    state.conversations.add(conversation);
+    await state.setActive(conversation.id);
+
+    await state.reviseUserMessage(
+      state.messages.first,
+      '修改后的问题',
+      knowledgeSources: const {KnowledgeSource.personal},
+      personalKnowledgeBaseId: 'kb-a',
+    );
+
+    expect(api.revisedKnowledgeSources, {KnowledgeSource.personal});
+    expect(api.revisedPersonalKnowledgeBaseId, 'kb-a');
+    expect(state.messages.map((message) => message.text), [
+      '旧问题',
+      '旧回答',
+      '（修改消息失败：所选知识库服务暂不可用：公共知识库）',
+    ]);
   });
 
   test('重复工具事件 ID 只更新当前轮最新的工具卡片', () async {

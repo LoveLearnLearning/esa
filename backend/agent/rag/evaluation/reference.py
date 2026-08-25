@@ -101,7 +101,7 @@ class _EvaluationRuntime:
     service: RetrievalService
     generation: IndexGeneration
     config: RetrievalConfig
-    reranker: LexicalOverlapReranker
+    reranker: LexicalOverlapReranker | None
 
 
 def load_evaluation_cases(
@@ -228,18 +228,24 @@ def run_reference_evaluation(
     manifest_path: Path = DEFAULT_MANIFEST,
     cases_path: Path = DEFAULT_CASES,
     output_root: Path = DEFAULT_OUTPUT,
+    *,
+    use_reranker: bool = False,
 ) -> tuple[Path, EvaluationSummary]:
     """构建参考索引、执行 42 条评测并写入确定性产物。"""
 
     collection = load_chunk_collection(manifest_path)
     cases = load_evaluation_cases(cases_path, collection)
-    runtime = _create_runtime(collection)
+    runtime = _create_runtime(collection, use_reranker=use_reranker)
     evaluation_payload = _evaluation_payload(runtime, cases_path)
     evaluation_id = f"reference_eval_{canonical_sha256(evaluation_payload)[:24]}"
     evaluation_root = output_root / evaluation_id
     evaluation_root.mkdir(parents=True, exist_ok=True)
 
-    case_results, rankings_by_query = _run_cases(runtime.service, cases)
+    case_results, rankings_by_query = _run_cases(
+        runtime.service,
+        cases,
+        expect_reranker=runtime.config.reranker_enabled,
+    )
     summary = _build_summary(
         evaluation_id,
         collection,
@@ -260,12 +266,16 @@ def run_reference_evaluation(
     return evaluation_root, summary
 
 
-def _create_runtime(collection: LoadedChunkCollection) -> _EvaluationRuntime:
+def _create_runtime(
+    collection: LoadedChunkCollection,
+    *,
+    use_reranker: bool = False,
+) -> _EvaluationRuntime:
     """建立确定性索引与检索服务。"""
 
-    config = RetrievalConfig(reranker_enabled=True)
+    config = RetrievalConfig(reranker_enabled=use_reranker)
     embedding = HashingEmbeddingProvider()
-    reranker = LexicalOverlapReranker()
+    reranker = LexicalOverlapReranker() if use_reranker else None
     index = ReferenceIndex()
     build_result = IndexingService(collection, index, embedding).build()
     service = RetrievalService(collection, index, embedding, reranker, config)
@@ -287,7 +297,11 @@ def _evaluation_payload(
         "schema_version": "reference-evaluation-run-0.2",
         "index_generation_id": runtime.generation.index_generation_id,
         "evaluation_set_sha256": file_sha256(cases_path),
-        "reranker_fingerprint": runtime.reranker.configuration_fingerprint,
+        "reranker_fingerprint": (
+            runtime.reranker.configuration_fingerprint
+            if runtime.reranker is not None
+            else None
+        ),
         "retrieval_config": dataclasses.asdict(runtime.config),
     }
 
@@ -295,6 +309,8 @@ def _evaluation_payload(
 def _run_cases(
     service: RetrievalService,
     cases: Sequence[EvaluationCase],
+    *,
+    expect_reranker: bool,
 ) -> tuple[list[CaseResult], RankingMap]:
     """执行全部问题并保留每一层排名。"""
 
@@ -302,11 +318,13 @@ def _run_cases(
     rankings_by_query: RankingMap = {}
     for case in cases:
         response = service.search(case.query)
-        if response.trace.rankings.get("fusion"):
+        if expect_reranker and response.trace.rankings.get("fusion"):
             if not response.trace.reranker_applied:
                 raise AssertionError("reference evaluation reranker was not applied")
             if any(hit.rerank_score is None for hit in response.hits):
                 raise AssertionError("reference evaluation hit lacks reranker score")
+        if not expect_reranker and "reranker" in response.trace.rankings:
+            raise AssertionError("disabled reference evaluation exposed reranker ranking")
         rankings = {
             name: list(values) for name, values in response.trace.rankings.items()
         }
@@ -424,7 +442,11 @@ def _write_evaluation_artifacts(
         "index_generation_id": runtime.generation.index_generation_id,
         "index_generation": runtime.generation.to_dict(),
         "evaluation_set_sha256": evaluation_payload["evaluation_set_sha256"],
-        "reranker_fingerprint": runtime.reranker.configuration_fingerprint,
+        "reranker_fingerprint": (
+            runtime.reranker.configuration_fingerprint
+            if runtime.reranker is not None
+            else None
+        ),
         "retrieval_config": dataclasses.asdict(runtime.config),
         "case_count": len(cases),
         "output_files": ["results.json", "summary.json", "hashes.json"],
@@ -454,9 +476,17 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--reranker",
+        action="store_true",
+        help="explicitly enable the deterministic lexical-overlap reranker",
+    )
     arguments = parser.parse_args(argv)
     root, summary = run_reference_evaluation(
-        arguments.manifest, arguments.cases, arguments.output
+        arguments.manifest,
+        arguments.cases,
+        arguments.output,
+        use_reranker=arguments.reranker,
     )
     print(f"evaluation_root={root}")
     print(

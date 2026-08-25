@@ -72,6 +72,7 @@ class ToolExecutionContext:
     username: str = ""
     total_weeks: int | None = None
     knowledge_sources: tuple[str, ...] = ("personal", "public")
+    personal_knowledge_base_id: str | None = None
 
     def __post_init__(self) -> None:
         """完成实例初始化后的校验与派生字段构建。"""
@@ -91,3 +92,10 @@ class ToolExecutionContext:
             raise ValueError("invalid conversation mode")
         if not set(self.knowledge_sources) <= {"personal", "public"}:
             raise ValueError("knowledge_sources must contain personal/public only")
+        if (
+            self.personal_knowledge_base_id is not None
+            and "personal" not in self.knowledge_sources
+        ):
+            raise ValueError(
+                "personal_knowledge_base_id requires the personal source"
+            )

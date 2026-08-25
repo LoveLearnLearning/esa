@@ -1384,6 +1384,7 @@ class AppState extends ChangeNotifier {
       KnowledgeSource.personal,
       KnowledgeSource.public,
     },
+    String? personalKnowledgeBaseId,
   }) async {
     final input = text.trim();
     if (input.isEmpty || busy) return;
@@ -1425,6 +1426,7 @@ class AppState extends ChangeNotifier {
           placeholder,
           attachmentIds: selectedAttachmentIds,
           knowledgeSources: knowledgeSources,
+          personalKnowledgeBaseId: personalKnowledgeBaseId,
           userMessage: userMessage,
           titleInput: isFirstQuestion ? visibleInput : null,
           taskMode: taskMode,
@@ -1437,17 +1439,23 @@ class AppState extends ChangeNotifier {
                 taskMode,
                 attachmentIds: selectedAttachmentIds,
                 knowledgeSources: knowledgeSources,
+                personalKnowledgeBaseId: personalKnowledgeBaseId,
               )
             : selectedAttachmentIds.isEmpty &&
                   knowledgeSources.length == 2 &&
                   knowledgeSources.contains(KnowledgeSource.personal) &&
                   knowledgeSources.contains(KnowledgeSource.public)
-            ? await api.sendMessage(id, input)
+            ? await api.sendMessage(
+                id,
+                input,
+                personalKnowledgeBaseId: personalKnowledgeBaseId,
+              )
             : await api.sendMessageWithAttachments(
                 id,
                 input,
                 selectedAttachmentIds,
                 knowledgeSources: knowledgeSources,
+                personalKnowledgeBaseId: personalKnowledgeBaseId,
               );
         list.remove(placeholder);
         list.addAll(newMsgs.where((message) => !message.isUser));
@@ -1457,6 +1465,18 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
+      if (_isTurnPreflightRejection(e)) {
+        list.remove(placeholder);
+        list.remove(userMessage);
+        list.add(
+          ChatMessage(
+            id: DateTime.now().microsecondsSinceEpoch.toString(),
+            role: MessageRole.assistant,
+            text: '（出错了：${(e as ApiException).detail}）',
+          ),
+        );
+        return;
+      }
       if (placeholder.text.isEmpty && placeholder.reasoning.isEmpty) {
         list.remove(placeholder);
       } else {
@@ -1515,6 +1535,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  bool _isTurnPreflightRejection(Object error) =>
+      error is ApiException && {404, 503}.contains(error.statusCode);
+
   Future<void> _receiveStream(
     String conversationId,
     String input,
@@ -1525,6 +1548,7 @@ class AppState extends ChangeNotifier {
       KnowledgeSource.personal,
       KnowledgeSource.public,
     },
+    String? personalKnowledgeBaseId,
     ChatMessage? userMessage,
     int? replaceMessageId,
     String? titleInput,
@@ -1621,6 +1645,7 @@ class AppState extends ChangeNotifier {
               replaceMessageId,
               attachmentIds,
               knowledgeSources: knowledgeSources,
+              personalKnowledgeBaseId: personalKnowledgeBaseId,
             )
           : taskMode != null
           ? api.streamTaskMessage(
@@ -1629,14 +1654,20 @@ class AppState extends ChangeNotifier {
               taskMode,
               attachmentIds: attachmentIds,
               knowledgeSources: knowledgeSources,
+              personalKnowledgeBaseId: personalKnowledgeBaseId,
             )
           : attachmentIds.isEmpty && usesDefaultKnowledgeSources
-          ? api.streamMessage(conversationId, input)
+          ? api.streamMessage(
+              conversationId,
+              input,
+              personalKnowledgeBaseId: personalKnowledgeBaseId,
+            )
           : api.streamMessageWithAttachments(
               conversationId,
               input,
               attachmentIds,
               knowledgeSources: knowledgeSources,
+              personalKnowledgeBaseId: personalKnowledgeBaseId,
             );
       if (kIsWeb) {
         events = events.timeout(
@@ -1777,9 +1808,7 @@ class AppState extends ChangeNotifier {
         reasoningQueue.clear();
         contentQueue.clear();
         assistant.notifyListeners();
-        finishRunningTools(
-          _stopRequested ? '工具调用已停止' : '工具调用未完成：连接已中断',
-        );
+        finishRunningTools(_stopRequested ? '工具调用已停止' : '工具调用未完成：连接已中断');
         notifyListeners();
       }
     }
@@ -1830,7 +1859,15 @@ class AppState extends ChangeNotifier {
     await api.deleteConversationAttachment(conversationId, attachment.id);
   }
 
-  Future<void> reviseUserMessage(ChatMessage message, String text) async {
+  Future<void> reviseUserMessage(
+    ChatMessage message,
+    String text, {
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+    String? personalKnowledgeBaseId,
+  }) async {
     final conversationId = activeId;
     final messageId = int.tryParse(message.id);
     final input = text.trim();
@@ -1841,6 +1878,8 @@ class AppState extends ChangeNotifier {
     final list = _messages[conversationId];
     final index = list?.indexWhere((item) => identical(item, message)) ?? -1;
     if (list == null || index < 0) return;
+    final originalText = message.text;
+    final originalTail = List<ChatMessage>.of(list.skip(index + 1));
     message.text = input;
     message.notifyListeners();
     if (index + 1 < list.length) list.removeRange(index + 1, list.length);
@@ -1857,8 +1896,26 @@ class AppState extends ChangeNotifier {
         attachmentIds: message.attachments.map((item) => item.id).toList(),
         userMessage: message,
         replaceMessageId: messageId,
+        knowledgeSources: knowledgeSources,
+        personalKnowledgeBaseId: personalKnowledgeBaseId,
       );
     } catch (error) {
+      if (_isTurnPreflightRejection(error)) {
+        message.text = originalText;
+        message.notifyListeners();
+        if (index + 1 < list.length) {
+          list.removeRange(index + 1, list.length);
+        }
+        list.addAll(originalTail);
+        list.add(
+          ChatMessage(
+            id: DateTime.now().microsecondsSinceEpoch.toString(),
+            role: MessageRole.assistant,
+            text: '（修改消息失败：${(error as ApiException).detail}）',
+          ),
+        );
+        return;
+      }
       final recovered = await _recoverInterruptedReply(conversationId, list);
       if (!recovered) {
         list.remove(placeholder);
@@ -1876,7 +1933,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void regenerate(String assistantMessageId) {
+  void regenerate(
+    String assistantMessageId, {
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+    String? personalKnowledgeBaseId,
+  }) {
     final id = activeId;
     if (id == null || busy) return;
     final list = _messages[id];
@@ -1894,7 +1958,12 @@ class AppState extends ChangeNotifier {
       final source = list.lastWhere(
         (message) => message.isUser && message.text == prompt,
       );
-      send(prompt, markdown: source.markdown);
+      send(
+        prompt,
+        markdown: source.markdown,
+        knowledgeSources: knowledgeSources,
+        personalKnowledgeBaseId: personalKnowledgeBaseId,
+      );
     }
   }
 

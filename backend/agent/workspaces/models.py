@@ -87,6 +87,7 @@ class AgentTurnInput:
     )
     authorized_attachments: tuple[Mapping[str, Any], ...] = ()
     knowledge_sources: tuple[str, ...] = ("personal", "public")
+    personal_knowledge_base_id: str | None = None
     request_metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -113,6 +114,10 @@ class AgentTurnInput:
             if source in received_sources
         )
         object.__setattr__(self, "knowledge_sources", sources)
+        if self.personal_knowledge_base_id is not None and "personal" not in sources:
+            raise ValueError(
+                "personal_knowledge_base_id requires the personal source"
+            )
         object.__setattr__(self, "request_metadata", _mapping(self.request_metadata))
 
 

@@ -17,6 +17,24 @@ from ..chunk import Chunk
 from .contracts import ContextLevel, Evidence
 
 
+@dataclass(frozen=True)
+class _ExpansionCandidate:
+    """A context-only candidate; it never changes the primary result ranking."""
+
+    chunk: Chunk
+    source_priority: int
+    relevance: float
+    distance: int
+
+
+@dataclass(frozen=True)
+class ContextSegment:
+    """A source Chunk paired with the exact text admitted to the token budget."""
+
+    chunk: Chunk
+    text: str
+
+
 @dataclass
 class ContextBuilder:
     """在单个章节边界内，为命中 Chunk 选择受控上下文。"""
@@ -66,55 +84,234 @@ class ContextBuilder:
         level: ContextLevel,
         max_tokens: int,
         merged_context_chunk_ids: Mapping[str, Sequence[str]] | None = None,
-    ) -> Mapping[str, tuple[Chunk, ...]]:
-        """Load primaries, merged adjacent candidates, then optional neighbors."""
+        query: str = "",
+    ) -> Mapping[str, tuple[ContextSegment, ...]]:
+        """Keep ranked primaries fixed, then fairly allocate context expansion."""
 
-        selected: dict[str, list[Chunk]] = {hit.chunk_id: [] for hit in hits}
-        used: set[str] = set()
-        token_count = 0
-
-        def add(owner: str, chunk: Chunk) -> bool:
-            """添加 `add` 相关数据。
-
-            Args:
-                owner: str => `owner` 参数。
-                chunk: Chunk => `chunk` 参数。
-
-            Returns:
-                bool => 处理结果。
-            """
-            nonlocal token_count
-            if chunk.chunk_id in used:
-                return False
-            cost = self._token_count(chunk.bm25_body) + (1 if used else 0)
-            if token_count + cost > max_tokens:
-                return False
-            selected[owner].append(chunk)
-            used.add(chunk.chunk_id)
-            token_count += cost
-            return True
-
-        active_hits: list[Chunk] = []
-        for hit in hits:
-            if add(hit.chunk_id, hit):
-                active_hits.append(hit)
-
-        merged = merged_context_chunk_ids or {}
+        if max_tokens <= 0:
+            return {}
+        active_hits = self._primary_hits_that_can_receive_text(hits, max_tokens)
+        selected: dict[str, list[ContextSegment]] = {
+            hit.chunk_id: [] for hit in active_hits
+        }
+        used = {hit.chunk_id for hit in active_hits}
+        separator_tokens = max(0, len(active_hits) - 1)
+        primary_text_budget = max_tokens - separator_tokens
+        primary_demands = {
+            hit.chunk_id: self._token_count(hit.bm25_body) for hit in active_hits
+        }
+        primary_allowances = _fair_token_budgets(
+            primary_demands,
+            primary_text_budget,
+        )
+        token_count = separator_tokens
         for hit in active_hits:
-            for chunk_id in merged.get(hit.chunk_id, ()):
-                chunk = self._chunks.get(chunk_id)
-                if chunk is not None:
-                    add(hit.chunk_id, chunk)
+            text = self._excerpt_to_budget(
+                hit.bm25_body,
+                query,
+                primary_allowances[hit.chunk_id],
+            )
+            if not text:
+                continue
+            selected[hit.chunk_id].append(ContextSegment(hit, text))
+            token_count += self._token_count(text)
+
+        # Expansion candidates are deliberately planned after the result ranking and
+        # primary inclusion are fixed. They can enrich a hit but cannot reorder it.
+        expansion_queues = self._expansion_queues(
+            active_hits,
+            level,
+            merged_context_chunk_ids or {},
+            query,
+            used,
+        )
+        remaining = max(0, max_tokens - token_count)
+        demands = {
+            hit.chunk_id: sum(
+                self._token_count(candidate.chunk.bm25_body) + 1
+                for candidate in expansion_queues[hit.chunk_id]
+            )
+            for hit in active_hits
+        }
+        allowances = _fair_token_budgets(demands, remaining)
+        pending: dict[str, list[_ExpansionCandidate]] = {}
 
         for hit in active_hits:
-            for chunk in self.select(hit, level):
-                if chunk.chunk_id != hit.chunk_id:
-                    add(hit.chunk_id, chunk)
+            owner = hit.chunk_id
+            allowance = allowances[owner]
+            pending[owner] = []
+            for candidate in expansion_queues[owner]:
+                cost = self._token_count(candidate.chunk.bm25_body) + 1
+                if cost <= allowance and self._add_expansion(
+                    selected,
+                    used,
+                    owner,
+                    candidate.chunk,
+                ):
+                    allowance -= cost
+                    token_count += cost
+                else:
+                    pending[owner].append(candidate)
+
+        # Whole chunks are indivisible here. Redistribute quota that could not be
+        # used because an owner's next chunk was too large, one owner per round.
+        while token_count < max_tokens:
+            progressed = False
+            for hit in active_hits:
+                owner = hit.chunk_id
+                queue = pending[owner]
+                fitting_index = next(
+                    (
+                        index
+                        for index, candidate in enumerate(queue)
+                        if token_count
+                        + self._token_count(candidate.chunk.bm25_body)
+                        + 1
+                        <= max_tokens
+                    ),
+                    None,
+                )
+                if fitting_index is None:
+                    continue
+                candidate = queue.pop(fitting_index)
+                cost = self._token_count(candidate.chunk.bm25_body) + 1
+                if self._add_expansion(
+                    selected,
+                    used,
+                    owner,
+                    candidate.chunk,
+                ):
+                    token_count += cost
+                    progressed = True
+            if not progressed:
+                break
         return {
-            hit_id: tuple(sorted(parts, key=lambda chunk: chunk.document_order))
+            hit_id: tuple(
+                sorted(parts, key=lambda part: part.chunk.document_order)
+            )
             for hit_id, parts in selected.items()
             if parts
         }
+
+    def _primary_hits_that_can_receive_text(
+        self,
+        hits: Sequence[Chunk],
+        max_tokens: int,
+    ) -> list[Chunk]:
+        """Keep the longest ranked prefix for which every hit can receive one token."""
+
+        unique_hits = list({hit.chunk_id: hit for hit in hits}.values())
+        count = min(len(unique_hits), (max_tokens + 1) // 2)
+        return unique_hits[:count]
+
+    def _excerpt_to_budget(self, text: str, query: str, budget: int) -> str:
+        """Find the largest query-aware excerpt accepted by the active counter."""
+
+        if budget <= 0:
+            return ""
+        if self._token_count(text) <= budget:
+            return text
+        low = 1
+        high = estimate_tokens(text)
+        best = ""
+        while low <= high:
+            middle = (low + high) // 2
+            candidate = query_aware_excerpt(text, query, middle)
+            if self._token_count(candidate) <= budget:
+                best = candidate
+                low = middle + 1
+            else:
+                high = middle - 1
+        return best
+
+    @staticmethod
+    def _add_expansion(
+        selected: dict[str, list[ContextSegment]],
+        used: set[str],
+        owner: str,
+        chunk: Chunk,
+    ) -> bool:
+        if chunk.chunk_id in used:
+            return False
+        selected[owner].append(ContextSegment(chunk, chunk.bm25_body))
+        used.add(chunk.chunk_id)
+        return True
+
+    def _expansion_queues(
+        self,
+        hits: Sequence[Chunk],
+        level: ContextLevel,
+        merged_context_chunk_ids: Mapping[str, Sequence[str]],
+        query: str,
+        used: set[str],
+    ) -> Mapping[str, tuple[_ExpansionCandidate, ...]]:
+        """Assign each expansion chunk to its best owner without changing hit order."""
+
+        proposals: dict[
+            str,
+            list[tuple[int, str, _ExpansionCandidate]],
+        ] = {}
+        for owner_rank, hit in enumerate(hits):
+            local: dict[str, _ExpansionCandidate] = {}
+            for chunk_id in merged_context_chunk_ids.get(hit.chunk_id, ()):
+                chunk = self._chunks.get(chunk_id)
+                if chunk is not None and chunk.chunk_id not in used:
+                    local[chunk.chunk_id] = self._expansion_candidate(
+                        hit,
+                        chunk,
+                        source_priority=0,
+                        query=query,
+                    )
+            for chunk in self.select(hit, level):
+                if chunk.chunk_id == hit.chunk_id or chunk.chunk_id in used:
+                    continue
+                candidate = self._expansion_candidate(
+                    hit,
+                    chunk,
+                    source_priority=1,
+                    query=query,
+                )
+                current = local.get(chunk.chunk_id)
+                if current is None or _expansion_sort_key(candidate) < _expansion_sort_key(
+                    current
+                ):
+                    local[chunk.chunk_id] = candidate
+            for candidate in local.values():
+                proposals.setdefault(candidate.chunk.chunk_id, []).append(
+                    (owner_rank, hit.chunk_id, candidate)
+                )
+
+        queues: dict[str, list[_ExpansionCandidate]] = {
+            hit.chunk_id: [] for hit in hits
+        }
+        for choices in proposals.values():
+            _rank, owner, candidate = min(
+                choices,
+                key=lambda choice: (
+                    *_expansion_sort_key(choice[2]),
+                    choice[0],
+                ),
+            )
+            queues[owner].append(candidate)
+        return {
+            owner: tuple(sorted(values, key=_expansion_sort_key))
+            for owner, values in queues.items()
+        }
+
+    @staticmethod
+    def _expansion_candidate(
+        owner: Chunk,
+        chunk: Chunk,
+        *,
+        source_priority: int,
+        query: str,
+    ) -> _ExpansionCandidate:
+        return _ExpansionCandidate(
+            chunk=chunk,
+            source_priority=source_priority,
+            relevance=query_relevance_score(query, chunk.bm25_body),
+            distance=abs(owner.document_order - chunk.document_order),
+        )
 
     def _token_count(self, text: str) -> int:
         """优先使用已配置 tokenizer，失败时回退到无模型估算。"""
@@ -127,6 +324,51 @@ class ContextBuilder:
             except Exception:
                 pass
         return estimate_tokens(text)
+
+
+def _expansion_sort_key(
+    candidate: _ExpansionCandidate,
+) -> tuple[int, float, int, int, str]:
+    return (
+        candidate.source_priority,
+        -candidate.relevance,
+        candidate.distance,
+        candidate.chunk.document_order,
+        candidate.chunk.chunk_id,
+    )
+
+
+def _fair_token_budgets(
+    demands: Mapping[str, int],
+    total: int,
+) -> dict[str, int]:
+    """Water-fill token quotas in mapping order and redistribute unused shares."""
+
+    budgets = {owner: 0 for owner in demands}
+    active = [owner for owner, demand in demands.items() if demand > 0]
+    remaining = max(0, total)
+    while active and remaining > 0:
+        share, remainder = divmod(remaining, len(active))
+        if share == 0:
+            for owner in active[:remainder]:
+                budgets[owner] += 1
+            break
+        satisfied = [
+            owner
+            for owner in active
+            if demands[owner] - budgets[owner] <= share
+        ]
+        if satisfied:
+            for owner in satisfied:
+                needed = demands[owner] - budgets[owner]
+                budgets[owner] += needed
+                remaining -= needed
+                active.remove(owner)
+            continue
+        for index, owner in enumerate(active):
+            budgets[owner] += share + int(index < remainder)
+        break
+    return budgets
 
 
 _TOKEN = re.compile(r"[\u3400-\u9fff]|[A-Za-z0-9_]+|[^\s]")

@@ -131,7 +131,11 @@ class _GroupApi extends ApiClient {
   Future<void> renameConversation(String id, String title) async {}
 
   @override
-  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
     yield const ChatStreamEvent('start', {});
     yield const ChatStreamEvent('content', {'delta': '收到'});
     yield const ChatStreamEvent('done', {});

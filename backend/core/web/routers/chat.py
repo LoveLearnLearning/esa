@@ -37,6 +37,9 @@ from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.classroom_conversation_store import ClassroomConversationStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.research_project_store import ResearchProjectStore
+from backend.core.stores.personal_knowledge_base_store import (
+    PersonalKnowledgeBaseNotFound,
+)
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
 from backend.core.router import (
@@ -56,6 +59,9 @@ from backend.core.services.conversation_compression_service import (
     ConversationCompressionService,
 )
 from backend.core.services.code_execution_service import CodeExecutionService
+from backend.core.services.personal_knowledge_base_service import (
+    PersonalKnowledgeBaseDisabled,
+)
 from backend.core.services.user_attachment_service import (
     AttachmentTooLarge,
     StoredAttachment,
@@ -87,6 +93,59 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["chat"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
+
+
+_KNOWLEDGE_SOURCE_SERVICES = (
+    ("personal", "personal_knowledge_retrieval_service", "个人知识库"),
+    ("public", "rag_service", "公共知识库"),
+)
+
+
+def _ensure_selected_knowledge_sources_available(
+    request: Request,
+    knowledge_sources: list[str] | tuple[str, ...],
+    *,
+    user_id: str,
+    personal_knowledge_base_id: str | None,
+) -> str | None:
+    """Reject a turn before persistence when a selected RAG service is absent."""
+
+    selected = set(knowledge_sources)
+    missing = [
+        label
+        for source, state_attribute, label in _KNOWLEDGE_SOURCE_SERVICES
+        if source in selected
+        and getattr(request.app.state, state_attribute, None) is None
+    ]
+    if missing:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"所选知识库服务暂不可用：{'、'.join(missing)}",
+        )
+    if "personal" not in selected:
+        return None
+    management = getattr(
+        request.app.state,
+        "personal_knowledge_base_service",
+        None,
+    )
+    resolver = getattr(management, "resolve_knowledge_base_id", None)
+    if not callable(resolver):
+        if personal_knowledge_base_id is None:
+            return None
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "个人知识库目录服务暂不可用",
+        )
+    try:
+        return resolver(user_id, personal_knowledge_base_id)
+    except PersonalKnowledgeBaseNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "个人知识库不存在") from exc
+    except PersonalKnowledgeBaseDisabled as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "个人知识库目录服务暂不可用",
+        ) from exc
 
 
 def _mm_sessions(request: Request) -> MultimodalSessionService:
@@ -561,6 +620,7 @@ def _prepare_message(
         resolved_kp_ids=tuple(resolved_kp_ids),
         pending_practice_kp_id=pending_practice_kp_id,
         knowledge_sources=tuple(body.knowledge_sources),
+        personal_knowledge_base_id=body.personal_knowledge_base_id,
     )
 
 
@@ -872,6 +932,7 @@ def _build_run_spec(
         ),
         authorized_attachments=authorized_attachments,
         knowledge_sources=ctx.knowledge_sources,
+        personal_knowledge_base_id=ctx.personal_knowledge_base_id,
         request_metadata={
             "request_id": uuid4().hex,
             "total_weeks": ctx.user.total_weeks,
@@ -1407,6 +1468,12 @@ async def send_message(
     """
     conversation = _load_owned(request, conversation_id, session)
     _ensure_message_allowed(request, conversation, session)
+    body.personal_knowledge_base_id = _ensure_selected_knowledge_sources_available(
+        request,
+        body.knowledge_sources,
+        user_id=session.user_id,
+        personal_knowledge_base_id=body.personal_knowledge_base_id,
+    )
     lease = await _acquire_turn(request, conversation_id)
     async with lease:
         authorized_attachments, attachments = _conversation_attachment_inventory(
@@ -1485,6 +1552,12 @@ async def stream_message(
     """
     conversation = _load_owned(request, conversation_id, session)
     _ensure_message_allowed(request, conversation, session)
+    body.personal_knowledge_base_id = _ensure_selected_knowledge_sources_available(
+        request,
+        body.knowledge_sources,
+        user_id=session.user_id,
+        personal_knowledge_base_id=body.personal_knowledge_base_id,
+    )
     lease = await _acquire_turn(request, conversation_id)
     try:
         authorized_attachments, attachments = _conversation_attachment_inventory(

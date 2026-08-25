@@ -666,9 +666,32 @@ class PersonalKnowledgeBaseService:
         if not self.enabled:
             raise PersonalKnowledgeBaseDisabled("个人知识库功能未启用")
 
-    def snapshot(self, user_id: str) -> dict:
+    def list_knowledge_bases(self, user_id: str) -> list[dict[str, Any]]:
         self._require_enabled()
-        return self.store.get_snapshot(user_id)
+        return self.store.list_knowledge_bases(user_id)
+
+    def create_knowledge_base(self, user_id: str, name: str) -> dict[str, Any]:
+        self._require_enabled()
+        return self.store.create_knowledge_base(user_id=user_id, name=name)
+
+    def resolve_knowledge_base_id(
+        self,
+        user_id: str,
+        knowledge_base_id: str | None,
+    ) -> str:
+        self._require_enabled()
+        return self.store.resolve_knowledge_base_id(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+        )
+
+    def snapshot(
+        self,
+        user_id: str,
+        knowledge_base_id: str | None = None,
+    ) -> dict:
+        self._require_enabled()
+        return self.store.get_snapshot(user_id, knowledge_base_id)
 
     def open_content(
         self, user_id: str, file_id: str
@@ -694,10 +717,19 @@ class PersonalKnowledgeBaseService:
             return self.storage.open_image_thumbnail(record)
         return self.storage.open_text_preview(record)
 
-    async def upload(self, user_id: str, uploads: Iterable[UploadSource]) -> dict:
+    async def upload(
+        self,
+        user_id: str,
+        uploads: Iterable[UploadSource],
+        knowledge_base_id: str | None = None,
+    ) -> dict:
         self._require_enabled()
         if self.storage is None:
             raise PersonalKnowledgeBaseDisabled("个人知识库文件存储未初始化")
+        resolved_knowledge_base_id = self.store.resolve_knowledge_base_id(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+        )
         values = list(uploads)
         reserved_bytes = self.storage.reservation_bytes(values)
         reservation_id = self.store.reserve_upload_capacity(
@@ -712,6 +744,7 @@ class PersonalKnowledgeBaseService:
             committed = await self.storage.save_batch(values)
             resolved_ids, job_id = self.store.create_upload(
                 user_id=user_id,
+                knowledge_base_id=resolved_knowledge_base_id,
                 files=committed,
                 max_user_bytes=self.max_user_bytes,
                 max_user_files=self.max_user_files,
@@ -731,7 +764,7 @@ class PersonalKnowledgeBaseService:
                 self.storage.discard(item.file_id)
         if job_id is not None and self.notify_worker is not None:
             self.notify_worker()
-        return self.store.get_snapshot(user_id)
+        return self.store.get_snapshot(user_id, resolved_knowledge_base_id)
 
     def delete(self, user_id: str, file_id: str) -> bool:
         self._require_enabled()
@@ -740,13 +773,24 @@ class PersonalKnowledgeBaseService:
             self.notify_worker()
         return deleted
 
-    def rebuild(self, user_id: str) -> dict | None:
+    def rebuild(
+        self,
+        user_id: str,
+        knowledge_base_id: str | None = None,
+    ) -> dict | None:
         self._require_enabled()
-        if self.store.queue_rebuild(user_id) is None:
+        resolved_knowledge_base_id = self.store.resolve_knowledge_base_id(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+        )
+        rebuild_scope = (
+            resolved_knowledge_base_id if knowledge_base_id is not None else None
+        )
+        if self.store.queue_rebuild(user_id, rebuild_scope) is None:
             return None
         if self.notify_worker is not None:
             self.notify_worker()
-        return self.store.get_snapshot(user_id)
+        return self.store.get_snapshot(user_id, knowledge_base_id)
 
     async def purge_user(self, user_id: str) -> dict[str, Any]:
         """Administrative hook that must run before deleting the main user row."""

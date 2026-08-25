@@ -79,8 +79,7 @@ class UserStats {
   factory UserStats.fromJson(Map<String, dynamic> json) => UserStats(
     conversationCount: (json['conversation_count'] as num?)?.toInt() ?? 0,
     pinnedCount: (json['pinned_count'] as num?)?.toInt() ?? 0,
-    learningStreakDays:
-        (json['learning_streak_days'] as num?)?.toInt() ?? 0,
+    learningStreakDays: (json['learning_streak_days'] as num?)?.toInt() ?? 0,
   );
 }
 
@@ -155,7 +154,9 @@ class PlannerSnapshot {
   final List<PlannerTodo> todos;
   final List<PlannerGoal> goals;
 
-  factory PlannerSnapshot.fromJson(Map<String, dynamic> json) => PlannerSnapshot(
+  factory PlannerSnapshot.fromJson(
+    Map<String, dynamic> json,
+  ) => PlannerSnapshot(
     todos: (json['todos'] as List? ?? const [])
         .whereType<Map>()
         .map((item) => PlannerTodo.fromJson(Map<String, dynamic>.from(item)))
@@ -578,6 +579,34 @@ class PersonalKnowledgeBase {
             .toList(),
         updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? ''),
         error: json['error']?.toString(),
+      );
+}
+
+class PersonalKnowledgeBaseSummary {
+  const PersonalKnowledgeBaseSummary({
+    required this.id,
+    required this.name,
+    required this.fileCount,
+    required this.chunkCount,
+    required this.indexCount,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String name;
+  final int fileCount;
+  final int chunkCount;
+  final int indexCount;
+  final DateTime? updatedAt;
+
+  factory PersonalKnowledgeBaseSummary.fromJson(Map<String, dynamic> json) =>
+      PersonalKnowledgeBaseSummary(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '未命名知识库',
+        fileCount: (json['file_count'] as num?)?.toInt() ?? 0,
+        chunkCount: (json['chunk_count'] as num?)?.toInt() ?? 0,
+        indexCount: (json['index_count'] as num?)?.toInt() ?? 0,
+        updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? ''),
       );
 }
 

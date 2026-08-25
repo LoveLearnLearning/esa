@@ -19,7 +19,15 @@ class _UnusedMinerU:
 
 
 class _Store:
-    def get_retrieval_state(self, user_id: str) -> dict:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str | None]] = []
+
+    def get_retrieval_state(
+        self,
+        user_id: str,
+        knowledge_base_id: str | None = None,
+    ) -> dict:
+        self.calls.append((user_id, knowledge_base_id))
         if user_id != "trusted-user":
             return {
                 "generation_id": None,
@@ -89,15 +97,21 @@ def test_personal_retrieval_forces_trusted_tenant_and_returns_locator(
     )
     chunk = ingested.chunks.chunks[0]
     index = _Index(chunk.model_dump(mode="json"))
+    store = _Store()
     service = PersonalKnowledgeRetrievalService(
-        store=_Store(),  # type: ignore[arg-type]
+        store=store,  # type: ignore[arg-type]
         index=index,  # type: ignore[arg-type]
         embedding=HashingEmbeddingProvider(dimensions=8),
         embedding_semaphore=asyncio.Semaphore(1),
     )
 
     result = asyncio.run(
-        service.search(user_id="trusted-user", query="shortest paths", top_k=1)
+        service.search(
+            user_id="trusted-user",
+            query="shortest paths",
+            knowledge_base_id="kb-a",
+            top_k=1,
+        )
     )
 
     assert result["result_count"] == 1
@@ -108,6 +122,7 @@ def test_personal_retrieval_forces_trusted_tenant_and_returns_locator(
         ("trusted-user", "active-generation", ("live-file",)),
         ("trusted-user", "active-generation", ("live-file",)),
     ]
+    assert store.calls == [("trusted-user", "kb-a")]
 
     other = asyncio.run(
         service.search(user_id="other-user", query="shortest paths", top_k=1)

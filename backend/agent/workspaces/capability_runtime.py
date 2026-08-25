@@ -171,11 +171,16 @@ class BoundToolExecutor:
                         "degraded": ["personal_knowledge_base_unavailable"],
                         "rankings": {},
                     }
-                return await service.search(
-                    user_id=self.context.user_id,
-                    query=normalized["query"],
-                    top_k=normalized.get("top_k", 5),
-                )
+                search_arguments = {
+                    "user_id": self.context.user_id,
+                    "query": normalized["query"],
+                    "top_k": normalized.get("top_k", 5),
+                }
+                if self.context.personal_knowledge_base_id is not None:
+                    search_arguments["knowledge_base_id"] = (
+                        self.context.personal_knowledge_base_id
+                    )
+                return await service.search(**search_arguments)
             if name == "get_knowledge_base_stats":
                 from backend.agent.rag.agent_api import knowledge_base_stats
 

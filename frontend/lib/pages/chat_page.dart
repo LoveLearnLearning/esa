@@ -143,9 +143,69 @@ class _ChatPageState extends State<ChatPage> {
     KnowledgeSource.personal,
     KnowledgeSource.public,
   };
+  List<PersonalKnowledgeBaseSummary> _personalKnowledgeBases = const [];
+  String? _personalKnowledgeBaseId;
+  bool _knowledgeBasesLoading = false;
+  bool _knowledgeBasesLoaded = false;
 
   GlobalKey<ComposerState> get _composerKey =>
       widget.composerKey ?? _internalComposerKey;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (AppScope.of(context).api.sessionId != null &&
+        !_knowledgeBasesLoaded &&
+        !_knowledgeBasesLoading) {
+      unawaited(_loadPersonalKnowledgeBases());
+    }
+  }
+
+  Future<void> _loadPersonalKnowledgeBases() async {
+    _knowledgeBasesLoading = true;
+    try {
+      final values = await AppScope.of(
+        context,
+      ).api.listPersonalKnowledgeBases();
+      if (!mounted) return;
+      setState(() {
+        _personalKnowledgeBases = values;
+        _knowledgeBasesLoaded = true;
+        _knowledgeBasesLoading = false;
+        if (values.isEmpty) {
+          _personalKnowledgeBaseId = null;
+          _knowledgeSources = Set<KnowledgeSource>.of(_knowledgeSources)
+            ..remove(KnowledgeSource.personal);
+        } else if (_knowledgeSources.contains(KnowledgeSource.personal) &&
+            !values.any((item) => item.id == _personalKnowledgeBaseId)) {
+          _personalKnowledgeBaseId = values.first.id;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _knowledgeBasesLoaded = true;
+        _knowledgeBasesLoading = false;
+      });
+    }
+  }
+
+  void _selectPersonalKnowledgeBase(String? knowledgeBaseId) {
+    setState(() {
+      _personalKnowledgeBaseId = knowledgeBaseId;
+      _knowledgeSources = Set<KnowledgeSource>.of(_knowledgeSources);
+      if (knowledgeBaseId == null) {
+        _knowledgeSources.remove(KnowledgeSource.personal);
+      } else {
+        _knowledgeSources.add(KnowledgeSource.personal);
+      }
+    });
+  }
+
+  String? get _selectedPersonalKnowledgeBaseId =>
+      _knowledgeSources.contains(KnowledgeSource.personal)
+      ? _personalKnowledgeBaseId
+      : null;
 
   @override
   void dispose() {
@@ -572,6 +632,9 @@ class _ChatPageState extends State<ChatPage> {
       knowledgeSources: _knowledgeSources,
       onKnowledgeSourcesChanged: (sources) =>
           setState(() => _knowledgeSources = sources),
+      personalKnowledgeBases: _personalKnowledgeBases,
+      personalKnowledgeBaseId: _personalKnowledgeBaseId,
+      onPersonalKnowledgeBaseChanged: _selectPersonalKnowledgeBase,
       onUploadAttachment: (filename, stream, length) =>
           app.uploadConversationAttachment(
             filename: filename,
@@ -589,6 +652,7 @@ class _ChatPageState extends State<ChatPage> {
           markdown: markdown,
           displayText: text,
           knowledgeSources: _knowledgeSources,
+          personalKnowledgeBaseId: _selectedPersonalKnowledgeBaseId,
         );
       },
       onSendWithAttachment: (text, markdown, attachment) {
@@ -603,6 +667,7 @@ class _ChatPageState extends State<ChatPage> {
           attachmentIds: [attachment.id],
           attachments: [attachment],
           knowledgeSources: _knowledgeSources,
+          personalKnowledgeBaseId: _selectedPersonalKnowledgeBaseId,
         );
       },
     );
@@ -841,7 +906,12 @@ class _ChatPageState extends State<ChatPage> {
                   onOpenAttachment: _openAttachment,
                   onEdit: (text) async {
                     _resumeFollowing();
-                    await app.reviseUserMessage(m, text);
+                    await app.reviseUserMessage(
+                      m,
+                      text,
+                      knowledgeSources: _knowledgeSources,
+                      personalKnowledgeBaseId: _selectedPersonalKnowledgeBaseId,
+                    );
                   },
                   onCodeChangedWithId: (blockId, code, language) {
                     final existing = _codeDrafts[blockId];
@@ -870,7 +940,11 @@ class _ChatPageState extends State<ChatPage> {
                   onContentChanged: _scrollToBottom,
                   onRegenerate: () {
                     _resumeFollowing();
-                    app.regenerate(m.id);
+                    app.regenerate(
+                      m.id,
+                      knowledgeSources: _knowledgeSources,
+                      personalKnowledgeBaseId: _selectedPersonalKnowledgeBaseId,
+                    );
                   },
                   onOpenCodeEditor: (code, language) => _openCodeEditor(
                     '${m.id}:0',

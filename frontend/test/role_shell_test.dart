@@ -87,8 +87,9 @@ class _RoleShellApi extends ApiClient {
   Future<List<ResearchProject>> listResearchProjects() async => const [];
 
   @override
-  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase() async =>
-      const PersonalKnowledgeBase.empty();
+  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase({
+    String? knowledgeBaseId,
+  }) async => const PersonalKnowledgeBase.empty();
 }
 
 Widget _app(AppState state) => AppScope(
