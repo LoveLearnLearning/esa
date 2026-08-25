@@ -144,6 +144,17 @@ class PedagogyRouter:
         "概念",
     )
 
+    _COURSE_GROUNDING_MARKERS = (
+        "教材",
+        "课件",
+        "课程资料",
+        "课堂内容",
+        "老师讲",
+        "知识库",
+        "根据资料",
+        "依据资料",
+    )
+
     _TEACH_BACK_MARKERS = (
         "让我复述",
         "让我讲一遍",
@@ -489,12 +500,23 @@ class PedagogyRouter:
                 "learning",
             )
 
-        if has_concept_marker:
+        requests_course_grounding = primary_kp_id is not None or any(
+            marker in lowered for marker in cls._COURSE_GROUNDING_MARKERS
+        )
+        if has_concept_marker and requests_course_grounding:
             return decision(
                 cls._skill("explanation_request"),
-                "用户正在询问概念/原理，应先检索知识库并在本轮直接讲解",
+                "用户正在询问已解析课程知识点或指定课程资料，应先检索知识库并在本轮直接讲解",
                 0.72 if profile is None else 0.8,
                 "learning",
+            )
+
+        if has_concept_marker:
+            return decision(
+                None,
+                "通用概念或软件框架问题未绑定课程知识点，直接回答且不强制课程库检索",
+                0.8,
+                "general",
             )
 
         if primary_kp_id is not None:

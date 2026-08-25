@@ -7,13 +7,24 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # 风格/语调合法枚举 供偏好与分组接口共用
 VALID_STYLES = {"concise", "detailed", "socratic"}
 VALID_TONES = {"friendly", "formal", "encouraging", "strict"}
 # 当前仅支持计算机学科
 VALID_MAJORS = {"cs"}
+
+
+def _strip_nonempty(value: str | None) -> str | None:
+    """Normalize optional user-facing labels and reject whitespace-only input."""
+
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("内容不能为空或仅包含空白字符")
+    return normalized
 
 
 # 请求
@@ -86,11 +97,15 @@ class PlannerTodoCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     due_at: datetime | None = None
 
+    _normalize_title = field_validator("title")(_strip_nonempty)
+
 
 class PlannerTodoUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     due_at: datetime | None = None
     done: bool | None = None
+
+    _normalize_title = field_validator("title")(_strip_nonempty)
 
 
 class PlannerGoalCreateRequest(BaseModel):
@@ -99,12 +114,16 @@ class PlannerGoalCreateRequest(BaseModel):
     target_at: datetime | None = None
     progress: int = Field(default=0, ge=0, le=100)
 
+    _normalize_title = field_validator("title")(_strip_nonempty)
+
 
 class PlannerGoalUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
     target_at: datetime | None = None
     progress: int | None = Field(default=None, ge=0, le=100)
+
+    _normalize_title = field_validator("title")(_strip_nonempty)
 
 class CodeExecutionRequest(BaseModel):
     """Code block submitted to the auxiliary-model sandbox pipeline."""
@@ -305,6 +324,8 @@ class UpdateUserProfileRequest(BaseModel):
     total_weeks: int | None = Field(None, ge=1, le=30)
     profile_enabled: bool | None = Field(None)
     display_name: str | None = Field(None, min_length=1, max_length=40)
+
+    _normalize_display_name = field_validator("display_name")(_strip_nonempty)
 
 
 # ===== Profile V2 Schema =====

@@ -54,6 +54,8 @@ def test_system_prompt_defines_when_tools_must_be_used():
     assert "需外部/实时数据" in prompt
     assert "不猜" in prompt
     assert "retrieve_knowledge" in prompt
+    assert "软件框架入门" in prompt
+    assert "默认直接回答" in prompt
 
 
 def test_build_prompt_has_no_duplicate_prompt_or_style_rule_tables():

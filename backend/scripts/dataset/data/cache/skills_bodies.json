@@ -1,9 +1,10 @@
 {
   "_meta": {
-    "captured_at": "2026-08-24T15:13:10+00:00",
+    "captured_at": "2026-08-25T13:46:18+00:00",
     "source": "github.com/LoveLearnLearning/esa",
-    "source_repo": "local-clone@fc09618",
+    "source_repo": "local-clone@06c7bb0",
     "source_sha256": {
+      "SKILLS.md": "d18b1c863e34cbff668bdeb4168593a9377d88e5a1380990cc31b2c5ba23e1bb",
       "common/math_problem_solving.md": "1ee9311519562caae895e59912f0ae965b77d7eb6c0cc5a54532e477215ec8d9",
       "common/parse_image_attachment.md": "9bbe03f120598d2a7ab2dbbaa531a0cd551e820c3a80e0f3f1290a7a87230335",
       "common/parse_pdf_attachment.md": "17b1bb088be5fadcdd1513c3f514303d4c58e002a4cad32b9d2bfc9b63004ecb",
@@ -15,14 +16,13 @@
       "learning/error_diagnosis.md": "9c5081275a5c45b5ac856823cf84bc537c79d895df70f1d6f6bc68d419a2111c",
       "learning/grounded_explanation.md": "92bc16bddbc0ef1e03eaec55d605870eb17150b6f6c6e4958c92f79840ec8803",
       "learning/homework_review.md": "d37403afe8144027f827d08f6ef0a472eadb5f7ad42390fede4c04a35c875819",
-      "learning/learning_policy.md": "60cd1c0f9dcf332830554df62e79aee20f8e2778a584f62d78306cfabe8488aa",
+      "learning/learning_policy.md": "926dcdc6c79f91e4dc7f03e265ceb8d387f988a96d3daded92a79517455968f0",
       "learning/mastery_report.md": "5ae4558a257c0f35de1f722f0c99d0fca52dc1efc21d53e42fdd0276e2ea408d",
       "learning/practice_recommendation.md": "a4dbbc380dc70bcdb01d21cfc87e001c4d52f24b2a9ad0c7ce74d97d9ebf3a9a",
       "learning/profile_personalization.md": "158105de94de441aa61a62eda42e51b5b7a6ea4e546a953447fc8ac55b196736",
       "learning/progressive_hint.md": "6297a94403c944dc2ee1d61372c56bbc6c7252994c6b5d5686e9f728c71074b8",
       "learning/study_plan.md": "6c099eb7ff2712ec1a68d0917be4ee74ae352e1547711842c4bb0bbba43c7df8",
-      "learning/teach_back.md": "5030320626c7c46f36cc1ef8ef2b19039fe318ae645388f846dd9de3720893cd",
-      "SKILLS.md": "d18b1c863e34cbff668bdeb4168593a9377d88e5a1380990cc31b2c5ba23e1bb"
+      "learning/teach_back.md": "5030320626c7c46f36cc1ef8ef2b19039fe318ae645388f846dd9de3720893cd"
     },
     "note": "由 dataset/tools/capture_skill_bodies.py 调用后端真实 load_skill() 产出，存的就是模型线上看到的观测值（不含 frontmatter），禁止手改",
     "not_found_template": "{name} skill not found!",
@@ -78,7 +78,7 @@
     "error_diagnosis": "# 错误诊断\n\n找出首个使后续失效的步骤，区分概念、条件、计算、表示和策略错误；给证据、最小修正及可复用检查规则。仅需验证前置时查 `get_weak_prerequisites`。只有本 Skill 是真实作答的主评估者、有可靠 `kp_id` 且结果可评价时才调用一次 `record_learning_evidence`；作为作业/练习的子诊断时不写。",
     "grounded_explanation": "# 有依据的讲解\n\n用明确问题调用 `retrieve_knowledge`，有可信 `kp_id` 直接使用；仅当掌握度会改变讲解时调用 `get_mastery_level`。命中后用自己的话直接回答结论、机制、最小例子和边界/易错点，来源只作证据。严格遵守 `citation_mode`：仅 `verbatim_allowed` 可逐字引述；`paraphrase_only_unverified` 必须转述、标明解析/OCR 未验证且不用引号。无结果或失败时说明未取得知识库证据，同轮用通用知识回答。复述题只能作为可选后续，本 Skill 不写学习证据。",
     "homework_review": "# 作业批改\n\n区分题目、要求和学生作答；只有题目时询问答案或按要求讲解，不写证据。给结论、正确部分、首个关键错误和修改方法。作答可评价且有可靠 `kp_id` 时，由本 Skill 调用一次 `record_learning_evidence`；部分正确用可靠度/误区表达。仅需验证前置时查 `get_weak_prerequisites`，子诊断不重复写入。保存失败要说明。输出“结论—依据—修改—下一步”。",
-    "learning_policy": "- 工程、部署、调试和仓库任务直接解决，不强加教学流程。\n- 知识问题先回答；诊断、复述和迁移题只能作为可选后续。课程概念需证据时先调用 `retrieve_knowledge`。\n- 检索内容只作证据：`verbatim_allowed` 才可逐字引用；`paraphrase_only_unverified` 必须转述并标明未经验证。无结果时说明后用通用知识回答。\n- `has_record=false`、`status=unknown` 或证据不足都表示未知，不得推断为薄弱或 50%。\n- 只有真实且可评价的作答、练习或复述才是学习证据。负责批改的主 Skill 每次表现最多调用一次 `record_learning_evidence`；提示、出题和子流程不写入。\n- 服务端已解析的知识点和 Tool 结果直接使用；只澄清会改变答案的歧义。Tool 失败时说明缺失并安全降级。",
+    "learning_policy": "- 工程、部署、调试和仓库任务直接解决，不强加教学流程。\n- 知识问题先回答；诊断、复述和迁移题仅作可选后续。课程概念、指定资料或用户明确要求时，才调用已选库的检索 Tool；框架入门和通用编程/工程默认直接回答。\n- 检索内容只作证据：`verbatim_allowed` 才可逐字引用；`paraphrase_only_unverified` 必须转述并标明未经验证。无结果时说明后用通用知识回答。\n- `has_record=false`、`status=unknown` 或证据不足都表示未知，不得推断为薄弱或 50%。\n- 只有真实且可评价的作答、练习或复述才是学习证据。负责批改的主 Skill 每次表现最多调用一次 `record_learning_evidence`；提示、出题和子流程不写入。\n- 服务端已解析的知识点和 Tool 结果直接使用；只澄清会改变答案的歧义。Tool 失败时说明缺失并安全降级。",
     "mastery_report": "# 掌握度报告\n\n调用 `get_mastery_report`；用户指定知识点则聚焦它。仅 `has_record=true` 的数值可作为掌握度，未知状态单列“证据不足”，不得排成薄弱。需解释原因时才调用 `get_learning_evidence_summary` 或 `get_weak_prerequisites`。输出概况、可靠优势/薄弱点、未知项、建议和数据边界；报告不写学习证据。",
     "practice_recommendation": "# 练习推荐\n\n取得课程、范围、时间和目标；缺失且会改变推荐时才澄清。调用 `recommend_practice`，需要解释优先级时再调用 `get_mastery_report`/`get_learning_evidence_summary`。优先到期复习、可靠薄弱点和必要前置；未知项用诊断题确认。输出 1–3 个顺序练习块，含知识点、题型、数量/时长、完成标准和依据；推荐不写证据。",
     "profile_personalization": "仅用当前相关且可靠的学情；确需补查时调用 `get_mastery_level`。无记录保持中性；低掌握度先直觉和最小例子，中等讲核心机制与易错点，高掌握度增加边界和迁移。证据不足用小题确认，不贴标签；当前要求优先于画像。",

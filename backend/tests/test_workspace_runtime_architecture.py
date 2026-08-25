@@ -531,7 +531,7 @@ def test_concept_explanation_runtime_exposes_rag_and_direct_answer_policy():
 
     system_prompt = spec.messages[0]["content"]
     assert "retrieve_knowledge" in spec.run_metadata["tool_names"]
-    assert "调用 `retrieve_knowledge`" in system_prompt
+    assert "公共库为\n`retrieve_knowledge`" in system_prompt
     assert "知识问题先回答" in system_prompt
     assert "正式讲解前，先问" not in system_prompt
 

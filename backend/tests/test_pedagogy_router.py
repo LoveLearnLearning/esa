@@ -31,16 +31,30 @@ def test_stuck_student_routes_to_progressive_hint():
 
 def test_concept_question_routes_to_grounded_explanation():
     """概念问题路由到本轮直接回答且使用知识库的 Skill。"""
-    decision = PedagogyRouter.route("解释一下为什么二叉树遍历会用到递归")
+    decision = PedagogyRouter.route(
+        "解释一下为什么二叉树遍历会用到递归",
+        resolved_kp_ids=("二叉树遍历",),
+    )
     assert decision.skill_name == "grounded_explanation"
 
 
 def test_ambiguous_engineering_term_can_still_be_a_learning_concept():
     """接口、依赖、异常等歧义词不应压过明确的概念提问。"""
-    decision = PedagogyRouter.route("解释一下 Java 接口的原理")
+    decision = PedagogyRouter.route(
+        "解释一下 Java 接口的原理",
+        resolved_kp_ids=("Java 接口",),
+    )
 
     assert decision.skill_name == "grounded_explanation"
     assert decision.task_type == "learning"
+
+
+def test_software_framework_explanation_does_not_force_course_rag():
+    decision = PedagogyRouter.route("解释一下 Raylib 的窗口循环原理")
+
+    assert decision.skill_name is None
+    assert decision.task_type == "general"
+    assert "不强制课程库检索" in decision.reason
 
 
 def test_start_practice_routes_to_adaptive_practice():

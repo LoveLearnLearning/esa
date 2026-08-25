@@ -81,3 +81,6 @@ def test_planner_api_uses_authenticated_user_scope(tmp_path):
     assert toggled.status_code == 200
     assert toggled.json()["done"] is True
     assert client.get("/me/planner").json()["todos"][0]["todo_id"] == todo_id
+
+    assert client.post("/me/planner/todos", json={"title": "   "}).status_code == 422
+    assert client.post("/me/planner/goals", json={"title": "\t"}).status_code == 422

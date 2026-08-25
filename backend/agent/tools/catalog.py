@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from typing import Any, Literal, Mapping
 
 from backend.agent.tools.tool_register import ToolRegistry
+from backend.core.message.budget import DEFAULT_PROMPT_BUDGET
+from backend.core.utils.token_estimation import estimate_tokens
 from backend.core.utils.tool_arguments import normalize_tool_arguments
 
 TOOL_CATALOG_VERSION = 2
@@ -137,6 +139,28 @@ def compact_tool_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
     return projected
 
 
+def validate_tool_schema_budget(schemas: list[dict[str, Any]]) -> None:
+    """Fail closed when a scoped Tool contract exceeds its prompt budget."""
+
+    serialized = json.dumps(
+        schemas,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    token_count = estimate_tokens(serialized)
+    token_limit = DEFAULT_PROMPT_BUDGET.tool_schema_max_tokens
+    if token_count > token_limit:
+        names = [
+            str(schema.get("function", {}).get("name", "unknown"))
+            for schema in schemas
+        ]
+        raise ValueError(
+            "scoped Tool schemas exceed prompt budget: "
+            f"{token_count}>{token_limit}; tools={','.join(names)}"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class CapabilityDeclaration:
     """描述单个工具或动作的版本、范围与授权要求。"""
@@ -249,6 +273,7 @@ class ScopedToolView:
             ):
                 entries.append((name, compact_tool_schema(schema)))
         entries.sort(key=lambda item: item[0])
+        validate_tool_schema_budget([schema for _, schema in entries])
         canonical = json.dumps(
             [
                 (name, CAPABILITY_DECLARATIONS[name].version, schema)

@@ -3,6 +3,7 @@
 """验证 `grouping_store` 相关行为与回归场景。"""
 
 import sqlite3
+from datetime import datetime, timezone
 
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
@@ -230,3 +231,23 @@ def test_pins_group_order_and_project_binding_are_persisted(tmp_path):
         "pinned_count": 1,
         "learning_streak_days": 1,
     }
+
+
+def test_learning_streak_uses_shanghai_calendar_day(tmp_path):
+    db_path = tmp_path / "esa.db"
+    chat_store, _ = _setup_stores(db_path)
+    conversation = chat_store.create_conversation("u1", "凌晨学习")
+    chat_store.append_messages(
+        conversation["conversation_id"],
+        [{"role": "user", "content": "北京时间凌晨的学习记录"}],
+    )
+    chat_store.execute(
+        "UPDATE messages SET created_at = ? WHERE conversation_id = ?",
+        ("2026-08-24T16:30:00+00:00", conversation["conversation_id"]),
+    )
+
+    stats = chat_store.get_user_stats(
+        "u1",
+        now=datetime(2026, 8, 24, 17, 0, tzinfo=timezone.utc),
+    )
+    assert stats["learning_streak_days"] == 1

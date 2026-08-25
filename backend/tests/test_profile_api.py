@@ -206,6 +206,10 @@ def test_display_name_and_account_stats_are_server_owned(tmp_path):
     assert updated.json()["display_name"] == "Alice Chen"
     assert app.state.user_store.get_by_username("alice").display_name == "Alice Chen"
 
+    blank = client.patch("/me/profile", json={"display_name": "   "})
+    assert blank.status_code == 422
+    assert app.state.user_store.get_by_username("alice").display_name == "Alice Chen"
+
     stats = client.get("/me/profile/stats")
     assert stats.status_code == 200
     assert stats.json() == {

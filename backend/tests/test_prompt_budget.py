@@ -6,12 +6,15 @@ import json
 import math
 from pathlib import Path
 
+import pytest
+
 from backend.agent.memories.memory_models import (
     ProfileField,
     ProfileOrigin,
     ProfileSnapshot,
 )
 from backend.agent.tools.bootstrap import register_builtin_tools
+from backend.agent.tools.catalog import validate_tool_schema_budget
 from backend.agent.tools.context import AgentRuntimeDependencies
 from backend.agent.workspaces.capability_runtime import CapabilityRuntime
 from backend.agent.workspaces.models import AgentTurnInput, LearningTurnContext
@@ -162,3 +165,19 @@ def test_skill_index_uses_complete_lines_within_fixed_budget():
     assert estimate_tokens(index) <= 250
     assert all(":" in line for line in index.splitlines())
     assert "learning_policy" not in index
+
+
+def test_tool_schema_budget_is_enforced_instead_of_being_only_documented():
+    oversized = [
+        {
+            "type": "function",
+            "function": {
+                "name": "oversized",
+                "description": "x" * 20_000,
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+
+    with pytest.raises(ValueError, match="exceed prompt budget"):
+        validate_tool_schema_budget(oversized)

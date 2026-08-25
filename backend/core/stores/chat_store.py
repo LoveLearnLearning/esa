@@ -14,6 +14,7 @@ from backend.core.stores.base_sqlite_store import BaseSQLiteStore
 
 
 _UNSET = object()
+_SHANGHAI_TIMEZONE = timezone(timedelta(hours=8))
 
 
 class ChatStore(BaseSQLiteStore):
@@ -523,7 +524,12 @@ class ChatStore(BaseSQLiteStore):
             )
             return cursor.rowcount > 0
 
-    def get_user_stats(self, user_id: str) -> dict[str, int]:
+    def get_user_stats(
+        self,
+        user_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, int]:
         """Return account-wide conversation, pin, and learning-streak stats."""
         counts = self.query_one(
             """
@@ -536,7 +542,7 @@ class ChatStore(BaseSQLiteStore):
         )
         active_rows = self.query_all(
             """
-            SELECT DISTINCT date(m.created_at) AS active_date
+            SELECT DISTINCT date(m.created_at, '+8 hours') AS active_date
             FROM messages m
             JOIN conversations c ON c.conversation_id = m.conversation_id
             WHERE c.user_id = ? AND m.role = 'user'
@@ -549,7 +555,10 @@ class ChatStore(BaseSQLiteStore):
             for row in active_rows
             if row["active_date"]
         }
-        today = datetime.now(timezone.utc).date()
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        today = current.astimezone(_SHANGHAI_TIMEZONE).date()
         cursor = today
         if cursor not in active_dates:
             cursor = today - timedelta(days=1)
