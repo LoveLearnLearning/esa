@@ -1,13 +1,13 @@
 {
  "_meta": {
-  "captured_at": "2026-08-24T15:07:06+00:00",
+  "captured_at": "2026-08-19T16:00:54+00:00",
   "source": "github.com/LoveLearnLearning/esa",
-  "source_repo": "local-clone@54c7147",
+  "source_repo": "local-clone@2aea243",
   "source_sha256": {
-   "backend/core/utils/parser.py": "6254f4480d79ac9d",
-   "backend/core/utils/tool_arguments.py": "941ef6424c984f47"
+   "backend/core/utils/parser.py": "0e85d13759c4e6fb",
+   "backend/core/utils/tool_arguments.py": "53de6b906f6770bf"
   },
-  "schema_version": "626e4cfc",
+  "schema_version": "abc60289",
   "note": "由 dataset/tools/capture_parser_golden.py 调用后端真实 parse_output 产出。tests/test_parser_compat.py 断言 esa/backend_parser.py 逐条复现它。禁止手改"
  },
  "cases": [

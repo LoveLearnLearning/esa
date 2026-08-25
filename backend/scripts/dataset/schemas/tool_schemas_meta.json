@@ -1,51 +1,58 @@
 {
-  "captured_at": "2026-08-24T15:10:03+00:00",
+  "captured_at": "2026-08-23T01:41:35+00:00",
   "source": "github.com/LoveLearnLearning/esa",
-  "source_repo": "local-clone@54c7147",
-  "workspace": "all (runtime filters per turn)",
+  "source_repo": "local-clone@c2d1f09",
+  "workspace": "learning",
   "tool_scopes": [
     "common",
-    "learning",
-    "research",
-    "teaching"
+    "learning"
   ],
-  "schema_version": "626e4cfc",
+  "schema_version": "e3821830",
   "with_attachments": false,
   "kept": [
-    "get_weather",
-    "get_time",
     "arxiv_search",
-    "retrieve_knowledge",
-    "get_knowledge_base_stats",
-    "retrieve_personal_knowledge",
-    "run_in_sandbox",
-    "web_search",
     "bitwise_calculator",
     "calculator",
-    "math_solver",
-    "start_frontier_tracking",
-    "start_research_writing",
-    "start_dataset_analysis",
-    "save_core_memory",
-    "propose_core_memory",
-    "search_core_memories",
-    "get_core_memories",
     "delete_core_memory",
-    "recommend_practice",
-    "get_mastery_report",
-    "get_mastery_level",
-    "get_weak_prerequisites",
-    "get_review_timing",
-    "record_learning_evidence",
+    "get_core_memories",
+    "get_knowledge_base_stats",
     "get_learning_evidence_summary",
+    "get_mastery_level",
+    "get_mastery_report",
+    "get_review_timing",
+    "get_time",
+    "get_weak_prerequisites",
+    "get_weather",
     "load_skill",
-    "get_teaching_context",
-    "parse_pdf_attachment",
-    "parse_word_attachment",
-    "parse_presentation_attachment",
-    "parse_spreadsheet_attachment",
-    "parse_image_attachment"
+    "math_solver",
+    "propose_core_memory",
+    "recommend_practice",
+    "record_answer",
+    "record_learning_evidence",
+    "retrieve_federated_knowledge",
+    "retrieve_knowledge",
+    "retrieve_personal_knowledge",
+    "run_in_sandbox",
+    "save_core_memory",
+    "search_core_memories",
+    "web_search"
   ],
-  "dropped": {},
-  "note": "由 dataset/tools/capture_tool_schemas.py 复用后端真实 compact_tool_schema() 产出；必须与运行时快照字节一致。"
+  "dropped": {
+    "scope=research": [
+      "start_frontier_tracking",
+      "start_research_writing",
+      "start_dataset_analysis"
+    ],
+    "scope=teaching": [
+      "get_teaching_context"
+    ],
+    "按轮动态注入的附件工具": [
+      "parse_pdf_attachment",
+      "parse_word_attachment",
+      "parse_presentation_attachment",
+      "parse_spreadsheet_attachment",
+      "parse_image_attachment"
+    ]
+  },
+  "note": "由 dataset/tools/capture_tool_schemas.py 用后端真实 catalog.tool_scope() 过滤产出，禁止手改，也不要再直接 cp backend/agent/tools/tool_schemas.json —— 那份是全局目录，含科研/教学工具。"
 }

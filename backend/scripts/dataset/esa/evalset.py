@@ -91,10 +91,35 @@ L3_HOLDOUT_PREFIXES = ("get_review_timing__",)
 # 单独一张表报，不拿它讲「微调带来了多少提升」。
 SUPPLEMENT_PREFIXES = ("supp__",)
 
+# 只进训练集、永不进任何评测集的 template。
+#
+# 为什么需要这个口子（2026-08-21 加）
+# ----------------------------------
+# 想定向补几条训练样本修某个已知缺口时，会撞上一个结构性问题：
+# 下面 L1/L2 挑题用的是「按类别配额 + rng.shuffle(pool)」，而 shuffle 消耗的
+# 随机数与 pool 长度成正比 —— **往某个类别加哪怕 1 个 template，该类别抽到的
+# 评测模板就会重排**。实测：往 refusal 加 1 条种子，主评测集移出 3 个模板、
+# 移入 3 个；加 5 条则各 6 个。
+#
+# 后果不是"评测集小变一下"，而是**考卷换了**：base 那一轮的成绩（作业 79039）
+# 不再适用于新考卷，必须连 base 一起重评。于是"补 3 条样本"的真实代价从
+# 1 次重训变成 1 次重训 + 2 次重评。
+#
+# 走这个前缀的 template 在建 pool **之前**就被摘出去（和补充集同一个位置、
+# 同一个理由），主评测集因此逐字节不变，只需重训 + 重评 lora。
+# 代价说清楚：这些样本**没有留出对照**，它们修没修好只能靠已有评测题去看，
+# 不能拿它们自己证明自己。
+TRAIN_ONLY_PREFIXES = ("trainonly__",)
+
 
 def is_supplement(template_id: str) -> bool:
     """这个 template 属于补充评测集吗。"""
     return template_id.startswith(SUPPLEMENT_PREFIXES)
+
+
+def is_train_only(template_id: str) -> bool:
+    """这个 template 只进训练集吗（不参与评测集抽样）。"""
+    return template_id.startswith(TRAIN_ONLY_PREFIXES)
 
 
 def expected_action(s: Sample) -> str:
@@ -303,6 +328,9 @@ def gold_of(s: Sample, layer: str | None = None) -> dict:
         "expected_arguments": [c.arguments for c in calls],
         "n_turns_given": n,
         "layer": layer,
+        # 声明式作废（见 ir.Sample.score_exclude）。没有作废项时不落这个键，
+        # 免得 443 道题里每一条都多一个空字典 —— 评测集要保持可 diff。
+        **({"score_exclude": dict(s.score_exclude)} if s.score_exclude else {}),
     }
 
 
@@ -319,6 +347,12 @@ def build(
     supp_set = sorted((s for s in samples if is_supplement(s.template_id)),
                       key=lambda x: (x.template_id, x.id))
     main_samples = [s for s in samples if not is_supplement(s.template_id)]
+
+    # ⚠️ 和补充集同理，必须在**这里**摘掉 —— 早于 by_tpl，也就早于下面的
+    # rng.shuffle。晚一步摘，主评测集的抽样就整个重排了（见 TRAIN_ONLY_PREFIXES）。
+    train_only_set = sorted((s for s in main_samples if is_train_only(s.template_id)),
+                            key=lambda x: (x.template_id, x.id))
+    main_samples = [s for s in main_samples if not is_train_only(s.template_id)]
 
     by_tpl: dict[str, list[Sample]] = defaultdict(list)
     for s in main_samples:
@@ -364,6 +398,8 @@ def build(
     # 赛题《03—技术方案说明》也明确要求可复现。
     eval_set = [s for tpl in sorted(eval_tpls) for s in by_tpl[tpl]]
     train_pool = [s for tpl in sorted(by_tpl) if tpl not in eval_tpls for s in by_tpl[tpl]]
+    # 只进训练的那批并回来（已按 (template_id, id) 排过序，行序稳定）
+    train_pool += train_only_set
 
     # ---- 未经人工复核的样本不进训练集（组长 2026-08-11 明确要求）----
     #
@@ -390,6 +426,10 @@ def build(
     supp_tpls = {s.template_id for s in supp_set}
     bad = supp_tpls & ({s.template_id for s in eval_set} | {s.template_id for s in train_set})
     assert not bad, f"补充集的 template 漏进了主评测集或训练集：{sorted(bad)[:5]}"
+    # trainonly__ 只能出现在训练集里 —— 漏进任何一份评测集都等于自己给自己出题
+    leaked = {s.template_id for s in eval_set if is_train_only(s.template_id)} | \
+             {s.template_id for s in supp_set if is_train_only(s.template_id)}
+    assert not leaked, f"trainonly__ 的 template 漏进了评测集：{sorted(leaked)[:5]}"
 
     def no_call_ratio(items: list[Sample]) -> float:
         """「不调用类」占比 —— 整条样本一次工具都没调。
@@ -514,9 +554,27 @@ def write(eval_set, train_set, stats, by_name, out_dir: Path,
         stats["supp_questions"] = len(supp_records)
 
     # 训练集的 IR，供 split.py 继续切 train/validation
+    #
+    # ⚠️ 这里用的是 `asdict`（不是 ir._sample_dict），它会把**每一个**字段都落盘，
+    # 空的也落。所以 Sample 上新增一个字段 = 1068 条训练 IR 全部产生差异 ——
+    # 内容一个字没变，`git diff` 却是一整片。评测集那边为此立过规矩
+    # （「每次重跑都是一大片假差异，真改动淹在里面」），训练 IR 同理。
+    #
+    # `score_exclude` 只有补充集那 5 条用得上，而补充集**根本不进训练集**，
+    # 所以这里它永远是空的。空就不落，让既有 1068 条保持逐字节不变。
+    def _drop_empty_exclude(pairs):
+        """asdict 的 dict_factory：只丢掉空的 score_exclude，别的一律照旧。
+
+        dict_factory 只作用于 dataclass 实例（Sample/Turn/ToolCall/ToolResult），
+        `ToolCall.arguments` 那种普通 dict 不走这里 —— 观测内容不会被碰到
+        （`_turn_dict` 那条「绝不递归进 arguments」的规矩在这里同样成立）。
+        """
+        return {k: v for k, v in pairs if not (k == "score_exclude" and not v)}
+
     with (out_dir / "train_ir.jsonl").open("w", encoding="utf-8") as fh:
         for s in train_set:
-            fh.write(json.dumps(asdict(s), ensure_ascii=False) + "\n")
+            fh.write(json.dumps(asdict(s, dict_factory=_drop_empty_exclude),
+                                ensure_ascii=False) + "\n")
 
     (out_dir / "eval_stats.json").write_text(
         json.dumps(stats, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

@@ -47,12 +47,20 @@ POSITIVE_TOOL = {
     "get_review_timing": "get_review_timing",
     "get_learning_evidence_summary": "get_learning_evidence_summary",
     "search_core_memories": "search_core_memories",
+    # 2026-08-22 上游新增的三个（见 seeds/new_tools.yaml 里那段能力边界说明）
+    "retrieve_federated_knowledge": "retrieve_federated_knowledge",
+    "retrieve_personal_knowledge": "retrieve_personal_knowledge",
+    "run_in_sandbox": "run_in_sandbox",
 }
 CONFUSION_TARGET = {
     "混淆_应调get_mastery_report": "get_mastery_report",
     "混淆_应调recommend_practice": "recommend_practice",
     "混淆_应调get_mastery_level": "get_mastery_level",
     "混淆_应调get_core_memories": "get_core_memories",
+    # 三个检索工具的分工来自 schema description，不是我们定的：
+    # 默认走联合，只有用户明确限定范围时才用单库工具。
+    "混淆_应调retrieve_personal_knowledge": "retrieve_personal_knowledge",
+    "混淆_应调retrieve_knowledge": "retrieve_knowledge",
 }
 
 # record_learning_evidence 的参数**逐条**写在种子里，不再按组写死。
@@ -135,6 +143,26 @@ def _answer_for(tool: str, result: dict, kp: str) -> str:
         return (f"最近 {result['evidence_count']} 条学习证据显示：独立完成率 **{result['independent_rate']}**，"
                 f"平均提示等级 {result['avg_hint_level']}，正确率 {result['correct_rate']}。"
                 f"错误类型分布：{errs}。")
+    if tool in ("retrieve_federated_knowledge", "retrieve_personal_knowledge"):
+        # 我们只能产出降级/不可用状态（种子里那段能力边界说明写了为什么）。
+        # ⚠️ 这一支**刻意不讲知识内容** —— 检索空手而回时顺嘴讲一段通用解释，
+        # 就是在替一个没返回证据的工具编来源。如实说没接上、给出下一步，
+        # 才是这批样本要教的东西。
+        if result.get("degraded"):
+            if tool == "retrieve_personal_knowledge":
+                return ("个人知识库现在不可用，你上传的资料我这边读不到。"
+                        "要么等它恢复，要么你把想看的那段贴过来，我基于它讲。")
+            return ("两边知识库这次都没接上（个人库不可用、公共库检索失败），"
+                    "所以我没法引用资料原文。要我按通用理解先讲一遍吗？"
+                    "或者你把相关材料贴过来，我基于它讲。")
+        raise SystemExit(f"{tool} 出现了非降级返回，说明 fixture 变了，回去核对后端")
+    if tool == "run_in_sandbox":
+        if result.get("error") == "sandbox_disabled":
+            return ("沙箱当前没启用，我这边跑不了代码。"
+                    "你可以本地跑一下把输出贴给我，或者我先把这段逻辑讲清楚。")
+        if result["ok"]:
+            return f"跑完了，输出是 `{result['stdout'].strip()}`。"
+        raise SystemExit("run_in_sandbox 出现了未预期的失败形态，回去核对种子")
     if tool == "search_core_memories":
         # ⚠️ 线上返回的是 **list**，没有 count / memories 这两个键（上一版按 dict 写的）。
         # 空结果是常态而不是异常：抽象词（偏好 / 讲解方式 / 学习目标）在真实检索里
@@ -243,19 +271,46 @@ def gen_positive(cfg, tool, group, phrasings, rng, all_names, version, out, budg
                     f"seeds/new_tools.yaml 的 search_core_memories 正例缺 query 字段：{p!r}"
                 )
             args = {"query": meta["query"]}
+        elif tool in ("retrieve_federated_knowledge", "retrieve_personal_knowledge"):
+            # 和 search_core_memories 同一条规矩：检索词由种子显式给出，
+            # 不拿知识点名顶替 —— 用户问的和该检索的常常不是同一个词。
+            if not meta.get("query"):
+                raise SystemExit(
+                    f"seeds/new_tools.yaml 的 {group} 缺 query 字段：{p!r}")
+            args = {"query": meta["query"]}
+        elif tool == "run_in_sandbox":
+            if not meta.get("command"):
+                raise SystemExit(
+                    f"seeds/new_tools.yaml 的 {group} 缺 command 字段：{p!r}")
+            args = {"command": meta["command"]}
         else:
             args = {"kp_id": kp}
-        try:
-            result = execute(tool, args)
-        except Exception as exc:  # noqa: BLE001
-            print(f"    ⚠️  {tool}({args}) 执行失败，已跳过：{exc}")
-            continue
+        if tool == "run_in_sandbox":
+            # ⚠️ 不走 execute：fixture 不真的执行命令，stdout/exit_code 必须是
+            # 种子里**真跑过一次**的结果（命令刻意选与环境无关的）。编输出等于
+            # 教模型消费一个假的执行结果。
+            if meta.get("disabled"):
+                from esa.fixtures import sandbox_disabled as _disabled
+                result = _disabled()
+            else:
+                from esa.fixtures import run_in_sandbox as _sandbox
+                result = _sandbox(meta["command"],
+                                  _stdout=meta.get("stdout", ""),
+                                  _stderr=meta.get("stderr", ""),
+                                  _exit_code=int(meta.get("exit_code", 0)))
+        else:
+            try:
+                result = execute(tool, args)
+            except Exception as exc:  # noqa: BLE001
+                print(f"    ⚠️  {tool}({args}) 执行失败，已跳过：{exc}")
+                continue
         out.append(mk(
             f"{tool}_{group}_{n:04d}", f"{tool}__{group}__{kp if has_kp else group}",
-            "single_tool_call", SYSTEM, [tool],
+            "tool_error" if meta.get("disabled") else "single_tool_call", SYSTEM, [tool],
             [Turn(role="user", content=query),
              Turn(role="tool_call", calls=[ToolCall(tool, args)]),
-             Turn(role="tool_result", results=[ToolResult(tool, result)]),
+             Turn(role="tool_result", results=[
+                 ToolResult(tool, result, is_error=bool(meta.get("disabled")))]),
              # 话术里没提知识点时传空串 —— 回答不能引用用户没说过的东西。
              Turn(role="assistant", content=_answer_for(tool, result, kp if has_kp else ""))],
             version, rng, all_names, topic=kp))
@@ -271,6 +326,9 @@ CONFUSION_ARGS = {
     "record_learning_evidence": lambda course, kp, meta: {
         "kp_id": kp, "activity_type": meta["activity_type"], "correct": meta["correct"]},
     "get_mastery_level": lambda course, kp, meta: {"kp_id": kp},
+    # 检索词从种子读，不拿知识点名顶替
+    "retrieve_personal_knowledge": lambda course, kp, meta: {"query": meta["query"]},
+    "retrieve_knowledge": lambda course, kp, meta: {"query": meta["query"]},
 }
 
 
@@ -369,6 +427,16 @@ def main() -> int:
                 else:
                     gen_gate_negative(cfg, tool, group, phrasings, rng, all_names,
                                       version, out, GATE_REPLIES[tool])
+            else:
+                # ⚠️ 2026-08-22 补：分派只认 `正例` / `混淆` / `gate未满足` 三个前缀，
+                # 起了别的名字会被**静默跳过** —— 种子写了、生成器一声不吭、
+                # 覆盖率报告也不会少一行，因为它根本不知道该有这一组。
+                # 我加 run_in_sandbox 的失败态时就踩了：组名写成「沙箱未启用」，
+                # 样本一条没出，是逐条翻 IR 才发现的。
+                raise SystemExit(
+                    f"seeds/new_tools.yaml 的 {tool} 下有个组名 {group!r} 不认识。\n"
+                    "组名必须以 `正例` / `混淆` / `gate未满足` 开头 —— "
+                    "否则会被静默跳过。")
 
     dump_samples(out, OUT)
     from collections import Counter
