@@ -56,6 +56,10 @@ def main() -> int:
     out: list[Sample] = []
     for group, body in cfg.items():
         lures = body["lures"]
+        # `train_only: true` 的组走 trainonly__ 前缀 —— 只进训练集，不参与评测集抽样。
+        # 这样补样本不会重排主评测集（理由见 esa/evalset.py 的 TRAIN_ONLY_PREFIXES）。
+        # 代价：这些样本没有留出对照，修没修好只能靠已有评测题去看。
+        tpl_prefix = "trainonly__" if body.get("train_only") else ""
         for i, item in enumerate(body["pairs"]):
             # 每条都必须写明"拒的是什么"。写不出来，多半说明这条根本不该是拒绝题
             # —— 交接文档 5.6 那个"其实该调另一个工具"的错误栽过四次。
@@ -66,7 +70,7 @@ def main() -> int:
             ]
             out.append(Sample(
                 id=f"refuse_{group}_{i:02d}",
-                template_id=f"refuse__{group}__{i:02d}",
+                template_id=f"{tpl_prefix}refuse__{group}__{i:02d}",
                 category="refusal",
                 schema_version=version,
                 system=system_for(turns),

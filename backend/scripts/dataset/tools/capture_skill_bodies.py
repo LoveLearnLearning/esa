@@ -49,7 +49,8 @@ def capture(repo: Path) -> dict:
     try:
         from backend.agent.tools.bootstrap import register_builtin_tools  # noqa: PLC0415
         from backend.agent.tools.skills import (  # noqa: PLC0415
-            build_skills_context, list_skills, list_skills_detail, load_skill,
+            build_skills_context, list_skill_definitions, list_skills,
+            list_skills_detail, load_skill,
         )
     except ImportError as exc:
         raise SystemExit(
@@ -68,8 +69,17 @@ def capture(repo: Path) -> dict:
     # 索引里的顺序不是文件名序，是 (-priority, name)（skills.py:196-206）。
     # 「我目前可用的是：前几个」这类话术照着它写，所以顺序要一并钉住。
     index_block = build_skills_context()
-    index_order = [line.split(" ", 2)[1] for line in index_block.splitlines() if line.startswith("- ")]
-    assert set(index_order) == set(detail), f"索引里的 Skill 名对不上：{index_order} vs {sorted(detail)}"
+    index_order = [
+        line.removeprefix("- ").split(":", 1)[0].strip()
+        for line in index_block.splitlines()
+        if ":" in line
+    ]
+    candidates = {
+        skill.name for skill in list_skill_definitions() if not skill.autoload
+    }
+    assert set(index_order) <= candidates, (
+        f"索引出现未知或 autoload Skill：{index_order} vs {sorted(candidates)}"
+    )
 
     for name in sorted(bodies):
         body = bodies[name]
@@ -123,7 +133,7 @@ def main() -> int:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    print(f"\n抓到 {len(bodies)} 份 Skill 正文 → {out_path.relative_to(ROOT)}")
+    print(f"\n抓到 {len(bodies)} 份 Skill 正文 → {backend_repo.display_path(out_path, ROOT)}")
     print(f"  来源：{backend.describe()}")
     print(f"  未知 skill 的失败文案：{not_found_template!r}")
     return 0

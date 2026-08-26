@@ -161,8 +161,11 @@ def test_three_routes_are_visible(service: RetrievalService) -> None:
         "bm25_body",
         "bm25_heading",
         "fusion",
+        "preselection",
         "final",
     }
+    assert response.trace.rankings["bm25_body"] == ()
+    assert response.trace.rankings["bm25_heading"] == ()
     assert response.hits
 
 
@@ -393,7 +396,7 @@ def test_qdrant_ingest_uses_formal_chunk_and_fixed_bm25(
     }
 
 
-def test_online_failures_degrade_to_bm25_and_rrf(
+def test_dense_mode_does_not_fall_back_to_disabled_bm25(
     collection: LoadedChunkCollection,
 ) -> None:
     """验证 `online_failures_degrade_to_bm25_and_rrf` 场景。"""
@@ -433,14 +436,15 @@ def test_online_failures_degrade_to_bm25_and_rrf(
     response = service.search("反向传播")
     assert response.trace.rankings["dense"] == ()
     assert "reranker" not in response.trace.rankings
-    assert response.trace.rankings["final"]
-    assert response.trace.fusion["applied_method"] == "lexical_rrf_fallback"
-    assert response.trace.fusion["dense_weight"] == 0.0
-    assert response.trace.fusion["bm25_body_weight"] == 1.0
-    assert response.trace.fusion["bm25_heading_weight"] == 1.0
+    assert response.trace.rankings["bm25_body"] == ()
+    assert response.trace.rankings["bm25_heading"] == ()
+    assert response.trace.rankings["final"] == ()
+    assert response.trace.fusion["applied_method"] == "dense"
+    assert response.trace.fusion["dense_weight"] == 1.0
+    assert response.trace.fusion["bm25_body_weight"] == 0.0
+    assert response.trace.fusion["bm25_heading_weight"] == 0.0
     assert {item.split(":", 1)[0] for item in response.trace.degraded} == {
         "dense_unavailable",
-        "reranker_unavailable",
     }
 
 

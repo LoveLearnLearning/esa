@@ -3,9 +3,9 @@
 # 用途有三：
 #   1. S006 概念讲解数据的种子（每个知识点按 10 个变体展开）
 #   2. S007 词面陷阱负样本的来源（trap 字段）
-#   3. recommend_practice / get_mastery_report / record_answer 的 kp_id 取值池
+#   3. recommend_practice / get_mastery_report / record_learning_evidence 的 kp_id 取值池
 #
-# kp_id 用 snake_case，与 tool_schemas.json 里 record_answer.kp_id 的示例格式一致
+# kp_id 用 snake_case，与 Tool schema 的 canonical kp_id 格式一致
 #   （"binary_tree_traversal / process_scheduling"）。
 #
 # 字段说明：

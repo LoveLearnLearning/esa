@@ -31,4 +31,4 @@ def test_response_preferences_are_kept_for_api_but_not_duplicated_into_prompt_js
 
     assert len(api_payload["response_preferences"]) == 3
     assert "response_preferences" not in prompt_payload
-    assert "explicit_context" in prompt_payload
+    assert "context" in prompt_payload

@@ -13,7 +13,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import math
 
-from ..chunk import Chunk
+from backend.agent.DocIR.core.geometry import Locator
+
+from ..chunk import Chunk, ChunkEvidence
 from ..inference import InferenceUnavailable
 from .contracts import RankedItem, Reranker, RetrievalConfig
 
@@ -57,6 +59,7 @@ def rerank_by_score(
 class CandidateSelection:
     """重排阶段产生的排名、最终候选、分数和降级记录。"""
 
+    preselection: tuple[RankedItem, ...]
     ranking: tuple[RankedItem, ...]
     final_candidates: tuple[RankedItem, ...]
     rerank_scores: Mapping[str, float]
@@ -65,38 +68,51 @@ class CandidateSelection:
     reranker_applied: bool
 
 
-def consolidate_adjacent_candidates(
+def consolidate_overlapping_candidates(
     ranked: Sequence[RankedItem],
     chunks: Mapping[str, Chunk],
 ) -> tuple[list[RankedItem], dict[str, tuple[str, ...]]]:
-    """Keep one ranked hit per coherent section/page and merge its other chunks."""
+    """Keep one ranked hit per explicitly or geometrically overlapping region."""
 
     accepted: list[RankedItem] = []
+    seen: list[Chunk] = []
+    owners_by_chunk_id: dict[str, str] = {}
     merged: dict[str, list[str]] = {}
-    group_owners: dict[str, str] = {}
+    group_owners: dict[tuple[str, str, str], str] = {}
     for item in ranked:
         chunk = chunks[item.chunk_id]
         owner_id = next(
             (
-                group_owners[group]
+                group_owners[(chunk.document_id, chunk.section_id, group)]
                 for group in chunk.overlap_group_ids
-                if group in group_owners
+                if (chunk.document_id, chunk.section_id, group) in group_owners
             ),
             None,
         )
         if owner_id is None:
-            for accepted_item in accepted:
-                owner = chunks[accepted_item.chunk_id]
-                if _same_result_region(owner, chunk):
-                    owner_id = owner.chunk_id
+            for previous in seen:
+                if _same_result_region(previous, chunk):
+                    owner_id = owners_by_chunk_id[previous.chunk_id]
                     break
         if owner_id is not None:
             merged.setdefault(owner_id, []).append(chunk.chunk_id)
+            owners_by_chunk_id[chunk.chunk_id] = owner_id
+            seen.append(chunk)
+            for group in chunk.overlap_group_ids:
+                group_owners.setdefault(
+                    (chunk.document_id, chunk.section_id, group),
+                    owner_id,
+                )
             continue
         accepted.append(item)
         merged.setdefault(chunk.chunk_id, [])
+        owners_by_chunk_id[chunk.chunk_id] = chunk.chunk_id
+        seen.append(chunk)
         for group in chunk.overlap_group_ids:
-            group_owners.setdefault(group, chunk.chunk_id)
+            group_owners.setdefault(
+                (chunk.document_id, chunk.section_id, group),
+                chunk.chunk_id,
+            )
 
     return accepted, {
         owner: tuple(
@@ -106,35 +122,150 @@ def consolidate_adjacent_candidates(
     }
 
 
-def _same_result_region(left: Chunk, right: Chunk) -> bool:
+def _same_result_region(
+    left: Chunk,
+    right: Chunk,
+) -> bool:
     if left.document_id != right.document_id:
         return False
-    if left.section_id == right.section_id:
-        return True
-    if _page_keys(left) & _page_keys(right):
-        return True
+    if left.section_id != right.section_id:
+        return False
+    return _evidence_regions_overlap(left, right)
+
+
+def _evidence_regions_overlap(left: Chunk, right: Chunk) -> bool:
+    """Require real text-span or page-geometry overlap; sharing a page is insufficient."""
+
+    for left_evidence in left.evidence:
+        for right_evidence in right.evidence:
+            if _text_spans_overlap(left_evidence, right_evidence):
+                return True
+            for left_locator in left_evidence.locators:
+                for right_locator in right_evidence.locators:
+                    if _locators_overlap(left_locator, right_locator):
+                        return True
+    return False
+
+
+def _text_spans_overlap(left: ChunkEvidence, right: ChunkEvidence) -> bool:
+    left_start = left.text_start
+    left_end = left.text_end
+    right_start = right.text_start
+    right_end = right.text_end
     return bool(
-        abs(left.document_order - right.document_order) == 1
-        or left.next_chunk_id == right.chunk_id
-        or left.previous_chunk_id == right.chunk_id
-        or right.next_chunk_id == left.chunk_id
-        or right.previous_chunk_id == left.chunk_id
+        left.element_id == right.element_id
+        and left.text_layer_id == right.text_layer_id
+        and left_start is not None
+        and left_end is not None
+        and right_start is not None
+        and right_end is not None
+        and left_start < right_end
+        and right_start < left_end
     )
 
 
-def _page_keys(chunk: Chunk) -> set[tuple[str, object]]:
-    keys: set[tuple[str, object]] = set()
-    for evidence in chunk.evidence:
-        for locator in evidence.locators:
-            if locator.kind != "page":
+def _locators_overlap(left: Locator, right: Locator) -> bool:
+    left_bbox = left.bbox
+    right_bbox = right.bbox
+    if left_bbox is None or right_bbox is None:
+        return False
+    left_page = _locator_page_key(left)
+    if left_page is None or left_page != _locator_page_key(right):
+        return False
+    return bool(
+        left_bbox.x0 < right_bbox.x1
+        and right_bbox.x0 < left_bbox.x1
+        and left_bbox.y0 < right_bbox.y1
+        and right_bbox.y0 < left_bbox.y1
+    )
+
+
+def _locator_page_key(locator: Locator) -> tuple[str, object] | None:
+    if locator.page_id is not None:
+        return ("page_id", locator.page_id)
+    if locator.page is not None:
+        return ("page", locator.page)
+    if locator.container_id is not None and locator.container_index is not None:
+        return ("container", (locator.container_id, locator.container_index))
+    return None
+
+
+def diversify_rerank_candidates(
+    ranked: Sequence[RankedItem],
+    chunks: Mapping[str, Chunk],
+    limit: int,
+) -> list[RankedItem]:
+    """Preserve a relevance core while preventing one document/section dominating."""
+
+    document_cap = max(2, math.ceil(limit * 0.4))
+    return _select_with_soft_caps(
+        ranked,
+        chunks,
+        limit,
+        passes=(
+            (2, document_cap),
+            (None, document_cap),
+            (None, None),
+        ),
+    )
+
+
+def diversify_final_candidates(
+    ranked: Sequence[RankedItem],
+    chunks: Mapping[str, Chunk],
+    limit: int,
+) -> list[RankedItem]:
+    """Build a diverse Top-K, then relax caps to guarantee deterministic refill."""
+
+    document_cap = max(1, math.ceil(limit * 0.6))
+    return _select_with_soft_caps(
+        ranked,
+        chunks,
+        limit,
+        passes=(
+            (1, document_cap),
+            (2, limit),
+            (None, None),
+        ),
+    )
+
+
+def _select_with_soft_caps(
+    ranked: Sequence[RankedItem],
+    chunks: Mapping[str, Chunk],
+    limit: int,
+    *,
+    passes: Sequence[tuple[int | None, int | None]],
+) -> list[RankedItem]:
+    accepted: list[RankedItem] = []
+    accepted_ids: set[str] = set()
+    document_counts: dict[str, int] = {}
+    section_counts: dict[tuple[str, str], int] = {}
+    for section_cap, document_cap in passes:
+        for item in ranked:
+            if item.chunk_id in accepted_ids:
                 continue
-            if locator.page_id:
-                keys.add(("page_id", locator.page_id))
-            elif locator.container_id:
-                keys.add(("container_id", locator.container_id))
-            elif locator.container_index is not None:
-                keys.add(("container_index", locator.container_index))
-    return keys
+            chunk = chunks[item.chunk_id]
+            section_key = (chunk.document_id, chunk.section_id)
+            if (
+                document_cap is not None
+                and document_counts.get(chunk.document_id, 0) >= document_cap
+            ):
+                continue
+            if (
+                section_cap is not None
+                and section_counts.get(section_key, 0) >= section_cap
+            ):
+                continue
+            accepted.append(item)
+            accepted_ids.add(item.chunk_id)
+            document_counts[chunk.document_id] = (
+                document_counts.get(chunk.document_id, 0) + 1
+            )
+            section_counts[section_key] = section_counts.get(section_key, 0) + 1
+            if len(accepted) == limit:
+                return accepted
+    return accepted
 
 
 @dataclass(frozen=True)
@@ -152,7 +283,16 @@ class CandidateReranker:
     ) -> CandidateSelection:
         """从 fusion 排名产生最终候选；模型故障时保留 fusion 顺序。"""
 
-        candidates = list(fused[: self.config.rerank_limit])
+        overlap_deduplicated, overlap_merged = consolidate_overlapping_candidates(
+            fused,
+            self.chunks,
+        )
+        candidates = diversify_rerank_candidates(
+            overlap_deduplicated,
+            self.chunks,
+            self.config.rerank_limit,
+        )
+        preselection = tuple(candidates)
         rerank_scores: dict[str, float] = {}
         degraded: list[str] = []
         reranker_applied = False
@@ -187,20 +327,21 @@ class CandidateReranker:
             ]
 
         ranking = tuple(candidates)
-        consolidated, merged_context_chunk_ids = consolidate_adjacent_candidates(
-            candidates,
-            self.chunks,
+        final_candidates = tuple(
+            diversify_final_candidates(
+                candidates,
+                self.chunks,
+                self.config.final_limit,
+            )
         )
-        final_candidates = tuple(consolidated[: self.config.final_limit])
-        retained_ids = {item.chunk_id for item in final_candidates}
         return CandidateSelection(
+            preselection=preselection,
             ranking=ranking,
             final_candidates=final_candidates,
             rerank_scores=rerank_scores,
             merged_context_chunk_ids={
-                chunk_id: values
-                for chunk_id, values in merged_context_chunk_ids.items()
-                if chunk_id in retained_ids
+                item.chunk_id: overlap_merged.get(item.chunk_id, ())
+                for item in final_candidates
             },
             degraded=tuple(degraded),
             reranker_applied=reranker_applied,

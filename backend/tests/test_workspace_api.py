@@ -230,14 +230,17 @@ def test_learning_conversations_bind_only_active_student_classrooms(tmp_path):
         },
     )
     assert outsider.status_code == 404
-    assert client.post(
-        "/api/conversations",
-        headers=teacher_headers,
-        json={
-            "workspace_type": "teaching",
-            "class_id": classroom["class_id"],
-        },
-    ).status_code == 201
+    assert (
+        client.post(
+            "/api/conversations",
+            headers=teacher_headers,
+            json={
+                "workspace_type": "teaching",
+                "class_id": classroom["class_id"],
+            },
+        ).status_code
+        == 201
+    )
 
     assignment = client.app.state.teaching_store.create_assignment(
         class_id=classroom["class_id"],
@@ -278,6 +281,38 @@ def test_research_projects_are_user_scoped_and_bind_research_chats(tmp_path):
     assert created.status_code == 201
     project = created.json()
     assert project["status"] == "active"
+
+    group_response = client.post(
+        "/api/groups",
+        headers=alice,
+        json={"name": "项目资料", "project_id": project["project_id"]},
+    )
+    assert group_response.status_code == 201
+    project_group = group_response.json()
+    assert project_group["project_id"] == project["project_id"]
+
+    grouped = client.post(
+        "/api/conversations",
+        headers=alice,
+        json={
+            "title": "分组项目讨论",
+            "workspace_type": "research",
+            "research_project_id": project["project_id"],
+            "group_id": project_group["group_id"],
+        },
+    )
+    assert grouped.status_code == 201
+
+    wrong_group_scope = client.post(
+        "/api/conversations",
+        headers=alice,
+        json={
+            "title": "学习对话不能进入科研分组",
+            "workspace_type": "learning",
+            "group_id": project_group["group_id"],
+        },
+    )
+    assert wrong_group_scope.status_code == 422
 
     alice_projects = client.get("/api/research/projects", headers=alice)
     bob_projects = client.get("/api/research/projects", headers=bob)
@@ -362,4 +397,4 @@ def test_research_workspace_has_only_scoped_tools():
     assert "arxiv_search" in research_tool_names
     assert "web_search" in research_tool_names
     assert "get_mastery_report" not in research_tool_names
-    assert "retrieve_knowledge" not in research_tool_names
+    assert "retrieve_knowledge" in research_tool_names

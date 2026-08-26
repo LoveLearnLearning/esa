@@ -104,6 +104,7 @@ class WorkspaceRuntime:
             run_id=str(turn.request_metadata.get("run_id") or request_id),
             total_weeks=turn.request_metadata.get("total_weeks"),
             knowledge_sources=turn.knowledge_sources,
+            personal_knowledge_base_id=turn.personal_knowledge_base_id,
         )
         return self.builder.build(
             turn=turn,

@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 from backend.agent.tools.bootstrap import register_builtin_tools
+from backend.agent.tools.catalog import compact_tool_schema
 from backend.agent.tools import tr
 
 OUTPUT_PATH = Path(__file__).resolve().with_name("tool_schemas.json")
@@ -25,7 +26,11 @@ def export_tool_schemas(output_path: str | Path = OUTPUT_PATH) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps(tr.schemas, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(
+            [compact_tool_schema(schema) for schema in tr.schemas],
+            ensure_ascii=False,
+            indent=2,
+        ) + "\n",
         encoding="utf-8",
     )
     return path

@@ -314,13 +314,32 @@ void main() {
     expect(tester.widget<TextField>(input).controller!.text, isEmpty);
   });
 
-  testWidgets('knowledge source menu supports independent multi-selection', (
+  testWidgets('knowledge source menu selects one personal KB plus public', (
     tester,
   ) async {
     var selected = <KnowledgeSource>{
       KnowledgeSource.personal,
       KnowledgeSource.public,
     };
+    String? personalKnowledgeBaseId = 'kb-a';
+    const knowledgeBases = [
+      PersonalKnowledgeBaseSummary(
+        id: 'kb-a',
+        name: '知识库 A',
+        fileCount: 1,
+        chunkCount: 2,
+        indexCount: 2,
+        updatedAt: null,
+      ),
+      PersonalKnowledgeBaseSummary(
+        id: 'kb-b',
+        name: '知识库 B',
+        fileCount: 1,
+        chunkCount: 2,
+        indexCount: 2,
+        updatedAt: null,
+      ),
+    ];
     await tester.pumpWidget(
       MaterialApp(
         theme: esaTheme(brightness: Brightness.dark),
@@ -330,8 +349,20 @@ void main() {
               busy: false,
               onSend: (_, _) {},
               knowledgeSources: selected,
+              personalKnowledgeBases: knowledgeBases,
+              personalKnowledgeBaseId: personalKnowledgeBaseId,
               onKnowledgeSourcesChanged: (value) {
                 setState(() => selected = value);
+              },
+              onPersonalKnowledgeBaseChanged: (value) {
+                setState(() {
+                  personalKnowledgeBaseId = value;
+                  if (value == null) {
+                    selected.remove(KnowledgeSource.personal);
+                  } else {
+                    selected.add(KnowledgeSource.personal);
+                  }
+                });
               },
             ),
           ),
@@ -339,12 +370,17 @@ void main() {
       ),
     );
 
-    expect(find.text('知识库：全部'), findsOneWidget);
+    expect(find.text('知识库：知识库 A + 公共'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('knowledge-source-menu')));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(CheckboxMenuButton, '个人知识库'));
+    await tester.tap(find.widgetWithText(CheckboxMenuButton, '知识库 B'));
     await tester.pump();
 
+    expect(personalKnowledgeBaseId, 'kb-b');
+    expect(selected, {KnowledgeSource.personal, KnowledgeSource.public});
+    await tester.tap(find.widgetWithText(CheckboxMenuButton, '知识库 B'));
+    await tester.pump();
+    expect(personalKnowledgeBaseId, isNull);
     expect(selected, {KnowledgeSource.public});
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();

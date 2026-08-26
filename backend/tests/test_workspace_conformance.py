@@ -125,7 +125,8 @@ def test_compiled_skills_are_closed_over_the_resource_scoped_tool_view():
     )
     assert "parse_pdf_attachment" in with_attachments.capabilities.tool_names
     assert "parse_pdf_attachment" in with_attachments.capabilities.skill_names
-    assert "parse_pdf_attachment" in with_attachments.capabilities.autoload_skills
+    assert "parse_pdf_attachment" in with_attachments.capabilities.skill_index
+    assert "parse_pdf_attachment" not in with_attachments.capabilities.autoload_skills
     for skill in with_attachments.skills.definitions:
         assert set(skill.requires_tools) <= with_attachments.tools.names
 

@@ -34,6 +34,13 @@ from .inference import (
     VLLMReranker,
 )
 from .lifecycle import RAGApplicationLifecycle
+from .retrieval_trigger import (
+    DisabledIntentTriggeredRetrieval,
+    RetrievalTrigger,
+    RetrievalTriggerContext,
+    RetrievalTriggerDecision,
+    RetrievalTriggerMode,
+)
 from .retrieval.context import ContextBuilder, EvidenceAssembler
 from .retrieval.contracts import ContextLevel, RetrievalConfig, SearchResponse
 from .retrieval.reranking import CandidateReranker, CandidateSelection
@@ -57,6 +64,7 @@ __all__ = [
     "CandidateSelection",
     "ContextBuilder",
     "ContextLevel",
+    "DisabledIntentTriggeredRetrieval",
     "EvaluationCase",
     "EvidenceAssembler",
     "HashingEmbeddingProvider",
@@ -79,6 +87,10 @@ __all__ = [
     "RetrievalConfig",
     "RetrievalMetrics",
     "RetrievalService",
+    "RetrievalTrigger",
+    "RetrievalTriggerContext",
+    "RetrievalTriggerDecision",
+    "RetrievalTriggerMode",
     "RouteResult",
     "RouteRetriever",
     "RuleBasedQueryProcessor",

@@ -47,15 +47,20 @@ POSITIVE_TOOL = {
     "get_review_timing": "get_review_timing",
     "get_learning_evidence_summary": "get_learning_evidence_summary",
     "search_core_memories": "search_core_memories",
+    # 2026-08-22 上游新增的三个（见 seeds/new_tools.yaml 里那段能力边界说明）
+    "retrieve_federated_knowledge": "retrieve_federated_knowledge",
+    "retrieve_personal_knowledge": "retrieve_personal_knowledge",
+    "run_in_sandbox": "run_in_sandbox",
 }
 CONFUSION_TARGET = {
     "混淆_应调get_mastery_report": "get_mastery_report",
     "混淆_应调recommend_practice": "recommend_practice",
     "混淆_应调get_mastery_level": "get_mastery_level",
-    # 2026-08-19：翻面。record_answer 已被后端标为弃用，正解是 record_learning_evidence，
-    # 它自己退回诱饵位（gen_confusion 会把 wrong_tool 一起放进 tool_names）。
-    "混淆_已弃用record_answer": "record_learning_evidence",
     "混淆_应调get_core_memories": "get_core_memories",
+    # 三个检索工具的分工来自 schema description，不是我们定的：
+    # 默认走联合，只有用户明确限定范围时才用单库工具。
+    "混淆_应调retrieve_personal_knowledge": "retrieve_personal_knowledge",
+    "混淆_应调retrieve_knowledge": "retrieve_knowledge",
 }
 
 # record_learning_evidence 的参数**逐条**写在种子里，不再按组写死。
@@ -65,7 +70,7 @@ CONFUSION_TARGET = {
 # 共用 `correct: False`，等于把用户说对的记成错的。
 # 生成器改成按话术轮流取之后，这 10 条当场被 validate 的 answer_polarity 抓出来。
 #
-# 和 `混淆_应调record_answer` 是同一条规矩：**语义标签从种子读，不在生成器里猜**。
+# 语义标签从种子读，不在生成器里猜。
 # 生成器只负责把种子里除 q 之外的键原样填进参数。
 EVIDENCE_KEYS_FROM_SEED = {
     "activity_type", "correct", "self_confidence", "evidence_reliability",
@@ -138,6 +143,26 @@ def _answer_for(tool: str, result: dict, kp: str) -> str:
         return (f"最近 {result['evidence_count']} 条学习证据显示：独立完成率 **{result['independent_rate']}**，"
                 f"平均提示等级 {result['avg_hint_level']}，正确率 {result['correct_rate']}。"
                 f"错误类型分布：{errs}。")
+    if tool in ("retrieve_federated_knowledge", "retrieve_personal_knowledge"):
+        # 我们只能产出降级/不可用状态（种子里那段能力边界说明写了为什么）。
+        # ⚠️ 这一支**刻意不讲知识内容** —— 检索空手而回时顺嘴讲一段通用解释，
+        # 就是在替一个没返回证据的工具编来源。如实说没接上、给出下一步，
+        # 才是这批样本要教的东西。
+        if result.get("degraded"):
+            if tool == "retrieve_personal_knowledge":
+                return ("个人知识库现在不可用，你上传的资料我这边读不到。"
+                        "要么等它恢复，要么你把想看的那段贴过来，我基于它讲。")
+            return ("两边知识库这次都没接上（个人库不可用、公共库检索失败），"
+                    "所以我没法引用资料原文。要我按通用理解先讲一遍吗？"
+                    "或者你把相关材料贴过来，我基于它讲。")
+        raise SystemExit(f"{tool} 出现了非降级返回，说明 fixture 变了，回去核对后端")
+    if tool == "run_in_sandbox":
+        if result.get("error") == "sandbox_disabled":
+            return ("沙箱当前没启用，我这边跑不了代码。"
+                    "你可以本地跑一下把输出贴给我，或者我先把这段逻辑讲清楚。")
+        if result["ok"]:
+            return f"跑完了，输出是 `{result['stdout'].strip()}`。"
+        raise SystemExit("run_in_sandbox 出现了未预期的失败形态，回去核对种子")
     if tool == "search_core_memories":
         # ⚠️ 线上返回的是 **list**，没有 count / memories 这两个键（上一版按 dict 写的）。
         # 空结果是常态而不是异常：抽象词（偏好 / 讲解方式 / 学习目标）在真实检索里
@@ -177,17 +202,6 @@ def _answer_for(tool: str, result: dict, kp: str) -> str:
         # 同样是 **list**，没有 count 键 —— 要数数量就 len()。
         items = "；".join(f"{m['memory_key']}：{m['content']}" for m in result[:3])
         return f"我一共保存了 {len(result)} 条关于你的核心记忆，包括：{items}。"
-    if tool == "record_answer":
-        # 答对和答错要给不同的回应 —— 用同一句话打发，等于告诉模型对错无所谓。
-        # 字段全在 evidence / state 两层里（顶层只有 saved/evidence/state），
-        # 上一版按 {correct, kp_id, mastery_before, mastery_after, practice_count}
-        # 七个平铺的键写，一个都对不上。
-        ev, st = result["evidence"], result["state"]
-        head = "记下了。" if ev["correct"] else "记下了，这次没做对。"
-        tail = ("" if ev["correct"]
-                else f"要不要我帮你看看「{st['kp_id']}」是卡在哪一步？")
-        return (f"{head}「{st['kp_id']}」的掌握度从 {st['old_mastery']} "
-                f"更新到 **{st['mastery_level']}**，累计练习 {st['practice_count']} 次。{tail}")
     return "好的。"
 
 
@@ -257,19 +271,46 @@ def gen_positive(cfg, tool, group, phrasings, rng, all_names, version, out, budg
                     f"seeds/new_tools.yaml 的 search_core_memories 正例缺 query 字段：{p!r}"
                 )
             args = {"query": meta["query"]}
+        elif tool in ("retrieve_federated_knowledge", "retrieve_personal_knowledge"):
+            # 和 search_core_memories 同一条规矩：检索词由种子显式给出，
+            # 不拿知识点名顶替 —— 用户问的和该检索的常常不是同一个词。
+            if not meta.get("query"):
+                raise SystemExit(
+                    f"seeds/new_tools.yaml 的 {group} 缺 query 字段：{p!r}")
+            args = {"query": meta["query"]}
+        elif tool == "run_in_sandbox":
+            if not meta.get("command"):
+                raise SystemExit(
+                    f"seeds/new_tools.yaml 的 {group} 缺 command 字段：{p!r}")
+            args = {"command": meta["command"]}
         else:
             args = {"kp_id": kp}
-        try:
-            result = execute(tool, args)
-        except Exception as exc:  # noqa: BLE001
-            print(f"    ⚠️  {tool}({args}) 执行失败，已跳过：{exc}")
-            continue
+        if tool == "run_in_sandbox":
+            # ⚠️ 不走 execute：fixture 不真的执行命令，stdout/exit_code 必须是
+            # 种子里**真跑过一次**的结果（命令刻意选与环境无关的）。编输出等于
+            # 教模型消费一个假的执行结果。
+            if meta.get("disabled"):
+                from esa.fixtures import sandbox_disabled as _disabled
+                result = _disabled()
+            else:
+                from esa.fixtures import run_in_sandbox as _sandbox
+                result = _sandbox(meta["command"],
+                                  _stdout=meta.get("stdout", ""),
+                                  _stderr=meta.get("stderr", ""),
+                                  _exit_code=int(meta.get("exit_code", 0)))
+        else:
+            try:
+                result = execute(tool, args)
+            except Exception as exc:  # noqa: BLE001
+                print(f"    ⚠️  {tool}({args}) 执行失败，已跳过：{exc}")
+                continue
         out.append(mk(
             f"{tool}_{group}_{n:04d}", f"{tool}__{group}__{kp if has_kp else group}",
-            "single_tool_call", SYSTEM, [tool],
+            "tool_error" if meta.get("disabled") else "single_tool_call", SYSTEM, [tool],
             [Turn(role="user", content=query),
              Turn(role="tool_call", calls=[ToolCall(tool, args)]),
-             Turn(role="tool_result", results=[ToolResult(tool, result)]),
+             Turn(role="tool_result", results=[
+                 ToolResult(tool, result, is_error=bool(meta.get("disabled")))]),
              # 话术里没提知识点时传空串 —— 回答不能引用用户没说过的东西。
              Turn(role="assistant", content=_answer_for(tool, result, kp if has_kp else ""))],
             version, rng, all_names, topic=kp))
@@ -278,26 +319,16 @@ def gen_positive(cfg, tool, group, phrasings, rng, all_names, version, out, budg
         print(f"    {tool}/{group}: {n}/{budget}，需补话术种子")
 
 
-# 各工具的最小合法参数。缺了必填参数会抛 TypeError，
-# 而之前那个 `except Exception: continue` 会把整批样本静默吞掉 ——
-# record_answer 的混淆样本就是这么一条都没生成的，直到覆盖率报告显示 0 才发现。
-# 第三个参数 meta 是种子里显式给出的语义标签（目前只有 record_answer 的 correct 用到）。
-#
-# ⚠️ `record_answer` 原来写死 `"correct": True`，不管用户说的是做对了还是答错了 ——
-# 「刚做完哈希表的练习，答错了」的 gold 也成了 correct=True，等于教模型把错的记成对的。
-# 凡是**语义标签**，一律从种子里读，不在生成器里猜：生成器能程序化决定的是参数怎么填，
-# 不是用户到底答对没答对。
-# 少数组的「诱饵」不是种子的顶层 key（见 gen_confusion 里的说明）。
-CONFUSION_LURE = {"混淆_已弃用record_answer": "record_answer"}
-
 CONFUSION_ARGS = {
     "recommend_practice": lambda course, kp, meta: {"course": course, "weeks_to_exam": 4},
     "get_mastery_report": lambda course, kp, meta: {"course": course},
     "get_core_memories": lambda course, kp, meta: {},
-    "record_answer": lambda course, kp, meta: {"kp_id": kp, "correct": meta["correct"]},
     "record_learning_evidence": lambda course, kp, meta: {
         "kp_id": kp, "activity_type": meta["activity_type"], "correct": meta["correct"]},
     "get_mastery_level": lambda course, kp, meta: {"kp_id": kp},
+    # 检索词从种子读，不拿知识点名顶替
+    "retrieve_personal_knowledge": lambda course, kp, meta: {"query": meta["query"]},
+    "retrieve_knowledge": lambda course, kp, meta: {"query": meta["query"]},
 }
 
 
@@ -323,14 +354,10 @@ def gen_confusion(cfg, wrong_tool, group, phrasings, right_tool, rng, all_names,
             print(f"    ⚠️  {group} → {right_tool}({args}) 执行失败，已跳过：{exc}")
             continue
         answer = _answer_for(right_tool, result, kp)
-        # 诱饵与正解同时在场。多数组里「诱饵」就是种子的顶层 key（wrong_tool），
-        # 但 `混淆_已弃用record_answer` 是翻过面的：顶层 key 是正解，
-        # 真正的诱饵是那个已弃用的 record_answer，用 `lure` 显式指定。
-        lure = CONFUSION_LURE.get(group, wrong_tool)
         out.append(mk(
             f"{wrong_tool}_conf_{j:03d}", f"{wrong_tool}__{group}__{j:03d}",
             "single_tool_call", SYSTEM,
-            [right_tool, lure],
+            [right_tool, wrong_tool],
             [Turn(role="user", content=query),
              Turn(role="tool_call", calls=[ToolCall(right_tool, args)]),
              Turn(role="tool_result", results=[ToolResult(right_tool, result)]),
@@ -347,7 +374,7 @@ def gen_gate_negative(cfg, tool, group, phrasings, rng, all_names, version, out,
         out.append(mk(
             f"{tool}_gate_{j:03d}", f"{tool}__{group}__{j:03d}",
             "hard_negative", SYSTEM,
-            [tool, "record_answer", "get_mastery_level"],
+            [tool, "get_mastery_level"],
             [Turn(role="user", content=query),
              Turn(role="assistant", content=reply.format(kp=kp))],
             version, rng, all_names, topic=kp))
@@ -400,6 +427,16 @@ def main() -> int:
                 else:
                     gen_gate_negative(cfg, tool, group, phrasings, rng, all_names,
                                       version, out, GATE_REPLIES[tool])
+            else:
+                # ⚠️ 2026-08-22 补：分派只认 `正例` / `混淆` / `gate未满足` 三个前缀，
+                # 起了别的名字会被**静默跳过** —— 种子写了、生成器一声不吭、
+                # 覆盖率报告也不会少一行，因为它根本不知道该有这一组。
+                # 我加 run_in_sandbox 的失败态时就踩了：组名写成「沙箱未启用」，
+                # 样本一条没出，是逐条翻 IR 才发现的。
+                raise SystemExit(
+                    f"seeds/new_tools.yaml 的 {tool} 下有个组名 {group!r} 不认识。\n"
+                    "组名必须以 `正例` / `混淆` / `gate未满足` 开头 —— "
+                    "否则会被静默跳过。")
 
     dump_samples(out, OUT)
     from collections import Counter

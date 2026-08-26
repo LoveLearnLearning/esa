@@ -7,13 +7,24 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # 风格/语调合法枚举 供偏好与分组接口共用
 VALID_STYLES = {"concise", "detailed", "socratic"}
 VALID_TONES = {"friendly", "formal", "encouraging", "strict"}
 # 当前仅支持计算机学科
 VALID_MAJORS = {"cs"}
+
+
+def _strip_nonempty(value: str | None) -> str | None:
+    """Normalize optional user-facing labels and reject whitespace-only input."""
+
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("内容不能为空或仅包含空白字符")
+    return normalized
 
 
 # 请求
@@ -55,7 +66,22 @@ class SendMessageRequest(BaseModel):
     knowledge_sources: list[str] = Field(
         default_factory=lambda: ["personal", "public"], max_length=2
     )
+    personal_knowledge_base_id: str | None = Field(default=None, max_length=128)
     replace_message_id: int | None = Field(default=None, ge=1)
+    task_mode: Literal[
+        "explain_problem",
+        "study_plan",
+        "search_materials",
+        "review_homework",
+        "concept",
+        "mastery_report",
+        "practice_recommendation",
+        "academic_search",
+        "literature_frontier",
+        "academic_writing",
+        "research_data_analysis",
+        "research_planning",
+    ] | None = None
 
     @model_validator(mode="after")
     def validate_knowledge_sources(self) -> "SendMessageRequest":
@@ -65,8 +91,47 @@ class SendMessageRequest(BaseModel):
         self.knowledge_sources = [
             source for source in ("personal", "public") if source in received
         ]
+        if (
+            self.personal_knowledge_base_id is not None
+            and "personal" not in received
+        ):
+            raise ValueError(
+                "personal_knowledge_base_id 仅能与 personal 来源一起使用"
+            )
         return self
 
+
+class PlannerTodoCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    due_at: datetime | None = None
+
+    _normalize_title = field_validator("title")(_strip_nonempty)
+
+
+class PlannerTodoUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    due_at: datetime | None = None
+    done: bool | None = None
+
+    _normalize_title = field_validator("title")(_strip_nonempty)
+
+
+class PlannerGoalCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    target_at: datetime | None = None
+    progress: int = Field(default=0, ge=0, le=100)
+
+    _normalize_title = field_validator("title")(_strip_nonempty)
+
+
+class PlannerGoalUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    target_at: datetime | None = None
+    progress: int | None = Field(default=None, ge=0, le=100)
+
+    _normalize_title = field_validator("title")(_strip_nonempty)
 
 class CodeExecutionRequest(BaseModel):
     """Code block submitted to the auxiliary-model sandbox pipeline."""
@@ -163,6 +228,7 @@ class ConversationPatchRequest(BaseModel):
     group_id: str | None = Field(default=None)
     class_id: str | None = None
     assignment_id: str | None = None
+    pinned: bool | None = None
 
 
 class ResearchProjectProfileUpdateRequest(BaseModel):
@@ -178,6 +244,7 @@ class GroupCreateRequest(BaseModel):
     custom_instruction: str = Field(default="", max_length=500)
     style: str | None = Field(default=None)
     tone: str | None = Field(default=None)
+    project_id: str | None = None
 
 
 class GroupUpdateRequest(BaseModel):
@@ -187,6 +254,12 @@ class GroupUpdateRequest(BaseModel):
     custom_instruction: str | None = Field(default=None, max_length=500)
     style: str | None = Field(default=None)
     tone: str | None = Field(default=None)
+    project_id: str | None = None
+    pinned: bool | None = None
+
+
+class GroupReorderRequest(BaseModel):
+    group_ids: list[str] = Field(min_length=0, max_length=20)
 
 
 class CoreMemoryUpsertRequest(BaseModel):
@@ -248,6 +321,7 @@ class UserProfileOut(BaseModel):
     current_week: int
     total_weeks: int
     profile_enabled: bool
+    display_name: str
 
 
 class UpdateUserProfileRequest(BaseModel):
@@ -257,6 +331,9 @@ class UpdateUserProfileRequest(BaseModel):
     current_week: int | None = Field(None, ge=1, le=30)
     total_weeks: int | None = Field(None, ge=1, le=30)
     profile_enabled: bool | None = Field(None)
+    display_name: str | None = Field(None, min_length=1, max_length=40)
+
+    _normalize_display_name = field_validator("display_name")(_strip_nonempty)
 
 
 # ===== Profile V2 Schema =====
@@ -282,6 +359,7 @@ class ProfileViewOut(BaseModel):
     current_week: int
     total_weeks: int
     profile_enabled: bool
+    display_name: str
     explicit: list[ProfileFieldOut] = Field(default_factory=list)
     preferences: list[ProfileFieldOut] = Field(default_factory=list)
     goals: list[ProfileFieldOut] = Field(default_factory=list)
@@ -343,9 +421,36 @@ class LoginResponse(BaseModel):
     session_id: str
     user_id: str
     username: str
+    display_name: str
     email: str | None = None
     account_role: Literal["student", "teacher"]
     expires_at: datetime
+
+
+class PlannerTodoOut(BaseModel):
+    todo_id: str
+    user_id: str
+    title: str
+    due_at: datetime | None = None
+    done: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlannerGoalOut(BaseModel):
+    goal_id: str
+    user_id: str
+    title: str
+    description: str
+    target_at: datetime | None = None
+    progress: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlannerSnapshotOut(BaseModel):
+    todos: list[PlannerTodoOut]
+    goals: list[PlannerGoalOut]
 
 
 class MessageOut(BaseModel):
@@ -365,6 +470,15 @@ class GroupOut(BaseModel):
     custom_instruction: str
     style: str | None = None
     tone: str | None = None
+    project_id: str | None = None
+    pinned: bool = False
+    sort_order: int = 0
     conversation_count: int = 0
     created_at: str
     updated_at: str
+
+
+class UserStatsOut(BaseModel):
+    conversation_count: int
+    pinned_count: int
+    learning_streak_days: int

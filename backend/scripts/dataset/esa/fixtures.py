@@ -443,36 +443,6 @@ def get_mastery_level(kp_id: str, user_name: str = "stu_demo") -> dict[str, Any]
     return {"allowed": True, **st}
 
 
-def record_answer(kp_id: str, correct: bool, confidence: float = 1.0,
-                  user_name: str = "stu_demo") -> dict[str, Any]:
-    """处理 `record_answer` 相关逻辑。
-
-    Args:
-        kp_id: str => kp ID。
-        correct: bool => `correct` 参数。
-        confidence: float => `confidence` 参数。
-        user_name: str => `user_name` 参数。
-
-    Returns:
-        dict[str, Any] => 处理结果。
-    """
-    err = _kp_error("record_answer", kp_id)
-    if err is not None:
-        return err
-    if not 0.0 <= confidence <= 1.0:
-        raise ToolError(f"confidence 必须在 0.0-1.0 之间，收到 {confidence}")
-    st = load_states(user_name).get(kp_id)
-    before = float(st["mastery_level"]) if st else PRIOR_MASTERY
-    if correct:
-        after = min(MAX_MASTERY, before + (MAX_MASTERY - before) * 0.25 * confidence)
-    else:
-        after = max(MIN_MASTERY, before - (before - MIN_MASTERY) * 0.30 * confidence)
-    return _apply_evidence_payload(
-        kp_id=kp_id, user_name=user_name, correct=correct, before=before, after=after,
-        prev=st, activity_type="practice", evidence_reliability=confidence,
-    )
-
-
 def _apply_evidence_payload(
     *, kp_id: str, user_name: str, correct: bool, before: float, after: float,
     prev: dict[str, Any] | None, activity_type: str, evidence_reliability: float,
@@ -481,7 +451,7 @@ def _apply_evidence_payload(
     explanation_score: Any = None, transfer_score: Any = None,
     error_type: Any = None, misconception: Any = None,
 ) -> dict[str, Any]:
-    """`record_answer` / `record_learning_evidence` 的共同返回体。
+    """`record_learning_evidence` 的规范返回体。
 
     ⚠️ 结构逐字对齐 `data/cache/learning_real.json` 里 `apply_evidence` 的真实返回：
     `{saved, evidence{16 字段}, state{20 字段}}`。
@@ -615,35 +585,46 @@ def record_learning_evidence(kp_id: str, activity_type: str, user_name: str = "s
     if err is not None and err not in ERROR_TYPES:
         raise ToolError(f"error_type 必须是 {ERROR_TYPES} 之一，收到 {err!r}")
 
-    evidence = {
-        "user_name": user_name, "kp_id": kp_id, "activity_type": activity_type,
-        "correct": kw.get("correct"),
-        "self_confidence": kw.get("self_confidence"),
-        "evidence_reliability": max(0.0, min(1.0, float(kw.get("evidence_reliability", 1.0)))),
-        "hint_level": max(0, min(5, int(kw.get("hint_level", 0)))),
-        "attempts": max(1, int(kw.get("attempts", 1))),
-        "independent": kw.get("independent"),
-        "recall_score": kw.get("recall_score"),
-        "explanation_score": kw.get("explanation_score"),
-        "transfer_score": kw.get("transfer_score"),
-        "error_type": err,
-        "misconception": kw.get("misconception"),
-        "created_at": NOW.isoformat(sep=" ", timespec="seconds"),
-    }
+    reliability = max(
+        0.0,
+        min(1.0, float(kw.get("evidence_reliability", 1.0))),
+    )
+    hint_level = max(0, min(5, int(kw.get("hint_level", 0))))
+    attempts = max(1, int(kw.get("attempts", 1)))
     st = load_states(user_name).get(kp_id)
     before = float(st["mastery_level"]) if st else PRIOR_MASTERY
     correct = kw.get("correct")
-    rel = evidence["evidence_reliability"]
     if correct is True:
-        after = min(MAX_MASTERY, before + (MAX_MASTERY - before) * 0.25 * rel)
+        after = min(
+            MAX_MASTERY,
+            before + (MAX_MASTERY - before) * 0.25 * reliability,
+        )
     elif correct is False:
-        after = max(MIN_MASTERY, before - (before - MIN_MASTERY) * 0.30 * rel)
+        after = max(
+            MIN_MASTERY,
+            before - (before - MIN_MASTERY) * 0.30 * reliability,
+        )
     else:
         after = before
-    state = dict(st) if st else {"user_name": user_name, "kp_id": kp_id, "practice_count": 0}
-    state["mastery_level"] = round(after, 2)
-    state["practice_count"] = state.get("practice_count", 0) + 1
-    return {"saved": True, "evidence": evidence, "state": state}
+    return _apply_evidence_payload(
+        kp_id=kp_id,
+        user_name=user_name,
+        correct=correct,
+        before=before,
+        after=after,
+        prev=st,
+        activity_type=activity_type,
+        evidence_reliability=reliability,
+        hint_level=hint_level,
+        attempts=attempts,
+        independent=kw.get("independent"),
+        self_confidence=kw.get("self_confidence"),
+        recall_score=kw.get("recall_score"),
+        explanation_score=kw.get("explanation_score"),
+        transfer_score=kw.get("transfer_score"),
+        error_type=err,
+        misconception=kw.get("misconception"),
+    )
 
 
 def get_learning_evidence_summary(kp_id: str = "", limit: int = 50,
@@ -1010,8 +991,8 @@ def search_core_memories(query: str, category: str = "", limit: int = 5) -> list
 LEARNING_READ_BLOCKED = "isolated mode"
 LEARNING_WRITE_BLOCKED = "conversation mode forbids writes"
 
-# 写工具：非 normal 模式一律走这一支（record_answer / record_learning_evidence）
-LEARNING_WRITE_TOOLS = {"record_answer", "record_learning_evidence"}
+# 写工具：非 normal 模式一律走这一支。
+LEARNING_WRITE_TOOLS = {"record_learning_evidence"}
 
 
 def blocked_learning_read(action: str) -> dict[str, Any]:
@@ -1030,12 +1011,7 @@ def blocked_learning(tool: str, mode: str = "isolated") -> dict[str, Any]:
     分支顺序照抄后端（`learning/runtime.py:108-114`）：
     **isolated 先判、对所有工具一视同仁**，然后才是「非 normal 且是写工具」。
 
-    ⚠️ 2026-08-19 改：上一版这里写着 `mode == "isolated" and tool != "record_answer"`，
-    复刻的是后端**当时**的不对称行为（isolated 下 record_answer 落到写阻断）。
-    后端在 `ce37198..2aea243` 之间把 runtime.py 重写了，那个不对称没了 ——
-    `test_fixture_contract` 当场判红（线上 `{allowed, action, reason}`、
-    我们 `{saved, reason}`）。这就是那个契约测试存在的理由：
-    手抄的行为会过期，而**过期了没有任何东西会说话**（5.16）。
+    分支应持续与后端学习运行时保持一致。
     """
     if mode == "isolated":
         return blocked_learning_read(tool)
@@ -1052,7 +1028,6 @@ BLOCKED_BUILDERS = {
     "get_review_timing": lambda **kw: blocked_learning("get_review_timing", **kw),
     "get_learning_evidence_summary":
         lambda **kw: blocked_learning("get_learning_evidence_summary", **kw),
-    "record_answer": lambda **kw: blocked_learning("record_answer", **kw),
     "record_learning_evidence": lambda **kw: blocked_learning("record_learning_evidence", **kw),
 }
 
@@ -1137,14 +1112,122 @@ def web_search_failed(detail: str = WEB_SEARCH_NOT_CONFIGURED) -> dict[str, Any]
     return _exec_error("web_search", detail)
 
 
+def retrieve_federated_knowledge(query: str, top_k: int = 5,
+                                 similarity_threshold: float | None = None) -> dict[str, Any]:
+    """联合检索在**两个 scope 都不可用**时的返回。
+
+    ⚠️ 只能产出这一种状态。成功返回需要真实 RAG 服务，我们没有，
+    也**不许编**（理由见本文件抬头那次 220 条样本的教训，以及《02》「不伪造」承诺）。
+
+    结构不是手写的：2026-08-22 直接跑了后端
+    `backend/agent/rag/federated.py::retrieve_federated_knowledge_payload`
+    （`personal_service=None` / `public_service=None`），逐字段抄回来。
+    个人库无服务 → `_empty_personal` 给 `personal_knowledge_base_unavailable`；
+    公共库无服务 → `retrieve_knowledge_payload` 抛错 → `public_retrieval_failed`；
+    `_merge_payloads` 再给两者加上 `scope:` 前缀。
+
+    Args:
+        query: str => 检索问题。
+        top_k: int => 最多返回多少条（降级时无影响，保留以对齐 schema）。
+        similarity_threshold: float | None => 仅作用于公共库 Reranker（降级时无影响）。
+
+    Returns:
+        dict[str, Any] => 与线上逐字段一致的降级载荷。
+    """
+    return {
+        "query": query,
+        "result_count": 0,
+        "results": [],
+        "sources": [],
+        "context_text": "",
+        "degraded": [
+            "personal:personal_knowledge_base_unavailable",
+            "public:public_retrieval_failed",
+        ],
+        "rankings": {"federated": [], "personal": [], "public": []},
+        "federation": {
+            "mode": "personal_and_public",
+            "personal_candidates": 0,
+            "public_candidates": 0,
+        },
+    }
+
+
+def retrieve_personal_knowledge(query: str, top_k: int = 5) -> dict[str, Any]:
+    """个人知识库在**服务不可用**时的返回。
+
+    同样只能产出这一种状态，理由见 `retrieve_federated_knowledge`。
+    结构抄自 `backend/agent/workspaces/capability_runtime.py:122-133`
+    （`personal_knowledge_retrieval_service is None` 那一支）。
+
+    Args:
+        query: str => 检索问题。
+        top_k: int => 最多返回多少条（不可用时无影响）。
+
+    Returns:
+        dict[str, Any] => 与线上逐字段一致的不可用载荷。
+    """
+    return {
+        "query": query,
+        "result_count": 0,
+        "results": [],
+        "degraded": ["personal_knowledge_base_unavailable"],
+        "rankings": {},
+    }
+
+
+def run_in_sandbox(command: str, workdir: str = ".",
+                   timeout_seconds: float = 30, *,
+                   _stdout: str = "", _stderr: str = "",
+                   _exit_code: int = 0, _duration_ms: int = 12) -> dict[str, Any]:
+    """沙箱执行的返回封装。
+
+    ⚠️ 这个函数**不真的执行命令** —— 它只负责套上线上那层封装。
+    `_stdout` / `_exit_code` 必须由调用方给出**真实跑过一次**的结果
+    （生成器里挑的都是与环境无关的命令，本机跑一次即可复现）。
+    编造 stdout 等于教模型消费一个假的执行结果。
+
+    封装逐字段抄自 `backend/sandbox/sandbox.py::_result`（317-333 行）。
+    `duration_ms` 线上是实测耗时，样本里取一个合理定值即可 —— 模型消费的是结构。
+
+    Args:
+        command: str => 执行的 shell 命令。
+        workdir: str => `/workspace` 内的相对目录。
+        timeout_seconds: float => 超时秒数。
+        _stdout: str => 真实标准输出。
+        _stderr: str => 真实标准错误。
+        _exit_code: int => 真实退出码。
+        _duration_ms: int => 耗时占位。
+
+    Returns:
+        dict[str, Any] => 与线上逐字段一致的执行结果。
+    """
+    return {
+        "ok": _exit_code == 0,
+        "exit_code": _exit_code,
+        "stdout": _stdout,
+        "stderr": _stderr,
+        "output_truncated": False,
+        "duration_ms": _duration_ms,
+        "workspace": "/workspace",
+    }
+
+
+def sandbox_disabled() -> dict[str, Any]:
+    """沙箱未启用时的返回（`sandbox.py:127`）。"""
+    return {"ok": False, "error": "sandbox_disabled"}
+
+
 FIXTURE_FUNCTIONS = {
     "arxiv_search": arxiv_search,
+    "retrieve_federated_knowledge": retrieve_federated_knowledge,
+    "retrieve_personal_knowledge": retrieve_personal_knowledge,
+    "run_in_sandbox": run_in_sandbox,
     "get_time": get_time,
     "get_weather": get_weather,
     "recommend_practice": recommend_practice,
     "get_mastery_report": get_mastery_report,
     "get_mastery_level": get_mastery_level,
-    "record_answer": record_answer,
     "get_weak_prerequisites": get_weak_prerequisites_tool,
     "get_review_timing": get_review_timing,
     "record_learning_evidence": record_learning_evidence,

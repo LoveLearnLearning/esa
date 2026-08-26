@@ -133,6 +133,7 @@ class PersonalKnowledgeBaseMutationPipeline:
         job_id = str(job["job_id"])
         target_revision = int(job["target_revision"])
         file_ids = [str(value) for value in job["payload"].get("file_ids", [])]
+        knowledge_base_id = job["payload"].get("knowledge_base_id")
         records = self.store.get_job_files(user_id=user_id, file_ids=file_ids)
         if [item["file_id"] for item in records] != file_ids:
             self.store.cancel_rebuild_job(
@@ -151,6 +152,9 @@ class PersonalKnowledgeBaseMutationPipeline:
             job_id=job_id,
             target_revision=target_revision,
             file_ids=file_ids,
+            knowledge_base_id=(
+                str(knowledge_base_id) if knowledge_base_id is not None else None
+            ),
             collection_name=self.index.collection,
             embedding_fingerprint=self.upload.embedding_fingerprint,
             chunk_fingerprint=self.ingestion.pipeline_fingerprint,
@@ -311,6 +315,9 @@ class PersonalKnowledgeBaseMutationPipeline:
                 job_id=job_id,
                 target_revision=target_revision,
                 generation_id=generation_id,
+                knowledge_base_id=(
+                    str(knowledge_base_id) if knowledge_base_id is not None else None
+                ),
                 collection_name=self.index.collection,
                 files=indexed,
             )

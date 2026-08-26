@@ -13,6 +13,8 @@ from typing import Any
 import yaml
 
 from backend.agent.tools.tools import tr
+from backend.core.message.budget import DEFAULT_PROMPT_BUDGET
+from backend.core.utils.token_estimation import estimate_tokens
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 _SKILL_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
@@ -198,6 +200,25 @@ def validate_skill_contracts(
                     f"{skill.path.name}: related_skills 引用了不存在 Skill {related_name!r}"
                 )
 
+        if skill.category == "attachment":
+            body_limit = 150
+        elif skill.autoload:
+            body_limit = DEFAULT_PROMPT_BUDGET.auto_skill_max_tokens
+        else:
+            body_limit = DEFAULT_PROMPT_BUDGET.lazy_skill_max_tokens
+        body_tokens = estimate_tokens(skill.body)
+        if body_tokens > body_limit:
+            errors.append(
+                f"{skill.path.name}: 正文 {body_tokens} tokens 超过预算 {body_limit}"
+            )
+
+    autoload_names = {skill.name for skill in definitions if skill.autoload}
+    if autoload_names != {"learning_policy"}:
+        errors.append(
+            "autoload Skill 必须且只能是 learning_policy，"
+            f"当前={sorted(autoload_names)!r}"
+        )
+
     return errors
 
 
@@ -241,7 +262,7 @@ def build_skills_context(*, categories: set[str] | None = None) -> str:
     """
     构建给 Agent 的 Skill 索引。
 
-    这里只注入 name/category/description，完整正文按需通过 load_skill 加载，
+    这里只注入 name/description，完整正文按需通过 load_skill 加载，
     避免把所有 Skill 正文永久塞进 system prompt。
     """
     selected = [
@@ -256,9 +277,14 @@ def build_skills_context(*, categories: set[str] | None = None) -> str:
     if not skills:
         return "暂无可用 skill"
 
-    return "\n".join(
-        f"- {skill.name} [{skill.category}] {skill.description}" for skill in skills
-    )
+    lines: list[str] = []
+    for skill in skills:
+        if skill.autoload:
+            continue
+        candidate = "\n".join((*lines, f"{skill.name}: {skill.description}"))
+        if estimate_tokens(candidate) <= DEFAULT_PROMPT_BUDGET.skill_index_max_tokens:
+            lines.append(f"{skill.name}: {skill.description}")
+    return "\n".join(lines) or "暂无可用 skill"
 
 
 def build_autoload_skills_context() -> str:

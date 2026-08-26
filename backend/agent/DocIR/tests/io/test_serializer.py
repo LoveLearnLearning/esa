@@ -20,6 +20,6 @@ def test_round_trip_and_schema(tmp_path):
     assert load_document(path) == make_document().model_copy(update={"created_at": load_document(path).created_at})
     schema = tmp_path / "schema.json"
     export_json_schema(schema)
-    payload = json.loads(schema.read_text())
+    payload = json.loads(schema.read_text(encoding="utf-8"))
     assert "Element" in json.dumps(payload)
     assert "schema_version" not in payload.get("properties", {})

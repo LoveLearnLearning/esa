@@ -143,9 +143,69 @@ class _ChatPageState extends State<ChatPage> {
     KnowledgeSource.personal,
     KnowledgeSource.public,
   };
+  List<PersonalKnowledgeBaseSummary> _personalKnowledgeBases = const [];
+  String? _personalKnowledgeBaseId;
+  bool _knowledgeBasesLoading = false;
+  bool _knowledgeBasesLoaded = false;
 
   GlobalKey<ComposerState> get _composerKey =>
       widget.composerKey ?? _internalComposerKey;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (AppScope.of(context).api.sessionId != null &&
+        !_knowledgeBasesLoaded &&
+        !_knowledgeBasesLoading) {
+      unawaited(_loadPersonalKnowledgeBases());
+    }
+  }
+
+  Future<void> _loadPersonalKnowledgeBases() async {
+    _knowledgeBasesLoading = true;
+    try {
+      final values = await AppScope.of(
+        context,
+      ).api.listPersonalKnowledgeBases();
+      if (!mounted) return;
+      setState(() {
+        _personalKnowledgeBases = values;
+        _knowledgeBasesLoaded = true;
+        _knowledgeBasesLoading = false;
+        if (values.isEmpty) {
+          _personalKnowledgeBaseId = null;
+          _knowledgeSources = Set<KnowledgeSource>.of(_knowledgeSources)
+            ..remove(KnowledgeSource.personal);
+        } else if (_knowledgeSources.contains(KnowledgeSource.personal) &&
+            !values.any((item) => item.id == _personalKnowledgeBaseId)) {
+          _personalKnowledgeBaseId = values.first.id;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _knowledgeBasesLoaded = true;
+        _knowledgeBasesLoading = false;
+      });
+    }
+  }
+
+  void _selectPersonalKnowledgeBase(String? knowledgeBaseId) {
+    setState(() {
+      _personalKnowledgeBaseId = knowledgeBaseId;
+      _knowledgeSources = Set<KnowledgeSource>.of(_knowledgeSources);
+      if (knowledgeBaseId == null) {
+        _knowledgeSources.remove(KnowledgeSource.personal);
+      } else {
+        _knowledgeSources.add(KnowledgeSource.personal);
+      }
+    });
+  }
+
+  String? get _selectedPersonalKnowledgeBaseId =>
+      _knowledgeSources.contains(KnowledgeSource.personal)
+      ? _personalKnowledgeBaseId
+      : null;
 
   @override
   void dispose() {
@@ -569,15 +629,12 @@ class _ChatPageState extends State<ChatPage> {
         source: _CodeSource.composer,
       ),
       onSelectedAttachmentsChanged: widget.onSelectedAttachmentsChanged,
-      courseNames: <String>{
-        ...app.learningCourses.map((item) => item.name),
-        ...app.scheduleCourseNames,
-      }.toList(),
-      toolsOn: app.toolsOn,
-      onToolsOnChanged: app.setToolsOn,
       knowledgeSources: _knowledgeSources,
       onKnowledgeSourcesChanged: (sources) =>
           setState(() => _knowledgeSources = sources),
+      personalKnowledgeBases: _personalKnowledgeBases,
+      personalKnowledgeBaseId: _personalKnowledgeBaseId,
+      onPersonalKnowledgeBaseChanged: _selectPersonalKnowledgeBase,
       onUploadAttachment: (filename, stream, length) =>
           app.uploadConversationAttachment(
             filename: filename,
@@ -590,10 +647,12 @@ class _ChatPageState extends State<ChatPage> {
         _clearComposerCodeDrafts();
         setState(() => _pendingSend = true);
         app.send(
-          _taskMode?.buildPrompt(text) ?? text,
+          text,
+          taskMode: _taskMode?.wireName,
           markdown: markdown,
           displayText: text,
           knowledgeSources: _knowledgeSources,
+          personalKnowledgeBaseId: _selectedPersonalKnowledgeBaseId,
         );
       },
       onSendWithAttachment: (text, markdown, attachment) {
@@ -601,12 +660,14 @@ class _ChatPageState extends State<ChatPage> {
         _clearComposerCodeDrafts();
         setState(() => _pendingSend = true);
         app.send(
-          _taskMode?.buildPrompt(text) ?? text,
+          text,
+          taskMode: _taskMode?.wireName,
           markdown: markdown,
           displayText: text,
           attachmentIds: [attachment.id],
           attachments: [attachment],
           knowledgeSources: _knowledgeSources,
+          personalKnowledgeBaseId: _selectedPersonalKnowledgeBaseId,
         );
       },
     );
@@ -845,7 +906,12 @@ class _ChatPageState extends State<ChatPage> {
                   onOpenAttachment: _openAttachment,
                   onEdit: (text) async {
                     _resumeFollowing();
-                    await app.reviseUserMessage(m, text);
+                    await app.reviseUserMessage(
+                      m,
+                      text,
+                      knowledgeSources: _knowledgeSources,
+                      personalKnowledgeBaseId: _selectedPersonalKnowledgeBaseId,
+                    );
                   },
                   onCodeChangedWithId: (blockId, code, language) {
                     final existing = _codeDrafts[blockId];
@@ -874,7 +940,11 @@ class _ChatPageState extends State<ChatPage> {
                   onContentChanged: _scrollToBottom,
                   onRegenerate: () {
                     _resumeFollowing();
-                    app.regenerate(m.id);
+                    app.regenerate(
+                      m.id,
+                      knowledgeSources: _knowledgeSources,
+                      personalKnowledgeBaseId: _selectedPersonalKnowledgeBaseId,
+                    );
                   },
                   onOpenCodeEditor: (code, language) => _openCodeEditor(
                     '${m.id}:0',
@@ -1626,7 +1696,9 @@ class _LearningHome extends StatelessWidget {
                 focusName: focusPoint?.name,
                 progress: progress,
                 lastStudiedAt: app.conversations.firstOrNull?.updatedAt,
-                onContinue: onContinue,
+                onContinue: courseName == '尚未选择课程' && app.conversations.isEmpty
+                    ? null
+                    : onContinue,
               ),
               const SizedBox(height: 12),
               _HomeSection(
@@ -1655,8 +1727,6 @@ class _LearningHome extends StatelessWidget {
               const SizedBox(height: 12),
               _HomeSection(
                 title: '最近',
-                actionLabel: '查看全部',
-                onAction: recent.isEmpty ? null : onContinue,
                 child: recent.isEmpty
                     ? const _HomeEmptyRow(label: '暂无最近学习记录')
                     : Column(
@@ -1691,39 +1761,18 @@ class _LearningHome extends StatelessWidget {
   }
 
   List<_HomeRecentItem> _recentItems(AppState app) {
-    final items = <_HomeRecentItem>[];
-    for (final attachment in app.recentAttachments.take(2)) {
-      items.add(
-        _HomeRecentItem(
-          icon: LucideIcons.fileText,
-          title: attachment.filename,
-          meta: '资料 · ${_formatFileSize(attachment.sizeBytes)}',
-          time: '最近使用',
-        ),
-      );
-    }
-    for (final conversation in app.conversations.take(4 - items.length)) {
-      items.add(
-        _HomeRecentItem(
-          icon: LucideIcons.messageSquare,
-          title: conversation.title,
-          meta: '对话 · 学习空间',
-          time: _relativeTime(conversation.updatedAt),
-          conversationId: conversation.id,
-        ),
-      );
-    }
-    if (items.length < 4 && app.learningCourses.isNotEmpty) {
-      items.add(
-        _HomeRecentItem(
-          icon: LucideIcons.bookOpen,
-          title: app.learningCourses.first.name,
-          meta: '课程内容',
-          time: '继续学习',
-        ),
-      );
-    }
-    return items.take(4).toList();
+    return app.conversations
+        .take(4)
+        .map(
+          (conversation) => _HomeRecentItem(
+            icon: LucideIcons.messageSquare,
+            title: conversation.title,
+            meta: '对话 · 学习空间',
+            time: _relativeTime(conversation.updatedAt),
+            conversationId: conversation.id,
+          ),
+        )
+        .toList();
   }
 }
 
@@ -1854,7 +1903,14 @@ class _AssignmentHomeRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Row(
           children: [
-            Checkbox(value: completed, onChanged: (_) => onTap?.call()),
+            Icon(
+              completed
+                  ? Icons.check_circle_outline
+                  : Icons.radio_button_unchecked,
+              size: 20,
+              color: completed ? context.scheme.primary : context.n.n500,
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 assignment.title,
@@ -1967,12 +2023,6 @@ String _relativeTime(DateTime value) {
   return '${local.month} 月 ${local.day} 日';
 }
 
-String _formatFileSize(int bytes) {
-  if (bytes <= 0) return '文件';
-  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-}
-
 class _EmptyState extends StatelessWidget {
   const _EmptyState({
     required this.name,
@@ -2052,7 +2102,7 @@ class _EmptyState extends StatelessWidget {
               SizedBox(height: mobile ? 18 : 42),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final columns = mobile ? 2 : 4;
+                  final columns = mobile ? 2 : 3;
                   final gap = mobile ? 10.0 : 12.0;
                   final width =
                       (constraints.maxWidth - gap * (columns - 1)) / columns;

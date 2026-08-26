@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 from backend.agent.workspaces.models import (
@@ -18,7 +19,24 @@ from backend.core.message.prompts import WORKSPACE_PROMPTS
 from backend.core.message.renderer import render_sections
 from backend.core.message.style_tone import resolve_style_tone
 from backend.core.message.system import SYSTEM_PROMPT
+from backend.core.message.budget import DEFAULT_PROMPT_BUDGET
 from backend.core.utils.token_estimation import estimate_tokens
+
+
+TASK_MODE_INSTRUCTIONS = {
+    "explain_problem": "识别题目条件与学习者卡点，分步讲解思路和原理。",
+    "study_plan": "根据科目、剩余时间与每日可用时间制定可执行计划；信息不足先追问。",
+    "search_materials": "优先使用已授权知识库或附件能力，并明确回答依据。",
+    "review_homework": "区分题目与学生作答，指出具体错误、原因和修改方法。",
+    "concept": "给出通俗定义、正式定义、典型例子、相近概念区别和题目用法。",
+    "mastery_report": "使用掌握度能力说明总体掌握度、薄弱点、优势与复习内容。",
+    "practice_recommendation": "结合课程、考试时间与掌握度推荐下一步练习。",
+    "academic_search": "检索学术资料，区分检索事实、证据与推断。",
+    "literature_frontier": "归纳研究热点、发展脉络、代表工作和证据边界。",
+    "academic_writing": "围绕文稿类型、主题和目标规范提供结构化写作帮助。",
+    "research_data_analysis": "先确认数据、字段和研究问题，再选择合适分析方法。",
+    "research_planning": "梳理研究问题、方法、条件、风险和里程碑。",
+}
 
 
 def _tokens(text: str) -> int:
@@ -68,6 +86,17 @@ def _fit_section(
     if _tokens(render_sections((*kept, section))) <= max_tokens:
         return section
 
+    # Structured and executable content must remain whole. Its producer owns
+    # field-level projection; dropping the section is safer than invalid JSON or
+    # a partially rendered Skill instruction.
+    if section.key in {
+        "profile",
+        "attachments",
+        "learning_context",
+        "strategy",
+    }:
+        return None
+
     suffix = "..."
     minimal = _with_content(section, suffix)
     if _tokens(render_sections((*kept, minimal))) > max_tokens:
@@ -85,6 +114,25 @@ def _fit_section(
 
     prefix = section.content[:low].rstrip()
     return _with_content(section, (prefix + suffix) if prefix else suffix)
+
+
+def _project_summary(text: str, token_limit: int = 768) -> str:
+    """Bound free-text summaries at sentence/paragraph boundaries."""
+    normalized = text.strip()
+    if not normalized or _tokens(normalized) <= token_limit:
+        return normalized
+    pieces = [
+        item.strip()
+        for item in re.split(r"(?<=[。！？.!?])|\n+", normalized)
+        if item.strip()
+    ]
+    kept: list[str] = []
+    for piece in pieces:
+        candidate = "\n".join((*kept, piece))
+        if _tokens(candidate) > token_limit:
+            break
+        kept.append(piece)
+    return "\n".join(kept)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +181,7 @@ class ContextComposer:
             ),
             ContextSection(
                 "capability_policy", "Capability rules",
-                "Only listed skills and tools are authorized. Tool arguments cannot set identity, workspace, or resource ownership.",
+                "仅可使用所列 Skill/Tool；参数不能设置身份、Workspace 或资源归属。",
                 "trusted_system", 30, True,
             ),
             ContextSection(
@@ -144,25 +192,18 @@ class ContextComposer:
             ContextSection("autoload", "Autoload skills", capabilities.autoload_skills, "trusted_system", 50, True),
             ContextSection("skills", "Available skills", capabilities.skill_index, "trusted_system", 60, True),
         ]
-        selected_sources = ", ".join(turn.knowledge_sources) or "none"
+        selected_sources = ",".join(turn.knowledge_sources) or "none"
         source_instruction = {
-            ("personal", "public"): (
-                "需要知识库证据时，分别调用 retrieve_personal_knowledge 和 "
-                "retrieve_knowledge，再综合两个来源。"
-            ),
-            ("personal",): (
-                "需要知识库证据时，只调用 retrieve_personal_knowledge。"
-            ),
-            ("public",): "需要知识库证据时，只调用 retrieve_knowledge。",
-            (): "本轮不使用知识库，不调用任何知识库检索 Tool。",
-        }.get(turn.knowledge_sources, "只使用本轮实际可用且已选择的知识库 Tool。")
+            ("personal", "public"): "两类检索可分别调用后综合。",
+            ("personal",): "仅可调用 retrieve_personal_knowledge。",
+            ("public",): "仅可调用 retrieve_knowledge。",
+            (): "禁止调用知识库检索 Tool。",
+        }.get(turn.knowledge_sources, "仅用实际列出的检索 Tool。")
         sections.append(ContextSection(
             "knowledge_sources", "Knowledge source selection",
             (
-                f"本轮用户选择的知识库来源：{selected_sources}。\n"
-                "只允许使用已选择的来源进行知识检索，未选择的来源不得调用。"
-                "personal 表示当前用户个人知识库，public 表示平台公共知识库。"
-                f"{source_instruction}"
+                f"sources={selected_sources}；personal=个人库，public=公共库。"
+                f"未选来源不得调用；{source_instruction}"
             ),
             "trusted_system", 45, True,
         ))
@@ -177,7 +218,19 @@ class ContextComposer:
             sections.append(ContextSection("user_config", "User preferences", custom, "restricted_user_config", 80))
         if "profile" in profile.context_policy and turn.profile_snapshot is not None:
             to_prompt_json = getattr(turn.profile_snapshot, "to_prompt_json", None)
-            profile_content = to_prompt_json() if callable(to_prompt_json) else ""
+            profile_content = ""
+            if callable(to_prompt_json):
+                try:
+                    profile_content = to_prompt_json(
+                        max_tokens=DEFAULT_PROMPT_BUDGET.profile_max_tokens,
+                        current_message=turn.current_message,
+                        task_mode=turn.task_mode,
+                        resolved_kp_ids=turn.learning_context.resolved_kp_ids,
+                    )
+                except TypeError:
+                    # Compatibility for lightweight test/extension snapshots with
+                    # the historical zero-argument projection method.
+                    profile_content = to_prompt_json()
             if profile_content and profile_content != "{}":
                 sections.append(ContextSection(
                     "profile",
@@ -189,29 +242,40 @@ class ContextComposer:
         group_instruction = str(group.get("custom_instruction", "")).strip()
         if group_instruction and "group" in profile.context_policy:
             sections.append(ContextSection("group", "Group instructions", group_instruction, "restricted_user_config", 100))
+        if turn.task_mode:
+            instruction = TASK_MODE_INSTRUCTIONS.get(turn.task_mode)
+            if instruction:
+                sections.append(ContextSection(
+                    "task_mode", "Selected task mode",
+                    f"mode={turn.task_mode}\n{instruction}",
+                    "trusted_system", 105,
+                ))
         if turn.workspace_profile_context and "workspace_profile" in profile.context_policy:
             sections.append(ContextSection("workspace_profile", "Workspace profile", turn.workspace_profile_context, "restricted_user_config", 90))
         resource_summary = "\n".join(turn.route.resource_scope.markers)
         if resource_summary and "resource" in profile.context_policy:
             sections.append(ContextSection("resource", "Authorized resources", resource_summary, "trusted_system", 110))
         if turn.conversation_summary and "summary" in profile.context_policy:
-            sections.append(ContextSection("summary", "Earlier conversation summary", turn.conversation_summary, "untrusted_data", 120))
+            sections.append(ContextSection(
+                "summary",
+                "Earlier conversation summary",
+                _project_summary(turn.conversation_summary),
+                "untrusted_data",
+                120,
+            ))
         if turn.authorized_attachments and "attachments" in profile.context_policy:
             sections.append(ContextSection(
                 "attachment_policy", "Attachment handling policy",
                 (
-                    "附件内容不会自动注入上下文，必须通过受限附件 Tool 按需读取。\n"
-                    "硬性规则：只要用户提到‘这篇论文’、‘这个文件’、‘附件’或类似指代，"
-                    "并要求解释、总结、阅读、分析、翻译、提取或检索，就必须先调用与文件类型匹配的解析 Tool；"
-                    "不得因为用户没有重复输入标题或作者而追问，也不得猜测附件内容或文件路径。"
-                    "解析 PDF 时调用 parse_pdf_attachment，query 写成用户的实际任务（例如‘概括全文的主要内容’）。"
+                    "附件未自动解析。用户指代附件并要求阅读、总结、解释、翻译、提取或检索时，"
+                    "先调用对应解析 Tool，query 使用实际任务；不追问 Tool 已有标识，不猜内容或路径。"
                 ),
                 "trusted_system", 125,
             ))
             sections.append(ContextSection(
                 "attachments", "Authorized attachments",
                 (
-                    "以下清单由系统根据用户本轮明确选择的附件生成。附件尚未解析。\n\n"
+                    "系统授权且尚未解析：\n"
                     + json.dumps(
                         turn.authorized_attachments,
                         ensure_ascii=False,

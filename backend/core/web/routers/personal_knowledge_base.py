@@ -23,6 +23,7 @@ from backend.core.services.personal_knowledge_base_service import (
 )
 from backend.core.stores.personal_knowledge_base_store import (
     PersonalKnowledgeBaseConflict,
+    PersonalKnowledgeBaseNotFound,
     PersonalKnowledgeBaseQuotaExceeded,
 )
 from backend.core.utils.models import SessionPrincipal
@@ -33,6 +34,14 @@ router = APIRouter(prefix="/me/knowledge-base", tags=["personal knowledge base"]
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
 ResourceStatus = Literal["idle", "queued", "building", "ready", "failed"]
 _STREAM_CHUNK_BYTES = 64 * 1024
+
+
+def _read_at(descriptor: int, size: int, offset: int) -> bytes:
+    pread = getattr(os, "pread", None)
+    if pread is not None:
+        return pread(descriptor, size, offset)
+    os.lseek(descriptor, offset, os.SEEK_SET)
+    return os.read(descriptor, size)
 
 
 class KnowledgeBaseFileResponse(BaseModel):
@@ -59,6 +68,19 @@ class PersonalKnowledgeBaseResponse(BaseModel):
     files: list[KnowledgeBaseFileResponse]
 
 
+class KnowledgeBaseSummaryResponse(BaseModel):
+    id: str
+    name: str
+    file_count: int = Field(ge=0)
+    chunk_count: int = Field(ge=0)
+    index_count: int = Field(ge=0)
+    updated_at: str
+
+
+class KnowledgeBaseCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
 def _service(request: Request) -> PersonalKnowledgeBaseService:
     return request.app.state.personal_knowledge_base_service
 
@@ -66,7 +88,11 @@ def _service(request: Request) -> PersonalKnowledgeBaseService:
 def _http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, PersonalKnowledgeBaseDisabled):
         return HTTPException(503, str(exc))
+    if isinstance(exc, PersonalKnowledgeBaseNotFound):
+        return HTTPException(404, "个人知识库不存在")
     if isinstance(exc, PersonalKnowledgeBaseConflict):
+        if str(exc) == "知识库名称已存在":
+            return HTTPException(409, str(exc))
         return HTTPException(409, "同一知识库已有上传或重建任务")
     if isinstance(exc, PersonalKnowledgeBasePreviewUnavailable):
         return HTTPException(409, str(exc))
@@ -76,6 +102,8 @@ def _http_error(exc: Exception) -> HTTPException:
         return HTTPException(415, str(exc))
     if isinstance(exc, InvalidKnowledgeBaseFile):
         return HTTPException(400, str(exc))
+    if isinstance(exc, ValueError):
+        return HTTPException(422, str(exc))
     # Do not expose durable paths or database diagnostics in HTTP responses.
     if isinstance(exc, (OSError, sqlite3.Error)):
         return HTTPException(500, "个人知识库持久化失败")
@@ -181,7 +209,7 @@ class _OpenFileResponse(Response):
             offset = self.start
             while offset <= self.end:
                 chunk = await anyio.to_thread.run_sync(
-                    os.pread,
+                    _read_at,
                     self.descriptor,
                     min(_STREAM_CHUNK_BYTES, self.end - offset + 1),
                     offset,
@@ -211,6 +239,48 @@ def get_personal_knowledge_base(
         raise _http_error(exc) from exc
 
 
+@router.get("/libraries", response_model=list[KnowledgeBaseSummaryResponse])
+def list_personal_knowledge_bases(
+    request: Request,
+    session: CurrentSession,
+) -> list[dict]:
+    try:
+        return _service(request).list_knowledge_bases(session.user_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post(
+    "/libraries",
+    status_code=201,
+    response_model=KnowledgeBaseSummaryResponse,
+)
+def create_personal_knowledge_base(
+    body: KnowledgeBaseCreateRequest,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    try:
+        return _service(request).create_knowledge_base(session.user_id, body.name)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get(
+    "/libraries/{knowledge_base_id}",
+    response_model=PersonalKnowledgeBaseResponse,
+)
+def get_named_personal_knowledge_base(
+    knowledge_base_id: str,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    try:
+        return _service(request).snapshot(session.user_id, knowledge_base_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
 @router.post("/files", status_code=202, response_model=PersonalKnowledgeBaseResponse)
 async def upload_personal_knowledge_base_files(
     request: Request,
@@ -228,6 +298,39 @@ async def upload_personal_knowledge_base_files(
     ]
     try:
         return await _service(request).upload(session.user_id, sources)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    finally:
+        for item in files:
+            await item.close()
+
+
+@router.post(
+    "/libraries/{knowledge_base_id}/files",
+    status_code=202,
+    response_model=PersonalKnowledgeBaseResponse,
+)
+async def upload_named_personal_knowledge_base_files(
+    knowledge_base_id: str,
+    request: Request,
+    session: CurrentSession,
+    files: Annotated[list[UploadFile], File(...)],
+) -> dict:
+    sources = [
+        UploadSource(
+            filename=item.filename or "",
+            media_type=item.content_type or "application/octet-stream",
+            read=item.read,
+            size_bytes=item.size,
+        )
+        for item in files
+    ]
+    try:
+        return await _service(request).upload(
+            session.user_id,
+            sources,
+            knowledge_base_id,
+        )
     except Exception as exc:
         raise _http_error(exc) from exc
     finally:
@@ -331,6 +434,25 @@ def rebuild_personal_knowledge_base(
 ) -> dict:
     try:
         snapshot = _service(request).rebuild(session.user_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    if snapshot is None:
+        raise HTTPException(400, "空知识库不能重建")
+    return snapshot
+
+
+@router.post(
+    "/libraries/{knowledge_base_id}/rebuild",
+    status_code=202,
+    response_model=PersonalKnowledgeBaseResponse,
+)
+def rebuild_named_personal_knowledge_base(
+    knowledge_base_id: str,
+    request: Request,
+    session: CurrentSession,
+) -> dict:
+    try:
+        snapshot = _service(request).rebuild(session.user_id, knowledge_base_id)
     except Exception as exc:
         raise _http_error(exc) from exc
     if snapshot is None:

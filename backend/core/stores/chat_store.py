@@ -7,13 +7,14 @@ from __future__ import annotations
 import json
 import uuid
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from backend.core.stores.base_sqlite_store import BaseSQLiteStore
 
 
 _UNSET = object()
+_SHANGHAI_TIMEZONE = timezone(timedelta(hours=8))
 
 
 class ChatStore(BaseSQLiteStore):
@@ -50,6 +51,7 @@ class ChatStore(BaseSQLiteStore):
                     group_id TEXT,
                     workspace_type TEXT NOT NULL DEFAULT 'learning',
                     research_project_id TEXT,
+                    pinned INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -116,9 +118,7 @@ class ChatStore(BaseSQLiteStore):
                 ).fetchall()
             }
             if "group_id" not in conversation_columns:
-                connection.execute(
-                    "ALTER TABLE conversations ADD COLUMN group_id TEXT"
-                )
+                connection.execute("ALTER TABLE conversations ADD COLUMN group_id TEXT")
             if "workspace_type" not in conversation_columns:
                 connection.execute(
                     "ALTER TABLE conversations ADD COLUMN workspace_type TEXT NOT NULL DEFAULT 'learning'"
@@ -126,6 +126,10 @@ class ChatStore(BaseSQLiteStore):
             if "research_project_id" not in conversation_columns:
                 connection.execute(
                     "ALTER TABLE conversations ADD COLUMN research_project_id TEXT"
+                )
+            if "pinned" not in conversation_columns:
+                connection.execute(
+                    "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
                 )
 
             message_columns = {
@@ -248,6 +252,7 @@ class ChatStore(BaseSQLiteStore):
             "group_id": group_id,
             "workspace_type": workspace_type,
             "research_project_id": research_project_id,
+            "pinned": False,
             "created_at": now,
             "updated_at": now,
         }
@@ -260,10 +265,11 @@ class ChatStore(BaseSQLiteStore):
                 group_id,
                 workspace_type,
                 research_project_id,
+                pinned,
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 conversation["conversation_id"],
@@ -272,6 +278,7 @@ class ChatStore(BaseSQLiteStore):
                 conversation["group_id"],
                 conversation["workspace_type"],
                 conversation["research_project_id"],
+                0,
                 conversation["created_at"],
                 conversation["updated_at"],
             ),
@@ -294,7 +301,8 @@ class ChatStore(BaseSQLiteStore):
         """
         sql = """
             SELECT conversation_id, user_id, title, group_id,
-                   workspace_type, research_project_id, created_at, updated_at
+                   workspace_type, research_project_id, pinned,
+                   created_at, updated_at
             FROM conversations
             WHERE conversation_id = ?
         """
@@ -304,7 +312,11 @@ class ChatStore(BaseSQLiteStore):
             params += (user_id,)
 
         row = self.query_one(sql, params)
-        return dict(row) if row is not None else None
+        if row is None:
+            return None
+        conversation = dict(row)
+        conversation["pinned"] = bool(conversation["pinned"])
+        return conversation
 
     def list_conversations(
         self,
@@ -321,7 +333,8 @@ class ChatStore(BaseSQLiteStore):
         """
         sql = """
             SELECT conversation_id, user_id, title, group_id,
-                   workspace_type, research_project_id, created_at, updated_at
+                   workspace_type, research_project_id, pinned,
+                   created_at, updated_at
             FROM conversations
             WHERE user_id = ?
         """
@@ -339,8 +352,11 @@ class ChatStore(BaseSQLiteStore):
             sql += " AND workspace_type = ?"
             params += (workspace_type,)
 
-        sql += " ORDER BY updated_at DESC"
-        return [dict(row) for row in self.query_all(sql, params)]
+        sql += " ORDER BY pinned DESC, updated_at DESC"
+        conversations = [dict(row) for row in self.query_all(sql, params)]
+        for conversation in conversations:
+            conversation["pinned"] = bool(conversation["pinned"])
+        return conversations
 
     def rename_conversation(
         self,
@@ -420,6 +436,7 @@ class ChatStore(BaseSQLiteStore):
         *,
         title: str | object = _UNSET,
         group_id: str | None | object = _UNSET,
+        pinned: bool | object = _UNSET,
     ) -> bool:
         """在同一事务中修改对话标题和分组。
 
@@ -441,11 +458,20 @@ class ChatStore(BaseSQLiteStore):
             assignments.append("group_id = ?")
             params.append(group_id)
 
+        if pinned is not _UNSET:
+            if not isinstance(pinned, bool):
+                raise ValueError("pinned 必须是布尔值")
+            assignments.append("pinned = ?")
+            params.append(int(pinned))
+
         if not assignments:
-            return self.get_conversation(
-                conversation_id,
-                user_id=user_id,
-            ) is not None
+            return (
+                self.get_conversation(
+                    conversation_id,
+                    user_id=user_id,
+                )
+                is not None
+            )
 
         params.extend([conversation_id, user_id])
         with closing(self._connect()) as connection, connection:
@@ -497,6 +523,54 @@ class ChatStore(BaseSQLiteStore):
                 params,
             )
             return cursor.rowcount > 0
+
+    def get_user_stats(
+        self,
+        user_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, int]:
+        """Return account-wide conversation, pin, and learning-streak stats."""
+        counts = self.query_one(
+            """
+            SELECT COUNT(*) AS conversation_count,
+                   COALESCE(SUM(pinned), 0) AS pinned_count
+            FROM conversations
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        )
+        active_rows = self.query_all(
+            """
+            SELECT DISTINCT date(m.created_at, '+8 hours') AS active_date
+            FROM messages m
+            JOIN conversations c ON c.conversation_id = m.conversation_id
+            WHERE c.user_id = ? AND m.role = 'user'
+            ORDER BY active_date DESC
+            """,
+            (user_id,),
+        )
+        active_dates = {
+            datetime.fromisoformat(str(row["active_date"])).date()
+            for row in active_rows
+            if row["active_date"]
+        }
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        today = current.astimezone(_SHANGHAI_TIMEZONE).date()
+        cursor = today
+        if cursor not in active_dates:
+            cursor = today - timedelta(days=1)
+        streak = 0
+        while cursor in active_dates:
+            streak += 1
+            cursor -= timedelta(days=1)
+        return {
+            "conversation_count": int(counts["conversation_count"] if counts else 0),
+            "pinned_count": int(counts["pinned_count"] if counts else 0),
+            "learning_streak_days": streak,
+        }
 
     def append_messages(
         self,
@@ -803,6 +877,43 @@ class ChatStore(BaseSQLiteStore):
             messages,
             use_summary=True,
         )
+
+    def get_compressed_model_history_before(
+        self,
+        conversation_id: str,
+        before_message_id: int,
+    ) -> tuple[str | None, list[dict]]:
+        """Reload summarized history without re-appending the current user turn."""
+        summary_row = self.query_one(
+            """
+            SELECT summary, summarized_through_message_id
+            FROM conversation_summaries
+            WHERE conversation_id = ?
+            """,
+            (conversation_id,),
+        )
+        summary = str(summary_row["summary"]) if summary_row is not None else None
+        boundary = (
+            int(summary_row["summarized_through_message_id"])
+            if summary_row is not None
+            else 0
+        )
+        rows = self.query_all(
+            """
+            SELECT role, COALESCE(model_content, content) AS content, name
+            FROM messages
+            WHERE conversation_id = ? AND id > ? AND id < ?
+            ORDER BY id ASC
+            """,
+            (conversation_id, boundary, before_message_id),
+        )
+        history: list[dict] = []
+        for row in rows:
+            message = {"role": row["role"], "content": row["content"]}
+            if row["name"] is not None:
+                message["name"] = row["name"]
+            history.append(message)
+        return summary, history
 
     def _get_model_context_and_append(
         self,

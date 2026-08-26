@@ -6,13 +6,19 @@ import asyncio
 import sqlite3
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
+
 from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.migrations import run_migrations
+from backend.core.stores.personal_knowledge_base_store import (
+    PersonalKnowledgeBaseNotFound,
+)
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
 from backend.core.web.concurrency import ConversationTurnCoordinator
-from backend.core.web.routers.chat import send_message
+from backend.core.web.routers.chat import send_message, stream_message
 from backend.core.web.schemas import SendMessageRequest
 
 
@@ -29,6 +35,7 @@ class _Agent:
         """初始化 `_Agent` 实例。"""
         self.active_runs = 0
         self.max_active_runs = 0
+        self.run_calls = 0
 
     async def run(self, run_spec):
         """执行 `run` 相关数据。
@@ -40,6 +47,7 @@ class _Agent:
             object => 处理结果。
         """
         content = run_spec.messages[-1]["content"]
+        self.run_calls += 1
         self.active_runs += 1
         self.max_active_runs = max(self.max_active_runs, self.active_runs)
         try:
@@ -54,6 +62,13 @@ class _Agent:
             ]
         finally:
             self.active_runs -= 1
+
+
+class _PersonalKnowledgeBases:
+    def resolve_knowledge_base_id(self, user_id, knowledge_base_id):
+        if knowledge_base_id == "foreign-kb":
+            raise PersonalKnowledgeBaseNotFound("not owned")
+        return knowledge_base_id or f"default-{user_id}"
 
 
 def _setup(database_path):
@@ -84,9 +99,177 @@ def _request(user_store, chat_store, agent, coordinator):
                 profile_builder=_ProfileBuilder(),
                 agent=agent,
                 conversation_turn_coordinator=coordinator,
+                rag_service=object(),
+                personal_knowledge_retrieval_service=object(),
+                personal_knowledge_base_service=_PersonalKnowledgeBases(),
             )
         )
     )
+
+
+@pytest.mark.parametrize("endpoint", (send_message, stream_message))
+def test_unavailable_selected_knowledge_sources_fail_before_turn_state(
+    tmp_path,
+    endpoint,
+):
+    database_path = tmp_path / "chat.db"
+    user_store, chat_store, conversation_id = _setup(database_path)
+    agent = _Agent()
+    coordinator = ConversationTurnCoordinator(database_path)
+    request = _request(user_store, chat_store, agent, coordinator)
+    request.app.state.rag_service = None
+    request.app.state.personal_knowledge_retrieval_service = None
+    session = SessionPrincipal(session_id="s1", user_id="u1")
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(
+            endpoint(
+                conversation_id,
+                SendMessageRequest(content="需要知识库"),
+                request,
+                session,
+            )
+        )
+
+    assert raised.value.status_code == 503
+    assert raised.value.detail == (
+        "所选知识库服务暂不可用：个人知识库、公共知识库"
+    )
+    assert chat_store.get_model_messages(conversation_id) == []
+    assert agent.run_calls == 0
+    assert coordinator.local_entry_count == 0
+    assert chat_store.query_one("SELECT COUNT(*) FROM conversation_turn_leases")[0] == 0
+
+
+def test_empty_knowledge_sources_allow_chat_without_rag_services(tmp_path):
+    database_path = tmp_path / "chat.db"
+    user_store, chat_store, conversation_id = _setup(database_path)
+    agent = _Agent()
+    coordinator = ConversationTurnCoordinator(database_path)
+    request = _request(user_store, chat_store, agent, coordinator)
+    request.app.state.rag_service = None
+    request.app.state.personal_knowledge_retrieval_service = None
+    session = SessionPrincipal(session_id="s1", user_id="u1")
+
+    result = asyncio.run(
+        send_message(
+            conversation_id,
+            SendMessageRequest(content="普通聊天", knowledge_sources=[]),
+            request,
+            session,
+        )
+    )
+
+    assert [message["role"] for message in result] == ["user", "assistant"]
+    assert agent.run_calls == 1
+
+
+@pytest.mark.parametrize("endpoint", (send_message, stream_message))
+def test_foreign_personal_knowledge_base_fails_before_turn_state(
+    tmp_path,
+    endpoint,
+):
+    database_path = tmp_path / "chat.db"
+    user_store, chat_store, conversation_id = _setup(database_path)
+    agent = _Agent()
+    coordinator = ConversationTurnCoordinator(database_path)
+    request = _request(user_store, chat_store, agent, coordinator)
+    session = SessionPrincipal(session_id="s1", user_id="u1")
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(
+            endpoint(
+                conversation_id,
+                SendMessageRequest(
+                    content="越权检索",
+                    knowledge_sources=["personal"],
+                    personal_knowledge_base_id="foreign-kb",
+                ),
+                request,
+                session,
+            )
+        )
+
+    assert raised.value.status_code == 404
+    assert chat_store.get_model_messages(conversation_id) == []
+    assert agent.run_calls == 0
+    assert coordinator.local_entry_count == 0
+    assert chat_store.query_one("SELECT COUNT(*) FROM conversation_turn_leases")[0] == 0
+
+
+@pytest.mark.parametrize(
+    ("knowledge_sources", "missing_attribute", "expected_detail"),
+    (
+        (["personal"], "personal_knowledge_retrieval_service", "个人知识库"),
+        (["public"], "rag_service", "公共知识库"),
+    ),
+)
+def test_only_selected_knowledge_source_must_be_available(
+    tmp_path,
+    knowledge_sources,
+    missing_attribute,
+    expected_detail,
+):
+    database_path = tmp_path / "chat.db"
+    user_store, chat_store, conversation_id = _setup(database_path)
+    agent = _Agent()
+    coordinator = ConversationTurnCoordinator(database_path)
+    request = _request(user_store, chat_store, agent, coordinator)
+    setattr(request.app.state, missing_attribute, None)
+    session = SessionPrincipal(session_id="s1", user_id="u1")
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(
+            send_message(
+                conversation_id,
+                SendMessageRequest(
+                    content="限定来源",
+                    knowledge_sources=knowledge_sources,
+                ),
+                request,
+                session,
+            )
+        )
+
+    assert raised.value.status_code == 503
+    assert raised.value.detail == f"所选知识库服务暂不可用：{expected_detail}"
+    assert chat_store.get_model_messages(conversation_id) == []
+
+
+def test_unavailable_knowledge_source_does_not_revise_persisted_message(tmp_path):
+    database_path = tmp_path / "chat.db"
+    user_store, chat_store, conversation_id = _setup(database_path)
+    chat_store.append_messages(
+        conversation_id,
+        [
+            {"role": "user", "content": "原问题", "is_visible": True},
+            {"role": "assistant", "content": "原回答", "is_visible": True},
+        ],
+    )
+    before = chat_store.get_history(conversation_id)
+    user_message_id = before[0]["id"]
+    agent = _Agent()
+    coordinator = ConversationTurnCoordinator(database_path)
+    request = _request(user_store, chat_store, agent, coordinator)
+    request.app.state.rag_service = None
+    session = SessionPrincipal(session_id="s1", user_id="u1")
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(
+            send_message(
+                conversation_id,
+                SendMessageRequest(
+                    content="新问题",
+                    knowledge_sources=["public"],
+                    replace_message_id=user_message_id,
+                ),
+                request,
+                session,
+            )
+        )
+
+    assert raised.value.status_code == 503
+    assert chat_store.get_history(conversation_id) == before
 
 
 def test_same_conversation_turns_are_serialized(tmp_path):

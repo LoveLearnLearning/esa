@@ -59,7 +59,7 @@ class _EsaAppState extends State<EsaApp> {
             themeMode: _app.themeMode,
             home: _app.restoringSession
                 ? const _StartupPage()
-                : _app.username.isEmpty
+                : !_app.isLoggedIn
                 ? const LoginPage()
                 : const RoleShell(),
           );

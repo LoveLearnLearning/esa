@@ -230,9 +230,10 @@ def test_upload_sanitizes_path_and_ignores_spoofed_declared_mime(tmp_path):
     assert saved.media_type == "text/plain"
     source = Path(saved.source_path).resolve()
     assert source.is_relative_to(storage.files_root)
-    assert source.stat().st_uid == os.geteuid()
-    assert source.stat().st_mode & 0o777 == 0o600
-    assert source.parent.stat().st_mode & 0o777 == 0o700
+    if os.name == "posix":
+        assert source.stat().st_uid == os.geteuid()
+        assert source.stat().st_mode & 0o777 == 0o600
+        assert source.parent.stat().st_mode & 0o777 == 0o700
 
 
 def test_upload_rejects_expanded_office_bomb_and_declared_oversize(tmp_path):

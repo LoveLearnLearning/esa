@@ -36,8 +36,89 @@ class _ScheduleApi extends ApiClient {
   }
 
   @override
-  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase() async =>
-      const PersonalKnowledgeBase.empty();
+  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase({
+    String? knowledgeBaseId,
+  }) async => const PersonalKnowledgeBase.empty();
+
+  @override
+  Future<List<ChatMessage>> getMessages(String id) async => const [];
+}
+
+class _KnowledgeShellApi extends _ScheduleApi {
+  final List<String> streamedInputs = [];
+
+  @override
+  Future<List<LearningCourseSummary>> getLearningCourses() async => const [
+    LearningCourseSummary(
+      name: '数据结构',
+      totalPoints: 1,
+      evaluatedPoints: 1,
+      weakPoints: 1,
+      reviewPoints: 1,
+      averageMastery: 32,
+    ),
+  ];
+
+  @override
+  Future<KnowledgeMapData> getKnowledgeMap(String course) async =>
+      const KnowledgeMapData(
+        course: '数据结构',
+        nodes: [
+          KnowledgeMapNode(
+            id: 'tree',
+            name: '二叉树遍历',
+            course: '数据结构',
+            category: 'tree',
+            weight: 0.9,
+            external: false,
+            hasRecord: true,
+            masteryLevel: 32,
+            status: 'weak',
+            retention: 0.5,
+            evidenceConfidence: 0.8,
+            needsReview: true,
+            practiceCount: 3,
+            evidenceCount: 3,
+            weakPrerequisiteCount: 0,
+            level: 1,
+          ),
+        ],
+        edges: [],
+      );
+
+  @override
+  Future<KnowledgePointDetail> getKnowledgePointDetail(String kpId) async =>
+      const KnowledgePointDetail(
+        raw: {
+          'point': {'id': 'tree', 'name': '二叉树遍历', 'course': '数据结构'},
+          'state': {'mastery_level': 32},
+          'evidence_summary': {'evidence_count': 3},
+          'weak_prerequisites': [],
+        },
+      );
+
+  @override
+  Future<ChatConversation> createConversation({String? groupId}) async =>
+      ChatConversation(
+        id: 'knowledge-chat',
+        title: '新对话',
+        updatedAt: DateTime(2026),
+        groupId: groupId,
+      );
+
+  @override
+  Future<void> renameConversation(String id, String title) async {}
+
+  @override
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
+    streamedInputs.add(content);
+    yield const ChatStreamEvent('start', {});
+    yield const ChatStreamEvent('done', {});
+  }
 }
 
 void main() {
@@ -172,6 +253,65 @@ void main() {
     expect(find.text('添加课程'), findsOneWidget);
   });
 
+  testWidgets(
+    'new conversation opens the real chat instead of returning home',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final state = createState();
+      addTearDown(state.dispose);
+      await tester.pumpWidget(app(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('new-conversation')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('learning-chat')), findsOneWidget);
+      expect(find.byKey(const ValueKey('learning-home')), findsNothing);
+    },
+  );
+
+  testWidgets('continue learning resumes the latest real conversation', (
+    tester,
+  ) async {
+    final state = createState()
+      ..conversations.add(
+        ChatConversation(
+          id: 'recent-conversation',
+          title: '最短路径复习',
+          updatedAt: DateTime(2026, 8, 24),
+        ),
+      );
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    final continueButton = find.widgetWithText(FilledButton, '继续');
+    await tester.ensureVisible(continueButton);
+    await tester.tap(continueButton);
+    await tester.pumpAndSettle();
+
+    expect(state.activeId, 'recent-conversation');
+    expect(find.byKey(const ValueKey('learning-chat')), findsOneWidget);
+  });
+
+  testWidgets('continue learning is disabled without a course or history', (
+    tester,
+  ) async {
+    final state = createState();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '继续'),
+    );
+    expect(button.onPressed, isNull);
+  });
+
   testWidgets('workspace sidebar keeps history and omits primary navigation', (
     tester,
   ) async {
@@ -281,10 +421,73 @@ void main() {
       );
       expect(find.text('当前上下文'), findsOneWidget);
       expect(find.text('已选资料 0'), findsOneWidget);
-      expect(find.text('引用课程资料'), findsOneWidget);
+      expect(find.text('本次对话设置'), findsNothing);
+      expect(find.text('引用课程资料'), findsNothing);
+      expect(find.textContaining('当前课程：'), findsNothing);
+      expect(find.textContaining('长期记忆：'), findsNothing);
+      expect(find.textContaining('工具：'), findsNothing);
+      expect(find.textContaining('知识库：'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('knowledge-map explanation opens the generated learning chat', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = _KnowledgeShellApi();
+    final state = createState(api);
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('知识地图'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('knowledge-graph-node-tree')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('让 ESA 讲解'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('learning-chat')), findsOneWidget);
+    expect(state.activeId, 'knowledge-chat');
+    expect(api.streamedInputs.single, contains('二叉树遍历'));
+  });
+
+  testWidgets('assignment rows expose status without a fake checkbox action', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final state = createState()
+      ..studentAssignments = const [
+        TeachingAssignment(
+          id: 'assignment-1',
+          classId: 'class-1',
+          className: '数据结构 1 班',
+          course: '数据结构',
+          title: '图算法诊断',
+          instructions: '',
+          status: 'published',
+          totalPoints: 10,
+          submittedCount: 0,
+          studentCount: 12,
+          questions: [],
+        ),
+      ];
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('图算法诊断'), findsOneWidget);
+    expect(find.byType(Checkbox), findsNothing);
+  });
 
   testWidgets(
     'medium desktop hides context first and keeps sidebar collapsible',

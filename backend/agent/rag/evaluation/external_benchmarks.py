@@ -686,7 +686,7 @@ def evaluate_benchmark(
     output_root: Path,
     *,
     max_queries: int = 0,
-    use_reranker: bool = True,
+    use_reranker: bool = False,
 ) -> tuple[Path, dict[str, Any]]:
     """Build the index, call RetrievalService, and persist layered metrics."""
 
@@ -772,9 +772,16 @@ def evaluate_benchmark(
         "dataset": data.name,
         "scope": data.scope,
         "source": dict(data.source),
-        "backend": "ESA RetrievalService + cached reference hashing/BM25",
+        "backend": "ESA RetrievalService + cached reference hashing",
         "semantic_model": False,
         "reranker": "lexical-overlap" if use_reranker else "disabled",
+        "retrieval": {
+            "fusion_method": config.fusion_method,
+            "dense_limit": config.dense_limit,
+            "rerank_limit": config.rerank_limit,
+            "final_limit": config.final_limit,
+            "bm25_enabled": config.fusion_method != "dense",
+        },
         "index_generation_id": generation.index_generation_id,
         "document_count": len(corpus_documents),
         "chunk_count": len(collection.chunks),
@@ -823,7 +830,19 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--max-queries", type=int, default=0)
     parser.add_argument("--workers", type=int, default=8)
-    parser.add_argument("--no-reranker", action="store_true")
+    reranker = parser.add_mutually_exclusive_group()
+    reranker.add_argument(
+        "--reranker",
+        action="store_true",
+        help="explicitly enable the lexical-overlap reranker",
+    )
+    reranker.add_argument(
+        "--no-reranker",
+        action="store_false",
+        dest="reranker",
+        help=argparse.SUPPRESS,
+    )
+    parser.set_defaults(reranker=False)
     return parser
 
 
@@ -844,7 +863,7 @@ def main(argv: list[str] | None = None) -> int:
         data,
         arguments.output_root,
         max_queries=arguments.max_queries,
-        use_reranker=not arguments.no_reranker,
+        use_reranker=arguments.reranker,
     )
     print(f"result_dir={output}")
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))

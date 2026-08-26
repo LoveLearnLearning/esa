@@ -52,6 +52,8 @@ class BoundToolExecutor:
         self._view = view
         self._skills = skills
         self.context = context
+        self._loaded_skill_name: str | None = None
+        self._loaded_skill_body: str | None = None
 
     @property
     def names(self) -> frozenset[str]:
@@ -101,7 +103,22 @@ class BoundToolExecutor:
                 requested = normalized.get("name")
                 if not isinstance(requested, str):
                     return {"ok": False, "error": "invalid_skill_name"}
-                return self._skills.load(requested)
+                requested = requested.strip()
+                if self._loaded_skill_name == requested:
+                    return self._loaded_skill_body
+                if self._loaded_skill_name is not None:
+                    return {
+                        "ok": False,
+                        "error": "primary_skill_already_loaded",
+                        "loaded_skill": self._loaded_skill_name,
+                        "requested_skill": requested,
+                    }
+                body = self._skills.load(requested)
+                if body == f"{requested} skill not found!":
+                    return body
+                self._loaded_skill_name = requested
+                self._loaded_skill_body = body
+                return body
             if (
                 name in MEMORY_READ_TOOLS | MEMORY_WRITE_TOOLS
                 and self.context.runtime_dependencies.core_memory_service is not None
@@ -154,11 +171,16 @@ class BoundToolExecutor:
                         "degraded": ["personal_knowledge_base_unavailable"],
                         "rankings": {},
                     }
-                return await service.search(
-                    user_id=self.context.user_id,
-                    query=normalized["query"],
-                    top_k=normalized.get("top_k", 5),
-                )
+                search_arguments = {
+                    "user_id": self.context.user_id,
+                    "query": normalized["query"],
+                    "top_k": normalized.get("top_k", 5),
+                }
+                if self.context.personal_knowledge_base_id is not None:
+                    search_arguments["knowledge_base_id"] = (
+                        self.context.personal_knowledge_base_id
+                    )
+                return await service.search(**search_arguments)
             if name == "get_knowledge_base_stats":
                 from backend.agent.rag.agent_api import knowledge_base_stats
 
@@ -218,7 +240,7 @@ class BoundToolExecutor:
                 return await execute_attachment_tool(self.context, name, normalized)
             if name in {
                 "recommend_practice", "get_mastery_report", "get_mastery_level",
-                "get_weak_prerequisites", "get_review_timing", "record_answer",
+                "get_weak_prerequisites", "get_review_timing",
                 "record_learning_evidence", "get_learning_evidence_summary",
             }:
                 from backend.agent.tools.learning.runtime import execute_learning_tool

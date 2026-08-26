@@ -466,7 +466,7 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
   @override
   Widget build(BuildContext context) {
     final content = DefaultTabController(
-      length: 6,
+      length: 5,
       child: Column(
         children: [
           _projectHeader(),
@@ -488,7 +488,6 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
                       _overviewTab(),
                       _frontierTab(),
                       _writingTab(),
-                      _experimentsTab(),
                       _dataTab(),
                       _settingsTab(),
                     ],
@@ -561,10 +560,6 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
             Tab(icon: Icon(LucideIcons.gauge, size: 16), text: 'Overview'),
             Tab(icon: Icon(LucideIcons.bookOpen, size: 16), text: 'Papers'),
             Tab(icon: Icon(LucideIcons.notebookPen, size: 16), text: 'Notes'),
-            Tab(
-              icon: Icon(LucideIcons.flaskConical, size: 16),
-              text: 'Experiments',
-            ),
             Tab(icon: Icon(LucideIcons.database, size: 16), text: 'Data'),
             Tab(icon: Icon(LucideIcons.settings, size: 16), text: 'Settings'),
           ],
@@ -631,12 +626,6 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
                 ),
         ),
         const SizedBox(height: 12),
-        const _ResearchPanel(
-          icon: LucideIcons.lightbulb,
-          title: '当前假设',
-          child: Text('后端暂未提供结构化研究假设记录。'),
-        ),
-        const SizedBox(height: 12),
         _ResearchPanel(
           icon: LucideIcons.files,
           title: '文件',
@@ -654,9 +643,6 @@ class _ResearchProjectPageState extends State<ResearchProjectPage> {
       ],
     );
   }
-
-  Widget _experimentsTab() =>
-      const Center(child: _EmptyState(text: '实验记录将在这里关联数据、方法与评价结果。'));
 
   Widget _settingsTab() => ListView(
     padding: const EdgeInsets.all(24),

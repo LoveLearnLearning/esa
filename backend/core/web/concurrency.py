@@ -32,6 +32,14 @@ class ConversationTurnTargetMissingError(LookupError):
     """获取租约时目标对话已被删除。"""
 
 
+@dataclass(frozen=True, slots=True)
+class ConversationTurnClaim:
+    """Internal proof that a request owns an active conversation turn."""
+
+    conversation_id: str
+    owner_token: str
+
+
 @dataclass
 class _LockEntry:
     """封装 `_LockEntry` 的状态与行为。"""
@@ -131,6 +139,11 @@ class ConversationTurnLease:
     async def __aenter__(self) -> "ConversationTurnLease":
         """异步进入上下文并返回可用资源。"""
         return self
+
+    @property
+    def claim(self) -> ConversationTurnClaim:
+        """Return an immutable internal claim for owner-bound writes."""
+        return ConversationTurnClaim(self._conversation_id, self._owner_token)
 
     async def __aexit__(
         self,

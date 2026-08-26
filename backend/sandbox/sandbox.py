@@ -14,13 +14,17 @@ import importlib.util
 import math
 import os
 from pathlib import Path, PurePosixPath
-import resource
 import shlex
 import shutil
 import signal
 import time
 from contextlib import suppress
 from typing import Any
+
+try:
+    import resource
+except ImportError:  # pragma: no cover - Windows has no POSIX resource module.
+    resource = None  # type: ignore[assignment]
 
 
 class SandboxError(RuntimeError):
@@ -54,6 +58,8 @@ def _set_limits(limits: SandboxLimits) -> None:
     Bubblewrap itself from creating its namespace with ``EAGAIN``.
     """
 
+    if resource is None:
+        return
     resource.setrlimit(resource.RLIMIT_CPU, (limits.cpu_seconds, limits.cpu_seconds))
     resource.setrlimit(
         resource.RLIMIT_AS, (limits.memory_bytes, limits.memory_bytes)
@@ -175,14 +181,17 @@ class SandboxService:
             allow_network=allow_network,
         )
         started = time.monotonic()
+        process_options: dict[str, Any] = {}
+        if os.name == "posix":
+            process_options["start_new_session"] = True
+            process_options["preexec_fn"] = lambda: _set_limits(self.limits)
         try:
             process = await asyncio.create_subprocess_exec(
                 *argv,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                start_new_session=True,
-                preexec_fn=lambda: _set_limits(self.limits),
+                **process_options,
             )
         except OSError as error:
             return {
@@ -431,6 +440,9 @@ class SandboxService:
     @staticmethod
     def _terminate_process_group(process: asyncio.subprocess.Process) -> None:
         if process.returncode is not None:
+            return
+        if os.name != "posix":
+            process.kill()
             return
         try:
             os.killpg(process.pid, signal.SIGKILL)

@@ -2,9 +2,9 @@
 
 """
 
-这个文件干什么：封装 Dense、BM25 Body、BM25 Heading 三路独立召回及 Dense 降级。
+这个文件干什么：按配置执行 Dense，以及显式实验启用的 BM25 召回。
 
-直白点说就是：同时走语义、正文关键词和标题关键词三条路找候选；语义路线坏了还能保留关键词检索。
+直白点说就是：默认只走语义检索；只有明确选择词法融合实验时才查询 BM25。
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from .query import QueryProcessor, QueryVariants, RuleBasedQueryProcessor
 
 @dataclass(frozen=True)
 class RouteResult:
-    """一次查询的三路排名和召回阶段降级记录。"""
+    """一次查询的各路排名和召回阶段降级记录。"""
 
     routes: Mapping[str, list[RankedItem]]
     degraded: tuple[str, ...]
@@ -33,7 +33,7 @@ class RouteResult:
 
 @dataclass(frozen=True)
 class RouteRetriever:
-    """执行三路独立召回，不负责融合、重排或证据组装。"""
+    """执行配置允许的召回路线，不负责融合、重排或证据组装。"""
 
     index: RetrievalIndex
     embedding: EmbeddingProvider
@@ -41,7 +41,7 @@ class RouteRetriever:
     query_processor: QueryProcessor = field(default_factory=RuleBasedQueryProcessor)
 
     def retrieve(self, query: str) -> RouteResult:
-        """返回 Dense、正文 BM25、标题 BM25 排名及可观测降级原因。"""
+        """返回 Dense 和显式启用的 BM25 排名及可观测降级原因。"""
 
         degraded: list[str] = []
         routes: dict[str, list[RankedItem]] = {}
@@ -65,6 +65,11 @@ class RouteRetriever:
         except (InferenceUnavailable, IndexUnavailable, IndexError) as exc:
             degraded.append(f"dense_unavailable:{type(exc).__name__}")
             routes["dense"] = []
+
+        if self.config.fusion_method == "dense":
+            routes["bm25_body"] = []
+            routes["bm25_heading"] = []
+            return RouteResult(routes, tuple(degraded))
 
         routes["bm25_body"] = self.index.bm25_body(
             variants.bm25_body_query,

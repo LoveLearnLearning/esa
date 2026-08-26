@@ -132,6 +132,36 @@ WORKSPACE_CONTEXT_MAX_TOKENS: int = _positive_int_from_env(
     "ESA_WORKSPACE_CONTEXT_MAX_TOKENS", 16_000
 )
 
+# Prompt budgets are soft quality targets except for the physical context limit.
+# All values remain environment-overridable so deployments can tune them without
+# changing the workspace/tool protocol.
+PROMPT_TARGET_INPUT_TOKENS: int = _positive_int_from_env(
+    "ESA_PROMPT_TARGET_INPUT_TOKENS", 5000
+)
+PROMPT_TOOL_SCHEMA_TARGET_TOKENS: int = _positive_int_from_env(
+    "ESA_PROMPT_TOOL_SCHEMA_TARGET_TOKENS", 2800
+)
+PROMPT_TOOL_SCHEMA_MAX_TOKENS: int = _positive_int_from_env(
+    "ESA_PROMPT_TOOL_SCHEMA_MAX_TOKENS", 3000
+)
+PROMPT_SAFETY_MARGIN_TOKENS: int = _positive_int_from_env(
+    "ESA_PROMPT_SAFETY_MARGIN_TOKENS", 512
+)
+PROMPT_BASE_TARGET_TOKENS: int = 350
+PROMPT_LEARNING_POLICY_TARGET_TOKENS: int = 350
+PROMPT_LEARNING_POLICY_MAX_TOKENS: int = 450
+PROMPT_SKILL_INDEX_MAX_TOKENS: int = 250
+PROMPT_PROFILE_TARGET_TOKENS: int = 250
+PROMPT_PROFILE_MAX_TOKENS: int = 300
+PROMPT_AUTO_SKILL_MAX_TOKENS: int = 450
+PROMPT_LAZY_SKILL_MAX_TOKENS: int = 500
+
+TOOL_RESULT_STATE_MAX_TOKENS: int = 750
+TOOL_RESULT_DEFAULT_MAX_TOKENS: int = 1500
+TOOL_RESULT_CONTENT_MAX_TOKENS: int = 4000
+TOOL_RESULT_SKILL_MAX_TOKENS: int = 600
+TOOL_RESULT_CUMULATIVE_MAX_TOKENS: int = 12000
+
 # Offline conversation context compression. Original messages are retained;
 # the summary only replaces old messages in the next model prompt.
 CONVERSATION_COMPRESSION_ENABLED: bool = True
@@ -141,7 +171,7 @@ CONVERSATION_COMPRESSION_MIN_MESSAGES: int = 12
 CONVERSATION_COMPRESSION_MIN_NEW_MESSAGES: int = 6
 CONVERSATION_COMPRESSION_KEEP_RECENT_MESSAGES: int = 8
 CONVERSATION_COMPRESSION_MAX_INPUT_CHARS: int = 60000
-CONVERSATION_COMPRESSION_MAX_OUTPUT_TOKENS: int = 2048
+CONVERSATION_COMPRESSION_MAX_OUTPUT_TOKENS: int = 768
 
 # Generate one concise history title from the first user question. This shares
 # the local auxiliary model sidecar and never delays the start of the main run.
@@ -590,7 +620,7 @@ RAG_EMBEDDING_TIMEOUT: float = _float_from_env(
 
 # reranker
 RerankerBackend = Literal["none", "transformers", "vllm"]
-RAG_RERANKER_ENABLED: bool = _bool_from_env("RAG_RERANKER_ENABLED", True)
+RAG_RERANKER_ENABLED: bool = _bool_from_env("RAG_RERANKER_ENABLED", False)
 RAG_RERANKER_BACKEND: RerankerBackend = _choice_from_env(
     "RAG_RERANKER_BACKEND",
     "transformers" if RAG_RERANKER_ENABLED else "none",
@@ -610,12 +640,11 @@ RAG_RERANKER_TIMEOUT: float = _float_from_env(
 )
 
 # retrieval
-# Keep a wider recall pool so relevant chunks beyond the old top-20 are
-# available to fusion/reranking without increasing the final response size.
-RAG_DENSE_LIMIT: int = _int_from_env("RAG_DENSE_LIMIT", 50)
-RAG_BM25_BODY_LIMIT: int = _int_from_env("RAG_BM25_BODY_LIMIT", 50)
-RAG_BM25_HEADING_LIMIT: int = _int_from_env("RAG_BM25_HEADING_LIMIT", 50)
-RAG_RRF_LIMIT: int = _int_from_env("RAG_RRF_LIMIT", 50)
+# Recall 100 candidates, diversity-preselect 50 for reranking, and return 5.
+RAG_DENSE_LIMIT: int = _int_from_env("RAG_DENSE_LIMIT", 100)
+RAG_BM25_BODY_LIMIT: int = _int_from_env("RAG_BM25_BODY_LIMIT", 100)
+RAG_BM25_HEADING_LIMIT: int = _int_from_env("RAG_BM25_HEADING_LIMIT", 100)
+RAG_RRF_LIMIT: int = _int_from_env("RAG_RRF_LIMIT", 100)
 RAG_RERANK_LIMIT: int = _int_from_env("RAG_RERANK_LIMIT", 50)
 RAG_RERANKER_BATCH_SIZE: int = _int_from_env("RAG_RERANKER_BATCH_SIZE", 4)
 RAG_FINAL_LIMIT: int = _int_from_env("RAG_FINAL_LIMIT", 5)
@@ -671,11 +700,12 @@ def validate_private_storage_capacity(
 
     if not path.is_dir() or not os.access(path, os.R_OK | os.W_OK | os.X_OK):
         raise RuntimeError(f"{name} is not an accessible directory: {path}")
-    stat = path.stat()
-    if stat.st_uid != os.geteuid():
-        raise RuntimeError(f"{name} is not owned by the ESA service account")
-    if stat.st_mode & 0o077:
-        raise RuntimeError(f"{name} permissions must not allow group/other access")
+    if os.name == "posix" and hasattr(os, "geteuid"):
+        stat = path.stat()
+        if stat.st_uid != os.geteuid():
+            raise RuntimeError(f"{name} is not owned by the ESA service account")
+        if stat.st_mode & 0o077:
+            raise RuntimeError(f"{name} permissions must not allow group/other access")
     if shutil.disk_usage(path).free < required_bytes:
         raise RuntimeError(f"{name} does not have the configured safe free space")
 

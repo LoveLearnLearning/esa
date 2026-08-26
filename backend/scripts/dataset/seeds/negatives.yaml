@@ -16,7 +16,7 @@
 # A. 元对话：完全不涉及任何工具能力
 # ---------------------------------------------------------------------------
 meta:
-  lures: [recommend_practice, get_mastery_report, search_core_memories, get_time, record_answer]
+  lures: [recommend_practice, get_mastery_report, search_core_memories, get_time, record_learning_evidence]
   pairs:
     - q: "你好"
       a: "你好。我是 ESA，可以帮你规划练习、查学情、讲知识点。今天想从哪儿开始？"
@@ -89,8 +89,8 @@ gate_delete_memory:
     - q: "我现在不想按之前那个计划来了"
       a: "行，我们重新排。之前存的设定要不要一起改？你说了我再动。"
 
-gate_record_answer:
-  lures: [record_answer, record_learning_evidence, get_mastery_level]
+gate_record_learning_evidence:
+  lures: [record_learning_evidence, get_mastery_level]
   pairs:
     - q: "我等下想做几道题"
       a: "好，你说要练哪个知识点，我给你出。做完把结果告诉我，我再记录。"
@@ -172,11 +172,11 @@ traps:
     # 把 ARP 归在网络层，考试按这个判。把"看起来像 L2.5"的那层道理讲出来即可。
     a: "请求以广播发出、应答以单播返回，把 IP 地址解析成 MAC 地址，结果缓存在 ARP 表里。408 教材把它归在网络层——它为 IP 服务，但报文是直接封装进链路层帧发送的，不经过 IP。"
   - q: "二叉树的中序遍历我总写错"
-    lure: record_answer
+    lure: record_learning_evidence
     topic: binary_tree_traversal
     a: "顺序是左→根→右，「中序」的中指的就是根在中间。前序把 visit 放最前，后序放最后，三种代码结构完全一样，只有 visit 的位置不同。"
   - q: "为什么我总是分不清分页和分段"
-    lure: record_answer
+    lure: record_learning_evidence
     topic: 分页
     a: "关键差别是：分页大小固定、对用户透明、解决外碎片；分段长度可变、对用户可见、按逻辑模块划分。记住「页是物理的、段是逻辑的」就不容易混。"
   - q: "并查集的路径压缩是什么意思"

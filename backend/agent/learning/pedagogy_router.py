@@ -144,6 +144,17 @@ class PedagogyRouter:
         "概念",
     )
 
+    _COURSE_GROUNDING_MARKERS = (
+        "教材",
+        "课件",
+        "课程资料",
+        "课堂内容",
+        "老师讲",
+        "知识库",
+        "根据资料",
+        "依据资料",
+    )
+
     _TEACH_BACK_MARKERS = (
         "让我复述",
         "让我讲一遍",
@@ -290,6 +301,7 @@ class PedagogyRouter:
         profile: "ProfileSnapshot | None" = None,
         resolved_kp_ids: tuple[str, ...] = (),
         pending_practice_kp_id: str | None = None,
+        task_mode: str | None = None,
     ) -> PedagogyDecision:
         """处理 `route` 相关逻辑。
 
@@ -346,7 +358,22 @@ class PedagogyRouter:
                 learning_notes=learning_notes,
             )
 
-        # Flutter TaskMode 的显式指令优先，避免前后端各自猜一遍意图。
+        explicit_mode_trigger = {
+            "review_homework": "homework_review",
+            "mastery_report": "mastery_report",
+            "practice_recommendation": "practice_recommendation",
+            "study_plan": "study_plan",
+            "concept": "concept_learning",
+        }.get(task_mode or "")
+        if explicit_mode_trigger:
+            return decision(
+                cls._skill(explicit_mode_trigger),
+                "服务端 Task Mode 已明确用户意图",
+                1.0,
+                "learning",
+            )
+
+        # 兼容历史客户端写入消息正文的 TaskMode 标记。
         task_mode_mapping = (
             ("任务模式：批改作业", "homework_review"),
             ("任务模式：学习情况报告", "mastery_report"),
@@ -473,12 +500,23 @@ class PedagogyRouter:
                 "learning",
             )
 
-        if has_concept_marker:
+        requests_course_grounding = primary_kp_id is not None or any(
+            marker in lowered for marker in cls._COURSE_GROUNDING_MARKERS
+        )
+        if has_concept_marker and requests_course_grounding:
             return decision(
                 cls._skill("explanation_request"),
-                "用户正在询问概念/原理，应先检索知识库并在本轮直接讲解",
+                "用户正在询问已解析课程知识点或指定课程资料，应先检索知识库并在本轮直接讲解",
                 0.72 if profile is None else 0.8,
                 "learning",
+            )
+
+        if has_concept_marker:
+            return decision(
+                None,
+                "通用概念或软件框架问题未绑定课程知识点，直接回答且不强制课程库检索",
+                0.8,
+                "general",
             )
 
         if primary_kp_id is not None:

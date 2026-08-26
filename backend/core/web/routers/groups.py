@@ -15,6 +15,7 @@ from backend.core.web.routers._validators import validate_style_tone
 from backend.core.web.schemas import (
     GroupCreateRequest,
     GroupOut,
+    GroupReorderRequest,
     GroupUpdateRequest,
 )
 
@@ -86,6 +87,13 @@ def create_group(
     group_store: GroupStore = request.app.state.group_store
 
     validate_style_tone(body.style, body.tone)
+    if body.project_id is not None:
+        project_store = request.app.state.research_project_store
+        project = project_store.get_project(body.project_id, session.user_id)
+        if project is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "科研项目不存在")
+        if project["status"] != "active":
+            raise HTTPException(status.HTTP_409_CONFLICT, "已归档项目不能创建分组")
 
     # 上限校验放在 GroupStore 事务内 与插入同锁 防止并发突破上限
     group = group_store.create_group(
@@ -95,6 +103,7 @@ def create_group(
         custom_instruction=body.custom_instruction,
         style=body.style,
         tone=body.tone,
+        project_id=body.project_id,
         group_limit=GROUP_LIMIT,
     )
     if group is None:
@@ -106,6 +115,22 @@ def create_group(
     group["conversation_count"] = 0
 
     return GroupOut(**group)
+
+
+@router.put("/order", status_code=status.HTTP_204_NO_CONTENT)
+def reorder_groups(
+    body: GroupReorderRequest,
+    request: Request,
+    session: CurrentSession,
+) -> Response:
+    """Persist the complete group order for the current user."""
+    group_store: GroupStore = request.app.state.group_store
+    if not group_store.reorder_groups(session.user_id, body.group_ids):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "分组顺序与当前分组集合不一致，请刷新后重试",
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/{group_id}")
@@ -136,9 +161,15 @@ def update_group(
         if field in updates and updates[field] is None:
             del updates[field]
     validate_style_tone(updates.get("style"), updates.get("tone"))
+    if "project_id" in updates and updates["project_id"] is not None:
+        project = request.app.state.research_project_store.get_project(
+            updates["project_id"], session.user_id
+        )
+        if project is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "科研项目不存在")
 
     if updates:
-        group_store.update_group(group_id, **updates)
+        group_store.update_group(group_id, session.user_id, **updates)
 
     # 返回最新分组信息
     updated = group_store.get_group(group_id)

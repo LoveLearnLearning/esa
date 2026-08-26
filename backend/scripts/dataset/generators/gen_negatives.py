@@ -282,7 +282,7 @@ def main() -> int:
     out: list[Sample] = []
 
     for group in ("meta", "gate_save_memory", "gate_delete_memory",
-                  "gate_record_answer", "gate_search_memory"):
+                  "gate_record_learning_evidence", "gate_search_memory"):
         gen_no_call(group, cfg[group], version, rng, all_names, out)
     gen_traps(cfg, version, rng, all_names, out)
     gen_memory_positives(version, rng, all_names, out)

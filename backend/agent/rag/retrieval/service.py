@@ -15,7 +15,12 @@ import time
 
 from ..chunk import Chunk
 from ..collection import LoadedChunkCollection
-from .context import ContextBuilder, EvidenceAssembler, rank_evidence_for_query
+from .context import (
+    ContextBuilder,
+    ContextSegment,
+    EvidenceAssembler,
+    rank_evidence_for_query,
+)
 from .calibration import (
     CosineScoreCalibrator,
     RobustMinMaxScoreCalibrator,
@@ -98,14 +103,18 @@ class RetrievalService:
         context_level: ContextLevel,
         fused_scores: Mapping[str, float],
         selection: CandidateSelection,
-        context: tuple[Chunk, ...],
+        context: tuple[ContextSegment, ...],
     ) -> SearchHit:
         """把最终候选转换为包含引用与章节上下文的 SearchHit。"""
 
         chunk: Chunk = self._chunks[item.chunk_id]
         evidence_chunks = (
             chunk,
-            *(part for part in context if part.chunk_id != chunk.chunk_id),
+            *(
+                part.chunk
+                for part in context
+                if part.chunk.chunk_id != chunk.chunk_id
+            ),
         )
         evidence = tuple(
             evidence
@@ -120,8 +129,8 @@ class RetrievalService:
             retrieval_score=fused_scores[chunk.chunk_id],
             rerank_score=selection.rerank_scores.get(chunk.chunk_id),
             evidence=rank_evidence_for_query(query, evidence),
-            context_chunk_ids=tuple(part.chunk_id for part in context),
-            context_text="\n\n".join(part.bm25_body for part in context),
+            context_chunk_ids=tuple(part.chunk.chunk_id for part in context),
+            context_text="\n\n".join(part.text for part in context),
         )
 
     def search(
@@ -138,6 +147,17 @@ class RetrievalService:
         logger.info("retrieval started query_chars=%d", len(query))
 
         route_result = self._route_retriever.retrieve(query)
+        known_routes: dict[str, list[RankedItem]] = {}
+        stale_count = 0
+        for name, items in route_result.routes.items():
+            known = [item for item in items if item.chunk_id in self._chunks]
+            stale_count += len(items) - len(known)
+            known_routes[name] = known
+        if stale_count:
+            route_result = type(route_result)(
+                known_routes,
+                route_result.degraded + (f"stale_chunk_ids:{stale_count}",),
+            )
         fused, fusion_trace = self._fuse(query, route_result.routes)
         fused_scores = {item.chunk_id: item.score for item in fused}
         selection = self._candidate_reranker.select(query, fused)
@@ -150,6 +170,7 @@ class RetrievalService:
             context_level,
             self.config.max_context_tokens,
             selection.merged_context_chunk_ids,
+            query=query,
         )
 
         hits = tuple(
@@ -169,6 +190,9 @@ class RetrievalService:
             for name, items in route_result.routes.items()
         }
         rankings["fusion"] = tuple(item.chunk_id for item in fused)
+        rankings["preselection"] = tuple(
+            item.chunk_id for item in selection.preselection
+        )
         if selection.reranker_applied:
             rankings["reranker"] = tuple(item.chunk_id for item in selection.ranking)
         rankings["final"] = tuple(hit.chunk_id for hit in hits)
@@ -212,32 +236,12 @@ class RetrievalService:
         method = self.config.fusion_method
         if method == "dense":
             fused = list(routes.get("dense", ()))[: self.config.rrf_limit]
-            applied_method = "dense"
-            actual_weights: dict[str, float] = {
+            return fused, {
+                "configured_method": method,
+                "applied_method": "dense",
                 "dense_weight": 1.0,
                 "bm25_body_weight": 0.0,
                 "bm25_heading_weight": 0.0,
-            }
-            if not fused:
-                fused = reciprocal_rank_fusion(
-                    {
-                        name: values
-                        for name, values in routes.items()
-                        if name != "dense"
-                    },
-                    rrf_k=self.config.rrf_k,
-                    limit=self.config.rrf_limit,
-                )
-                applied_method = "lexical_rrf_fallback"
-                actual_weights = {
-                    "dense_weight": 0.0,
-                    "bm25_body_weight": 1.0,
-                    "bm25_heading_weight": 1.0,
-                }
-            return fused, {
-                "configured_method": method,
-                "applied_method": applied_method,
-                **actual_weights,
             }
         if method == "equal_rrf":
             return (

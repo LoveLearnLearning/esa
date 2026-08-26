@@ -22,6 +22,7 @@ class _GroupApi extends ApiClient {
     String customInstruction = '',
     String? style,
     String? tone,
+    String? projectId,
   }) async {
     final group = ChatGroup(
       id: 'group-${groups.length + 1}',
@@ -31,6 +32,7 @@ class _GroupApi extends ApiClient {
       customInstruction: customInstruction,
       style: style,
       tone: tone,
+      projectId: projectId,
       conversationCount: 0,
       createdAt: DateTime(2026),
       updatedAt: DateTime(2026),
@@ -45,6 +47,37 @@ class _GroupApi extends ApiClient {
     for (final conversation in conversations) {
       if (conversation.groupId == groupId) conversation.groupId = null;
     }
+  }
+
+  @override
+  Future<ChatGroup> setGroupPinned(String groupId, bool pinned) async {
+    final index = groups.indexWhere((group) => group.id == groupId);
+    final current = groups[index];
+    final updated = ChatGroup(
+      id: current.id,
+      userId: current.userId,
+      name: current.name,
+      description: current.description,
+      customInstruction: current.customInstruction,
+      style: current.style,
+      tone: current.tone,
+      projectId: current.projectId,
+      pinned: pinned,
+      sortOrder: current.sortOrder,
+      conversationCount: current.conversationCount,
+      createdAt: current.createdAt,
+      updatedAt: DateTime(2026),
+    );
+    groups[index] = updated;
+    return updated;
+  }
+
+  @override
+  Future<void> reorderGroups(List<String> groupIds) async {
+    final byId = {for (final group in groups) group.id: group};
+    groups
+      ..clear()
+      ..addAll(groupIds.map((id) => byId[id]).whereType<ChatGroup>());
   }
 
   @override
@@ -98,7 +131,11 @@ class _GroupApi extends ApiClient {
   Future<void> renameConversation(String id, String title) async {}
 
   @override
-  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
     yield const ChatStreamEvent('start', {});
     yield const ChatStreamEvent('content', {'delta': '收到'});
     yield const ChatStreamEvent('done', {});
@@ -126,54 +163,64 @@ ChatGroup _group(String id, int count) => ChatGroup(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('loads groups and exposes grouped/ungrouped conversation buckets', () async {
-    final api = _GroupApi()
-      ..groups.addAll([_group('group-1', 1), _group('group-2', 0)])
-      ..conversations.addAll([
-        _conversation('conversation-1', 'group-1'),
-        _conversation('conversation-2', null),
-      ]);
-    final state = AppState(api: api);
-    addTearDown(state.dispose);
+  test(
+    'loads groups and exposes grouped/ungrouped conversation buckets',
+    () async {
+      final api = _GroupApi()
+        ..groups.addAll([_group('group-1', 1), _group('group-2', 0)])
+        ..conversations.addAll([
+          _conversation('conversation-1', 'group-1'),
+          _conversation('conversation-2', null),
+        ]);
+      final state = AppState(api: api);
+      addTearDown(state.dispose);
 
-    await state.loadGroups();
-    await state.loadConversations();
+      await state.loadGroups();
+      await state.loadConversations();
 
-    expect(state.groups, hasLength(2));
-    expect(state.groupedConversations, hasLength(1));
-    expect(state.ungroupedConversations, hasLength(1));
-    expect(state.conversationsInGroup('group-1').single.id, 'conversation-1');
-  });
+      expect(state.groups, hasLength(2));
+      expect(state.groupedConversations, hasLength(1));
+      expect(state.ungroupedConversations, hasLength(1));
+      expect(state.conversationsInGroup('group-1').single.id, 'conversation-1');
+    },
+  );
 
-  test('moving a conversation updates membership and local group counts', () async {
-    final api = _GroupApi()
-      ..groups.addAll([_group('group-1', 1), _group('group-2', 0)])
-      ..conversations.addAll([
-        _conversation('conversation-1', 'group-1'),
-        _conversation('conversation-2', null),
-      ]);
-    final state = AppState(api: api);
-    addTearDown(state.dispose);
-    await state.loadGroups();
-    await state.loadConversations();
+  test(
+    'moving a conversation updates membership and local group counts',
+    () async {
+      final api = _GroupApi()
+        ..groups.addAll([_group('group-1', 1), _group('group-2', 0)])
+        ..conversations.addAll([
+          _conversation('conversation-1', 'group-1'),
+          _conversation('conversation-2', null),
+        ]);
+      final state = AppState(api: api);
+      addTearDown(state.dispose);
+      await state.loadGroups();
+      await state.loadConversations();
 
-    await state.moveConversationToGroup('conversation-2', 'group-1');
+      await state.moveConversationToGroup('conversation-2', 'group-1');
 
-    expect(state.conversationsInGroup('group-1'), hasLength(2));
-    expect(state.ungroupedConversations, hasLength(0));
-    expect(
-      state.groups.firstWhere((group) => group.id == 'group-1').conversationCount,
-      2,
-    );
+      expect(state.conversationsInGroup('group-1'), hasLength(2));
+      expect(state.ungroupedConversations, hasLength(0));
+      expect(
+        state.groups
+            .firstWhere((group) => group.id == 'group-1')
+            .conversationCount,
+        2,
+      );
 
-    await state.moveConversationToGroup('conversation-2', null);
+      await state.moveConversationToGroup('conversation-2', null);
 
-    expect(state.ungroupedConversations, hasLength(1));
-    expect(
-      state.groups.firstWhere((group) => group.id == 'group-1').conversationCount,
-      1,
-    );
-  });
+      expect(state.ungroupedConversations, hasLength(1));
+      expect(
+        state.groups
+            .firstWhere((group) => group.id == 'group-1')
+            .conversationCount,
+        1,
+      );
+    },
+  );
 
   test('deleting a group moves its conversations back to ungrouped', () async {
     final api = _GroupApi()
@@ -194,20 +241,22 @@ void main() {
     expect(state.ungroupedConversations, hasLength(2));
   });
 
-  test('group conversations are created on first send inside the active group', () async {
-    final api = _GroupApi();
-    final state = AppState(api: api)
-      ..activeGroupId = 'group-1';
-    addTearDown(state.dispose);
+  test(
+    'group conversations are created on first send inside the active group',
+    () async {
+      final api = _GroupApi();
+      final state = AppState(api: api)..activeGroupId = 'group-1';
+      addTearDown(state.dispose);
 
-    await state.newConversation();
-    expect(api.lastCreatedConversationGroupId, isNull);
+      await state.newConversation();
+      expect(api.lastCreatedConversationGroupId, isNull);
 
-    await state.send('分组中的第一个问题');
+      await state.send('分组中的第一个问题');
 
-    expect(api.lastCreatedConversationGroupId, 'group-1');
-    expect(state.activeConversation?.groupId, 'group-1');
-  });
+      expect(api.lastCreatedConversationGroupId, 'group-1');
+      expect(state.activeConversation?.groupId, 'group-1');
+    },
+  );
 
   test('new conversation can target a specific group', () async {
     final api = _GroupApi();
@@ -231,12 +280,12 @@ void main() {
 
     expect(state.groups.map((group) => group.id), ['group-1', 'group-2']);
 
-    state.toggleGroupPin('group-2');
+    await state.toggleGroupPin('group-2');
 
     expect(state.isGroupPinned('group-2'), isTrue);
     expect(state.groups.map((group) => group.id), ['group-2', 'group-1']);
 
-    state.toggleGroupPin('group-2');
+    await state.toggleGroupPin('group-2');
 
     expect(state.isGroupPinned('group-2'), isFalse);
     expect(state.groups.map((group) => group.id), ['group-2', 'group-1']);
@@ -247,14 +296,12 @@ void main() {
     final state = AppState(api: api);
     addTearDown(state.dispose);
 
-    final group = await state.createGroup(
-      name: '文献检索',
-      projectId: 'project-1',
-    );
+    final group = await state.createGroup(name: '文献检索', projectId: 'project-1');
 
     expect(state.groupProjectId(group.id), 'project-1');
     expect(state.groupsForProject('project-1').single.id, group.id);
     expect(state.groupsForProject('project-2'), isEmpty);
+    expect(state.generalGroups, isEmpty);
   });
 
   test('research groups are scoped to existing projects', () async {
@@ -279,6 +326,7 @@ void main() {
       'group-1',
     ]);
     expect(state.groupsForProject('project-2'), isEmpty);
+    expect(state.generalGroups.map((group) => group.id), ['group-2']);
     expect(
       state.conversationsInGroupForProject('group-1', 'project-1'),
       hasLength(1),

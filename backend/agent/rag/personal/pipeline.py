@@ -60,9 +60,13 @@ class PersonalUploadPipeline:
         file_ids = [str(value) for value in job["payload"].get("file_ids", [])]
         if not file_ids:
             raise ValueError("upload job has no files")
+        knowledge_base_id = job["payload"].get("knowledge_base_id")
         await asyncio.to_thread(self.index.ensure_collection, self.dense_dimension)
         generation_id = self.store.ensure_active_generation(
             user_id=user_id,
+            knowledge_base_id=(
+                str(knowledge_base_id) if knowledge_base_id is not None else None
+            ),
             collection_name=self.index.collection,
             embedding_fingerprint=self.embedding_fingerprint,
             chunk_fingerprint=self.ingestion.pipeline_fingerprint,

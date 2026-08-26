@@ -238,9 +238,10 @@ python -m pytest backend/agent/DocIR/tests backend/agent/rag/chunk/tests backend
 ```
 
 `--reranker-backend` 默认值由 `backend/core/utils/config.py` 决定，当前正式配置为
-`transformers` 且默认启用；临时设置 `RAG_RERANKER_ENABLED=false` 可独立验证三路召回
-与 Fusion，设置为 `transformers` 或 `vllm` 则会对 Fusion 候选执行真实重排。Reranker
-属于查询期配置，不改变已经持久化的索引代次。
+`none` 且默认关闭。服务中只有显式设置 `RAG_RERANKER_ENABLED=true` 并选择
+`transformers` 或 `vllm` 后端才会执行重排；CLI 查询显式传入非 `none` 的
+`--reranker-backend` 也会只为该次查询启用。Reranker 属于查询期配置，不改变已经
+持久化的索引代次。
 
 查询期排序严格分两阶段：Fusion 先决定候选集合和候选边界，Reranker 只在该候选池
 内按自己的分数重排。两者分数不再做 min-max 或加权混合；fusion 分数和 rerank 分数

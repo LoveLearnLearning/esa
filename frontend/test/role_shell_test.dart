@@ -11,6 +11,15 @@ class _RoleShellApi extends ApiClient {
   _RoleShellApi() : super(baseUrl: 'http://test.invalid');
 
   @override
+  Future<void> logout() async {
+    sessionId = null;
+    userId = null;
+    username = null;
+    email = null;
+    accountRole = 'student';
+  }
+
+  @override
   Future<ScheduleSnapshot> getSchedule() async =>
       const ScheduleSnapshot(courses: [], settings: ScheduleSettings());
 
@@ -78,8 +87,9 @@ class _RoleShellApi extends ApiClient {
   Future<List<ResearchProject>> listResearchProjects() async => const [];
 
   @override
-  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase() async =>
-      const PersonalKnowledgeBase.empty();
+  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase({
+    String? knowledgeBaseId,
+  }) async => const PersonalKnowledgeBase.empty();
 }
 
 Widget _app(AppState state) => AppScope(
@@ -177,6 +187,9 @@ void main() {
     );
     expect(find.byKey(const ValueKey('teacher-workbench')), findsOneWidget);
     expect(find.text('教学工作台'), findsWidgets);
+    expect(find.text('待处理'), findsNothing);
+    expect(find.text('搜索班级或对话'), findsOneWidget);
+    expect(find.text('搜索班级、作业或对话'), findsNothing);
     expect(find.text('数据结构 1 班'), findsNWidgets(2));
     expect(find.byKey(const ValueKey('student-shell')), findsNothing);
     expect(find.byKey(const ValueKey('student-global-rail')), findsNothing);
@@ -285,11 +298,11 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('clearing a session removes teacher role and workspace state', () {
+  test('clearing a session removes teacher role and workspace state', () async {
     final state = _state(teacher: true);
     addTearDown(state.dispose);
 
-    state.enterAsGuest();
+    await state.logout();
 
     expect(state.accountRole, 'student');
     expect(state.role, '学生');

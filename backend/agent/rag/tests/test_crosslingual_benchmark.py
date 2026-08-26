@@ -18,7 +18,9 @@ from backend.agent.rag.evaluation.crosslingual_benchmark import (
 def test_crosslingual_schema_requires_explicit_gold(tmp_path) -> None:
     """验证 `crosslingual_schema_requires_explicit_gold` 场景。"""
     path = tmp_path / "cases.jsonl"
-    path.write_text('{"case_id":"1","query_zh":"什么是 TCP？"}\n')
+    path.write_text(
+        '{"case_id":"1","query_zh":"什么是 TCP？"}\n', encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="gold_document_ids"):
         load_cases(path)
 
@@ -36,7 +38,8 @@ def test_crosslingual_replay_evaluates_all_required_pipelines(tmp_path) -> None:
             },
             ensure_ascii=False,
         )
-        + "\n"
+        + "\n",
+        encoding="utf-8",
     )
     results = tmp_path / "results.jsonl"
     results.write_text(
@@ -46,7 +49,8 @@ def test_crosslingual_replay_evaluates_all_required_pipelines(tmp_path) -> None:
                 "rankings": {name: ["gold", "other"] for name in PIPELINES},
             }
         )
-        + "\n"
+        + "\n",
+        encoding="utf-8",
     )
     report = evaluate_replay(cases, results)
     assert set(report["metrics"]) == set(PIPELINES)

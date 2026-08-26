@@ -2,6 +2,7 @@
 
 """验证 `sqlite_integrity` 相关行为与回归场景。"""
 
+import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -251,7 +252,7 @@ def test_legacy_migration_quarantines_orphans_and_preserves_valid_rows(tmp_path)
     # 引用 groups 的归属触发器。迁移必须能安全拆除并重建它们。
     ChatStore(database_path)
 
-    assert run_migrations(database_path) == 18
+    assert run_migrations(database_path) == 19
     assert run_migrations(database_path) == 0
 
     connection = sqlite3.connect(database_path)
@@ -301,7 +302,8 @@ def test_personal_startup_converts_persistent_wal_to_private_rollback_journal(
         assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
     finally:
         connection.close()
-    assert database.stat().st_mode & 0o777 == 0o600
+    if os.name == "posix":
+        assert database.stat().st_mode & 0o777 == 0o600
 
 
 def test_v10_repairs_databases_that_already_recorded_a_conflicting_v9(tmp_path):
@@ -338,7 +340,7 @@ def test_v10_repairs_databases_that_already_recorded_a_conflicting_v9(tmp_path):
     connection.commit()
     connection.close()
 
-    assert run_migrations(database_path) == 9
+    assert run_migrations(database_path) == 10
     connection = sqlite3.connect(database_path)
     try:
         user_columns = {

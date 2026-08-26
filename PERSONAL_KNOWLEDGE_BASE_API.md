@@ -1,6 +1,6 @@
 # ESA 个人知识库前后端接口契约
 
-本文档对应前端“个人知识库”页面。学生和教师共用同一组接口，数据必须按当前登录用户隔离。前端不传 `user_id`，后端只能从 Bearer Session 中解析用户身份。4 个管理接口和后续预览阶段的原文件流、派生预览、独立下载均已实现。
+本文档对应前端“个人知识库”页面。学生和教师共用同一组接口，数据必须按当前登录用户隔离。前端不传 `user_id`，后端只能从 Bearer Session 中解析用户身份。一个用户可以创建多个命名个人知识库；每轮对话至多选择其中一个，并可独立叠加系统公共知识库。
 
 ## 1. 通用约定
 
@@ -8,9 +8,9 @@
 - 认证：`Authorization: Bearer <session_id>`
 - 时间：ISO 8601 UTC，例如 `2026-08-21T08:30:00Z`
 - `progress`：`0.0` 到 `1.0` 的浮点数，不是百分数
-- 文件、chunk、index 统计仅包含当前用户的个人知识库
+- 文件、chunk、index 统计仅包含当前用户指定的个人知识库
 - 删除文件后应异步删除对应 chunk 和向量索引，并更新汇总统计
-- MVP 按当前用户内 SHA-256 去重；相同内容即使文件名不同，也保留首次上传的逻辑条目和文件名，后续重复上传返回正常快照且不重复解析或写索引
+- 按“当前用户 + 具体个人知识库”范围做 SHA-256 去重；同一内容允许分别存在于知识库 A 和 B
 - 同一知识库已有互斥上传或重建任务时统一返回 `409`
 - 同一用户的上传、删除和重建按服务端 revision 顺序提交；不同用户可以并发处理
 
@@ -25,6 +25,19 @@
 | `failed` | 构建失败，`error` 给出可展示原因 |
 
 ## 2. 数据结构
+
+### PersonalKnowledgeBaseSummary
+
+```json
+{
+  "id": "personal_kb_...",
+  "name": "知识库 A",
+  "file_count": 2,
+  "chunk_count": 76,
+  "index_count": 76,
+  "updated_at": "2026-08-21T08:31:12Z"
+}
+```
 
 ### KnowledgeBaseFile
 
@@ -75,7 +88,17 @@
 
 汇总 `progress` 建议按文件字节数或构建任务权重计算；只要构建结果稳定且单调递增即可。`index_count` 表示已成功写入且当前可检索的 Qdrant Point 数；一个 Point 同时包含 Dense、BM25 Body 和 BM25 Heading 时仍计为 1。
 
-## 3. 获取知识库快照
+## 3. 目录与知识库快照
+
+```http
+GET /me/knowledge-base/libraries
+POST /me/knowledge-base/libraries
+GET /me/knowledge-base/libraries/{knowledge_base_id}
+```
+
+目录 GET 返回 `PersonalKnowledgeBaseSummary[]`；首次访问会创建“默认知识库”。POST 请求
+`{"name":"知识库 A"}` 并返回 `201`。名称在同一用户内不区分大小写且唯一。指定 ID
+不存在或不属于当前用户统一返回 `404`。
 
 ```http
 GET /me/knowledge-base
@@ -98,6 +121,7 @@ Authorization: Bearer <session_id>
 ```
 
 前端在 `queued/building` 状态下每 2 秒调用一次该接口，直至 `ready/failed`。
+旧路径 `/me/knowledge-base` 保留为默认知识库兼容入口。
 
 ## 4. 批量添加文件
 
@@ -118,6 +142,9 @@ MVP 前端和后端允许：`pdf, doc, docx, ppt, pptx, xls, xlsx, csv, txt, md,
 初始限制：单文件不超过 200 MB、单次最多 20 个文件、单批总大小不超过 1 GB、单用户最多 10 GB/1000 个文件。后端同时校验扩展名、MIME 和文件魔数。上传接口只负责可靠保存并创建异步构建任务，不应等待整个 DocIR/RAG 流程完成。
 
 成功：`202 Accepted`，返回第 2 节定义的完整 `PersonalKnowledgeBase`。新文件通常处于 `queued`，知识库汇总状态也应为 `queued` 或 `building`。返回中的 `files` 必须是完整文件列表，不能只返回本次新增文件，也不能在 `file_count > 0` 时返回空数组。
+
+命名知识库使用 `POST /me/knowledge-base/libraries/{knowledge_base_id}/files`；旧路径上传到
+默认知识库。
 
 ## 5. 原文件、派生预览与下载
 
@@ -197,6 +224,7 @@ Content-Type: application/json
 ```
 
 请求体为空。成功：`202 Accepted`，返回最新 `PersonalKnowledgeBase`，状态为 `queued` 或 `building`。重建应保持原始文件不变，只重建解析产物、chunks 和索引。知识库没有文件时固定返回 `400`。
+命名知识库入口为 `POST /me/knowledge-base/libraries/{knowledge_base_id}/rebuild`。
 
 ## 8. 错误响应
 
@@ -212,7 +240,7 @@ Content-Type: application/json
 | --- | --- |
 | `400` | `files` 字段存在但没有可用文件、文件为零字节，或空知识库执行 rebuild |
 | `401` | Session 无效或过期 |
-| `404` | 文件不存在或不属于当前用户 |
+| `404` | 知识库/文件不存在或不属于当前用户 |
 | `409` | 同一用户已有互斥上传或重建任务时再次 upload/rebuild |
 | `413` | 单文件、批次或用户存储配额超限 |
 | `415` | 文件格式/MIME 不支持 |
@@ -227,6 +255,8 @@ Content-Type: application/json
 
 | 前端方法 | 后端接口 |
 | --- | --- |
+| `listPersonalKnowledgeBases()` | `GET /me/knowledge-base/libraries` |
+| `createPersonalKnowledgeBase(name)` | `POST /me/knowledge-base/libraries` |
 | `getPersonalKnowledgeBase()` | `GET /me/knowledge-base` |
 | `uploadPersonalKnowledgeBaseFiles(files)` | `POST /me/knowledge-base/files` |
 | `fetchPersonalKnowledgeBaseFile(file)` | `GET /me/knowledge-base/files/{id}/content`；返回可取消字节流，可选择 download/Range |
@@ -234,7 +264,7 @@ Content-Type: application/json
 | `deletePersonalKnowledgeBaseFile(id)` | `DELETE /me/knowledge-base/files/{id}` |
 | `rebuildPersonalKnowledgeBase()` | `POST /me/knowledge-base/rebuild` |
 
-前端保留完整扩展名列表和 MIME 映射。文件点击调用受控 preview 接口而不是原文件 content 接口；原件 content/download 仅通过流式方法使用。桌面端和移动端 Widget 测试覆盖文本、PDF、图片、切换取消和失败路径。其余 4 个管理接口的字段名和路径保持不变。
+`get/upload/rebuild` 方法可传 `knowledgeBaseId` 访问命名知识库。前端保留完整扩展名列表和 MIME 映射。文件点击调用受控 preview 接口而不是原文件 content 接口；原件 content/download 仅通过流式方法使用。桌面端和移动端 Widget 测试覆盖文本、PDF、图片、切换取消和失败路径。
 
 ## 10. 第二阶段 Evidence 定位约定
 

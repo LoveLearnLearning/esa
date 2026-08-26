@@ -38,6 +38,9 @@ CREATE TABLE {table} (
     custom_instruction TEXT NOT NULL DEFAULT '',
     style TEXT,
     tone TEXT,
+    project_id TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -52,6 +55,7 @@ CREATE TABLE {table} (
     group_id TEXT,
     workspace_type TEXT NOT NULL DEFAULT 'learning',
     research_project_id TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -159,6 +163,80 @@ def _migrate_message_attachments(connection: sqlite3.Connection) -> None:
             "ALTER TABLE messages ADD COLUMN attachments_json "
             "TEXT NOT NULL DEFAULT '[]'"
         )
+
+
+def _migrate_product_ui_state(connection: sqlite3.Connection) -> None:
+    """Persist formerly client-only account and planner state."""
+    if _table_exists(connection, "users"):
+        user_columns = _columns(connection, "users")
+        if "display_name" not in user_columns:
+            connection.execute(
+                "ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''"
+            )
+            # The oldest supported test/production stores only carried the stable
+            # user id.  Prefer the login name when it exists, but never make this
+            # additive migration depend on a column introduced by a later schema.
+            source_column = "username" if "username" in user_columns else "id"
+            connection.execute(
+                f'UPDATE users SET display_name = "{source_column}" '
+                "WHERE display_name = ''"
+            )
+    if _table_exists(connection, "groups"):
+        columns = _columns(connection, "groups")
+        if "project_id" not in columns:
+            connection.execute("ALTER TABLE groups ADD COLUMN project_id TEXT")
+        if "pinned" not in columns:
+            connection.execute(
+                "ALTER TABLE groups ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+            )
+        if "sort_order" not in columns:
+            connection.execute(
+                "ALTER TABLE groups ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
+            )
+    if _table_exists(connection, "conversations") and "pinned" not in _columns(
+        connection, "conversations"
+    ):
+        connection.execute(
+            "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+        )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS planner_todos (
+            todo_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            due_at TEXT,
+            done INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_planner_todos_user "
+        "ON planner_todos(user_id, done, due_at, created_at DESC)"
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS planner_goals (
+            goal_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            target_at TEXT,
+            progress INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CHECK(progress BETWEEN 0 AND 100)
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_planner_goals_user "
+        "ON planner_goals(user_id, target_at, created_at DESC)"
+    )
 
 
 def _execute_script_atomically(
@@ -1453,6 +1531,126 @@ def _migrate_personal_knowledge_base_user_purges(
     )
 
 
+def _migrate_personal_knowledge_base_catalogs(
+    connection: sqlite3.Connection,
+) -> None:
+    """Split one user's files into selectable logical knowledge bases."""
+
+    connection.execute(
+        """
+        CREATE TABLE personal_knowledge_base_catalogs (
+            knowledge_base_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL COLLATE NOCASE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, name),
+            CHECK(length(trim(name)) BETWEEN 1 AND 80)
+        )
+        """
+    )
+    connection.execute(
+        """
+        ALTER TABLE personal_knowledge_base_files
+        ADD COLUMN knowledge_base_id TEXT
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO personal_knowledge_base_catalogs (
+            knowledge_base_id, user_id, name, created_at, updated_at
+        )
+        SELECT 'personal_kb_' || lower(hex(randomblob(16))),
+               user_id, '默认知识库', created_at, updated_at
+        FROM personal_knowledge_bases
+        """
+    )
+    connection.execute(
+        """
+        UPDATE personal_knowledge_base_files
+        SET knowledge_base_id = (
+            SELECT c.knowledge_base_id
+            FROM personal_knowledge_base_catalogs AS c
+            WHERE c.user_id = personal_knowledge_base_files.user_id
+            ORDER BY c.created_at, c.knowledge_base_id
+            LIMIT 1
+        )
+        """
+    )
+    connection.execute("DROP INDEX uq_personal_kb_files_live_sha")
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX uq_personal_kb_files_live_sha
+        ON personal_knowledge_base_files(user_id, knowledge_base_id, sha256)
+        WHERE tombstoned_at IS NULL
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_personal_kb_catalogs_user_created
+        ON personal_knowledge_base_catalogs(user_id, created_at, knowledge_base_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_personal_kb_files_catalog_status
+        ON personal_knowledge_base_files(
+            user_id, knowledge_base_id, status, tombstoned_at
+        )
+        """
+    )
+
+
+def _migrate_personal_knowledge_base_catalog_generations(
+    connection: sqlite3.Connection,
+) -> None:
+    """Track active/building index generations per logical knowledge base.
+
+    Older databases had one user-wide generation pointer.  Keep that pointer
+    for compatibility, but give every catalog its own pointer so a named
+    knowledge-base rebuild cannot silently replace another catalog's index.
+    """
+
+    connection.execute(
+        "ALTER TABLE personal_knowledge_base_catalogs ADD COLUMN active_generation_id TEXT"
+    )
+    connection.execute(
+        "ALTER TABLE personal_knowledge_base_catalogs ADD COLUMN building_generation_id TEXT"
+    )
+    connection.execute(
+        "ALTER TABLE personal_knowledge_base_generations ADD COLUMN knowledge_base_id TEXT"
+    )
+    # Existing deployments used one shared generation.  Point every catalog
+    # at that generation during migration; subsequent named rebuilds create a
+    # catalog-specific generation and leave the shared generation intact until
+    # no catalog references it anymore.
+    connection.execute(
+        """
+        UPDATE personal_knowledge_base_catalogs
+        SET active_generation_id = (
+            SELECT active_generation_id
+            FROM personal_knowledge_bases AS b
+            WHERE b.user_id = personal_knowledge_base_catalogs.user_id
+        )
+        WHERE active_generation_id IS NULL
+        """
+    )
+    connection.execute(
+        """
+        UPDATE personal_knowledge_base_generations
+        SET knowledge_base_id = (
+            SELECT c.knowledge_base_id
+            FROM personal_knowledge_base_catalogs AS c
+            WHERE c.user_id = personal_knowledge_base_generations.user_id
+            ORDER BY c.created_at, c.knowledge_base_id
+            LIMIT 1
+        )
+        WHERE knowledge_base_id IS NULL
+        """
+    )
+
+
 MIGRATIONS: list[MigrationDef] = [
     (
         1,
@@ -1686,6 +1884,21 @@ MIGRATIONS: list[MigrationDef] = [
         18,
         "separate_tool_result_channels",
         _migrate_tool_result_channels,
+    ),
+    (
+        19,
+        "persist_product_ui_state_and_planner",
+        _migrate_product_ui_state,
+    ),
+    (
+        20,
+        "create_personal_knowledge_base_catalogs",
+        _migrate_personal_knowledge_base_catalogs,
+    ),
+    (
+        21,
+        "track_personal_knowledge_base_catalog_generations",
+        _migrate_personal_knowledge_base_catalog_generations,
     ),
 ]
 

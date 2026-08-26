@@ -87,11 +87,7 @@ get_review_timing:
     - "我{kp}的正确率是多少"
 
 # ---------------------------------------------------------------------------
-# record_learning_evidence —— 记录学习过程证据
-# 对照：record_answer（只记对错并更新掌握度）
-#
-# 判别点：只有对错 → record_answer；
-#         涉及独立完成/提示等级/自评信心/复述/迁移/错误类型 → record_learning_evidence
+# record_learning_evidence —— 真实且可评价的学习表现统一写入入口
 # ---------------------------------------------------------------------------
 # ⚠️ 2026-08-15：这一段的每条话术现在都自带参数。
 #
@@ -101,7 +97,6 @@ get_review_timing:
 # 这个错误以前看不见 —— budget 截断让每组只有第一条话术进得了数据，
 # 直到 2026-08-15 生成器改成按话术轮流取，10 条样本当场被 answer_polarity 抓出来。
 #
-# 规矩和 `混淆_应调record_answer` 那组一样，而且是同一条：
 # **凡是语义标签，一律从种子里读，不在生成器里猜。**
 # 生成器能程序化决定的是"参数怎么填进 JSON"，不是"学生到底做对没做对、
 # 用了几级提示、有多少把握"。
@@ -184,27 +179,17 @@ record_learning_evidence:
       error_type: careless
       misconception: "读题时漏掉了题干给出的限制条件"
 
-  # ⚠️ 2026-08-19 整组翻了个面。原来叫 `混淆_应调record_answer`，判据写的是
-  # 「只有对错，没有过程信息 → record_answer 更合适」——**那条判据现在是错的**。
-  #
-  # 后端把 record_answer 的描述改成了：
-  #   「**已弃用**的兼容练习写入入口，仅为旧客户端保留。
-  #     新学习流程**必须**使用 record_learning_evidence；
-  #     同一次作答不得同时调用两种写入工具。」
-  # 线上 system prompt 的 autoload learning_policy 里也有一句：
-  #   「同一次表现只调用一次 `record_learning_evidence`，不得再调用兼容入口 `record_answer`。」
-  #
-  # 也就是说这三条样本原本在教模型去调一个线上明写「不得调用」的工具。
-  # 现在正解改成 record_learning_evidence（activity_type=practice），
-  # record_answer 退回**诱饵**的位置 —— 它词面上仍然最像，
-  # 这组考的就是「词面像但已弃用」这条边界。
-  #
-  # ⚠️ `correct` / `activity_type` 必须逐条显式写出来，不能让生成器去猜。
-  # 之前这三条是纯字符串，生成器把 correct 写死成 True，
-  # 于是「答错了」和「我选 B、答案是 C」两条的 gold 都成了 correct=True ——
-  # 用户说错了，数据教模型记成对的。结构全合法、schema 全通过、所有校验都绿，
-  # 只有语义是反的。
-  混淆_已弃用record_answer:
+  # ⚠️ 这组改过两次名，先后是：
+  #   `混淆_应调record_answer` → `混淆_已弃用record_answer` → `正例_practice`
+  # 第一次翻面（2026-08-19）：后端把 record_answer 标成「已弃用，新流程必须用
+  # record_learning_evidence」，于是原判据「只有对错 → record_answer」变成在教模型
+  # 调一个线上明写不得调用的工具；正解改掉，record_answer 退到**诱饵**位。
+  # 第二次（2026-08-24，上游改的，我们 08-25 采纳）：后端把 record_answer 从注册表
+  # **整个删掉**了，诱饵不复存在 —— 这组就此从「词面像但已弃用」的边界题
+  # 退化成普通正例。**这是能力损失，不是清理**：那条边界现在没有题在考了。
+  # `correct` / `activity_type` 仍必须逐条显式写出来 —— 生成器曾把 correct 写死成
+  # True，「答错了」的 gold 也成了 correct=True，等于教模型把错的记成对的。
+  正例_practice:
     - q: "{kp}这题我做对了"
       activity_type: practice
       correct: true
@@ -333,3 +318,90 @@ search_core_memories:
     - "之前那些设定还有用吗"
     - "你那边存了我哪些信息呀"
     - "我之前记录的那些还准吗"
+
+# ---------------------------------------------------------------------------
+# 2026-08-22 上游新增的三个工具（`b40a4e3` / `885029d`）。
+#
+# ⚠️ 能力边界（交接文档〇之四有详解，动手前先读）：
+#   两个检索工具**只能产出降级/不可用状态**的样本 —— 我们没有 RAG 服务，
+#   `data/cache/` 里也没有检索结果缓存。成功返回**不许编**：
+#   fixtures.py 抬头记着上一次编结构的后果（220 条样本消费线上不存在的字段，
+#   而所有校验全绿），《02》也承诺了不伪造。
+#   所以这批教的是「什么时候调哪个」和「失败了怎么办」，
+#   教不了「拿到检索结果之后怎么说」—— 这条要写进报告局限。
+#
+#   `run_in_sandbox` 不同：它的返回封装是纯函数，而命令输出只要**与环境无关**
+#   就可以本机真跑一次。所以 stdout / exit_code **逐条写在种子里，且都是真跑出来的**，
+#   生成器只负责套封装。⚠️ 别往里填没跑过的输出。
+#
+# 三个检索工具的分工（抄自 schema description，不是我们定的）：
+#   retrieve_federated_knowledge  「知识点、概念和原理检索**默认调用**」
+#   retrieve_personal_knowledge   「**仅在用户明确要求只查个人资料时**单独调用」
+#   retrieve_knowledge            「用户**明确指定公共库**，或个人库无结果时调用」
+# ---------------------------------------------------------------------------
+
+retrieve_federated_knowledge:
+  # 默认路径：用户问知识点/概念/原理，没有限定范围 → 走联合检索
+  正例:
+    - q: "帮我讲讲最小生成树是怎么回事"
+      query: "最小生成树"
+    - q: "死锁的四个必要条件是什么"
+      query: "死锁的必要条件"
+    - q: "TCP 的拥塞控制是怎么做的"
+      query: "TCP 拥塞控制"
+    - q: "动态规划和分治法有什么区别"
+      query: "动态规划 分治法 区别"
+    - q: "虚拟内存到底解决了什么问题"
+      query: "虚拟内存"
+  # 用户明确说了「我上传的资料」→ 该走个人库，不是联合
+  # ⚠️ query 逐条显式写出，不拿知识点名顶替（同 search_core_memories 那条规矩）
+  混淆_应调retrieve_personal_knowledge:
+    - q: "就在我传上去的那份讲义里找找看怎么讲最小生成树的"
+      query: "最小生成树"
+    - q: "只查我自己上传的资料，看看有没有讲哈希表的"
+      query: "哈希表"
+    - q: "我传的那个 PDF 里关于死锁是怎么说的"
+      query: "死锁"
+  # ⚠️ 「明确要求只查公共库」这一支**在这里产不出来**：
+  #    retrieve_knowledge 在 tools_exec.BACKEND_REQUIRED 里，我们跑不出它的返回，
+  #    生成器会响亮地跳过（不是静默吞）。
+  #    这一支改由 seeds/tool_errors.yaml 的 `exec_error` 组承担 —— 那边走的是
+  #    「调用 → 后端报错 → 降级」的完整形态，同样能教「什么时候该选公共库」，
+  #    而且报错文案是抄的后端原文。
+
+retrieve_personal_knowledge:
+  正例:
+    - q: "我上传的那份笔记里怎么讲哈希冲突的"
+      query: "哈希冲突"
+    - q: "只在我自己传的材料里找一下最短路径"
+      query: "最短路径"
+    - q: "查一下我上传的资料里有没有提到二叉搜索树"
+      query: "二叉搜索树"
+
+run_in_sandbox:
+  # ⚠️ stdout / exit_code 都是 2026-08-22 本机真跑出来的，命令刻意选与环境无关的。
+  #    要加新条目就先跑一遍再写，别照猜。
+  正例:
+    - q: "帮我算一下 1 加到 100 是多少，用代码跑一遍"
+      command: "python3 -c \"print(sum(range(1, 101)))\""
+      stdout: "5050\n"
+      exit_code: 0
+    - q: "48 和 180 的最大公约数是多少，跑个代码验证下"
+      command: "python3 -c \"import math; print(math.gcd(48, 180))\""
+      stdout: "12\n"
+      exit_code: 0
+    - q: "把 [3,1,2] 排个序，用 Python 跑给我看"
+      command: "python3 -c \"print(sorted([3,1,2]))\""
+      stdout: "[1, 2, 3]\n"
+      exit_code: 0
+  # 失败态用**后端自己产生**的 `sandbox_disabled`（`sandbox.py:128`），
+  # 不用「命令退出码非 0」。
+  # ⚠️ 为什么不用后者：那种失败里 stderr 是**命令自己的输出**，不是后端报错文案，
+  #    而标了 is_error 就会触发 `check_error_texts_registered` 要求登记 —— 登记一条
+  #    不是后端产生的字符串是错的。而且 `ok:false` 会被 `check_unmarked_failures`
+  #    判成「工具失败了却当成功往下说」。两道闸门都对，是我们那条样本的形态不对。
+  #    真要教「命令跑失败了怎么办」，得先想清楚它算不算 tool_error 类，别硬塞。
+  正例_沙箱未启用:
+    - q: "帮我把这段排序代码跑一下看看输出"
+      command: "python3 -c \"print(sorted([3,1,2]))\""
+      disabled: true

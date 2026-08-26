@@ -253,7 +253,6 @@ class _TeacherShellState extends State<TeacherShell> {
                       section: _section,
                       selectedClass: _selectedClass,
                       classes: _classes,
-                      overview: _overview,
                       query: _sidebarQuery,
                       onQueryChanged: (value) =>
                           setState(() => _sidebarQuery = value),
@@ -319,7 +318,6 @@ class _TeacherShellState extends State<TeacherShell> {
             section: _section,
             selectedClass: _selectedClass,
             classes: _classes,
-            overview: _overview,
             query: _sidebarQuery,
             onQueryChanged: (value) => setState(() => _sidebarQuery = value),
             onSelect: (section) {
@@ -500,7 +498,6 @@ class _TeacherSidebar extends StatelessWidget {
     required this.section,
     required this.selectedClass,
     required this.classes,
-    required this.overview,
     required this.query,
     required this.onQueryChanged,
     required this.onSelect,
@@ -513,7 +510,6 @@ class _TeacherSidebar extends StatelessWidget {
   final TeacherSection section;
   final TeachingClass? selectedClass;
   final List<TeachingClass> classes;
-  final Map<String, dynamic>? overview;
   final String query;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<TeacherSection> onSelect;
@@ -577,7 +573,7 @@ class _TeacherSidebar extends StatelessWidget {
           TextField(
             onChanged: onQueryChanged,
             decoration: const InputDecoration(
-              hintText: '搜索班级、作业或对话',
+              hintText: '搜索班级或对话',
               prefixIcon: Icon(LucideIcons.search, size: 17),
               isDense: true,
             ),
@@ -588,14 +584,6 @@ class _TeacherSidebar extends StatelessWidget {
             label: '教学工作台',
             selected:
                 section == TeacherSection.workbench && selectedClass == null,
-            onTap: () => onSelect(TeacherSection.workbench),
-          ),
-          _SideEntry(
-            icon: LucideIcons.circleDot,
-            label: '待处理',
-            badge:
-                '${(overview?['pending_review_count'] as num?)?.toInt() ?? 0}',
-            selected: false,
             onTap: () => onSelect(TeacherSection.workbench),
           ),
           _SideEntry(
@@ -675,13 +663,11 @@ class _SideEntry extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
-    this.badge,
   });
   final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  final String? badge;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -700,16 +686,6 @@ class _SideEntry extends StatelessWidget {
           color: selected ? const Color(0xFF6EA3FF) : context.n.n600,
         ),
         title: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-        trailing: badge == null
-            ? null
-            : Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: context.n.n200,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(badge!, style: context.texts.labelSmall),
-              ),
         onTap: onTap,
       ),
     ),

@@ -123,9 +123,9 @@ def test_exact_lexical_queries_receive_more_confidence(query: str) -> None:
     assert lexical_confidence(query, results, calibrator) > ordinary
 
 
-def test_reranker_is_enabled_by_default_and_ignores_fusion_score_scale() -> None:
-    """验证默认启用串行 Reranker 且不混入 fusion 分数。"""
-    assert RetrievalConfig().reranker_enabled is True
+def test_reranker_is_disabled_by_default_and_reranking_ignores_fusion_scale() -> None:
+    """验证默认关闭 Reranker，显式重排仍不混入 fusion 分数。"""
+    assert RetrievalConfig().reranker_enabled is False
     prior = [RankedItem("a", 1000.0), RankedItem("b", 0.001)]
     scores = {"a": 0.0, "b": 1.0}
     assert [item.chunk_id for item in rerank_by_score(prior, scores)] == ["b", "a"]

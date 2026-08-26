@@ -32,14 +32,14 @@ class Composer extends StatefulWidget {
     this.onCodeBlockChanged,
     this.onRunCode,
     this.onSelectedAttachmentsChanged,
-    this.courseNames = const [],
-    this.toolsOn = true,
-    this.onToolsOnChanged,
     this.knowledgeSources = const {
       KnowledgeSource.personal,
       KnowledgeSource.public,
     },
     this.onKnowledgeSourcesChanged,
+    this.personalKnowledgeBases = const [],
+    this.personalKnowledgeBaseId,
+    this.onPersonalKnowledgeBaseChanged,
     this.onStop,
   });
 
@@ -71,11 +71,11 @@ class Composer extends StatefulWidget {
   onCodeBlockChanged;
   final CodeRunCallback? onRunCode;
   final ValueChanged<List<DocumentAttachment>>? onSelectedAttachmentsChanged;
-  final List<String> courseNames;
-  final bool toolsOn;
-  final ValueChanged<bool>? onToolsOnChanged;
   final Set<KnowledgeSource> knowledgeSources;
   final ValueChanged<Set<KnowledgeSource>>? onKnowledgeSourcesChanged;
+  final List<PersonalKnowledgeBaseSummary> personalKnowledgeBases;
+  final String? personalKnowledgeBaseId;
+  final ValueChanged<String?>? onPersonalKnowledgeBaseChanged;
 
   /// 模型正在输出时，发送按钮切换为终止按钮，点击后调用该回调。
   final VoidCallback? onStop;
@@ -94,8 +94,6 @@ class ComposerState extends State<Composer> {
   String? _attachmentConversationId;
   bool _uploadingAttachment = false;
   bool _markdownMode = false;
-  bool _memoryEnabled = true;
-  String? _selectedCourse;
   AttachmentPasteListener? _pasteListener;
 
   List<_ComposerCodeBlock> get _codeBlocks =>
@@ -180,8 +178,21 @@ class ComposerState extends State<Composer> {
       ),
     );
     _markdownMode = nextDraft.markdownMode;
-    if (_attachment != null) _removeAttachment();
-    widget.onSelectedAttachmentsChanged?.call(const []);
+    final attachment = _attachment;
+    final attachmentConversationId = _attachmentConversationId;
+    _attachment = null;
+    _attachmentConversationId = null;
+    if (attachment != null &&
+        attachmentConversationId != null &&
+        widget.onRemoveAttachment != null) {
+      unawaited(
+        widget.onRemoveAttachment!(attachment, attachmentConversationId),
+      );
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onSelectedAttachmentsChanged?.call(const []);
+    });
   }
 
   String _draftKey(String? conversationId) =>
@@ -742,77 +753,25 @@ class ComposerState extends State<Composer> {
   }
 
   Widget _contextControls(BuildContext context) {
-    final courses = widget.courseNames.map((item) => item.trim()).toSet()
-      ..removeWhere((item) => item.isEmpty);
-    final course =
-        _selectedCourse ?? (courses.isEmpty ? '未选择课程' : courses.first);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _contextMenu(
-            context,
-            label: '当前课程：$course',
-            values: courses.isEmpty ? const ['未选择课程'] : courses.toList(),
-            onSelected: (value) => setState(() => _selectedCourse = value),
-          ),
-          const SizedBox(width: 6),
-          _knowledgeSourceMenu(context),
-          const SizedBox(width: 6),
-          _contextMenu(
-            context,
-            label: '长期记忆：${_memoryEnabled ? '开启' : '关闭'}',
-            values: const ['开启', '关闭'],
-            onSelected: (value) =>
-                setState(() => _memoryEnabled = value == '开启'),
-          ),
-          const SizedBox(width: 6),
-          _contextMenu(
-            context,
-            label: '工具：${widget.toolsOn ? '自动' : '关闭'}',
-            values: const ['自动', '关闭'],
-            onSelected: (value) => widget.onToolsOnChanged?.call(value == '自动'),
-          ),
-        ],
-      ),
+      child: _knowledgeSourceMenu(context),
     );
   }
 
-  Widget _contextMenu(
-    BuildContext context, {
-    required String label,
-    required List<String> values,
-    required ValueChanged<String> onSelected,
-  }) => PopupMenuButton<String>(
-    onSelected: onSelected,
-    itemBuilder: (context) => [
-      for (final value in values)
-        PopupMenuItem<String>(value: value, child: Text(value)),
-    ],
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        border: Border.all(color: context.n.divider),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label, style: TextStyle(fontSize: 11.5, color: context.n.n700)),
-          const SizedBox(width: 4),
-          Icon(LucideIcons.chevronDown, size: 13, color: context.n.n600),
-        ],
-      ),
-    ),
-  );
-
   Widget _knowledgeSourceMenu(BuildContext context) {
     final selected = widget.knowledgeSources;
-    final label = selected.length == KnowledgeSource.values.length
-        ? '知识库：全部'
-        : selected.isEmpty
-        ? '知识库：未选择'
-        : '知识库：${selected.first.label}';
+    final selectedPersonal = widget.personalKnowledgeBases
+        .where((item) => item.id == widget.personalKnowledgeBaseId)
+        .firstOrNull;
+    final personalEnabled = selected.contains(KnowledgeSource.personal);
+    final publicEnabled = selected.contains(KnowledgeSource.public);
+    final label = switch ((personalEnabled, publicEnabled)) {
+      (true, true) => '知识库：${selectedPersonal?.name ?? '个人'} + 公共',
+      (true, false) => '知识库：${selectedPersonal?.name ?? '个人'}',
+      (false, true) => '知识库：公共知识库',
+      (false, false) => '知识库：未选择',
+    };
 
     void update(KnowledgeSource source, bool enabled) {
       final next = Set<KnowledgeSource>.of(selected);
@@ -823,14 +782,35 @@ class ComposerState extends State<Composer> {
     return MenuAnchor(
       alignmentOffset: const Offset(0, 6),
       menuChildren: [
-        for (final source in KnowledgeSource.values)
+        if (widget.personalKnowledgeBases.isEmpty)
           CheckboxMenuButton(
-            key: ValueKey('knowledge-source-${source.wireName}'),
-            value: selected.contains(source),
-            closeOnActivate: false,
-            onChanged: (value) => update(source, value ?? false),
-            child: SizedBox(width: 150, child: Text(source.label)),
-          ),
+            key: const ValueKey('knowledge-source-personal-empty'),
+            value: false,
+            onChanged: null,
+            child: const SizedBox(width: 180, child: Text('暂无个人知识库')),
+          )
+        else
+          for (final knowledgeBase in widget.personalKnowledgeBases)
+            CheckboxMenuButton(
+              key: ValueKey('personal-knowledge-base-${knowledgeBase.id}'),
+              value:
+                  personalEnabled &&
+                  widget.personalKnowledgeBaseId == knowledgeBase.id,
+              closeOnActivate: false,
+              onChanged: (value) {
+                widget.onPersonalKnowledgeBaseChanged?.call(
+                  value ?? false ? knowledgeBase.id : null,
+                );
+              },
+              child: SizedBox(width: 180, child: Text(knowledgeBase.name)),
+            ),
+        CheckboxMenuButton(
+          key: const ValueKey('knowledge-source-public'),
+          value: publicEnabled,
+          closeOnActivate: false,
+          onChanged: (value) => update(KnowledgeSource.public, value ?? false),
+          child: const SizedBox(width: 180, child: Text('公共知识库')),
+        ),
       ],
       builder: (context, controller, child) => InkWell(
         key: const ValueKey('knowledge-source-menu'),

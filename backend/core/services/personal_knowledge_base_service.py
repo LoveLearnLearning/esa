@@ -40,6 +40,33 @@ SUPPORTED_MEDIA_TYPES = {
     ".webp": "image/webp",
 }
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
+_POSIX_PERMISSION_CHECKS = os.name == "posix" and hasattr(os, "geteuid")
+
+
+def _owner_mode_is_private(metadata: os.stat_result) -> bool:
+    if not _POSIX_PERMISSION_CHECKS:
+        return True
+    return metadata.st_uid == os.geteuid() and metadata.st_mode & 0o077 == 0
+
+
+def _sync_directory(path: Path) -> None:
+    """Durably sync a directory where the platform exposes directory fds."""
+
+    if os.name != "posix":
+        return
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _read_descriptor_at(descriptor: int, size: int, offset: int) -> bytes:
+    pread = getattr(os, "pread", None)
+    if pread is not None:
+        return pread(descriptor, size, offset)
+    os.lseek(descriptor, offset, os.SEEK_SET)
+    return os.read(descriptor, size)
 _OLE_MAGIC = bytes.fromhex("d0cf11e0a1b11ae1")
 
 
@@ -133,13 +160,12 @@ class PersonalKnowledgeBaseFileStorage:
     def validate_permissions(self) -> None:
         """Fail closed on foreign-owned, group-visible, or symlinked data."""
 
-        expected_uid = os.geteuid()
         for current_root, directories, files in os.walk(self.root):
             current = Path(current_root)
             if current.is_symlink():
                 raise RuntimeError("personal knowledge-base root contains a symlink")
             stat = current.stat()
-            if stat.st_uid != expected_uid or stat.st_mode & 0o077:
+            if not _owner_mode_is_private(stat):
                 raise RuntimeError(
                     "personal knowledge-base directory owner/mode is not private"
                 )
@@ -155,7 +181,7 @@ class PersonalKnowledgeBaseFileStorage:
                         "personal knowledge-base root contains a symlink"
                     )
                 file_stat = path.stat()
-                if file_stat.st_uid != expected_uid or file_stat.st_mode & 0o077:
+                if not _owner_mode_is_private(file_stat):
                     raise RuntimeError(
                         "personal knowledge-base file owner/mode is not private"
                     )
@@ -301,11 +327,7 @@ class PersonalKnowledgeBaseFileStorage:
                     raise InvalidKnowledgeBaseFile("文件为空")
                 self._validate_content(temporary_path, suffix)
                 os.replace(temporary_path, source_path)
-                directory_fd = os.open(directory, os.O_RDONLY)
-                try:
-                    os.fsync(directory_fd)
-                finally:
-                    os.close(directory_fd)
+                _sync_directory(directory)
                 committed.append(
                     NewPersonalKnowledgeBaseFile(
                         file_id=file_id,
@@ -364,7 +386,12 @@ class PersonalKnowledgeBaseFileStorage:
                 )
         except (FileNotFoundError, OSError) as exc:
             raise FileNotFoundError("personal knowledge-base source is missing") from exc
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
         descriptor = os.open(expected, flags)
         try:
             metadata = os.fstat(descriptor)
@@ -372,7 +399,7 @@ class PersonalKnowledgeBaseFileStorage:
                 raise PersonalKnowledgeBaseStorageIntegrityError(
                     "personal knowledge-base source is not a regular file"
                 )
-            if metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077:
+            if not _owner_mode_is_private(metadata):
                 raise PersonalKnowledgeBaseStorageIntegrityError(
                     "personal knowledge-base source owner/mode is not private"
                 )
@@ -400,7 +427,11 @@ class PersonalKnowledgeBaseFileStorage:
         digest = hashlib.sha256()
         offset = 0
         while offset < metadata.st_size:
-            chunk = os.pread(descriptor, min(1024 * 1024, metadata.st_size - offset), offset)
+            chunk = _read_descriptor_at(
+                descriptor,
+                min(1024 * 1024, metadata.st_size - offset),
+                offset,
+            )
             if not chunk:
                 raise PersonalKnowledgeBaseStorageIntegrityError(
                     "personal preview artifact truncated"
@@ -437,7 +468,12 @@ class PersonalKnowledgeBaseFileStorage:
             raise PersonalKnowledgeBaseStorageIntegrityError(
                 "personal preview artifact path drift"
             ) from exc
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
         descriptor = os.open(resolved, flags)
         try:
             metadata = os.fstat(descriptor)
@@ -445,7 +481,7 @@ class PersonalKnowledgeBaseFileStorage:
                 raise PersonalKnowledgeBaseStorageIntegrityError(
                     "personal preview artifact is not a regular file"
                 )
-            if metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077:
+            if not _owner_mode_is_private(metadata):
                 raise PersonalKnowledgeBaseStorageIntegrityError(
                     "personal preview artifact owner/mode is not private"
                 )
@@ -530,7 +566,7 @@ class PersonalKnowledgeBaseFileStorage:
                                 quality=85,
                             )
                             os.chmod(temporary, 0o600)
-                            with temporary.open("rb") as saved:
+                            with temporary.open("r+b") as saved:
                                 os.fsync(saved.fileno())
                             os.replace(temporary, final_path)
                         finally:
@@ -630,9 +666,32 @@ class PersonalKnowledgeBaseService:
         if not self.enabled:
             raise PersonalKnowledgeBaseDisabled("个人知识库功能未启用")
 
-    def snapshot(self, user_id: str) -> dict:
+    def list_knowledge_bases(self, user_id: str) -> list[dict[str, Any]]:
         self._require_enabled()
-        return self.store.get_snapshot(user_id)
+        return self.store.list_knowledge_bases(user_id)
+
+    def create_knowledge_base(self, user_id: str, name: str) -> dict[str, Any]:
+        self._require_enabled()
+        return self.store.create_knowledge_base(user_id=user_id, name=name)
+
+    def resolve_knowledge_base_id(
+        self,
+        user_id: str,
+        knowledge_base_id: str | None,
+    ) -> str:
+        self._require_enabled()
+        return self.store.resolve_knowledge_base_id(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+        )
+
+    def snapshot(
+        self,
+        user_id: str,
+        knowledge_base_id: str | None = None,
+    ) -> dict:
+        self._require_enabled()
+        return self.store.get_snapshot(user_id, knowledge_base_id)
 
     def open_content(
         self, user_id: str, file_id: str
@@ -658,10 +717,19 @@ class PersonalKnowledgeBaseService:
             return self.storage.open_image_thumbnail(record)
         return self.storage.open_text_preview(record)
 
-    async def upload(self, user_id: str, uploads: Iterable[UploadSource]) -> dict:
+    async def upload(
+        self,
+        user_id: str,
+        uploads: Iterable[UploadSource],
+        knowledge_base_id: str | None = None,
+    ) -> dict:
         self._require_enabled()
         if self.storage is None:
             raise PersonalKnowledgeBaseDisabled("个人知识库文件存储未初始化")
+        resolved_knowledge_base_id = self.store.resolve_knowledge_base_id(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+        )
         values = list(uploads)
         reserved_bytes = self.storage.reservation_bytes(values)
         reservation_id = self.store.reserve_upload_capacity(
@@ -676,6 +744,7 @@ class PersonalKnowledgeBaseService:
             committed = await self.storage.save_batch(values)
             resolved_ids, job_id = self.store.create_upload(
                 user_id=user_id,
+                knowledge_base_id=resolved_knowledge_base_id,
                 files=committed,
                 max_user_bytes=self.max_user_bytes,
                 max_user_files=self.max_user_files,
@@ -695,7 +764,7 @@ class PersonalKnowledgeBaseService:
                 self.storage.discard(item.file_id)
         if job_id is not None and self.notify_worker is not None:
             self.notify_worker()
-        return self.store.get_snapshot(user_id)
+        return self.store.get_snapshot(user_id, resolved_knowledge_base_id)
 
     def delete(self, user_id: str, file_id: str) -> bool:
         self._require_enabled()
@@ -704,13 +773,24 @@ class PersonalKnowledgeBaseService:
             self.notify_worker()
         return deleted
 
-    def rebuild(self, user_id: str) -> dict | None:
+    def rebuild(
+        self,
+        user_id: str,
+        knowledge_base_id: str | None = None,
+    ) -> dict | None:
         self._require_enabled()
-        if self.store.queue_rebuild(user_id) is None:
+        resolved_knowledge_base_id = self.store.resolve_knowledge_base_id(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+        )
+        rebuild_scope = (
+            resolved_knowledge_base_id if knowledge_base_id is not None else None
+        )
+        if self.store.queue_rebuild(user_id, rebuild_scope) is None:
             return None
         if self.notify_worker is not None:
             self.notify_worker()
-        return self.store.get_snapshot(user_id)
+        return self.store.get_snapshot(user_id, knowledge_base_id)
 
     async def purge_user(self, user_id: str) -> dict[str, Any]:
         """Administrative hook that must run before deleting the main user row."""

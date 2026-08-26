@@ -29,22 +29,22 @@ class ContextLevel(str, Enum):
 class RetrievalConfig:
     """Frozen production baseline; experiments must override fields explicitly."""
 
-    dense_limit: int = 50
-    bm25_body_limit: int = 50
-    bm25_heading_limit: int = 50
-    rrf_limit: int = 50
+    dense_limit: int = 100
+    bm25_body_limit: int = 100
+    bm25_heading_limit: int = 100
+    rrf_limit: int = 100
     rerank_limit: int = 50
     reranker_batch_size: int = 4
     final_limit: int = 5
     rrf_k: int = 60
     section_window: int = 1
-    max_context_tokens: int = 8192
+    max_context_tokens: int = 16_384
     rerank_threshold: float | None = None
     fusion_method: Literal["dense", "equal_rrf", "weighted_rrf", "score"] = "dense"
     dense_weight: float = 1.0
     lexical_body_weight: float = 0.75
     lexical_gate_enabled: bool = True
-    reranker_enabled: bool = True
+    reranker_enabled: bool = False
     # Deprecated compatibility field. Sequential reranking ignores it.
     reranker_prior_weight: float = 0.90
 

@@ -51,7 +51,22 @@ class _KnowledgeBaseApi extends ApiClient {
   );
 
   @override
-  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase() async => snapshot;
+  Future<List<PersonalKnowledgeBaseSummary>>
+  listPersonalKnowledgeBases() async => const [
+    PersonalKnowledgeBaseSummary(
+      id: 'kb-a',
+      name: '知识库 A',
+      fileCount: 2,
+      chunkCount: 48,
+      indexCount: 48,
+      updatedAt: null,
+    ),
+  ];
+
+  @override
+  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase({
+    String? knowledgeBaseId,
+  }) async => snapshot;
 
   @override
   Future<AttachmentContent> fetchPersonalKnowledgeBasePreview(

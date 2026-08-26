@@ -230,11 +230,6 @@ class _LoginPageState extends State<LoginPage>
     });
   }
 
-  void _enterAsGuest() {
-    if (_loading) return;
-    AppScope.of(context).enterAsGuest();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -369,10 +364,6 @@ class _LoginPageState extends State<LoginPage>
                 ),
                 const SizedBox(height: 26),
                 _modeSwitch(),
-                if (!_isRegister) ...[
-                  const SizedBox(height: 12),
-                  _guestLoginButton(),
-                ],
                 const SizedBox(height: 24),
                 _fieldLabel(_isRegister ? '账号类型' : '登录身份'),
                 const SizedBox(height: 8),
@@ -861,23 +852,6 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
-  Widget _guestLoginButton() {
-    return OutlinedButton.icon(
-      onPressed: _enterAsGuest,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: _muted,
-        side: const BorderSide(color: _line),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-      icon: const Icon(LucideIcons.userRound, size: 15),
-      label: const Text(
-        '游客登录',
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-      ),
-    );
-  }
 }
 
 class _BackgroundWash extends StatelessWidget {

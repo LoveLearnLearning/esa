@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,8 @@ def test_workspace_isolated_by_user_and_conversation(tmp_path: Path) -> None:
     assert first != third
     assert first.is_dir()
     assert (first / ".home").is_dir()
-    assert oct(first.stat().st_mode & 0o777) == "0o700"
+    if os.name == "posix":
+        assert oct(first.stat().st_mode & 0o777) == "0o700"
 
 
 def test_workdir_cannot_escape_workspace(tmp_path: Path) -> None:

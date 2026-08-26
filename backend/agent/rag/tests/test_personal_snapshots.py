@@ -215,8 +215,9 @@ def test_snapshot_manifest_is_private_and_durable(tmp_path: Path) -> None:
 
     PersonalQdrantSnapshotManager._write_manifest(path, {"ok": True})
 
-    assert path.stat().st_uid == os.geteuid()
-    assert path.stat().st_mode & 0o777 == 0o600
+    if os.name == "posix":
+        assert path.stat().st_uid == os.geteuid()
+        assert path.stat().st_mode & 0o777 == 0o600
     assert json.loads(path.read_text("utf-8")) == {"ok": True}
 
 

@@ -28,7 +28,11 @@ class _KnowledgeApi extends ApiClient {
   Future<void> renameConversation(String id, String title) async {}
 
   @override
-  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
     streamedInputs.add(content);
     yield const ChatStreamEvent('start', {});
     yield const ChatStreamEvent('done', {});

@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
 import '../models/models.dart';
@@ -14,108 +12,6 @@ import '../widgets/esa_segmented.dart';
 import 'schedule_page.dart';
 
 enum PlannerTab { schedule, todo, deadline, goal }
-
-const _todosStorageKey = 'esa.planner.todos';
-const _goalsStorageKey = 'esa.planner.goals';
-
-class _PlannerTodo {
-  const _PlannerTodo({
-    required this.id,
-    required this.title,
-    required this.createdAt,
-    this.dueAt,
-    this.done = false,
-  });
-
-  final String id;
-  final String title;
-  final DateTime createdAt;
-  final DateTime? dueAt;
-  final bool done;
-
-  _PlannerTodo copyWith({String? title, DateTime? dueAt, bool? done}) =>
-      _PlannerTodo(
-        id: id,
-        title: title ?? this.title,
-        createdAt: createdAt,
-        dueAt: dueAt ?? this.dueAt,
-        done: done ?? this.done,
-      );
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'created_at': createdAt.toIso8601String(),
-    'due_at': dueAt?.toIso8601String() ?? '',
-    'done': done,
-  };
-
-  factory _PlannerTodo.fromJson(Map<String, dynamic> json) => _PlannerTodo(
-    id:
-        json['id']?.toString() ??
-        DateTime.now().microsecondsSinceEpoch.toString(),
-    title: json['title']?.toString() ?? '',
-    createdAt:
-        DateTime.tryParse(json['created_at']?.toString() ?? '') ??
-        DateTime.now(),
-    dueAt: DateTime.tryParse(json['due_at']?.toString() ?? ''),
-    done: json['done'] as bool? ?? false,
-  );
-}
-
-class _PlannerGoal {
-  const _PlannerGoal({
-    required this.id,
-    required this.title,
-    required this.createdAt,
-    this.description = '',
-    this.targetAt,
-    this.progress = 0,
-  });
-
-  final String id;
-  final String title;
-  final String description;
-  final DateTime createdAt;
-  final DateTime? targetAt;
-  final int progress;
-
-  _PlannerGoal copyWith({
-    String? title,
-    String? description,
-    DateTime? targetAt,
-    int? progress,
-  }) => _PlannerGoal(
-    id: id,
-    title: title ?? this.title,
-    description: description ?? this.description,
-    createdAt: createdAt,
-    targetAt: targetAt ?? this.targetAt,
-    progress: progress ?? this.progress,
-  );
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'description': description,
-    'created_at': createdAt.toIso8601String(),
-    'target_at': targetAt?.toIso8601String() ?? '',
-    'progress': progress,
-  };
-
-  factory _PlannerGoal.fromJson(Map<String, dynamic> json) => _PlannerGoal(
-    id:
-        json['id']?.toString() ??
-        DateTime.now().microsecondsSinceEpoch.toString(),
-    title: json['title']?.toString() ?? '',
-    description: json['description']?.toString() ?? '',
-    createdAt:
-        DateTime.tryParse(json['created_at']?.toString() ?? '') ??
-        DateTime.now(),
-    targetAt: DateTime.tryParse(json['target_at']?.toString() ?? ''),
-    progress: ((json['progress'] as num?)?.toInt() ?? 0).clamp(0, 100).toInt(),
-  );
-}
 
 class _DeadlineEntry {
   const _DeadlineEntry({
@@ -151,10 +47,10 @@ class PlannerPage extends StatefulWidget {
 
 class _PlannerPageState extends State<PlannerPage> {
   late PlannerTab _tab;
-  List<_PlannerTodo> _todos = const [];
-  List<_PlannerGoal> _goals = const [];
+  List<PlannerTodo> _todos = const [];
+  List<PlannerGoal> _goals = const [];
   List<TeachingAssignment> _assignments = const [];
-  bool _localLoaded = false;
+  bool _plannerLoaded = false;
   bool _deadlineRequested = false;
   bool _loadingDeadlines = false;
   String? _deadlineError;
@@ -168,9 +64,9 @@ class _PlannerPageState extends State<PlannerPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_localLoaded) return;
-    _localLoaded = true;
-    unawaited(_loadLocal());
+    if (_plannerLoaded) return;
+    _plannerLoaded = true;
+    unawaited(_loadPlanner());
   }
 
   @override
@@ -182,60 +78,22 @@ class _PlannerPageState extends State<PlannerPage> {
     }
   }
 
-  Future<void> _loadLocal() async {
-    final prefs = await SharedPreferences.getInstance();
-    final todosRaw = prefs.getString(_todosStorageKey);
-    final goalsRaw = prefs.getString(_goalsStorageKey);
-    if (!mounted) return;
-    setState(() {
-      _todos = _decodeTodos(todosRaw);
-      _goals = _decodeGoals(goalsRaw);
-    });
-    if (_tab == PlannerTab.deadline && !_deadlineRequested) {
-      unawaited(_loadAssignments());
-    }
-  }
-
-  List<_PlannerTodo> _decodeTodos(String? raw) {
-    if (raw == null || raw.isEmpty) return const [];
+  Future<void> _loadPlanner() async {
     try {
-      final list = jsonDecode(raw) as List;
-      return list
-          .whereType<Map>()
-          .map((item) => _PlannerTodo.fromJson(Map<String, dynamic>.from(item)))
-          .toList();
+      final snapshot = await AppScope.of(context).api.getPlanner();
+      if (!mounted) return;
+      setState(() {
+        _todos = snapshot.todos;
+        _goals = snapshot.goals;
+      });
+      if (_tab == PlannerTab.deadline && !_deadlineRequested) {
+        unawaited(_loadAssignments());
+      }
+    } on ApiException catch (error) {
+      if (mounted) _showError(error.detail);
     } catch (_) {
-      return const [];
+      if (mounted) _showError('规划数据暂时无法加载');
     }
-  }
-
-  List<_PlannerGoal> _decodeGoals(String? raw) {
-    if (raw == null || raw.isEmpty) return const [];
-    try {
-      final list = jsonDecode(raw) as List;
-      return list
-          .whereType<Map>()
-          .map((item) => _PlannerGoal.fromJson(Map<String, dynamic>.from(item)))
-          .toList();
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  Future<void> _saveTodos() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _todosStorageKey,
-      jsonEncode(_todos.map((item) => item.toJson()).toList()),
-    );
-  }
-
-  Future<void> _saveGoals() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _goalsStorageKey,
-      jsonEncode(_goals.map((item) => item.toJson()).toList()),
-    );
   }
 
   Future<void> _loadAssignments({bool force = false}) async {
@@ -274,7 +132,7 @@ class _PlannerPageState extends State<PlannerPage> {
   Future<void> _addTodo() async {
     final titleController = TextEditingController();
     DateTime? dueAt;
-    final created = await showDialog<_PlannerTodo>(
+    final draft = await showDialog<PlannerTodo>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -322,10 +180,11 @@ class _PlannerPageState extends State<PlannerPage> {
                   if (title.isEmpty) return;
                   Navigator.pop(
                     dialogContext,
-                    _PlannerTodo(
+                    PlannerTodo(
                       id: DateTime.now().microsecondsSinceEpoch.toString(),
                       title: title,
                       createdAt: DateTime.now(),
+                      updatedAt: DateTime.now(),
                       dueAt: dueAt,
                     ),
                   );
@@ -338,24 +197,42 @@ class _PlannerPageState extends State<PlannerPage> {
       ),
     );
     titleController.dispose();
-    if (created == null || !mounted) return;
-    setState(() => _todos = [created, ..._todos]);
-    await _saveTodos();
+    if (draft == null || !mounted) return;
+    try {
+      final created = await AppScope.of(context).api.createPlannerTodo(
+        draft.title,
+        dueAt: draft.dueAt,
+      );
+      if (mounted) setState(() => _todos = [created, ..._todos]);
+    } on ApiException catch (error) {
+      if (mounted) _showError(error.detail);
+    }
   }
 
-  void _toggleTodo(String id, bool done) {
-    setState(() {
-      _todos = [
-        for (final todo in _todos)
-          todo.id == id ? todo.copyWith(done: done) : todo,
-      ];
-    });
-    unawaited(_saveTodos());
+  Future<void> _toggleTodo(String id, bool done) async {
+    try {
+      final updated = await AppScope.of(context).api.updatePlannerTodo(
+        id,
+        done: done,
+      );
+      if (!mounted) return;
+      setState(() {
+        _todos = [for (final todo in _todos) todo.id == id ? updated : todo];
+      });
+    } on ApiException catch (error) {
+      if (mounted) _showError(error.detail);
+    }
   }
 
-  void _deleteTodo(String id) {
-    setState(() => _todos = _todos.where((item) => item.id != id).toList());
-    unawaited(_saveTodos());
+  Future<void> _deleteTodo(String id) async {
+    try {
+      await AppScope.of(context).api.deletePlannerTodo(id);
+      if (mounted) {
+        setState(() => _todos = _todos.where((item) => item.id != id).toList());
+      }
+    } on ApiException catch (error) {
+      if (mounted) _showError(error.detail);
+    }
   }
 
   Future<void> _addGoal() async {
@@ -363,7 +240,7 @@ class _PlannerPageState extends State<PlannerPage> {
     final descriptionController = TextEditingController();
     DateTime? targetAt;
     var progress = 0;
-    final created = await showDialog<_PlannerGoal>(
+    final draft = await showDialog<PlannerGoal>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -435,11 +312,12 @@ class _PlannerPageState extends State<PlannerPage> {
                 if (title.isEmpty) return;
                 Navigator.pop(
                   dialogContext,
-                  _PlannerGoal(
+                  PlannerGoal(
                     id: DateTime.now().microsecondsSinceEpoch.toString(),
                     title: title,
                     description: descriptionController.text.trim(),
                     createdAt: DateTime.now(),
+                    updatedAt: DateTime.now(),
                     targetAt: targetAt,
                     progress: progress,
                   ),
@@ -453,26 +331,48 @@ class _PlannerPageState extends State<PlannerPage> {
     );
     titleController.dispose();
     descriptionController.dispose();
-    if (created == null || !mounted) return;
-    setState(() => _goals = [created, ..._goals]);
-    await _saveGoals();
+    if (draft == null || !mounted) return;
+    try {
+      final created = await AppScope.of(context).api.createPlannerGoal(
+        draft.title,
+        description: draft.description,
+        targetAt: draft.targetAt,
+        progress: draft.progress,
+      );
+      if (mounted) setState(() => _goals = [created, ..._goals]);
+    } on ApiException catch (error) {
+      if (mounted) _showError(error.detail);
+    }
   }
 
-  void _updateGoalProgress(String id, int progress) {
-    setState(() {
-      _goals = [
-        for (final goal in _goals)
-          goal.id == id
-              ? goal.copyWith(progress: progress.clamp(0, 100).toInt())
-              : goal,
-      ];
-    });
-    unawaited(_saveGoals());
+  Future<void> _updateGoalProgress(String id, int progress) async {
+    try {
+      final updated = await AppScope.of(context).api.updatePlannerGoal(
+        id,
+        progress: progress.clamp(0, 100),
+      );
+      if (!mounted) return;
+      setState(() {
+        _goals = [for (final goal in _goals) goal.id == id ? updated : goal];
+      });
+    } on ApiException catch (error) {
+      if (mounted) _showError(error.detail);
+    }
   }
 
-  void _deleteGoal(String id) {
-    setState(() => _goals = _goals.where((item) => item.id != id).toList());
-    unawaited(_saveGoals());
+  Future<void> _deleteGoal(String id) async {
+    try {
+      await AppScope.of(context).api.deletePlannerGoal(id);
+      if (mounted) {
+        setState(() => _goals = _goals.where((item) => item.id != id).toList());
+      }
+    } on ApiException catch (error) {
+      if (mounted) _showError(error.detail);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -623,7 +523,7 @@ class _PlannerPageState extends State<PlannerPage> {
     );
   }
 
-  Widget _todoCard(BuildContext context, _PlannerTodo todo) {
+  Widget _todoCard(BuildContext context, PlannerTodo todo) {
     final overdue =
         !todo.done &&
         todo.dueAt != null &&
@@ -791,7 +691,7 @@ class _PlannerPageState extends State<PlannerPage> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '$_deadlineError，暂只显示本地待办截止时间。',
+                    '$_deadlineError，暂只显示账户待办截止时间。',
                     style: context.texts.bodySmall,
                   ),
                 ),
@@ -931,7 +831,7 @@ class _PlannerPageState extends State<PlannerPage> {
     );
   }
 
-  Widget _goalCard(BuildContext context, _PlannerGoal goal) {
+  Widget _goalCard(BuildContext context, PlannerGoal goal) {
     final achieved = goal.progress >= 100;
     return Container(
       key: ValueKey('planner-goal-${goal.id}'),

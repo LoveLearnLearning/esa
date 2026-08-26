@@ -14,6 +14,21 @@ enum TaskMode {
 }
 
 extension TaskModeInfo on TaskMode {
+  String get wireName => switch (this) {
+    TaskMode.explainProblem => 'explain_problem',
+    TaskMode.studyPlan => 'study_plan',
+    TaskMode.searchMaterials => 'search_materials',
+    TaskMode.reviewHomework => 'review_homework',
+    TaskMode.concept => 'concept',
+    TaskMode.masteryReport => 'mastery_report',
+    TaskMode.practiceRecommendation => 'practice_recommendation',
+    TaskMode.academicSearch => 'academic_search',
+    TaskMode.literatureFrontier => 'literature_frontier',
+    TaskMode.academicWriting => 'academic_writing',
+    TaskMode.researchDataAnalysis => 'research_data_analysis',
+    TaskMode.researchPlanning => 'research_planning',
+  };
+
   String get title => switch (this) {
     TaskMode.explainProblem => '讲解一道题',
     TaskMode.studyPlan => '生成复习计划',
@@ -58,27 +73,4 @@ extension TaskModeInfo on TaskMode {
     TaskMode.researchDataAnalysis => '描述数据来源、字段、研究问题，或添加附件…',
     TaskMode.researchPlanning => '描述研究目标、现有条件和主要限制…',
   };
-
-  String get instruction => switch (this) {
-    TaskMode.explainProblem => '任务模式：讲解题目。先识别题目条件和学生卡点，再分步讲解思路和原理。',
-    TaskMode.studyPlan => '任务模式：生成复习计划。根据科目、剩余时间和每日时间制定可执行的计划；信息不足时先追问。',
-    TaskMode.searchMaterials => '任务模式：检索课件。优先使用知识库检索工具，并基于检索结果回答。',
-    TaskMode.reviewHomework => '任务模式：批改作业。区分题目与学生作答，指出具体错误、原因和修改方法。',
-    TaskMode.concept => '任务模式：知识点与概念讲解。包含通俗定义、正式定义、典型例子、相近概念区别以及在题目中的用法。',
-    TaskMode.masteryReport => '任务模式：学习情况报告。调用掌握度报告工具，说明总体掌握度、薄弱点、优势点和需要复习的内容。',
-    TaskMode.practiceRecommendation =>
-      '任务模式：练习推荐。调用练习推荐工具，根据课程、掌握度和距离考试时间给出下一步练习顺序。',
-    TaskMode.academicSearch =>
-      '任务模式：学术论文搜索。优先使用 arxiv_search 工具，列出论文标题、摘要、作者、发布时间和链接。',
-    TaskMode.literatureFrontier =>
-      '任务模式：领域前沿追踪。先明确研究范围和时间窗口，再检索可靠论文来源，区分来源事实与趋势判断，归纳热点、演化脉络和研究空白。',
-    TaskMode.academicWriting =>
-      '任务模式：学术写作辅助。根据用户给出的材料与目标生成或修改学术文本；不得编造引用，明确标记缺少来源支持的内容。',
-    TaskMode.researchDataAnalysis =>
-      '任务模式：科研数据分析。先确认数据结构、研究问题与评价口径，再分析资料并区分观察结果、推断和限制；当前无法直接执行的分析应明确说明。',
-    TaskMode.researchPlanning =>
-      '任务模式：研究方案讨论。围绕研究问题、假设、数据、方法、资源、风险和成功标准形成结构化方案。',
-  };
-
-  String buildPrompt(String input) => '$instruction\n\n用户提供的内容：\n$input';
 }

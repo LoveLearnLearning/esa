@@ -3,6 +3,7 @@
 """验证 `official_config` 相关行为与回归场景。"""
 
 from backend.agent.rag.retrieval.contracts import RetrievalConfig
+from backend.agent.rag.cli.index import _retrieval_config
 from backend.core.utils import config
 
 
@@ -14,14 +15,14 @@ def test_official_rag_identity_and_retrieval_defaults_are_frozen() -> None:
     assert config.RAG_EMBEDDING_DIMENSION == 2560
     assert config.RAG_FUSION_METHOD == "dense"
     assert config.RAG_DENSE_WEIGHT == 1.0
-    assert config.RAG_RERANKER_ENABLED is True
-    assert config.RAG_DENSE_LIMIT == 50
-    assert config.RAG_BM25_BODY_LIMIT == 50
-    assert config.RAG_BM25_HEADING_LIMIT == 50
-    assert config.RAG_RRF_LIMIT == 50
+    assert config.RAG_RERANKER_ENABLED is False
+    assert config.RAG_DENSE_LIMIT == 100
+    assert config.RAG_BM25_BODY_LIMIT == 100
+    assert config.RAG_BM25_HEADING_LIMIT == 100
+    assert config.RAG_RRF_LIMIT == 100
     assert config.RAG_RERANK_LIMIT == 50
     assert config.RAG_FINAL_LIMIT == 5
-    assert config.RAG_MAX_CONTEXT_TOKENS == 8192
+    assert config.RAG_MAX_CONTEXT_TOKENS == 16_384
 
 
 def test_retrieval_config_defaults_match_central_config() -> None:
@@ -43,3 +44,8 @@ def test_retrieval_config_defaults_match_central_config() -> None:
     assert defaults.lexical_body_weight == config.RAG_LEXICAL_BODY_WEIGHT
     assert defaults.lexical_gate_enabled == config.RAG_LEXICAL_GATE_ENABLED
     assert defaults.reranker_enabled == config.RAG_RERANKER_ENABLED
+
+
+def test_cli_can_explicitly_enable_reranker_without_changing_default() -> None:
+    assert _retrieval_config().reranker_enabled is False
+    assert _retrieval_config(reranker_enabled=True).reranker_enabled is True

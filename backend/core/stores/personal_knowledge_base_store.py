@@ -9,7 +9,6 @@ import uuid
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Iterable
 
 from backend.core.stores.base_sqlite_store import BaseSQLiteStore
@@ -54,6 +53,10 @@ class PersonalKnowledgeBaseConflict(RuntimeError):
 
 class PersonalKnowledgeBaseQuotaExceeded(RuntimeError):
     """A transaction would exceed the durable per-user quota."""
+
+
+class PersonalKnowledgeBaseNotFound(LookupError):
+    """The requested logical knowledge base is not owned by the user."""
 
 
 class PersonalKnowledgeBaseStore(BaseSQLiteStore):
@@ -103,8 +106,145 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
             "error": row["error"],
         }
 
-    def get_snapshot(self, user_id: str) -> dict[str, Any]:
+    @staticmethod
+    def _knowledge_base_name(name: str) -> str:
+        value = name.strip()
+        if not value or len(value) > 80 or any(ord(char) < 32 for char in value):
+            raise ValueError("知识库名称长度应为 1 到 80 个可见字符")
+        return value
+
+    def resolve_knowledge_base_id(
+        self,
+        *,
+        user_id: str,
+        knowledge_base_id: str | None = None,
+    ) -> str:
+        """Resolve one owned library, creating the legacy default when absent."""
+
+        now = self._now()
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                self._ensure_base(connection, user_id, now)
+                self._ensure_not_purging(connection, user_id)
+                if knowledge_base_id is not None:
+                    row = connection.execute(
+                        """
+                        SELECT knowledge_base_id
+                        FROM personal_knowledge_base_catalogs
+                        WHERE user_id = ? AND knowledge_base_id = ?
+                        """,
+                        (user_id, knowledge_base_id),
+                    ).fetchone()
+                    if row is None:
+                        raise PersonalKnowledgeBaseNotFound(
+                            "个人知识库不存在"
+                        )
+                    connection.commit()
+                    return str(row["knowledge_base_id"])
+                row = connection.execute(
+                    """
+                    SELECT knowledge_base_id
+                    FROM personal_knowledge_base_catalogs
+                    WHERE user_id = ?
+                    ORDER BY created_at, knowledge_base_id
+                    LIMIT 1
+                    """,
+                    (user_id,),
+                ).fetchone()
+                if row is None:
+                    resolved = f"personal_kb_{uuid.uuid4().hex}"
+                    connection.execute(
+                        """
+                        INSERT INTO personal_knowledge_base_catalogs (
+                            knowledge_base_id, user_id, name, created_at, updated_at
+                        ) VALUES (?, ?, '默认知识库', ?, ?)
+                        """,
+                        (resolved, user_id, now, now),
+                    )
+                else:
+                    resolved = str(row["knowledge_base_id"])
+                connection.commit()
+                return resolved
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def create_knowledge_base(self, *, user_id: str, name: str) -> dict[str, Any]:
+        value = self._knowledge_base_name(name)
+        knowledge_base_id = f"personal_kb_{uuid.uuid4().hex}"
+        now = self._now()
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                self._ensure_base(connection, user_id, now)
+                self._ensure_not_purging(connection, user_id)
+                connection.execute(
+                    """
+                    INSERT INTO personal_knowledge_base_catalogs (
+                        knowledge_base_id, user_id, name, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (knowledge_base_id, user_id, value, now, now),
+                )
+                connection.commit()
+            except sqlite3.IntegrityError as exc:
+                connection.rollback()
+                raise PersonalKnowledgeBaseConflict("知识库名称已存在") from exc
+            except BaseException:
+                connection.rollback()
+                raise
+        return {
+            "id": knowledge_base_id,
+            "name": value,
+            "file_count": 0,
+            "chunk_count": 0,
+            "index_count": 0,
+            "updated_at": now,
+        }
+
+    def list_knowledge_bases(self, user_id: str) -> list[dict[str, Any]]:
+        self.resolve_knowledge_base_id(user_id=user_id)
+        rows = self.query_all(
+            """
+            SELECT c.knowledge_base_id, c.name, c.updated_at,
+                   COUNT(f.file_id) AS file_count,
+                   COALESCE(SUM(f.chunk_count), 0) AS chunk_count,
+                   COALESCE(SUM(f.index_count), 0) AS index_count
+            FROM personal_knowledge_base_catalogs AS c
+            LEFT JOIN personal_knowledge_base_files AS f
+              ON f.user_id = c.user_id
+             AND f.knowledge_base_id = c.knowledge_base_id
+             AND f.tombstoned_at IS NULL
+            WHERE c.user_id = ?
+            GROUP BY c.knowledge_base_id, c.name, c.updated_at
+            ORDER BY c.created_at, c.knowledge_base_id
+            """,
+            (user_id,),
+        )
+        return [
+            {
+                "id": str(row["knowledge_base_id"]),
+                "name": str(row["name"]),
+                "file_count": int(row["file_count"]),
+                "chunk_count": int(row["chunk_count"]),
+                "index_count": int(row["index_count"]),
+                "updated_at": str(row["updated_at"]),
+            }
+            for row in rows
+        ]
+
+    def get_snapshot(
+        self,
+        user_id: str,
+        knowledge_base_id: str | None = None,
+    ) -> dict[str, Any]:
         """Read a complete polling snapshot exclusively from SQLite."""
+
+        resolved = self.resolve_knowledge_base_id(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+        )
 
         with closing(self._connect()) as connection:
             base = connection.execute(
@@ -116,10 +256,11 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
             files = connection.execute(
                 """
                 SELECT * FROM personal_knowledge_base_files
-                WHERE user_id = ? AND tombstoned_at IS NULL
+                WHERE user_id = ? AND knowledge_base_id = ?
+                  AND tombstoned_at IS NULL
                 ORDER BY uploaded_at DESC, file_id
                 """,
-                (user_id,),
+                (user_id, resolved),
             ).fetchall()
         if base is None:
             return {
@@ -137,8 +278,8 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
             # Returning the observed list length makes the public invariant
             # explicit while aggregate repair/reconcile remains asynchronous.
             "file_count": len(file_values),
-            "chunk_count": base["chunk_count"],
-            "index_count": base["index_count"],
+            "chunk_count": sum(int(row["chunk_count"]) for row in files),
+            "index_count": sum(int(row["index_count"]) for row in files),
             "status": base["status"],
             "progress": base["progress"],
             "updated_at": base["updated_at"],
@@ -184,21 +325,34 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
             ).fetchone()
         return dict(row) if row is not None else None
 
-    def get_retrieval_state(self, user_id: str) -> dict[str, Any]:
+    def get_retrieval_state(
+        self,
+        user_id: str,
+        knowledge_base_id: str | None = None,
+    ) -> dict[str, Any]:
         """Read the trusted generation and live file allowlist for one query."""
+
+        resolved = self.resolve_knowledge_base_id(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+        )
 
         with closing(self._connect()) as connection:
             base = connection.execute(
                 """
-                SELECT active_generation_id, status
+                SELECT b.active_generation_id AS user_generation_id,
+                       b.status,
+                       c.active_generation_id AS catalog_generation_id
                 FROM personal_knowledge_bases AS b
+                JOIN personal_knowledge_base_catalogs AS c
+                  ON c.user_id = b.user_id AND c.knowledge_base_id = ?
                 WHERE b.user_id = ?
                   AND NOT EXISTS (
                     SELECT 1 FROM personal_knowledge_base_user_purges AS p
                     WHERE p.user_id = b.user_id
                   )
                 """,
-                (user_id,),
+                (resolved, user_id),
             ).fetchone()
             collection = connection.execute(
                 """
@@ -211,18 +365,23 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                 """
                 SELECT file_id, filename
                 FROM personal_knowledge_base_files AS f
-                WHERE f.user_id = ? AND tombstoned_at IS NULL AND status = 'ready'
+                WHERE f.user_id = ? AND f.knowledge_base_id = ?
+                  AND tombstoned_at IS NULL AND status = 'ready'
                   AND NOT EXISTS (
                     SELECT 1 FROM personal_knowledge_base_user_purges AS p
                     WHERE p.user_id = f.user_id
                   )
                 ORDER BY uploaded_at, file_id
                 """,
-                (user_id,),
+                (user_id, resolved),
             ).fetchall()
         return {
             "generation_id": (
-                base["active_generation_id"] if base is not None else None
+                (
+                    base["catalog_generation_id"]
+                    if base is not None and base["catalog_generation_id"] is not None
+                    else base["user_generation_id"] if base is not None else None
+                )
             ),
             "base_status": base["status"] if base is not None else "idle",
             "collection_ready": bool(collection["ready"]) if collection else False,
@@ -262,27 +421,56 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
         with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
-                SELECT b.user_id, b.active_generation_id AS generation_id,
+                SELECT c.user_id, c.active_generation_id AS generation_id,
                        g.embedding_fingerprint, g.chunk_fingerprint,
                        g.index_fingerprint, g.locator_schema_version,
                        f.file_id, f.filename, f.media_type, f.sha256,
                        f.source_path, f.ingestion_revision, f.index_count
-                FROM personal_knowledge_bases AS b
+                FROM personal_knowledge_base_catalogs AS c
                 JOIN personal_knowledge_base_generations AS g
-                  ON g.user_id = b.user_id
-                 AND g.generation_id = b.active_generation_id
+                  ON g.user_id = c.user_id
+                 AND g.generation_id = c.active_generation_id
                 JOIN personal_knowledge_base_files AS f
-                  ON f.user_id = b.user_id
+                  ON f.user_id = c.user_id
+                 AND f.knowledge_base_id = c.knowledge_base_id
                 WHERE f.tombstoned_at IS NULL
                   AND f.status = 'ready'
                   AND f.indexed_revision IS NOT NULL
                   AND NOT EXISTS (
                     SELECT 1 FROM personal_knowledge_base_user_purges AS p
-                    WHERE p.user_id = b.user_id
+                    WHERE p.user_id = c.user_id
                   )
-                ORDER BY b.user_id, f.uploaded_at, f.file_id
+                ORDER BY c.user_id, f.uploaded_at, f.file_id
                 """
             ).fetchall()
+            if not rows:
+                rows = connection.execute(
+                    """
+                    SELECT b.user_id, b.active_generation_id AS generation_id,
+                           g.embedding_fingerprint, g.chunk_fingerprint,
+                           g.index_fingerprint, g.locator_schema_version,
+                           f.file_id, f.filename, f.media_type, f.sha256,
+                           f.source_path, f.ingestion_revision, f.index_count
+                    FROM personal_knowledge_bases AS b
+                    JOIN personal_knowledge_base_generations AS g
+                      ON g.user_id = b.user_id
+                     AND g.generation_id = b.active_generation_id
+                    JOIN personal_knowledge_base_files AS f
+                      ON f.user_id = b.user_id
+                    WHERE NOT EXISTS (
+                            SELECT 1 FROM personal_knowledge_base_catalogs AS c
+                            WHERE c.user_id = b.user_id
+                          )
+                      AND f.tombstoned_at IS NULL
+                      AND f.status = 'ready'
+                      AND f.indexed_revision IS NOT NULL
+                      AND NOT EXISTS (
+                        SELECT 1 FROM personal_knowledge_base_user_purges AS p
+                        WHERE p.user_id = b.user_id
+                      )
+                    ORDER BY b.user_id, f.uploaded_at, f.file_id
+                    """
+                ).fetchall()
         return [dict(row) for row in rows]
 
     def list_retained_file_ids(self) -> set[str]:
@@ -1050,6 +1238,7 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
         self,
         *,
         user_id: str,
+        knowledge_base_id: str | None = None,
         files: Iterable[NewPersonalKnowledgeBaseFile],
         max_user_bytes: int | None = None,
         max_user_files: int | None = None,
@@ -1060,6 +1249,10 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
         candidates = list(files)
         if not candidates:
             return [], None
+        resolved_knowledge_base_id = self.resolve_knowledge_base_id(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+        )
         now = self._now()
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -1087,9 +1280,10 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                         """
                         SELECT file_id, sha256
                         FROM personal_knowledge_base_files
-                        WHERE user_id = ? AND tombstoned_at IS NULL
+                        WHERE user_id = ? AND knowledge_base_id = ?
+                          AND tombstoned_at IS NULL
                         """,
-                        (user_id,),
+                        (user_id, resolved_knowledge_base_id),
                     ).fetchall()
                 }
                 unique: list[NewPersonalKnowledgeBaseFile] = []
@@ -1166,13 +1360,15 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                     connection.execute(
                         """
                         INSERT INTO personal_knowledge_base_files (
-                            file_id, user_id, filename, suffix, media_type,
+                            file_id, user_id, knowledge_base_id,
+                            filename, suffix, media_type,
                             size_bytes, sha256, source_path, ingestion_revision,
                             status, progress, uploaded_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0.0, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0.0, ?, ?)
                         """,
                         (
-                            item.file_id, user_id, item.filename, item.suffix,
+                            item.file_id, user_id, resolved_knowledge_base_id,
+                            item.filename, item.suffix,
                             item.media_type, item.size_bytes, item.sha256,
                             item.source_path, revision, item.uploaded_at, now,
                         ),
@@ -1188,7 +1384,10 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                     """,
                     (
                         job_id, user_id, revision,
-                        json.dumps({"file_ids": new_ids}), now, now,
+                        json.dumps({
+                            "file_ids": new_ids,
+                            "knowledge_base_id": resolved_knowledge_base_id,
+                        }), now, now,
                     ),
                 )
                 connection.execute(
@@ -1228,7 +1427,11 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                 connection.rollback()
                 raise
 
-    def queue_rebuild(self, user_id: str) -> str | None:
+    def queue_rebuild(
+        self,
+        user_id: str,
+        knowledge_base_id: str | None = None,
+    ) -> str | None:
         """Queue a full rebuild; return ``None`` for an empty knowledge base."""
 
         now = self._now()
@@ -1237,6 +1440,17 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
             try:
                 self._ensure_base(connection, user_id, now)
                 self._ensure_not_purging(connection, user_id)
+                if knowledge_base_id is not None:
+                    catalog = connection.execute(
+                        """
+                        SELECT knowledge_base_id
+                        FROM personal_knowledge_base_catalogs
+                        WHERE user_id = ? AND knowledge_base_id = ?
+                        """,
+                        (user_id, knowledge_base_id),
+                    ).fetchone()
+                    if catalog is None:
+                        raise PersonalKnowledgeBaseNotFound("个人知识库不存在")
                 if self._has_mutex_job(connection, user_id):
                     raise PersonalKnowledgeBaseConflict(
                         "personal knowledge-base upload or rebuild already in progress"
@@ -1247,9 +1461,10 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                         """
                         SELECT file_id FROM personal_knowledge_base_files
                         WHERE user_id = ? AND tombstoned_at IS NULL
+                          AND (? IS NULL OR knowledge_base_id = ?)
                         ORDER BY uploaded_at, file_id
                         """,
-                        (user_id,),
+                        (user_id, knowledge_base_id, knowledge_base_id),
                     ).fetchall()
                 ]
                 if not file_ids:
@@ -1274,7 +1489,14 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                         payload_json, created_at, updated_at
                     ) VALUES (?, ?, 'rebuild', ?, ?, ?, ?)
                     """,
-                    (job_id, user_id, revision, json.dumps({"file_ids": file_ids}), now, now),
+                    (
+                        job_id, user_id, revision,
+                        json.dumps({
+                            "file_ids": file_ids,
+                            "knowledge_base_id": knowledge_base_id,
+                        }),
+                        now, now,
+                    ),
                 )
                 connection.execute(
                     """
@@ -1285,7 +1507,10 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                     """,
                     (
                         str(uuid.uuid4()), user_id, revision,
-                        json.dumps({"file_ids": file_ids}), now, now,
+                        json.dumps({
+                            "file_ids": file_ids,
+                            "knowledge_base_id": knowledge_base_id,
+                        }), now, now,
                     ),
                 )
                 connection.commit()
@@ -1486,6 +1711,7 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
         self,
         *,
         user_id: str,
+        knowledge_base_id: str | None = None,
         collection_name: str,
         embedding_fingerprint: str,
         chunk_fingerprint: str,
@@ -1507,7 +1733,20 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                     """,
                     (user_id,),
                 ).fetchone()
-                generation_id = base["active_generation_id"]
+                if knowledge_base_id is not None:
+                    catalog = connection.execute(
+                        """
+                        SELECT active_generation_id
+                        FROM personal_knowledge_base_catalogs
+                        WHERE user_id = ? AND knowledge_base_id = ?
+                        """,
+                        (user_id, knowledge_base_id),
+                    ).fetchone()
+                    if catalog is None:
+                        raise PersonalKnowledgeBaseNotFound("个人知识库不存在")
+                    generation_id = catalog["active_generation_id"]
+                else:
+                    generation_id = base["active_generation_id"]
                 if generation_id is not None:
                     generation = connection.execute(
                         """
@@ -1540,25 +1779,36 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                     """
                     INSERT INTO personal_knowledge_base_generations (
                         generation_id, user_id, status, input_files_json,
+                        knowledge_base_id,
                         collection_name, embedding_fingerprint,
                         chunk_fingerprint, index_fingerprint,
                         locator_schema_version, created_at, activated_at
-                    ) VALUES (?, ?, 'active', '[]', ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, 'active', '[]', ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        generation_id, user_id, collection_name,
+                        generation_id, user_id, knowledge_base_id, collection_name,
                         embedding_fingerprint, chunk_fingerprint,
                         index_fingerprint, locator_schema_version, now, now,
                     ),
                 )
-                connection.execute(
-                    """
-                    UPDATE personal_knowledge_bases
-                    SET active_generation_id = ?, updated_at = ?
-                    WHERE user_id = ?
-                    """,
-                    (generation_id, now, user_id),
-                )
+                if knowledge_base_id is not None:
+                    connection.execute(
+                        """
+                        UPDATE personal_knowledge_base_catalogs
+                        SET active_generation_id = ?, updated_at = ?
+                        WHERE user_id = ? AND knowledge_base_id = ?
+                        """,
+                        (generation_id, now, user_id, knowledge_base_id),
+                    )
+                else:
+                    connection.execute(
+                        """
+                        UPDATE personal_knowledge_bases
+                        SET active_generation_id = ?, updated_at = ?
+                        WHERE user_id = ?
+                        """,
+                        (generation_id, now, user_id),
+                    )
                 connection.commit()
                 return generation_id
             except BaseException:
@@ -1572,6 +1822,7 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
         job_id: str,
         target_revision: int,
         file_ids: Iterable[str],
+        knowledge_base_id: str | None = None,
         collection_name: str,
         embedding_fingerprint: str,
         chunk_fingerprint: str,
@@ -1587,7 +1838,7 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
             try:
                 job = connection.execute(
                     """
-                    SELECT generation_id FROM personal_knowledge_base_jobs
+                    SELECT generation_id, payload_json FROM personal_knowledge_base_jobs
                     WHERE user_id = ? AND job_id = ? AND job_type = 'rebuild'
                       AND target_revision = ? AND status = 'running'
                     """,
@@ -1612,13 +1863,15 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                     """
                     INSERT INTO personal_knowledge_base_generations (
                         generation_id, user_id, status, input_files_json,
+                        knowledge_base_id,
                         collection_name, embedding_fingerprint,
                         chunk_fingerprint, index_fingerprint,
                         locator_schema_version, created_at
-                    ) VALUES (?, ?, 'staging', ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, 'staging', ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        generation_id, user_id, json.dumps(inputs), collection_name,
+                        generation_id, user_id, json.dumps(inputs), knowledge_base_id,
+                        collection_name,
                         embedding_fingerprint, chunk_fingerprint, index_fingerprint,
                         locator_schema_version, now,
                     ),
@@ -1631,6 +1884,15 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                     """,
                     (generation_id, now, user_id, job_id),
                 )
+                if knowledge_base_id is not None:
+                    connection.execute(
+                        """
+                        UPDATE personal_knowledge_base_catalogs
+                        SET building_generation_id = ?, updated_at = ?
+                        WHERE user_id = ? AND knowledge_base_id = ?
+                        """,
+                        (generation_id, now, user_id, knowledge_base_id),
+                    )
                 connection.execute(
                     """
                     UPDATE personal_knowledge_bases
@@ -1800,6 +2062,14 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                     """,
                     (user_id, generation_id),
                 )
+                connection.execute(
+                    """
+                    UPDATE personal_knowledge_base_catalogs
+                    SET building_generation_id = NULL, updated_at = ?
+                    WHERE user_id = ? AND building_generation_id = ?
+                    """,
+                    (now, user_id, generation_id),
+                )
             connection.execute(
                 """
                 UPDATE personal_knowledge_bases
@@ -1917,15 +2187,37 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                             SELECT COALESCE(SUM(chunk_count), 0)
                             FROM personal_knowledge_base_files
                             WHERE user_id = ? AND tombstoned_at IS NULL
+                              AND (knowledge_base_id = (
+                                  SELECT knowledge_base_id
+                                  FROM personal_knowledge_base_generations
+                                  WHERE user_id = ? AND generation_id = ?
+                              ) OR (
+                                  SELECT knowledge_base_id
+                                  FROM personal_knowledge_base_generations
+                                  WHERE user_id = ? AND generation_id = ?
+                              ) IS NULL)
                         ),
                         index_count = (
                             SELECT COALESCE(SUM(index_count), 0)
                             FROM personal_knowledge_base_files
                             WHERE user_id = ? AND tombstoned_at IS NULL
+                              AND (knowledge_base_id = (
+                                  SELECT knowledge_base_id
+                                  FROM personal_knowledge_base_generations
+                                  WHERE user_id = ? AND generation_id = ?
+                              ) OR (
+                                  SELECT knowledge_base_id
+                                  FROM personal_knowledge_base_generations
+                                  WHERE user_id = ? AND generation_id = ?
+                              ) IS NULL)
                         )
                     WHERE user_id = ? AND generation_id = ?
                     """,
-                    (user_id, user_id, user_id, generation_id),
+                    (
+                        user_id, user_id, generation_id, user_id, generation_id,
+                        user_id, user_id, generation_id, user_id, generation_id,
+                        user_id, generation_id,
+                    ),
                 )
                 connection.execute(
                     """
@@ -2165,6 +2457,7 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
         job_id: str,
         target_revision: int,
         generation_id: str,
+        knowledge_base_id: str | None = None,
         collection_name: str,
         files: Iterable[IndexedPersonalKnowledgeBaseFile],
     ) -> int:
@@ -2198,7 +2491,20 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                     or base["building_generation_id"] != generation_id
                 ):
                     raise RuntimeError("rebuild generation is no longer commit eligible")
-                old_generation_id = base["active_generation_id"]
+                if knowledge_base_id is not None:
+                    catalog = connection.execute(
+                        """
+                        SELECT active_generation_id, building_generation_id
+                        FROM personal_knowledge_base_catalogs
+                        WHERE user_id = ? AND knowledge_base_id = ?
+                        """,
+                        (user_id, knowledge_base_id),
+                    ).fetchone()
+                    if catalog is None or catalog["building_generation_id"] != generation_id:
+                        raise RuntimeError("knowledge-base rebuild generation is inconsistent")
+                    old_generation_id = catalog["active_generation_id"]
+                else:
+                    old_generation_id = base["active_generation_id"]
                 for item in results:
                     if connection.execute(
                         """
@@ -2252,6 +2558,38 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                     (mutation_seq, now, now, user_id, target_revision),
                 ).rowcount != 1:
                     raise RuntimeError("rebuild mutation outbox is inconsistent")
+                if knowledge_base_id is not None:
+                    connection.execute(
+                        """
+                        UPDATE personal_knowledge_base_catalogs
+                        SET active_generation_id = ?, building_generation_id = NULL,
+                            updated_at = ?
+                        WHERE user_id = ? AND knowledge_base_id = ?
+                        """,
+                        (generation_id, now, user_id, knowledge_base_id),
+                    )
+                else:
+                    connection.execute(
+                        """
+                        UPDATE personal_knowledge_base_catalogs
+                        SET active_generation_id = ?, building_generation_id = NULL,
+                            updated_at = ?
+                        WHERE user_id = ?
+                        """,
+                        (generation_id, now, user_id),
+                    )
+                if old_generation_id is not None:
+                    still_referenced = connection.execute(
+                        """
+                        SELECT 1 FROM personal_knowledge_base_catalogs
+                        WHERE user_id = ?
+                          AND (active_generation_id = ? OR building_generation_id = ?)
+                        LIMIT 1
+                        """,
+                        (user_id, old_generation_id, old_generation_id),
+                    ).fetchone()
+                    if still_referenced is not None:
+                        old_generation_id = None
                 if old_generation_id is not None:
                     connection.execute(
                         """
@@ -2277,14 +2615,16 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                 connection.execute(
                     """
                     UPDATE personal_knowledge_bases
-                    SET active_generation_id = ?, building_generation_id = NULL,
+                    SET active_generation_id = CASE WHEN ? IS NULL THEN ? ELSE active_generation_id END,
+                        building_generation_id = CASE WHEN ? IS NULL THEN NULL ELSE building_generation_id END,
                         indexed_revision = ?, status = 'ready', progress = 1.0,
                         chunk_count = ?, index_count = ?, error = NULL,
                         updated_at = ?
                     WHERE user_id = ?
                     """,
                     (
-                        generation_id, target_revision, totals[0], totals[1],
+                        knowledge_base_id, generation_id,
+                        knowledge_base_id, target_revision, totals[0], totals[1],
                         now, user_id,
                     ),
                 )
@@ -2578,6 +2918,20 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                         """,
                         (row["generation_id"], now, user_id),
                     )
+                    payload = json.loads(row["payload_json"])
+                    knowledge_base_id = payload.get("knowledge_base_id")
+                    if knowledge_base_id is not None:
+                        connection.execute(
+                            """
+                            UPDATE personal_knowledge_base_catalogs
+                            SET building_generation_id = ?, updated_at = ?
+                            WHERE user_id = ? AND knowledge_base_id = ?
+                            """,
+                            (
+                                row["generation_id"], now, user_id,
+                                str(knowledge_base_id),
+                            ),
+                        )
                 else:
                     connection.execute(
                         """

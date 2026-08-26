@@ -366,7 +366,7 @@ class ApiClient {
     final data = _decode(r) as Map<String, dynamic>;
     sessionId = data['session_id'] as String;
     userId = data['user_id'] as String;
-    this.username = data['username'] as String;
+    this.username = (data['display_name'] ?? data['username']) as String;
     email = data['email'] as String?;
     accountRole = data['account_role'] as String? ?? 'student';
     sessionExpiresAt = DateTime.tryParse(data['expires_at'] as String? ?? '');
@@ -460,6 +460,7 @@ class ApiClient {
   }
 
   Future<UserProfile> updateProfile({
+    String? displayName,
     required String major,
     required String grade,
     required int currentWeek,
@@ -468,6 +469,7 @@ class ApiClient {
   }) async {
     if (kOfflineMode) {
       return UserProfile(
+        displayName: displayName ?? username ?? '',
         major: major,
         grade: grade,
         currentWeek: currentWeek,
@@ -479,6 +481,7 @@ class ApiClient {
       _uri('/me/profile'),
       headers: _headers(auth: true),
       body: jsonEncode({
+        'display_name': ?displayName,
         'major': major,
         'grade': grade,
         'current_week': currentWeek,
@@ -488,6 +491,197 @@ class ApiClient {
     );
     if (r.statusCode != 200) _fail(r);
     return UserProfile.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<UserStats> getUserStats() async {
+    if (kOfflineMode) {
+      return UserStats(
+        conversationCount: _offConvs.length,
+        pinnedCount: _offConvs.where((item) => item.pinned).length,
+      );
+    }
+    final r = await http.get(
+      _uri('/me/profile/stats'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return UserStats.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<Map<String, dynamic>> exportProfileData() async {
+    final r = await http.get(
+      _uri('/me/profile/export'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return Map<String, dynamic>.from(_decode(r) as Map);
+  }
+
+  Future<int> deleteProfileData() async {
+    final r = await http.delete(
+      _uri('/me/profile?confirm=DELETE'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return (_decode(r) as Map<String, dynamic>)['deleted_count'] as int? ?? 0;
+  }
+
+  Future<PlannerSnapshot> getPlanner() async {
+    if (kOfflineMode) {
+      return PlannerSnapshot(
+        todos: List.of(_offPlannerTodos),
+        goals: List.of(_offPlannerGoals),
+      );
+    }
+    final r = await http.get(
+      _uri('/me/planner'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return PlannerSnapshot.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<PlannerTodo> createPlannerTodo(String title, {DateTime? dueAt}) async {
+    if (kOfflineMode) {
+      final now = DateTime.now();
+      final item = PlannerTodo(
+        id: _offId(),
+        title: title,
+        dueAt: dueAt,
+        createdAt: now,
+        updatedAt: now,
+      );
+      _offPlannerTodos.insert(0, item);
+      return item;
+    }
+    final r = await http.post(
+      _uri('/me/planner/todos'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'title': title,
+        if (dueAt != null) 'due_at': dueAt.toUtc().toIso8601String(),
+      }),
+    );
+    if (r.statusCode != 201) _fail(r);
+    return PlannerTodo.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<PlannerTodo> updatePlannerTodo(
+    String id, {
+    String? title,
+    DateTime? dueAt,
+    bool? done,
+  }) async {
+    if (kOfflineMode) {
+      final index = _offPlannerTodos.indexWhere((item) => item.id == id);
+      if (index < 0) throw ApiException(404, '待办不存在');
+      final current = _offPlannerTodos[index];
+      final updated = PlannerTodo(
+        id: current.id,
+        title: title ?? current.title,
+        dueAt: dueAt ?? current.dueAt,
+        done: done ?? current.done,
+        createdAt: current.createdAt,
+        updatedAt: DateTime.now(),
+      );
+      _offPlannerTodos[index] = updated;
+      return updated;
+    }
+    final r = await http.patch(
+      _uri('/me/planner/todos/${Uri.encodeComponent(id)}'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'title': ?title,
+        'due_at': ?dueAt?.toUtc().toIso8601String(),
+        'done': ?done,
+      }),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return PlannerTodo.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<void> deletePlannerTodo(String id) async {
+    if (kOfflineMode) {
+      _offPlannerTodos.removeWhere((item) => item.id == id);
+      return;
+    }
+    final r = await http.delete(
+      _uri('/me/planner/todos/${Uri.encodeComponent(id)}'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204) _fail(r);
+  }
+
+  Future<PlannerGoal> createPlannerGoal(
+    String title, {
+    String description = '',
+    DateTime? targetAt,
+    int progress = 0,
+  }) async {
+    if (kOfflineMode) {
+      final now = DateTime.now();
+      final item = PlannerGoal(
+        id: _offId(),
+        title: title,
+        description: description,
+        targetAt: targetAt,
+        progress: progress,
+        createdAt: now,
+        updatedAt: now,
+      );
+      _offPlannerGoals.insert(0, item);
+      return item;
+    }
+    final r = await http.post(
+      _uri('/me/planner/goals'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'title': title,
+        'description': description,
+        if (targetAt != null) 'target_at': targetAt.toUtc().toIso8601String(),
+        'progress': progress,
+      }),
+    );
+    if (r.statusCode != 201) _fail(r);
+    return PlannerGoal.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<PlannerGoal> updatePlannerGoal(String id, {int? progress}) async {
+    if (kOfflineMode) {
+      final index = _offPlannerGoals.indexWhere((item) => item.id == id);
+      if (index < 0) throw ApiException(404, '目标不存在');
+      final current = _offPlannerGoals[index];
+      final updated = PlannerGoal(
+        id: current.id,
+        title: current.title,
+        description: current.description,
+        targetAt: current.targetAt,
+        progress: progress ?? current.progress,
+        createdAt: current.createdAt,
+        updatedAt: DateTime.now(),
+      );
+      _offPlannerGoals[index] = updated;
+      return updated;
+    }
+    final r = await http.patch(
+      _uri('/me/planner/goals/${Uri.encodeComponent(id)}'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'progress': ?progress}),
+    );
+    if (r.statusCode != 200) _fail(r);
+    return PlannerGoal.fromJson(_decode(r) as Map<String, dynamic>);
+  }
+
+  Future<void> deletePlannerGoal(String id) async {
+    if (kOfflineMode) {
+      _offPlannerGoals.removeWhere((item) => item.id == id);
+      return;
+    }
+    final r = await http.delete(
+      _uri('/me/planner/goals/${Uri.encodeComponent(id)}'),
+      headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204) _fail(r);
   }
 
   Future<MasteryReport> getMasteryReport({String course = ''}) async {
@@ -988,6 +1182,7 @@ class ApiClient {
     String customInstruction = '',
     String? style,
     String? tone,
+    String? projectId,
   }) async {
     if (kOfflineMode) {
       final now = DateTime.now();
@@ -999,6 +1194,7 @@ class ApiClient {
         customInstruction: customInstruction,
         style: style,
         tone: tone,
+        projectId: projectId,
         conversationCount: 0,
         createdAt: now,
         updatedAt: now,
@@ -1015,6 +1211,7 @@ class ApiClient {
         'custom_instruction': customInstruction,
         'style': ?style,
         'tone': ?tone,
+        'project_id': ?projectId,
       }),
     );
     if (r.statusCode != 201) _fail(r);
@@ -1029,6 +1226,8 @@ class ApiClient {
     String? customInstruction,
     Object? style = groupFieldUnset,
     Object? tone = groupFieldUnset,
+    Object? projectId = groupFieldUnset,
+    bool? pinned,
   }) async {
     if (kOfflineMode) {
       final index = _offGroups.indexWhere((group) => group.id == groupId);
@@ -1044,6 +1243,11 @@ class ApiClient {
             ? current.style
             : style as String?,
         tone: identical(tone, groupFieldUnset) ? current.tone : tone as String?,
+        projectId: identical(projectId, groupFieldUnset)
+            ? current.projectId
+            : projectId as String?,
+        pinned: pinned ?? current.pinned,
+        sortOrder: current.sortOrder,
         conversationCount: current.conversationCount,
         createdAt: current.createdAt,
         updatedAt: DateTime.now(),
@@ -1057,6 +1261,9 @@ class ApiClient {
       'custom_instruction': ?customInstruction,
       if (!identical(style, groupFieldUnset)) 'style': style as String?,
       if (!identical(tone, groupFieldUnset)) 'tone': tone as String?,
+      if (!identical(projectId, groupFieldUnset))
+        'project_id': projectId as String?,
+      'pinned': ?pinned,
     };
     final r = await http.patch(
       _uri('/groups/${Uri.encodeComponent(groupId)}'),
@@ -1075,6 +1282,26 @@ class ApiClient {
     final r = await http.delete(
       _uri('/groups/${Uri.encodeComponent(groupId)}'),
       headers: _headers(auth: true),
+    );
+    if (r.statusCode != 204) _fail(r);
+  }
+
+  Future<ChatGroup> setGroupPinned(String groupId, bool pinned) async {
+    return updateGroup(groupId, pinned: pinned);
+  }
+
+  Future<void> reorderGroups(List<String> groupIds) async {
+    if (kOfflineMode) {
+      final byId = {for (final group in _offGroups) group.id: group};
+      _offGroups
+        ..clear()
+        ..addAll(groupIds.map((id) => byId[id]).whereType<ChatGroup>());
+      return;
+    }
+    final r = await http.put(
+      _uri('/groups/order'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'group_ids': groupIds}),
     );
     if (r.statusCode != 204) _fail(r);
   }
@@ -1582,6 +1809,20 @@ class ApiClient {
     if (r.statusCode != 204) _fail(r);
   }
 
+  Future<void> setConversationPinned(String id, bool pinned) async {
+    if (kOfflineMode) {
+      final conversation = _offConvs.firstWhere((item) => item.id == id);
+      conversation.pinned = pinned;
+      return;
+    }
+    final r = await http.patch(
+      _uri('/conversations/${Uri.encodeComponent(id)}'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'pinned': pinned}),
+    );
+    if (r.statusCode != 204) _fail(r);
+  }
+
   Future<void> deleteConversation(String id) async {
     if (kOfflineMode) {
       _offConvs.removeWhere((c) => c.id == id);
@@ -1608,12 +1849,19 @@ class ApiClient {
         .toList();
   }
 
-  Future<List<ChatMessage>> sendMessage(String id, String content) async {
+  Future<List<ChatMessage>> sendMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async {
     if (kOfflineMode) return _offlineSend(id, content);
     final r = await http.post(
       _uri('/conversations/$id/messages'),
       headers: _headers(auth: true),
-      body: jsonEncode({'content': content}),
+      body: jsonEncode({
+        'content': content,
+        'personal_knowledge_base_id': ?personalKnowledgeBaseId,
+      }),
     );
     if (r.statusCode != 200) _fail(r);
     final list = _decode(r) as List;
@@ -1656,6 +1904,7 @@ class ApiClient {
       KnowledgeSource.personal,
       KnowledgeSource.public,
     },
+    String? personalKnowledgeBaseId,
   }) async {
     if (kOfflineMode) return _offlineSend(id, content);
     final r = await http.post(
@@ -1667,6 +1916,39 @@ class ApiClient {
         'knowledge_sources': knowledgeSources
             .map((item) => item.wireName)
             .toList(),
+        'personal_knowledge_base_id': ?personalKnowledgeBaseId,
+      }),
+    );
+    if (r.statusCode != 200) _fail(r);
+    final list = _decode(r) as List;
+    return list
+        .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<ChatMessage>> sendTaskMessage(
+    String id,
+    String content,
+    String taskMode, {
+    List<String> attachmentIds = const [],
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+    String? personalKnowledgeBaseId,
+  }) async {
+    if (kOfflineMode) return _offlineSend(id, content);
+    final r = await http.post(
+      _uri('/conversations/$id/messages'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        'content': content,
+        'task_mode': taskMode,
+        'attachment_ids': attachmentIds,
+        'knowledge_sources': knowledgeSources
+            .map((item) => item.wireName)
+            .toList(),
+        'personal_knowledge_base_id': ?personalKnowledgeBaseId,
       }),
     );
     if (r.statusCode != 200) _fail(r);
@@ -1728,10 +2010,48 @@ class ApiClient {
   }
 
   // ---------- 个人知识库 ----------
-  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase() async {
+  Future<List<PersonalKnowledgeBaseSummary>>
+  listPersonalKnowledgeBases() async {
+    if (kOfflineMode) return const [];
+    final response = await http.get(
+      _uri('/me/knowledge-base/libraries'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return (_decode(response) as List)
+        .whereType<Map>()
+        .map(
+          (item) => PersonalKnowledgeBaseSummary.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList();
+  }
+
+  Future<PersonalKnowledgeBaseSummary> createPersonalKnowledgeBase(
+    String name,
+  ) async {
+    final response = await http.post(
+      _uri('/me/knowledge-base/libraries'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'name': name}),
+    );
+    if (response.statusCode != 201) _fail(response);
+    return PersonalKnowledgeBaseSummary.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
+  Future<PersonalKnowledgeBase> getPersonalKnowledgeBase({
+    String? knowledgeBaseId,
+  }) async {
     if (kOfflineMode) return const PersonalKnowledgeBase.empty();
     final response = await http.get(
-      _uri('/me/knowledge-base'),
+      _uri(
+        knowledgeBaseId == null
+            ? '/me/knowledge-base'
+            : '/me/knowledge-base/libraries/${Uri.encodeComponent(knowledgeBaseId)}',
+      ),
       headers: _headers(auth: true),
     );
     if (response.statusCode != 200) _fail(response);
@@ -1741,13 +2061,20 @@ class ApiClient {
   }
 
   Future<PersonalKnowledgeBase> uploadPersonalKnowledgeBaseFiles(
-    List<KnowledgeBaseUploadFile> files,
-  ) async {
-    if (files.isEmpty) return getPersonalKnowledgeBase();
+    List<KnowledgeBaseUploadFile> files, {
+    String? knowledgeBaseId,
+  }) async {
+    if (files.isEmpty) {
+      return getPersonalKnowledgeBase(knowledgeBaseId: knowledgeBaseId);
+    }
     if (kOfflineMode) return const PersonalKnowledgeBase.empty();
     final request = http.MultipartRequest(
       'POST',
-      _uri('/me/knowledge-base/files'),
+      _uri(
+        knowledgeBaseId == null
+            ? '/me/knowledge-base/files'
+            : '/me/knowledge-base/libraries/${Uri.encodeComponent(knowledgeBaseId)}/files',
+      ),
     );
     if (sessionId != null) {
       request.headers['Authorization'] = 'Bearer $sessionId';
@@ -1952,9 +2279,15 @@ class ApiClient {
     }
   }
 
-  Future<PersonalKnowledgeBase> rebuildPersonalKnowledgeBase() async {
+  Future<PersonalKnowledgeBase> rebuildPersonalKnowledgeBase({
+    String? knowledgeBaseId,
+  }) async {
     final response = await http.post(
-      _uri('/me/knowledge-base/rebuild'),
+      _uri(
+        knowledgeBaseId == null
+            ? '/me/knowledge-base/rebuild'
+            : '/me/knowledge-base/libraries/${Uri.encodeComponent(knowledgeBaseId)}/rebuild',
+      ),
       headers: _headers(auth: true),
     );
     if (response.statusCode != 202) _fail(response);
@@ -1963,7 +2296,11 @@ class ApiClient {
     );
   }
 
-  Stream<ChatStreamEvent> streamMessage(String id, String content) async* {
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
     if (kOfflineMode) {
       final messages = await _offlineSend(id, content);
       yield const ChatStreamEvent('start', {});
@@ -1989,7 +2326,10 @@ class ApiClient {
     final request =
         http.Request('POST', _uri('/conversations/$id/messages/stream'))
           ..headers.addAll(_headers(auth: true))
-          ..body = jsonEncode({'content': content});
+          ..body = jsonEncode({
+            'content': content,
+            'personal_knowledge_base_id': ?personalKnowledgeBaseId,
+          });
 
     final response = await request.send();
     if (response.statusCode != 200) {
@@ -2008,6 +2348,7 @@ class ApiClient {
       KnowledgeSource.personal,
       KnowledgeSource.public,
     },
+    String? personalKnowledgeBaseId,
   }) async* {
     final request =
         http.Request('POST', _uri('/conversations/$id/messages/stream'))
@@ -2018,8 +2359,44 @@ class ApiClient {
             'knowledge_sources': knowledgeSources
                 .map((item) => item.wireName)
                 .toList(),
+            'personal_knowledge_base_id': ?personalKnowledgeBaseId,
           });
 
+    final response = await request.send();
+    if (response.statusCode != 200) {
+      final bytes = await response.stream.toBytes();
+      _fail(http.Response.bytes(bytes, response.statusCode));
+    }
+    yield* _decodeSse(response.stream);
+  }
+
+  Stream<ChatStreamEvent> streamTaskMessage(
+    String id,
+    String content,
+    String taskMode, {
+    List<String> attachmentIds = const [],
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+    String? personalKnowledgeBaseId,
+  }) async* {
+    if (kOfflineMode) {
+      yield* streamMessage(id, content);
+      return;
+    }
+    final request =
+        http.Request('POST', _uri('/conversations/$id/messages/stream'))
+          ..headers.addAll(_headers(auth: true))
+          ..body = jsonEncode({
+            'content': content,
+            'task_mode': taskMode,
+            'attachment_ids': attachmentIds,
+            'knowledge_sources': knowledgeSources
+                .map((item) => item.wireName)
+                .toList(),
+            'personal_knowledge_base_id': ?personalKnowledgeBaseId,
+          });
     final response = await request.send();
     if (response.statusCode != 200) {
       final bytes = await response.stream.toBytes();
@@ -2037,6 +2414,7 @@ class ApiClient {
       KnowledgeSource.personal,
       KnowledgeSource.public,
     },
+    String? personalKnowledgeBaseId,
   }) async* {
     final request =
         http.Request('POST', _uri('/conversations/$id/messages/stream'))
@@ -2047,6 +2425,7 @@ class ApiClient {
             'knowledge_sources': knowledgeSources
                 .map((item) => item.wireName)
                 .toList(),
+            'personal_knowledge_base_id': ?personalKnowledgeBaseId,
             'replace_message_id': messageId,
           });
     final response = await request.send();
@@ -2354,6 +2733,8 @@ class ApiClient {
   final List<ChatConversation> _offConvs = [];
   final List<ChatGroup> _offGroups = [];
   final List<ResearchProject> _offResearchProjects = [];
+  final List<PlannerTodo> _offPlannerTodos = [];
+  final List<PlannerGoal> _offPlannerGoals = [];
   final Map<String, List<ChatMessage>> _offMsgs = {};
   int _offSeq = 0;
 

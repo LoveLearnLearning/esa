@@ -13,7 +13,16 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse, StreamingResponse
 
 from backend.agent.agent import Agent
@@ -28,6 +37,9 @@ from backend.core.stores.chat_store import ChatStore
 from backend.core.stores.classroom_conversation_store import ClassroomConversationStore
 from backend.core.stores.group_store import GroupStore
 from backend.core.stores.research_project_store import ResearchProjectStore
+from backend.core.stores.personal_knowledge_base_store import (
+    PersonalKnowledgeBaseNotFound,
+)
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_store import UserStore
 from backend.core.router import (
@@ -42,7 +54,14 @@ from backend.core.services.teaching_context_adapter import TeachingContextAdapte
 from backend.core.services.conversation_title_service import (
     ConversationTitleService,
 )
+from backend.core.services.auxiliary_llm_service import AuxiliaryLLMUnavailable
+from backend.core.services.conversation_compression_service import (
+    ConversationCompressionService,
+)
 from backend.core.services.code_execution_service import CodeExecutionService
+from backend.core.services.personal_knowledge_base_service import (
+    PersonalKnowledgeBaseDisabled,
+)
 from backend.core.services.user_attachment_service import (
     AttachmentTooLarge,
     StoredAttachment,
@@ -53,6 +72,7 @@ from backend.core.utils.models import (
     SessionPrincipal,
     UserRecord,
 )
+from backend.core.message.budget import PromptBudgetExceeded
 from backend.core.web.concurrency import (
     ConversationTurnCoordinator,
     ConversationTurnLease,
@@ -73,6 +93,59 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["chat"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]
+
+
+_KNOWLEDGE_SOURCE_SERVICES = (
+    ("personal", "personal_knowledge_retrieval_service", "个人知识库"),
+    ("public", "rag_service", "公共知识库"),
+)
+
+
+def _ensure_selected_knowledge_sources_available(
+    request: Request,
+    knowledge_sources: list[str] | tuple[str, ...],
+    *,
+    user_id: str,
+    personal_knowledge_base_id: str | None,
+) -> str | None:
+    """Reject a turn before persistence when a selected RAG service is absent."""
+
+    selected = set(knowledge_sources)
+    missing = [
+        label
+        for source, state_attribute, label in _KNOWLEDGE_SOURCE_SERVICES
+        if source in selected
+        and getattr(request.app.state, state_attribute, None) is None
+    ]
+    if missing:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"所选知识库服务暂不可用：{'、'.join(missing)}",
+        )
+    if "personal" not in selected:
+        return None
+    management = getattr(
+        request.app.state,
+        "personal_knowledge_base_service",
+        None,
+    )
+    resolver = getattr(management, "resolve_knowledge_base_id", None)
+    if not callable(resolver):
+        if personal_knowledge_base_id is None:
+            return None
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "个人知识库目录服务暂不可用",
+        )
+    try:
+        return resolver(user_id, personal_knowledge_base_id)
+    except PersonalKnowledgeBaseNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "个人知识库不存在") from exc
+    except PersonalKnowledgeBaseDisabled as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "个人知识库目录服务暂不可用",
+        ) from exc
 
 
 def _mm_sessions(request: Request) -> MultimodalSessionService:
@@ -319,6 +392,27 @@ def _validate_group_owned(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "分组不存在")
 
 
+def _validate_group_scope(
+    request: Request,
+    group_id: str | None,
+    project_id: str | None,
+    session: SessionPrincipal,
+) -> None:
+    """Ensure a conversation cannot cross a research-project group boundary."""
+    _validate_group_owned(request, group_id, session)
+    if group_id is None:
+        return
+    group = request.app.state.group_store.get_group(group_id, session.user_id)
+    group_project_id = group.get("project_id") if group is not None else None
+    # A null project is retained as a compatibility state for groups created by
+    # older clients. Once a group has a persisted project, the boundary is strict.
+    if group_project_id is not None and group_project_id != project_id:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "分组与对话所属科研项目不一致",
+        )
+
+
 def _classroom_binding_out(request: Request, binding: dict | None) -> dict | None:
     """处理 `_classroom_binding_out` 相关逻辑。"""
     if binding is None:
@@ -526,7 +620,119 @@ def _prepare_message(
         resolved_kp_ids=tuple(resolved_kp_ids),
         pending_practice_kp_id=pending_practice_kp_id,
         knowledge_sources=tuple(body.knowledge_sources),
+        personal_knowledge_base_id=body.personal_knowledge_base_id,
     )
+
+
+def _reload_context_after_compression(
+    request: Request,
+    conversation_id: str,
+    body: SendMessageRequest,
+    ctx: MessageContext,
+) -> MessageContext:
+    """Rebuild history-dependent context without appending the current turn."""
+    if ctx.user_message_id is None:
+        return ctx
+    chat_store: ChatStore = request.app.state.chat_store
+    summary, history = chat_store.get_compressed_model_history_before(
+        conversation_id,
+        ctx.user_message_id,
+    )
+    ctx.history = history
+    ctx.conversation_summary = summary or ""
+    kp_resolver = getattr(request.app.state, "kp_resolver", None)
+    ctx.pending_practice_kp_id = (
+        _resolve_pending_practice_kp_id(history, kp_resolver)
+        if ctx.workspace_type == "learning"
+        else None
+    )
+    ctx.user_profile_context = (
+        None
+        if ctx.conversation_mode == "isolated" or ctx.workspace_type != "learning"
+        else request.app.state.profile_builder.build(
+            ProfileQuery(
+                user_id=ctx.user.id,
+                username=ctx.user.username,
+                conversation_id=conversation_id,
+                current_message=body.content,
+                recent_messages=history,
+                resolved_kp_ids=list(ctx.resolved_kp_ids),
+                group_style=ctx.group_style,
+                group_tone=ctx.group_tone,
+                group_custom_instruction=ctx.group_custom_instruction,
+            )
+        )
+    )
+    return ctx
+
+
+async def _preflight_with_active_compression(
+    request: Request,
+    session: SessionPrincipal,
+    conversation_id: str,
+    body: SendMessageRequest,
+    ctx: MessageContext,
+    authorized_attachments: tuple[dict, ...],
+    lease: ConversationTurnLease,
+):
+    """Measure, compress prior history once if useful, rebuild, and remeasure."""
+    agent: Agent = request.app.state.agent
+    run_spec = _build_run_spec(
+        request,
+        session,
+        conversation_id,
+        body,
+        ctx,
+        authorized_attachments,
+    )
+    inspect_prompt = getattr(agent, "inspect_prompt", None)
+    if not callable(inspect_prompt):
+        # Lightweight test/alternate agents do not own a tokenizer. Production
+        # Agent always provides this interface and every provider call rechecks.
+        return ctx, run_spec
+    measurement = inspect_prompt(run_spec).measurement
+    compression_service = getattr(
+        request.app.state,
+        "conversation_compression_service",
+        None,
+    )
+    if (
+        measurement.target_exceeded
+        and ctx.user_message_id is not None
+        and isinstance(compression_service, ConversationCompressionService)
+    ):
+        try:
+            changed = await compression_service.compress_active_turn(
+                conversation_id=conversation_id,
+                owner_token=lease.claim.owner_token,
+                before_message_id=ctx.user_message_id,
+            )
+        except AuxiliaryLLMUnavailable as error:
+            changed = False
+            logger.warning(
+                "同步对话压缩不可用 conversation_id=%s error=%s",
+                conversation_id,
+                error,
+            )
+        if changed:
+            ctx = _reload_context_after_compression(
+                request,
+                conversation_id,
+                body,
+                ctx,
+            )
+            run_spec = _build_run_spec(
+                request,
+                session,
+                conversation_id,
+                body,
+                ctx,
+                authorized_attachments,
+            )
+            measurement = inspect_prompt(run_spec).measurement
+    if measurement.hard_exceeded:
+        raise PromptBudgetExceeded(measurement)
+    return ctx, run_spec
 
 
 def _start_title_generation(
@@ -600,7 +806,9 @@ def _runtime_dependencies(
         chat_store=getattr(state, "chat_store", None),
         teaching_store=teaching_store,
         teaching_context_reader=(
-            TeachingContextAdapter(teaching_store) if teaching_store is not None else None
+            TeachingContextAdapter(teaching_store)
+            if teaching_store is not None
+            else None
         ),
         research_project_store=getattr(state, "research_project_store", None),
         research_project_profile_service=getattr(
@@ -706,6 +914,7 @@ def _build_run_spec(
         identity=identity,
         conversation_id=conversation_id,
         current_message=body.content,
+        task_mode=body.task_mode,
         history=tuple(ctx.history),
         conversation_summary=ctx.conversation_summary,
         conversation_mode=ctx.conversation_mode,
@@ -723,14 +932,13 @@ def _build_run_spec(
         ),
         authorized_attachments=authorized_attachments,
         knowledge_sources=ctx.knowledge_sources,
+        personal_knowledge_base_id=ctx.personal_knowledge_base_id,
         request_metadata={
             "request_id": uuid4().hex,
             "total_weeks": ctx.user.total_weeks,
         },
     )
-    runtime = WorkspaceRuntime(
-        _runtime_dependencies(request, ctx)
-    )
+    runtime = WorkspaceRuntime(_runtime_dependencies(request, ctx))
     return runtime.prepare(turn)
 
 
@@ -791,7 +999,7 @@ def create_conversation(
         dict => 处理结果。
     """
     body = body or ConversationCreateRequest()
-    _validate_group_owned(request, body.group_id, session)
+    _validate_group_scope(request, body.group_id, body.research_project_id, session)
     user_store: UserStore = request.app.state.user_store
     user = user_store.get_by_id(session.user_id)
     if user is None:
@@ -829,15 +1037,17 @@ def create_conversation(
             chat_store.delete_conversation(
                 conversation["conversation_id"], session.user_id
             )
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "classroom resource not found")
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, "classroom resource not found"
+            )
         binding_store = request.app.state.classroom_conversation_store
         conversation["classroom_binding"] = _classroom_binding_out(
             request,
             binding_store.bind(
-            conversation_id=conversation["conversation_id"],
-            user_id=session.user_id,
-            class_id=body.class_id,
-            assignment_id=body.assignment_id,
+                conversation_id=conversation["conversation_id"],
+                user_id=session.user_id,
+                class_id=body.class_id,
+                assignment_id=body.assignment_id,
             ),
         )
     elif body.class_id is not None or body.assignment_id is not None:
@@ -902,7 +1112,13 @@ def update_conversation(
 
     # 移动分组时校验目标分组归属
     if "group_id" in updates:
-        _validate_group_owned(request, updates["group_id"], session)
+        conversation = _load_owned(request, conversation_id, session)
+        _validate_group_scope(
+            request,
+            updates["group_id"],
+            conversation.get("research_project_id"),
+            session,
+        )
 
     if "class_id" in updates or "assignment_id" in updates:
         conversation = _load_owned(request, conversation_id, session)
@@ -928,7 +1144,9 @@ def update_conversation(
         else:
             user = request.app.state.user_store.get_by_id(session.user_id)
             if user is None:
-                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "user no longer exists")
+                raise HTTPException(
+                    status.HTTP_401_UNAUTHORIZED, "user no longer exists"
+                )
             authorization = _authorize_classroom_binding(
                 request,
                 session=session,
@@ -942,8 +1160,10 @@ def update_conversation(
                     status.HTTP_404_NOT_FOUND, "classroom resource not found"
                 )
             binding_store.bind(
-                conversation_id=conversation_id, user_id=session.user_id,
-                class_id=class_id, assignment_id=assignment_id,
+                conversation_id=conversation_id,
+                user_id=session.user_id,
+                class_id=class_id,
+                assignment_id=assignment_id,
             )
 
     chat_store: ChatStore = request.app.state.chat_store
@@ -953,6 +1173,13 @@ def update_conversation(
 
     if "group_id" in updates:
         chat_store.set_conversation_group(conversation_id, updates["group_id"])
+
+    if "pinned" in updates:
+        chat_store.update_conversation(
+            conversation_id,
+            session.user_id,
+            pinned=updates["pinned"],
+        )
 
 
 @router.delete(
@@ -1009,7 +1236,9 @@ async def upload_attachment(
     filename = Path((file.filename or "attachment").replace("\\", "/")).name
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SOURCE_SUFFIXES:
-        supported = "、".join(sorted(item.lstrip(".") for item in SUPPORTED_SOURCE_SUFFIXES))
+        supported = "、".join(
+            sorted(item.lstrip(".") for item in SUPPORTED_SOURCE_SUFFIXES)
+        )
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"DocIR 不支持该文件类型；支持：{supported}",
@@ -1239,6 +1468,12 @@ async def send_message(
     """
     conversation = _load_owned(request, conversation_id, session)
     _ensure_message_allowed(request, conversation, session)
+    body.personal_knowledge_base_id = _ensure_selected_knowledge_sources_available(
+        request,
+        body.knowledge_sources,
+        user_id=session.user_id,
+        personal_knowledge_base_id=body.personal_knowledge_base_id,
+    )
     lease = await _acquire_turn(request, conversation_id)
     async with lease:
         authorized_attachments, attachments = _conversation_attachment_inventory(
@@ -1248,22 +1483,29 @@ async def send_message(
             body.attachment_ids,
         )
         try:
-            ctx = _prepare_message(
-                request, conversation_id, body, session, attachments
-            )
+            ctx = _prepare_message(request, conversation_id, body, session, attachments)
         except ValueError as error:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)
+            ) from error
         chat_store: ChatStore = request.app.state.chat_store
         agent: Agent = request.app.state.agent
 
-        run_spec = _build_run_spec(
-            request,
-            session,
-            conversation_id,
-            body,
-            ctx,
-            authorized_attachments,
-        )
+        try:
+            ctx, run_spec = await _preflight_with_active_compression(
+                request,
+                session,
+                conversation_id,
+                body,
+                ctx,
+                authorized_attachments,
+                lease,
+            )
+        except PromptBudgetExceeded as error:
+            raise HTTPException(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                "对话上下文过长且无法安全压缩",
+            ) from error
         title_task = _start_title_generation(
             request,
             conversation=conversation,
@@ -1310,6 +1552,12 @@ async def stream_message(
     """
     conversation = _load_owned(request, conversation_id, session)
     _ensure_message_allowed(request, conversation, session)
+    body.personal_knowledge_base_id = _ensure_selected_knowledge_sources_available(
+        request,
+        body.knowledge_sources,
+        user_id=session.user_id,
+        personal_knowledge_base_id=body.personal_knowledge_base_id,
+    )
     lease = await _acquire_turn(request, conversation_id)
     try:
         authorized_attachments, attachments = _conversation_attachment_inventory(
@@ -1319,21 +1567,28 @@ async def stream_message(
             body.attachment_ids,
         )
         try:
-            ctx = _prepare_message(
-                request, conversation_id, body, session, attachments
-            )
+            ctx = _prepare_message(request, conversation_id, body, session, attachments)
         except ValueError as error:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)
+            ) from error
         chat_store: ChatStore = request.app.state.chat_store
         agent: Agent = request.app.state.agent
-        run_spec = _build_run_spec(
-            request,
-            session,
-            conversation_id,
-            body,
-            ctx,
-            authorized_attachments,
-        )
+        try:
+            ctx, run_spec = await _preflight_with_active_compression(
+                request,
+                session,
+                conversation_id,
+                body,
+                ctx,
+                authorized_attachments,
+                lease,
+            )
+        except PromptBudgetExceeded as error:
+            raise HTTPException(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                "对话上下文过长且无法安全压缩",
+            ) from error
         title_task = _start_title_generation(
             request,
             conversation=conversation,
@@ -1390,6 +1645,16 @@ async def stream_message(
                 )
         except asyncio.CancelledError:
             raise
+
+        except PromptBudgetExceeded as error:
+            logger.exception("工具循环后的 Prompt 超过物理预算")
+            yield encode_sse(
+                "error",
+                {
+                    "detail": "工具调用产生的上下文过长，无法继续生成",
+                    "type": type(error).__name__,
+                },
+            )
 
         except (RuntimeError, ValueError, KeyError, sqlite3.Error) as error:
             logger.exception("agent 推理失败")
