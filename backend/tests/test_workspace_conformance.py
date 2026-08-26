@@ -795,3 +795,232 @@ def test_stream_stops_repeating_a_tool_that_is_not_available():
     )
     assert "parse_pdf_attachment" in content
     assert events[-1].event == "complete"
+
+
+def test_agent_forces_visible_final_answer_after_tool_loop_limit():
+    """工具循环耗尽后不能以空助手消息成功结束。"""
+
+    class Executor:
+        async def execute(self, _name, _arguments):
+            return {"ok": True, "result": "evidence"}
+
+    class Provider:
+        def __init__(self):
+            self.calls = []
+
+        async def generate(self, messages, schemas):
+            self.calls.append((list(messages), list(schemas)))
+            if schemas:
+                return "<tool_call>{\"name\":\"fake_tool\",\"arguments\":{}}</tool_call>"
+            return "最终基于工具结果给出总结。"
+
+        def parse_output(self, response, _schemas):
+            if response.startswith("<tool_call>"):
+                return ParsedOutput(tool_calls=[ToolCall("fake_tool", {})])
+            return ParsedOutput(content=response)
+
+    run_spec = SimpleNamespace(
+        messages=({"role": "user", "content": "question"},),
+        tool_schemas=({"function": {"name": "fake_tool"}},),
+        loop_policy=SimpleNamespace(max_iterations=2, tool_timeout_seconds=1),
+        tool_executor=Executor(),
+        run_metadata={
+            "request_id": "request-loop-limit",
+            "run_id": "run-loop-limit",
+            "conversation_id": "conversation-test",
+            "workspace_type": "learning",
+        },
+        capability_fingerprint="capability-test",
+    )
+    provider = Provider()
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+
+    messages = asyncio.run(agent.run(run_spec))
+
+    assert messages[-1]["role"] == "assistant"
+    assert messages[-1]["content"] == "最终基于工具结果给出总结。"
+    assert provider.calls[-1][1] == []
+
+
+def test_stream_forces_visible_final_answer_after_tool_loop_limit():
+    """流式工具循环耗尽后也必须继续发送纯文本总结。"""
+
+    class Executor:
+        async def execute(self, _name, _arguments):
+            return {"ok": True, "result": "evidence"}
+
+    class StreamParser:
+        def __init__(self):
+            self.raw_text = ""
+
+        def feed(self, chunk):
+            self.raw_text += chunk
+            if chunk.startswith("<tool_call>"):
+                return []
+            # Mirror Qwen's reasoning-first parser when a no-tool synthesis
+            # arrives without explicit <think> tags.
+            return [("reasoning", chunk)]
+
+        def finish(self):
+            return []
+
+    class Provider:
+        def __init__(self):
+            self.calls = []
+
+        async def generate_stream(self, messages, schemas):
+            self.calls.append((list(messages), list(schemas)))
+            if schemas:
+                yield "<tool_call>{\"name\":\"fake_tool\",\"arguments\":{}}</tool_call>"
+                return
+            yield "最终基于工具结果给出总结。"
+
+        def create_stream_parser(self):
+            return StreamParser()
+
+        def parse_output(self, response, _schemas):
+            if response.startswith("<tool_call>"):
+                return ParsedOutput(tool_calls=[ToolCall("fake_tool", {})])
+            return ParsedOutput(content=response)
+
+    run_spec = SimpleNamespace(
+        messages=({"role": "user", "content": "question"},),
+        tool_schemas=({"function": {"name": "fake_tool"}},),
+        loop_policy=SimpleNamespace(max_iterations=2, tool_timeout_seconds=1),
+        tool_executor=Executor(),
+        run_metadata={
+            "request_id": "request-stream-loop-limit",
+            "run_id": "run-stream-loop-limit",
+            "conversation_id": "conversation-test",
+            "workspace_type": "learning",
+        },
+        capability_fingerprint="capability-test",
+    )
+    provider = Provider()
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+
+    async def collect_stream():
+        return [event async for event in agent.run_stream(run_spec)]
+
+    events = asyncio.run(collect_stream())
+
+    assert provider.calls[-1][1] == []
+    assert events[-1].event == "complete"
+    assert events[-1].data["messages"][-1]["content"] == (
+        "最终基于工具结果给出总结。"
+    )
+    content = "".join(
+        str(event.data.get("delta", ""))
+        for event in events
+        if event.event == "content"
+    )
+    assert content == "最终基于工具结果给出总结。"
+
+
+def test_agent_generation_request_ids_are_unique_per_iteration():
+    """每次实际模型生成都应有可区分的 request id。"""
+
+    class Provider:
+        def __init__(self):
+            self.request_ids = []
+
+        async def generate(
+            self,
+            _messages,
+            _schemas,
+            *,
+            request_id=None,
+            conversation_id=None,
+        ):
+            self.request_ids.append((request_id, conversation_id))
+            return "answer"
+
+        def parse_output(self, response, _schemas):
+            return ParsedOutput(content=response)
+
+    run_spec = SimpleNamespace(
+        messages=({"role": "user", "content": "question"},),
+        tool_schemas=(),
+        loop_policy=SimpleNamespace(max_iterations=2, tool_timeout_seconds=1),
+        tool_executor=SimpleNamespace(),
+        run_metadata={
+            "request_id": "request-metadata",
+            "conversation_id": "conversation-test",
+            "workspace_type": "learning",
+        },
+        capability_fingerprint="capability-test",
+    )
+    provider = Provider()
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+
+    asyncio.run(agent.run(run_spec))
+
+    assert provider.request_ids == [
+        ("request-metadata:generation:0", "conversation-test")
+    ]
+
+
+def test_empty_visible_response_keeps_stream_and_sync_messages_consistent():
+    """空正文仍产出 fallback，并在两种模式中保留相同 reasoning。"""
+
+    class StreamParser:
+        def __init__(self):
+            self.raw_text = ""
+
+        def feed(self, chunk):
+            self.raw_text += chunk
+            return []
+
+        def finish(self):
+            return [("reasoning", "仅有推理")]
+
+    class Provider:
+        async def generate(self, _messages, _schemas):
+            return "<think>仅有推理</think>"
+
+        async def generate_stream(self, _messages, _schemas):
+            yield "<think>仅有推理</think>"
+
+        def create_stream_parser(self):
+            return StreamParser()
+
+        def parse_output(self, _response, _schemas):
+            return ParsedOutput(content="", reasoning="仅有推理")
+
+    run_spec = SimpleNamespace(
+        messages=({"role": "user", "content": "question"},),
+        tool_schemas=(),
+        loop_policy=SimpleNamespace(max_iterations=1, tool_timeout_seconds=1),
+        tool_executor=SimpleNamespace(),
+        run_metadata={
+            "request_id": "request-empty-visible",
+            "conversation_id": "conversation-test",
+            "workspace_type": "learning",
+        },
+        capability_fingerprint="capability-test",
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = Provider()
+
+    sync_messages = asyncio.run(agent.run(run_spec))
+
+    async def collect_stream():
+        return [event async for event in agent.run_stream(run_spec)]
+
+    events = asyncio.run(collect_stream())
+    stream_message = events[-1].data["messages"][-1]
+    reasoning = "".join(
+        event.data["delta"] for event in events if event.event == "reasoning"
+    )
+    content = "".join(
+        event.data["delta"] for event in events if event.event == "content"
+    )
+
+    assert sync_messages[-1] == stream_message
+    assert stream_message["reasoning"] == "仅有推理"
+    assert reasoning == "仅有推理"
+    assert content == stream_message["content"]
+    assert content

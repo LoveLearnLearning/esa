@@ -1,13 +1,13 @@
 {
-  "captured_at": "2026-08-23T01:41:35+00:00",
+  "captured_at": "2026-08-26T09:41:29+00:00",
   "source": "github.com/LoveLearnLearning/esa",
-  "source_repo": "local-clone@c2d1f09",
+  "source_repo": "local-clone@de7387e",
   "workspace": "learning",
   "tool_scopes": [
     "common",
     "learning"
   ],
-  "schema_version": "e3821830",
+  "schema_version": "00b5d811",
   "with_attachments": false,
   "kept": [
     "arxiv_search",
@@ -27,9 +27,7 @@
     "math_solver",
     "propose_core_memory",
     "recommend_practice",
-    "record_answer",
     "record_learning_evidence",
-    "retrieve_federated_knowledge",
     "retrieve_knowledge",
     "retrieve_personal_knowledge",
     "run_in_sandbox",
@@ -54,5 +52,5 @@
       "parse_image_attachment"
     ]
   },
-  "note": "由 dataset/tools/capture_tool_schemas.py 用后端真实 catalog.tool_scope() 过滤产出，禁止手改，也不要再直接 cp backend/agent/tools/tool_schemas.json —— 那份是全局目录，含科研/教学工具。"
+  "note": "由 dataset/tools/capture_tool_schemas.py 用后端真实 catalog.tool_scope() 过滤 + compact_tool_schema() 投影产出，并与 ScopedToolView.compile() 逐字节交叉验证过；禁止手改，也不要直接 cp backend/agent/tools/tool_schemas.json —— 那份是未过滤、未投影的全局目录，含科研/教学工具。"
 }

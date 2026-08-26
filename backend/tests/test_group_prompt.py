@@ -3,6 +3,7 @@
 """验证 `group_prompt` 相关行为与回归场景。"""
 
 from backend.core.message.build_prompt import build_system_prompt
+from backend.core.message.style_tone import resolve_style_tone
 from backend.core.utils.models import PromptContext
 
 
@@ -79,3 +80,15 @@ def test_empty_group_context_keeps_original_behavior() -> None:
     assert "风格(concise)" in prompt
     assert "语调(friendly)" in prompt
     assert "# 当前分组要求" not in prompt
+
+
+def test_concise_style_does_not_impose_a_three_sentence_cap() -> None:
+    """简洁风格应控制冗余，而不是截断复杂问题所需的信息。"""
+
+    resolved = resolve_style_tone(
+        preferred_style="concise",
+        preferred_tone="friendly",
+    )
+
+    assert "3 句" not in resolved.style_rule
+    assert "保留必要的步骤" in resolved.style_rule
