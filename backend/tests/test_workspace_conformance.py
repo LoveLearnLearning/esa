@@ -591,12 +591,25 @@ def test_executable_run_preserves_agent_run_and_stream_interfaces():
 
 
 def test_agent_routes_tool_result_channels_to_model_stream_and_audit():
-    """Compact observations, display events, and audits must remain separated."""
+    """Full model observations, display events, and audits remain separated."""
+
+    model_payload = {
+        "channel": "model",
+        "rankings": {
+            "dense": [f"chunk-{index:03d}" for index in range(300)],
+        },
+        "results": [
+            {
+                "content": "检索正文" * 2_000,
+                "source": "course-note.md",
+            }
+        ],
+    }
 
     class Executor:
         async def execute(self, _name, _arguments):
             return ToolExecutionResult(
-                model_content={"channel": "model"},
+                model_content=model_payload,
                 display_content={"channel": "display"},
                 audit_metadata={"channel": "audit"},
             )
@@ -654,12 +667,13 @@ def test_agent_routes_tool_result_channels_to_model_stream_and_audit():
     agent.llm_provider = provider
     messages = asyncio.run(agent.run(run_spec))
 
-    assert json.loads(provider.observed_messages[1][-1]["content"]) == {
-        "channel": "model"
-    }
+    assert (
+        json.loads(provider.observed_messages[1][-1]["content"])
+        == model_payload
+    )
     tool_message = next(item for item in messages if item.get("role") == "tool")
     assert json.loads(tool_message["content"]) == {"channel": "display"}
-    assert json.loads(tool_message["model_content"]) == {"channel": "model"}
+    assert json.loads(tool_message["model_content"]) == model_payload
     assert tool_message["audit_metadata"] == {"channel": "audit"}
 
     stream_provider = Provider()
@@ -670,9 +684,10 @@ def test_agent_routes_tool_result_channels_to_model_stream_and_audit():
         return [event async for event in stream_agent.run_stream(run_spec)]
 
     events = asyncio.run(collect_stream())
-    assert json.loads(stream_provider.observed_messages[1][-1]["content"]) == {
-        "channel": "model"
-    }
+    assert (
+        json.loads(stream_provider.observed_messages[1][-1]["content"])
+        == model_payload
+    )
     display_event = next(event for event in events if event.event == "tool")
     assert json.loads(display_event.data["content"]) == {"channel": "display"}
     assert "audit" not in json.dumps(display_event.data)

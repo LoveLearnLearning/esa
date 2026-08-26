@@ -156,12 +156,6 @@ PROMPT_PROFILE_MAX_TOKENS: int = 300
 PROMPT_AUTO_SKILL_MAX_TOKENS: int = 450
 PROMPT_LAZY_SKILL_MAX_TOKENS: int = 500
 
-TOOL_RESULT_STATE_MAX_TOKENS: int = 750
-TOOL_RESULT_DEFAULT_MAX_TOKENS: int = 1500
-TOOL_RESULT_CONTENT_MAX_TOKENS: int = 4000
-TOOL_RESULT_SKILL_MAX_TOKENS: int = 600
-TOOL_RESULT_CUMULATIVE_MAX_TOKENS: int = 12000
-
 # Offline conversation context compression. Original messages are retained;
 # the summary only replaces old messages in the next model prompt.
 CONVERSATION_COMPRESSION_ENABLED: bool = True
