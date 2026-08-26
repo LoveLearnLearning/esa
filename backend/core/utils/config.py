@@ -492,7 +492,7 @@ EMAIL_SERVICE_TOKEN: str = os.environ.get(
     getattr(
         _private_config,
         "EMAIL_SERVICE_TOKEN",
-        "e9493dca7a911f60226ec698e90678add37d8d28eb3f02271706026d7ba491d5",
+        "",
     ),
 ).strip()
 EMAIL_VERIFICATION_SECRET: str = os.environ.get(
@@ -500,7 +500,7 @@ EMAIL_VERIFICATION_SECRET: str = os.environ.get(
     getattr(
         _private_config,
         "EMAIL_VERIFICATION_SECRET",
-        "22d6394ed15a7dec1b3bac78e3f5cf2739386483aeca3c88d4cafad40e4d0da2",
+        "",
     ),
 ).strip()
 EMAIL_CODE_TTL_SECONDS: int = 600
