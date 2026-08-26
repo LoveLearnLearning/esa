@@ -286,6 +286,7 @@ class LLMProvider:
             output_kind=RequestOutputKind.DELTA,
         )
 
+        generated_tokens = 0
         async for output in self.engine.generate(
             request_id=request_id,
             prompt=prompt,
@@ -293,8 +294,33 @@ class LLMProvider:
             lora_request=self.lora_request,
         ):
             for completion in output.outputs:
+                generated_tokens += len(
+                    getattr(completion, "token_ids", ()) or ()
+                )
                 if completion.text:
                     yield completion.text
 
             if output.finished:
+                finish_reasons = [
+                    str(getattr(completion, "finish_reason", None) or "unknown")
+                    for completion in output.outputs
+                ]
+                logger.info(
+                    "generation finished request_id=%s conversation_id=%s "
+                    "finish_reasons=%s generated_tokens=%s max_output_tokens=%s",
+                    request_id,
+                    conversation_id or "-",
+                    ",".join(finish_reasons),
+                    generated_tokens,
+                    self.max_output_tokens,
+                )
+                if any(reason == "length" for reason in finish_reasons):
+                    logger.warning(
+                        "generation reached output token limit request_id=%s "
+                        "conversation_id=%s generated_tokens=%s limit=%s",
+                        request_id,
+                        conversation_id or "-",
+                        generated_tokens,
+                        self.max_output_tokens,
+                    )
                 break

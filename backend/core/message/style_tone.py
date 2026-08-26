@@ -7,7 +7,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 STYLE_RULES: dict[str, str] = {
-    "concise": "回答控制在 3 句内，先给结论，不铺陈背景；作业类问题优先给思路而非完整答案",
+    # "concise" is a preference for signal density, not a hard response
+    # length limit.  A three-sentence cap made multi-step explanations and
+    # tool-grounded answers look truncated even when the model had ample
+    # output budget.
+    "concise": (
+        "先给结论，简单问题简洁回答；复杂问题按需展开，保留必要的步骤、"
+        "依据和结论，不为凑短而省略关键信息；作业类问题优先给思路"
+    ),
     "detailed": "完整展开，包含背景、步骤和示例；作业类问题可给完整解答，但需说明每步原理",
     "socratic": (
         "用反问引导思考，不直接给答案。先定位卡点，再逐级给提示；"

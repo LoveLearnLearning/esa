@@ -8,6 +8,7 @@ import asyncio
 import inspect
 import json
 import logging
+import re
 import time
 from collections.abc import AsyncIterator, Mapping
 from contextlib import suppress
@@ -39,6 +40,8 @@ from backend.core.utils.models import (
 
 logger = logging.getLogger(__name__)
 
+_EMPTY_VISIBLE_RESPONSE = "模型本轮未返回可展示正文，请重试。"
+
 _TERMINAL_TOOL_ERRORS = frozenset(
     {"tool_not_available", "resource_capability_required"}
 )
@@ -55,6 +58,23 @@ def _tool_unavailable_message(name: str, error: str) -> str:
     if error == "resource_capability_required":
         return f"当前请求没有使用工具 `{name}` 所需的资源权限，请重新选择相关附件或资源后再试。"
     return f"当前上下文无法使用工具 `{name}`，请重新选择相关附件或调整问题后再试。"
+
+
+def _visible_assistant_content(response: str, parsed: ParsedOutput) -> str:
+    """Return user-visible content without mistaking reasoning for an answer."""
+
+    if parsed.tool_calls:
+        return ""
+    if parsed.reasoning is not None:
+        remaining = re.sub(
+            r"(?:<think>)?.*?</think>",
+            "",
+            response,
+            flags=re.DOTALL | re.IGNORECASE,
+        ).strip()
+        if not remaining:
+            return ""
+    return (parsed.content or response).strip()
 
 
 def _observed_tools_and_actions(
@@ -213,15 +233,18 @@ class Agent:
         messages: list[dict],
         tools: list[dict],
         run_spec: ExecutableAgentRun,
+        *,
+        generation_index: int = 0,
     ) -> str:
         """Invoke the provider while passing correlation metadata when supported."""
 
         method = self.llm_provider.generate
         if self._provider_accepts_metadata(method):
+            base_request_id = str(run_spec.run_metadata.get("request_id") or "run")
             return await method(
                 messages,
                 tools,
-                request_id=run_spec.run_metadata.get("request_id"),
+                request_id=f"{base_request_id}:generation:{generation_index}",
                 conversation_id=run_spec.run_metadata.get("conversation_id"),
             )
         return await method(messages, tools)
@@ -231,18 +254,48 @@ class Agent:
         messages: list[dict],
         tools: list[dict],
         run_spec: ExecutableAgentRun,
+        *,
+        generation_index: int = 0,
     ) -> AsyncIterator[str]:
         """Invoke streaming generation with optional correlation metadata."""
 
         method = self.llm_provider.generate_stream
         if self._provider_accepts_metadata(method):
+            base_request_id = str(run_spec.run_metadata.get("request_id") or "run")
             return method(
                 messages,
                 tools,
-                request_id=run_spec.run_metadata.get("request_id"),
+                request_id=f"{base_request_id}:generation:{generation_index}",
                 conversation_id=run_spec.run_metadata.get("conversation_id"),
             )
         return method(messages, tools)
+
+    @staticmethod
+    def _append_final_answer(
+        messages: list[dict],
+        new_messages: list[dict],
+        response: str,
+        parsed: ParsedOutput,
+        *,
+        fallback: str,
+    ) -> None:
+        """Append one visible no-tool answer, with a safe fallback for empty output."""
+
+        assistant_content = _visible_assistant_content(response, parsed)
+        # A forced final pass is made with an empty tool list.  If a model still
+        # emits a tool protocol block, exposing that block as the answer is
+        # confusing and can make the UI appear blank after the loop exits.
+        if parsed.tool_calls or not assistant_content:
+            assistant_content = fallback
+        messages.append({"role": "assistant", "content": assistant_content})
+        new_messages.append(
+            {
+                "role": "assistant",
+                "content": assistant_content,
+                "reasoning": parsed.reasoning or "",
+                "is_visible": True,
+            }
+        )
 
     async def run(self, run_spec: ExecutableAgentRun) -> list[dict]:
         """Run one non-streaming turn from an already-authorized specification."""
@@ -283,11 +336,12 @@ class Agent:
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
         terminal_tool_errors: dict[str, str] = {}
         stop_loop = False
-        for _ in range(run_spec.loop_policy.max_iterations):
+        for iteration in range(run_spec.loop_policy.max_iterations):
             response = await self._generate(
                 messages,
                 tool_schemas,
                 run_spec,
+                generation_index=iteration,
             )
 
             parsed: ParsedOutput = self.llm_provider.parse_output(
@@ -301,7 +355,10 @@ class Agent:
                 print(f"Agent: {parsed.content}")
 
             if not tool_calls:
-                assistant_content = parsed.content or response.strip()
+                assistant_content = (
+                    _visible_assistant_content(response, parsed)
+                    or _EMPTY_VISIBLE_RESPONSE
+                )
 
                 messages.append(
                     {
@@ -313,6 +370,7 @@ class Agent:
                     {
                         "role": "assistant",
                         "content": assistant_content,
+                        "reasoning": parsed.reasoning or "",
                         "is_visible": True,
                     }
                 )
@@ -393,6 +451,28 @@ class Agent:
             if stop_loop:
                 break
 
+        else:
+            # A model that keeps requesting tools must still produce a visible
+            # turn result.  Give it one final text-only pass so the user gets a
+            # useful synthesis instead of an apparently empty successful reply.
+            final_response = await self._generate(
+                messages,
+                [],
+                run_spec,
+                generation_index=run_spec.loop_policy.max_iterations,
+            )
+            final_parsed = self.llm_provider.parse_output(final_response, [])
+            self._append_final_answer(
+                messages,
+                new_messages,
+                final_response,
+                final_parsed,
+                fallback=(
+                    "工具调用已达到本轮上限，暂未形成完整答复。"
+                    "请缩小问题范围后重试。"
+                ),
+            )
+
         return new_messages
 
     async def run_stream(
@@ -446,12 +526,13 @@ class Agent:
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
         terminal_tool_errors: dict[str, str] = {}
         stop_loop = False
-        for _ in range(run_spec.loop_policy.max_iterations):
+        for iteration in range(run_spec.loop_policy.max_iterations):
             stream_parser = self.llm_provider.create_stream_parser()
             generation = self._generate_stream(
                 messages,
                 tool_schemas,
                 run_spec,
+                generation_index=iteration,
             ).__aiter__()
             pending_chunk: asyncio.Task[str] | None = None
             heartbeat_seconds = getattr(
@@ -532,8 +613,17 @@ class Agent:
             tool_calls = parsed.tool_calls
 
             if not tool_calls:
-                assistant_content = parsed.content or response.strip()
+                assistant_content = (
+                    _visible_assistant_content(response, parsed)
+                    or _EMPTY_VISIBLE_RESPONSE
+                )
                 reasoning = parsed.reasoning or ""
+
+                if assistant_content == _EMPTY_VISIBLE_RESPONSE:
+                    yield AgentStreamEvent(
+                        event="content",
+                        data={"delta": assistant_content},
+                    )
 
                 assistant_message = {
                     "role": "assistant",
@@ -659,6 +749,58 @@ class Agent:
 
             if stop_loop:
                 break
+
+        else:
+            # See the non-streaming loop: force one text-only synthesis after
+            # repeated tool calls, and never complete with an empty assistant
+            # message.  The forced pass is streamed normally so the Flutter UI
+            # receives the same content events as a regular answer.
+            stream_parser = self.llm_provider.create_stream_parser()
+            generation = self._generate_stream(
+                messages,
+                [],
+                run_spec,
+                generation_index=run_spec.loop_policy.max_iterations,
+            ).__aiter__()
+            emitted_content = False
+            try:
+                async for chunk in generation:
+                    for event, delta in stream_parser.feed(chunk):
+                        yield AgentStreamEvent(event=event, data={"delta": delta})
+                        emitted_content = emitted_content or event == "content"
+            finally:
+                close_generation = getattr(generation, "aclose", None)
+                if close_generation is not None:
+                    await close_generation()
+            for event, delta in stream_parser.finish():
+                yield AgentStreamEvent(event=event, data={"delta": delta})
+                emitted_content = emitted_content or event == "content"
+
+            final_response = stream_parser.raw_text
+            final_parsed = self.llm_provider.parse_output(final_response, [])
+            final_content = _visible_assistant_content(
+                final_response,
+                final_parsed,
+            )
+            if not final_content:
+                final_content = (
+                    "工具调用已达到本轮上限，暂未形成完整答复。"
+                    "请缩小问题范围后重试。"
+                )
+            if not emitted_content:
+                yield AgentStreamEvent(
+                    event="content",
+                    data={"delta": final_content},
+                )
+            messages.append({"role": "assistant", "content": final_content})
+            new_messages.append(
+                {
+                    "role": "assistant",
+                    "content": final_content,
+                    "reasoning": final_parsed.reasoning or "",
+                    "is_visible": True,
+                }
+            )
 
         yield AgentStreamEvent(
             event="complete",
