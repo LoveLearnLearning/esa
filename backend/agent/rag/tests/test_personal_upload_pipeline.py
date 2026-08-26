@@ -51,11 +51,18 @@ class _FakePersonalIndex:
         self.points.clear()
         self.chunk_payloads.clear()
 
+    def maintenance_delete_personal_scope(self) -> None:
+        self.points.clear()
+        self.chunk_payloads.clear()
+
+    def maintenance_count_personal(self) -> int:
+        return self.maintenance_count_all()
+
     def maintenance_count_all(self) -> int:
         return sum(count for count, _visible in self.points.values())
 
     def set_file_visibility(
-        self, *, user_id, file_id, generation_id, visible
+        self, *, user_id, knowledge_base_id=None, file_id, generation_id, visible
     ) -> None:
         key = (user_id, generation_id, file_id)
         if key in self.points:
@@ -63,7 +70,7 @@ class _FakePersonalIndex:
             self.points[key] = (count, visible)
 
     def upsert_hidden(
-        self, chunks, vectors, *, user_id, file_id, generation_id,
+        self, chunks, vectors, *, user_id, knowledge_base_id, file_id, generation_id,
         ingestion_revision,
     ) -> None:
         assert len(chunks) == len(vectors)
@@ -75,7 +82,8 @@ class _FakePersonalIndex:
         ]
 
     def count(
-        self, *, user_id, generation_id, file_id=None, visible=True
+        self, *, user_id, generation_id, knowledge_base_id=None,
+        file_id=None, visible=True
     ) -> int:
         total = 0
         for (point_user, point_generation, point_file), (count, is_visible) in (
@@ -90,12 +98,16 @@ class _FakePersonalIndex:
             total += count
         return total
 
-    def delete_file(self, *, user_id, file_id, generation_id) -> None:
+    def delete_file(
+        self, *, user_id, knowledge_base_id=None, file_id, generation_id
+    ) -> None:
         key = (user_id, generation_id, file_id)
         self.points.pop(key, None)
         self.chunk_payloads.pop(key, None)
 
-    def delete_generation(self, *, user_id, generation_id) -> None:
+    def delete_generation(
+        self, *, user_id, knowledge_base_id, generation_id
+    ) -> None:
         for key in list(self.points):
             if key[0] == user_id and key[1] == generation_id:
                 self.points.pop(key)
@@ -106,7 +118,8 @@ class _FakePersonalIndex:
         return {"text": text}
 
     def query_points(
-        self, _query, _using, limit, *, user_id, generation_id, file_ids
+        self, _query, _using, limit, *, user_id, generation_id,
+        knowledge_base_id, file_ids
     ) -> list[dict]:
         results = []
         for key, (_count, visible) in self.points.items():
@@ -128,6 +141,7 @@ class _FakePersonalIndex:
                             **chunk,
                             "scope": "personal",
                             "user_id": user_id,
+                            "knowledge_base_id": knowledge_base_id,
                             "file_id": point_file,
                         },
                     }
@@ -357,11 +371,12 @@ def test_upload_replays_idempotently_after_qdrant_before_sqlite_crash(tmp_path):
     upsert = index.upsert_hidden
 
     def crash_after_partial_upsert(
-        chunks, vectors, *, user_id, file_id, generation_id,
+        chunks, vectors, *, user_id, knowledge_base_id, file_id, generation_id,
         ingestion_revision,
     ):
         upsert(
-            chunks, vectors, user_id=user_id, file_id=file_id,
+            chunks, vectors, user_id=user_id,
+            knowledge_base_id=knowledge_base_id, file_id=file_id,
             generation_id=generation_id,
             ingestion_revision=ingestion_revision,
         )

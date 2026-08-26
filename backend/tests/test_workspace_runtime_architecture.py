@@ -531,13 +531,13 @@ def test_concept_explanation_runtime_exposes_rag_and_direct_answer_policy():
 
     system_prompt = spec.messages[0]["content"]
     assert "retrieve_knowledge" in spec.run_metadata["tool_names"]
-    assert "公共库为\n`retrieve_knowledge`" in system_prompt
+    assert "retrieve_knowledge 将检索两类来源并统一排序" in system_prompt
     assert "知识问题先回答" in system_prompt
     assert "正式讲解前，先问" not in system_prompt
 
 
-def test_bound_rag_tool_uses_the_turn_runtime_dependency(monkeypatch):
-    """RAG 查询必须使用当前运行上下文注入的服务实例。"""
+def test_bound_rag_tool_uses_the_turn_runtime_dependencies(monkeypatch):
+    """Unified RAG must use only services and identity bound to this turn."""
     register_builtin_tools()
     route = _route()
     sentinel = object()
@@ -558,20 +558,12 @@ def test_bound_rag_tool_uses_the_turn_runtime_dependency(monkeypatch):
     )
     captured = {}
 
-    def fake_retrieve(
-        query, top_k=5, similarity_threshold=None, service=None, token_counter=None
-    ):
-        captured.update(
-            query=query,
-            top_k=top_k,
-            similarity_threshold=similarity_threshold,
-            service=service,
-            token_counter=token_counter,
-        )
-        return {"query": query, "result_count": 0}
+    async def fake_retrieve(**values):
+        captured.update(values)
+        return {"query": values["query"], "result_count": 0}
 
     monkeypatch.setattr(
-        "backend.agent.rag.agent_api.retrieve_knowledge_result",
+        "backend.agent.rag.unified_retrieval.retrieve_selected_knowledge",
         fake_retrieve,
     )
     result = asyncio.run(
@@ -581,11 +573,11 @@ def test_bound_rag_tool_uses_the_turn_runtime_dependency(monkeypatch):
     )
 
     assert result == {"query": "binary search", "result_count": 0}
-    assert captured["service"] is sentinel
+    assert captured["public_service"] is sentinel
     assert captured["top_k"] == 3
 
 
-def test_personal_knowledge_tool_uses_context_identity_not_model_argument():
+def test_unified_knowledge_tool_uses_context_identity_not_model_argument():
     register_builtin_tools()
     route = _route()
     captured = {}
@@ -610,6 +602,7 @@ def test_personal_knowledge_tool_uses_context_identity_not_model_argument():
             personal_knowledge_retrieval_service=PersonalRetrieval()
         ),
         request_id="r1",
+        knowledge_sources=("personal",),
         personal_knowledge_base_id="trusted-kb",
     )
     compiled = CapabilityRuntime().compile(
@@ -617,24 +610,27 @@ def test_personal_knowledge_tool_uses_context_identity_not_model_argument():
         tool_scopes=route.tool_scopes,
         profile_fingerprint="learning:1",
         policy_versions=("p1",),
+        knowledge_sources=("personal",),
     )
 
     rejected = asyncio.run(
         compiled.bind(context).execute(
-            "retrieve_personal_knowledge",
+            "retrieve_knowledge",
             {"query": "my notes", "top_k": 3, "user_id": "attacker"},
         )
     )
     result = asyncio.run(
         compiled.bind(context).execute(
-            "retrieve_personal_knowledge",
+            "retrieve_knowledge",
             {"query": "my notes", "top_k": 3},
         )
     )
 
     assert rejected["error"] == "invalid_tool_arguments"
     assert "user_id" in rejected["detail"]
-    assert result == {"query": "my notes", "result_count": 0}
+    assert result.model_content["query"] == "my notes"
+    assert result.model_content["result_count"] == 0
+    assert result.model_content["selected_sources"] == ["personal"]
     assert captured == {
         "user_id": "trusted-user",
         "query": "my notes",

@@ -15,7 +15,7 @@ from backend.core.message.budget import DEFAULT_PROMPT_BUDGET
 from backend.core.utils.token_estimation import estimate_tokens
 from backend.core.utils.tool_arguments import normalize_tool_arguments
 
-TOOL_CATALOG_VERSION = 2
+TOOL_CATALOG_VERSION = 3
 
 MEMORY_READ_TOOLS = frozenset({"search_core_memories", "get_core_memories"})
 MEMORY_WRITE_TOOLS = frozenset(
@@ -37,8 +37,7 @@ COMMON_TOOLS = frozenset(
         "run_in_sandbox",
         "parse_pdf_attachment", "parse_word_attachment",
         "parse_presentation_attachment", "parse_spreadsheet_attachment",
-        "parse_image_attachment", "retrieve_personal_knowledge",
-        "retrieve_knowledge", "get_knowledge_base_stats",
+        "parse_image_attachment", "retrieve_knowledge", "get_knowledge_base_stats",
     }
 ) | MEMORY_READ_TOOLS | MEMORY_WRITE_TOOLS
 
@@ -78,8 +77,7 @@ COMPACT_TOOL_DESCRIPTIONS: dict[str, str] = {
     "bitwise_calculator": "执行整数位运算。",
     "run_in_sandbox": "在隔离沙箱运行受控代码或命令。",
     "load_skill": "加载一个尚未注入的候选 Skill 正文。",
-    "retrieve_knowledge": "检索公共课程知识库以取得回答证据。",
-    "retrieve_personal_knowledge": "检索当前用户获授权的个人知识库。",
+    "retrieve_knowledge": "按本轮已选公共/个人知识库范围检索回答证据。",
     "get_knowledge_base_stats": "读取当前可见知识库的统计信息。",
     "save_core_memory": "按用户明确要求写入正式长期记忆。",
     "propose_core_memory": "提交推断出的长期信息供用户确认，不直接写入。",
@@ -131,7 +129,7 @@ def compact_tool_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
         ("record_learning_evidence", "self_confidence"): "学生主观自信 0-1。",
         ("record_learning_evidence", "evidence_reliability"): "本次证据可靠性 0-1。",
         ("record_learning_evidence", "correct"): "仅在可判定正误时填写。",
-        ("retrieve_knowledge", "similarity_threshold"): "最低相似度阈值。",
+        ("retrieve_knowledge", "similarity_threshold"): "公共库最低 Reranker 分数阈值。",
     }
     for (tool_name, field), description in special.items():
         if name == tool_name and isinstance(properties.get(field), dict):

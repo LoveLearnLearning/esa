@@ -61,17 +61,18 @@ def _matches(payload: dict[str, Any]) -> dict[str, Any]:
 def test_point_identity_and_payload_are_tenant_scoped():
     index = CapturingPersonalQdrant("http://qdrant", "personal")
     first = index._point(
-        _chunk(), [1.0, 0.0], user_id="u1", file_id="f1",
+        _chunk(), [1.0, 0.0], user_id="u1", knowledge_base_id="kb1", file_id="f1",
         generation_id="g1", ingestion_revision=1,
     )
     second = index._point(
-        _chunk(), [1.0, 0.0], user_id="u2", file_id="f2",
+        _chunk(), [1.0, 0.0], user_id="u2", knowledge_base_id="kb2", file_id="f2",
         generation_id="g1", ingestion_revision=1,
     )
     assert first["id"] != second["id"]
     assert first["payload"] | {
         "scope": "personal",
         "user_id": "u1",
+        "knowledge_base_id": "kb1",
         "file_id": "f1",
         "kb_generation_id": "g1",
         "ingestion_revision": 1,
@@ -85,6 +86,7 @@ def test_all_query_routes_merge_tenant_generation_visibility_and_roles():
     kwargs = {
         "user_id": "u1",
         "generation_id": "g1",
+        "knowledge_base_id": "kb1",
         "content_roles": frozenset({ContentRole.BODY}),
     }
     index.dense([1.0], 5, **kwargs)
@@ -98,6 +100,7 @@ def test_all_query_routes_merge_tenant_generation_visibility_and_roles():
         assert matches == {
             "scope": {"value": "personal"},
             "user_id": {"value": "u1"},
+            "knowledge_base_id": {"value": "kb1"},
             "kb_generation_id": {"value": "g1"},
             "visible": {"value": True},
             "content_role": {"any": ["body"]},
@@ -107,17 +110,18 @@ def test_all_query_routes_merge_tenant_generation_visibility_and_roles():
 def test_count_hide_and_delete_reuse_the_same_tenant_filter():
     CapturingPersonalQdrant.calls.clear()
     index = CapturingPersonalQdrant("http://qdrant", "personal")
-    index.count(user_id="u1", generation_id="g1", file_id="f1")
+    index.count(user_id="u1", generation_id="g1", knowledge_base_id="kb1", file_id="f1")
     index.set_file_visibility(
-        user_id="u1", generation_id="g1", file_id="f1", visible=False
+        user_id="u1", generation_id="g1", knowledge_base_id="kb1", file_id="f1", visible=False
     )
-    index.delete_file(user_id="u1", generation_id="g1", file_id="f1")
+    index.delete_file(user_id="u1", generation_id="g1", knowledge_base_id="kb1", file_id="f1")
     for _method, _path, payload in index.calls:
         assert payload is not None
         matches = _matches(payload)
         assert matches["scope"] == {"value": "personal"}
         assert matches["user_id"] == {"value": "u1"}
         assert matches["kb_generation_id"] == {"value": "g1"}
+        assert matches["knowledge_base_id"] == {"value": "kb1"}
         assert matches["file_id"] == {"value": "f1"}
 
 
@@ -131,6 +135,7 @@ def test_evidence_query_adds_sqlite_live_file_allowlist():
         5,
         user_id="u1",
         generation_id="g1",
+        knowledge_base_id="kb1",
         file_ids=("live-2", "live-1"),
     )
 
@@ -180,3 +185,35 @@ def test_user_purge_delete_and_verification_never_require_generation_ids():
             "scope": {"value": "personal"},
             "user_id": {"value": "u1"},
         }
+
+
+def test_authoritative_recovery_deletes_only_personal_scope():
+    CapturingPersonalQdrant.calls.clear()
+    index = CapturingPersonalQdrant("http://qdrant", "unified")
+
+    index.maintenance_delete_personal_scope()
+
+    _method, path, payload = CapturingPersonalQdrant.calls[-1]
+    assert path.endswith("/points/delete?wait=true")
+    assert payload is not None
+    assert _matches(payload) == {"scope": {"value": "personal"}}
+
+
+def test_generation_cleanup_is_bound_to_knowledge_base():
+    CapturingPersonalQdrant.calls.clear()
+    index = CapturingPersonalQdrant("http://qdrant", "unified")
+
+    index.delete_generation(
+        user_id="u1",
+        knowledge_base_id="kb1",
+        generation_id="g1",
+    )
+
+    payload = CapturingPersonalQdrant.calls[-1][2]
+    assert payload is not None
+    assert _matches(payload) == {
+        "scope": {"value": "personal"},
+        "user_id": {"value": "u1"},
+        "knowledge_base_id": {"value": "kb1"},
+        "kb_generation_id": {"value": "g1"},
+    }

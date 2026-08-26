@@ -76,6 +76,7 @@ class PersonalKnowledgeBaseMutationPipeline:
         record = self.store.get_tombstoned_file(user_id=user_id, file_id=file_id)
         if record is None:
             raise RuntimeError("delete tombstone is missing or already cleaned")
+        knowledge_base_id = str(record["knowledge_base_id"])
         if not self.store.mark_mutation_applying(
             user_id=user_id,
             target_revision=target_revision,
@@ -88,6 +89,7 @@ class PersonalKnowledgeBaseMutationPipeline:
                 await asyncio.to_thread(
                     self.index.set_file_visibility,
                     user_id=user_id,
+                    knowledge_base_id=knowledge_base_id,
                     file_id=file_id,
                     generation_id=generation_id,
                     visible=False,
@@ -95,6 +97,7 @@ class PersonalKnowledgeBaseMutationPipeline:
                 await asyncio.to_thread(
                     self.index.delete_file,
                     user_id=user_id,
+                    knowledge_base_id=knowledge_base_id,
                     file_id=file_id,
                     generation_id=generation_id,
                 )
@@ -106,6 +109,7 @@ class PersonalKnowledgeBaseMutationPipeline:
                     self.index.count,
                     user_id=user_id,
                     generation_id=generation_id,
+                    knowledge_base_id=knowledge_base_id,
                     file_id=file_id,
                     visible=None,
                 )
@@ -134,6 +138,8 @@ class PersonalKnowledgeBaseMutationPipeline:
         target_revision = int(job["target_revision"])
         file_ids = [str(value) for value in job["payload"].get("file_ids", [])]
         knowledge_base_id = job["payload"].get("knowledge_base_id")
+        if not isinstance(knowledge_base_id, str) or not knowledge_base_id:
+            raise ValueError("rebuild job has no knowledge_base_id")
         records = self.store.get_job_files(user_id=user_id, file_ids=file_ids)
         if [item["file_id"] for item in records] != file_ids:
             self.store.cancel_rebuild_job(
@@ -152,9 +158,7 @@ class PersonalKnowledgeBaseMutationPipeline:
             job_id=job_id,
             target_revision=target_revision,
             file_ids=file_ids,
-            knowledge_base_id=(
-                str(knowledge_base_id) if knowledge_base_id is not None else None
-            ),
+            knowledge_base_id=knowledge_base_id,
             collection_name=self.index.collection,
             embedding_fingerprint=self.upload.embedding_fingerprint,
             chunk_fingerprint=self.ingestion.pipeline_fingerprint,
@@ -213,6 +217,7 @@ class PersonalKnowledgeBaseMutationPipeline:
             await asyncio.to_thread(
                 self.index.set_file_visibility,
                 user_id=user_id,
+                knowledge_base_id=knowledge_base_id,
                 file_id=record["file_id"],
                 generation_id=generation_id,
                 visible=False,
@@ -222,6 +227,7 @@ class PersonalKnowledgeBaseMutationPipeline:
                 chunks,
                 vectors,
                 user_id=user_id,
+                knowledge_base_id=knowledge_base_id,
                 file_id=record["file_id"],
                 generation_id=generation_id,
                 ingestion_revision=target_revision,
@@ -235,6 +241,7 @@ class PersonalKnowledgeBaseMutationPipeline:
                 self.index.count,
                 user_id=user_id,
                 generation_id=generation_id,
+                knowledge_base_id=knowledge_base_id,
                 file_id=record["file_id"],
                 visible=False,
             )
@@ -268,12 +275,14 @@ class PersonalKnowledgeBaseMutationPipeline:
                 await asyncio.to_thread(
                     self.index.delete_generation,
                     user_id=user_id,
+                    knowledge_base_id=knowledge_base_id,
                     generation_id=generation_id,
                 )
                 remaining = await asyncio.to_thread(
                     self.index.count,
                     user_id=user_id,
                     generation_id=generation_id,
+                    knowledge_base_id=knowledge_base_id,
                     visible=None,
                 )
                 if remaining != 0:
@@ -293,6 +302,7 @@ class PersonalKnowledgeBaseMutationPipeline:
                 await asyncio.to_thread(
                     self.index.set_file_visibility,
                     user_id=user_id,
+                    knowledge_base_id=knowledge_base_id,
                     file_id=item.file_id,
                     generation_id=generation_id,
                     visible=True,
@@ -301,6 +311,7 @@ class PersonalKnowledgeBaseMutationPipeline:
                 self.index.count,
                 user_id=user_id,
                 generation_id=generation_id,
+                knowledge_base_id=knowledge_base_id,
                 visible=True,
             )
             if visible != sum(item.index_count for item in indexed):
@@ -315,9 +326,7 @@ class PersonalKnowledgeBaseMutationPipeline:
                 job_id=job_id,
                 target_revision=target_revision,
                 generation_id=generation_id,
-                knowledge_base_id=(
-                    str(knowledge_base_id) if knowledge_base_id is not None else None
-                ),
+                knowledge_base_id=knowledge_base_id,
                 collection_name=self.index.collection,
                 files=indexed,
             )
@@ -327,8 +336,11 @@ class PersonalKnowledgeBaseMutationPipeline:
         job_id = str(job["job_id"])
         target_revision = int(job["target_revision"])
         generation_id = str(job["payload"].get("generation_id", ""))
+        knowledge_base_id = str(job["payload"].get("knowledge_base_id", ""))
         if not generation_id:
             raise ValueError("generation cleanup has no generation_id")
+        if not knowledge_base_id:
+            raise ValueError("generation cleanup has no knowledge_base_id")
         self.store.update_job_progress(
             user_id=user_id, job_id=job_id, progress=0.20, stage="cleaning"
         )
@@ -342,12 +354,14 @@ class PersonalKnowledgeBaseMutationPipeline:
             await asyncio.to_thread(
                 self.index.delete_generation,
                 user_id=user_id,
+                knowledge_base_id=knowledge_base_id,
                 generation_id=generation_id,
             )
             remaining = await asyncio.to_thread(
                 self.index.count,
                 user_id=user_id,
                 generation_id=generation_id,
+                knowledge_base_id=knowledge_base_id,
                 visible=None,
             )
             if remaining != 0:

@@ -258,17 +258,23 @@ ESA 通过 `ToolRegistry` 调用 `retrieve_knowledge`。应用生命周期先创
 `RetrievalService`，再调用 `configure_retrieval_service(service)`；模块导入本身不会连接
 Qdrant、加载模型或隐式建库。Agent 侧只暴露检索和状态读取，索引构建继续使用独立 CLI。
 
-### 个人库隔离边界
+### 统一 Collection 与个人库隔离边界
 
-个人知识库不复用上述冻结的全局 collection 或 `QdrantIndex`。启用
-`PERSONAL_KB_ENABLED` 后，应用使用独立 collection、`PersonalQdrantIndex` 和持久化
-SQLite revision/job/outbox；原文件与 DocIR/Chunk 工件位于 `PERSONAL_KB_ROOT`，Qdrant
-活动 storage 可位于 Job 本地盘，但恢复 snapshot 必须位于持久目录。
+公共与个人 Point 统一写入 `RAG_QDRANT_COLLECTION`。隔离由 payload 协议实现，而不是
+由 collection 名称实现：公共检索固定过滤 `scope=public + visible + public generation`；
+个人检索固定过滤 `scope=personal + visible + authenticated user_id + knowledge_base_id +
+active generation + SQLite live-file allowlist`。个人文件删除在同一完整边界上追加
+`file_id` 并验证精确计数归零，因此不会命中公共 Point、其他用户或其他知识库。
 
-Agent 通过独立的 `retrieve_personal_knowledge` 读取个人库。其 schema 不接受
-`user_id`；`BoundToolExecutor` 只注入当前 `ToolExecutionContext.user_id`，索引底层同时
-强制 `user_id + active_generation + visible + SQLite live-file allowlist`。冻结的
-旧调用入口仍保留，但它的分数与排名字段已迁移为中性、真实语义，且不再暴露给默认学习空间。
+Agent 只暴露 `retrieve_knowledge`。前端的 `knowledge_sources` 与可选
+`personal_knowledge_base_id` 进入可信的每轮执行上下文，决定后端只检索公共、只检索
+个人或同时检索两类来源；`user_id` 不属于工具 schema。两类结果使用按名次的 RRF
+融合，模型、界面和审计继续使用各自独立的结果投影。
+
+新部署必须新建一个统一 collection，先写入并验证 public scope，再由个人生命周期
+恢复或重建 personal scope，完成选择性查询和删除隔离验证后切换配置。不要原地迁移或
+清理本机、其他计算节点或 8×A800 机器上的既有实验 collection。完整步骤见
+`DEPLOYMENT.md`。
 
 ## 5. 证明边界
 

@@ -30,6 +30,7 @@ class _Store:
         self.calls.append((user_id, knowledge_base_id))
         if user_id != "trusted-user":
             return {
+                "knowledge_base_id": knowledge_base_id or "default-kb",
                 "generation_id": None,
                 "base_status": "idle",
                 "collection_ready": True,
@@ -37,6 +38,7 @@ class _Store:
                 "files": {},
             }
         return {
+            "knowledge_base_id": knowledge_base_id or "default-kb",
             "generation_id": "active-generation",
             "base_status": "ready",
             "collection_ready": True,
@@ -58,10 +60,12 @@ class _Index:
         return {"text": text}
 
     def query_points(
-        self, query, using, limit, *, user_id, generation_id, file_ids
+        self, query, using, limit, *, user_id, generation_id,
+        knowledge_base_id, file_ids
     ) -> list[dict]:
         assert query
         assert limit == 20
+        assert knowledge_base_id == "kb-a"
         self.calls.append((user_id, generation_id, tuple(file_ids)))
         return [
             {

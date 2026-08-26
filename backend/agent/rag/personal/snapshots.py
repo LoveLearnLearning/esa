@@ -52,12 +52,20 @@ class PersonalQdrantSnapshotManager:
         locator_schema_version: str,
         max_delay_seconds: int,
         retention: int,
+        public_generation_id: str | None = None,
+        public_chunk_count: int = 0,
         discard_file_artifacts: Callable[[str], None] | None = None,
     ) -> None:
         if max_delay_seconds <= 0:
             raise ValueError("snapshot max delay must be positive")
         if retention <= 0:
             raise ValueError("snapshot retention must be positive")
+        if public_chunk_count < 0:
+            raise ValueError("public chunk count cannot be negative")
+        if (public_generation_id is None) != (public_chunk_count == 0):
+            raise ValueError(
+                "public generation and chunk count must be configured together"
+            )
         self.store = store
         self.index = index
         self.snapshot_root = Path(snapshot_root).expanduser().resolve()
@@ -66,6 +74,8 @@ class PersonalQdrantSnapshotManager:
         self.locator_schema_version = locator_schema_version
         self.max_delay_seconds = max_delay_seconds
         self.retention = retention
+        self.public_generation_id = public_generation_id
+        self.public_chunk_count = public_chunk_count
         self.discard_file_artifacts = discard_file_artifacts
         self._wake = asyncio.Event()
         self._stopping = False
@@ -102,10 +112,11 @@ class PersonalQdrantSnapshotManager:
         sequence = int(state["qdrant_mutation_seq"])
         if sequence == 0:
             await asyncio.to_thread(self.index.ensure_collection, dense_dimension)
-            count = await asyncio.to_thread(self.index.maintenance_count_all)
+            await self._verify_public_scope()
+            count = await asyncio.to_thread(self.index.maintenance_count_personal)
             if count != 0:
                 await asyncio.to_thread(
-                    self.index.maintenance_recreate_collection, dense_dimension
+                    self.index.maintenance_delete_personal_scope
                 )
             await asyncio.to_thread(
                 self.store.mark_collection_ready, ready=True, error=None
@@ -151,6 +162,7 @@ class PersonalQdrantSnapshotManager:
                     raise RuntimeError(
                         "restored Qdrant point count does not match snapshot"
                     )
+                await self._verify_public_scope()
                 if snapshot_sequence == sequence:
                     await asyncio.to_thread(
                         self.store.mark_collection_ready, ready=True, error=None
@@ -180,6 +192,24 @@ class PersonalQdrantSnapshotManager:
             message += " (failed candidates: " + ", ".join(failures) + ")"
         self.store.mark_collection_ready(ready=False, error=message)
         return "rebuild_required", 0
+
+    async def _verify_public_scope(self) -> None:
+        """Refuse readiness if restore changed the deployed public generation."""
+
+        generation_count = await asyncio.to_thread(
+            self.index.maintenance_count_public,
+            self.public_generation_id,
+        )
+        total_count = await asyncio.to_thread(
+            self.index.maintenance_count_public,
+        )
+        if (
+            generation_count != self.public_chunk_count
+            or total_count != self.public_chunk_count
+        ):
+            raise RuntimeError(
+                "unified collection public generation count is inconsistent"
+            )
 
     def notify(self) -> None:
         """Allow an operator or mutation path to request an early flush."""
@@ -234,6 +264,7 @@ class PersonalQdrantSnapshotManager:
                 point_count = await asyncio.to_thread(
                     self.index.maintenance_count_all
                 )
+                await self._verify_public_scope()
                 response = await asyncio.to_thread(self._create_remote_snapshot)
                 remote_name = self._snapshot_name(response)
                 await asyncio.to_thread(
@@ -256,7 +287,7 @@ class PersonalQdrantSnapshotManager:
                 self._write_manifest,
                 manifest_path,
                 {
-                    "schema_version": "personal-qdrant-snapshot-0.1",
+                    "schema_version": "unified-qdrant-snapshot-0.2",
                     "snapshot_id": snapshot_id,
                     "snapshot_path": str(final_path),
                     "sha256": digest,
@@ -266,6 +297,8 @@ class PersonalQdrantSnapshotManager:
                     "embedding_fingerprint": self.embedding_fingerprint,
                     "index_fingerprint": self.index.configuration_fingerprint,
                     "locator_schema_version": self.locator_schema_version,
+                    "public_generation_id": self.public_generation_id,
+                    "public_chunk_count": self.public_chunk_count,
                 },
             )
             await asyncio.to_thread(
@@ -369,6 +402,12 @@ class PersonalQdrantSnapshotManager:
             raise RuntimeError("snapshot checksum verification failed")
         manifest_path = path.with_suffix(".json")
         manifest = json.loads(manifest_path.read_text("utf-8"))
+        if manifest.get("schema_version") != "unified-qdrant-snapshot-0.2":
+            raise RuntimeError("snapshot predates the unified collection contract")
+        if manifest.get("public_generation_id") != self.public_generation_id:
+            raise RuntimeError("snapshot public generation is incompatible")
+        if manifest.get("public_chunk_count") != self.public_chunk_count:
+            raise RuntimeError("snapshot public chunk count is incompatible")
         for key in (
             "snapshot_id", "sha256", "collection_name", "point_count",
             "qdrant_mutation_seq", "embedding_fingerprint",

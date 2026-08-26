@@ -23,7 +23,9 @@ from backend.agent.tools.tools import tr
         "function": {
             "name": "retrieve_knowledge",
             "description": (
-                "从知识库检索紧凑证据。返回语义明确、受最终 JSON token 预算约束的结果；"
+                "按本轮已选择的公共/个人知识库范围检索紧凑证据。"
+                "来源范围和个人身份由服务端会话绑定，不接受模型参数。"
+                "返回语义明确、受最终 JSON token 预算约束的结果；"
                 "完整来源和审计数据由服务端分离处理。必须遵守每条结果的 citation_mode："
                 "paraphrase_only_unverified 只能转述并说明文字提取未经验证，禁止逐字引用。"
             ),
@@ -41,7 +43,10 @@ from backend.agent.tools.tools import tr
                     },
                     "similarity_threshold": {
                         "type": "number",
-                        "description": "可选的原始 Reranker 分数阈值；未启用时不能使用",
+                        "description": (
+                            "可选的公共库原始 Reranker 分数阈值；"
+                            "未启用公共库或 Reranker 时不生效"
+                        ),
                     },
                 },
                 "required": ["query"],
@@ -77,36 +82,3 @@ def get_knowledge_base_stats() -> dict[str, Any]:
     """返回当前注入检索服务的只读状态。"""
 
     return knowledge_base_stats()
-
-
-@tr.register(
-    {
-        "type": "function",
-        "function": {
-            "name": "retrieve_personal_knowledge",
-            "description": (
-                "检索当前登录用户主动上传的个人知识库，并返回文件名和可回查证据。"
-                "用户身份由服务端会话绑定，参数中不接受 user_id。"
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "需要从个人资料中检索的自然语言问题",
-                    },
-                    "top_k": {
-                        "type": "integer",
-                        "description": "最多返回多少条结果，范围 1 到 20，默认 5",
-                        "default": 5,
-                    },
-                },
-                "required": ["query"],
-            },
-        },
-    }
-)
-def retrieve_personal_knowledge(query: str, top_k: int = 5) -> dict[str, Any]:
-    """Contextual tools are executed only by ``BoundToolExecutor``."""
-
-    raise RuntimeError("personal knowledge tool requires BoundToolExecutor")

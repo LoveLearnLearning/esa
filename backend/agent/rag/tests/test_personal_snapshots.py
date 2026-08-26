@@ -7,6 +7,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pytest
+
 from backend.agent.rag.personal.snapshots import PersonalQdrantSnapshotManager
 
 
@@ -90,6 +92,15 @@ class _Index:
 
     def maintenance_count_all(self) -> int:
         return 11
+
+    def maintenance_count_public(self, generation_id=None) -> int:
+        return 0
+
+    def maintenance_count_personal(self) -> int:
+        return 0
+
+    def maintenance_delete_personal_scope(self) -> None:
+        pass
 
     def ensure_collection(self, dense_dimension: int) -> None:
         self.ensured_dimensions.append(dense_dimension)
@@ -315,7 +326,12 @@ def test_restore_accepts_only_exact_checksummed_compatible_snapshot(
     }
     store.snapshots.append(record)
     snapshot_path.with_suffix(".json").write_text(
-        json.dumps({"schema_version": "personal-qdrant-snapshot-0.1", **record}),
+        json.dumps({
+            "schema_version": "unified-qdrant-snapshot-0.2",
+            "public_generation_id": None,
+            "public_chunk_count": 0,
+            **record,
+        }),
         encoding="utf-8",
     )
     manager = _SnapshotManager(
@@ -340,6 +356,51 @@ def test_restore_accepts_only_exact_checksummed_compatible_snapshot(
     assert store.state["ready"] == 1
 
 
+def test_snapshot_rejects_another_public_generation(tmp_path: Path) -> None:
+    store = _Store()
+    snapshot_path = tmp_path / "wrong-public.snapshot"
+    snapshot_path.write_bytes(b"wrong-public")
+    record = {
+        "snapshot_id": "wrong-public",
+        "snapshot_path": str(snapshot_path),
+        "sha256": hashlib.sha256(snapshot_path.read_bytes()).hexdigest(),
+        "collection_name": "personal",
+        "point_count": 11,
+        "qdrant_mutation_seq": 7,
+        "embedding_fingerprint": "embedding-fingerprint",
+        "index_fingerprint": "index-fingerprint",
+        "locator_schema_version": "personal-locator-0.1",
+        "status": "valid",
+    }
+    store.snapshots.append(record)
+    snapshot_path.with_suffix(".json").write_text(
+        json.dumps(
+            {
+                "schema_version": "unified-qdrant-snapshot-0.2",
+                "public_generation_id": "public-old",
+                "public_chunk_count": 9,
+                **record,
+            }
+        ),
+        encoding="utf-8",
+    )
+    manager = _SnapshotManager(
+        store=store,
+        index=_Index(),
+        snapshot_root=tmp_path,
+        mutation_lock=asyncio.Lock(),
+        embedding_fingerprint="embedding-fingerprint",
+        locator_schema_version="personal-locator-0.1",
+        max_delay_seconds=600,
+        retention=3,
+        public_generation_id="public-live",
+        public_chunk_count=11,
+    )
+
+    with pytest.raises(RuntimeError, match="public generation"):
+        manager._validate_snapshot_record(record)
+
+
 def test_restore_accepts_older_snapshot_but_keeps_readiness_false_for_replay(
     tmp_path: Path,
 ) -> None:
@@ -361,7 +422,12 @@ def test_restore_accepts_older_snapshot_but_keeps_readiness_false_for_replay(
     }
     store.snapshots.append(record)
     snapshot_path.with_suffix(".json").write_text(
-        json.dumps({"schema_version": "personal-qdrant-snapshot-0.1", **record}),
+        json.dumps({
+            "schema_version": "unified-qdrant-snapshot-0.2",
+            "public_generation_id": None,
+            "public_chunk_count": 0,
+            **record,
+        }),
         encoding="utf-8",
     )
     manager = _SnapshotManager(
@@ -412,7 +478,12 @@ def test_restore_invalidates_corrupt_latest_snapshot_and_falls_back(
         }
         store.snapshots.append(record)
         path.with_suffix(".json").write_text(
-            json.dumps({"schema_version": "personal-qdrant-snapshot-0.1", **record}),
+            json.dumps({
+                "schema_version": "unified-qdrant-snapshot-0.2",
+                "public_generation_id": None,
+                "public_chunk_count": 0,
+                **record,
+            }),
             encoding="utf-8",
         )
     manager = _SnapshotManager(
@@ -479,6 +550,9 @@ class _PrivacyIndex:
     deleted_collections: list[str] = field(default_factory=list)
 
     def maintenance_count_all(self) -> int:
+        return 0
+
+    def maintenance_count_public(self, generation_id=None) -> int:
         return 0
 
     def maintenance_file_absent(self, *, user_id: str, file_id: str) -> bool:

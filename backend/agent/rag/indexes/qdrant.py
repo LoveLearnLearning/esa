@@ -24,6 +24,13 @@ from ..chunk import Chunk, ContentRole
 from ..fingerprints import configuration_sha256
 from ..retrieval.contracts import RankedItem
 from .errors import CollectionNotFound, IndexGenerationConflict, IndexUnavailable
+from .unified_schema import (
+    PUBLIC_SCOPE,
+    UNIFIED_COLLECTION_SCHEMA_VERSION,
+    UNIFIED_PAYLOAD_INDEXES,
+    match_any,
+    public_filter,
+)
 
 
 @dataclass(frozen=True)
@@ -39,6 +46,7 @@ class QdrantIndex:
     heading_name: str = "bm25_heading"
     bm25_model: str = "qdrant/bm25"
     upsert_batch_size: int = 64
+    generation_id: str | None = None
 
     def __post_init__(self) -> None:
         """完成实例初始化后的校验与派生字段构建。"""
@@ -59,7 +67,8 @@ class QdrantIndex:
 
         return configuration_sha256(
             {
-                "backend": "qdrant-rest-0.2",
+                "backend": "qdrant-rest-0.3",
+                "collection_schema": UNIFIED_COLLECTION_SCHEMA_VERSION,
                 "dense_name": self.dense_name,
                 "body_name": self.body_name,
                 "heading_name": self.heading_name,
@@ -103,7 +112,7 @@ class QdrantIndex:
             ) from exc
 
     def create_collection(self, dense_dimension: int) -> None:
-        """创建包含 Dense 与两条 BM25 命名向量的 Collection。"""
+        """Create the unified collection and every mandatory payload index."""
 
         if dense_dimension <= 0:
             raise ValueError("dense_dimension must be positive")
@@ -123,6 +132,17 @@ class QdrantIndex:
                 },
             },
         )
+        self.ensure_payload_indexes()
+
+    def ensure_payload_indexes(self) -> None:
+        """Create the shared filter indexes idempotently."""
+
+        for field_name, field_schema in UNIFIED_PAYLOAD_INDEXES:
+            self._request(
+                "PUT",
+                f"/collections/{quote(self.collection)}/index?wait=true",
+                {"field_name": field_name, "field_schema": field_schema},
+            )
 
     def prepare(
         self,
@@ -148,6 +168,7 @@ class QdrantIndex:
             generation_id,
             expected_count,
         )
+        self.ensure_payload_indexes()
 
     def validate_existing(
         self,
@@ -180,15 +201,15 @@ class QdrantIndex:
         """校验 Collection 配置并拒绝其他或过量代次。"""
 
         self._validate_collection(info, dense_dimension)
-        total_count = self._count()
+        total_count = self._count_public()
         generation_count = self._count(generation_id)
         if total_count != generation_count:
             raise IndexGenerationConflict(
-                "Qdrant collection contains points from another index generation"
+                "Qdrant public scope contains points from another index generation"
             )
         if total_count > expected_count:
             raise IndexGenerationConflict(
-                "Qdrant collection contains more points than the expected generation"
+                "Qdrant public scope contains more points than the expected generation"
             )
 
     def generation_is_ready(
@@ -199,9 +220,22 @@ class QdrantIndex:
         """确认 Collection 只包含指定代次且 Point 数量完整。"""
 
         return (
-            self._count() == expected_count
+            self._count_public() == expected_count
             and self._count(generation_id) == expected_count
         )
+
+    def _count_public(self) -> int:
+        """Count public points without inspecting personal tenant data."""
+
+        response = self._request(
+            "POST",
+            f"/collections/{quote(self.collection)}/points/count",
+            {"exact": True, "filter": public_filter(visible=None)},
+        )
+        try:
+            return int(response["result"]["count"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise IndexUnavailable("Qdrant public count response is incomplete") from exc
 
     def _validate_collection(
         self,
@@ -241,16 +275,10 @@ class QdrantIndex:
     def _count(self, generation_id: str | None = None) -> int:
         """精确统计全部 Point 或指定索引代次的 Point。"""
 
-        payload: dict[str, Any] = {"exact": True}
-        if generation_id is not None:
-            payload["filter"] = {
-                "must": [
-                    {
-                        "key": "index_generation_id",
-                        "match": {"value": generation_id},
-                    }
-                ]
-            }
+        payload: dict[str, Any] = {
+            "exact": True,
+            "filter": public_filter(generation_id=generation_id, visible=None),
+        }
         response = self._request(
             "POST",
             f"/collections/{quote(self.collection)}/points/count",
@@ -292,9 +320,20 @@ class QdrantIndex:
         """把一个 Chunk 转换为 Qdrant Point。"""
 
         payload = chunk.model_dump(mode="json")
-        payload["index_generation_id"] = generation_id
+        payload.update(
+            {
+                "scope": PUBLIC_SCOPE,
+                "index_generation_id": generation_id,
+                "visible": True,
+            }
+        )
         return {
-            "id": str(uuid.uuid5(uuid.NAMESPACE_URL, chunk.chunk_id)),
+            "id": str(
+                uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"public://{generation_id}/{chunk.chunk_id}",
+                )
+            ),
             "vector": {
                 self.dense_name: list(dense_vector),
                 self.body_name: self._bm25_document(chunk.bm25_body),
@@ -329,16 +368,15 @@ class QdrantIndex:
             # retrieval text are resolved from the already loaded collection,
             # so transferring the complete Chunk payload wastes bandwidth.
             "with_payload": {"include": ["chunk_id"]},
+            "filter": public_filter(generation_id=self.generation_id),
         }
         if content_roles is not None:
-            payload["filter"] = {
-                "must": [
-                    {
-                        "key": "content_role",
-                        "match": {"any": sorted(role.value for role in content_roles)},
-                    }
-                ]
-            }
+            payload["filter"]["must"].append(
+                match_any(
+                    "content_role",
+                    sorted(role.value for role in content_roles),
+                )
+            )
         response = self._request(
             "POST",
             f"/collections/{quote(self.collection)}/points/query",

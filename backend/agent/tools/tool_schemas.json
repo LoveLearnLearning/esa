@@ -83,7 +83,7 @@
     "type": "function",
     "function": {
       "name": "retrieve_knowledge",
-      "description": "检索公共课程知识库以取得回答证据。",
+      "description": "按本轮已选公共/个人知识库范围检索回答证据。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -96,7 +96,7 @@
           },
           "similarity_threshold": {
             "type": "number",
-            "description": "最低相似度阈值。"
+            "description": "公共库最低 Reranker 分数阈值。"
           }
         },
         "required": [
@@ -114,28 +114,6 @@
         "type": "object",
         "properties": {},
         "required": []
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "retrieve_personal_knowledge",
-      "description": "检索当前用户获授权的个人知识库。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string"
-          },
-          "top_k": {
-            "type": "integer",
-            "default": 5
-          }
-        },
-        "required": [
-          "query"
-        ]
       }
     }
   },

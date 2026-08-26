@@ -34,6 +34,7 @@ from backend.agent.rag import (
     load_chunk_collection,
 )
 from backend.agent.rag.cli import index as qdrant_lifecycle
+from backend.agent.rag.chunk import ContentRole
 from backend.agent.rag.collection import LoadedChunkCollection
 from backend.agent.rag.evaluation import EvaluationCase, evaluate_layers
 from backend.agent.rag.evaluation.benchmark import benchmark_backend
@@ -389,10 +390,36 @@ def test_qdrant_ingest_uses_formal_chunk_and_fixed_bm25(
     )
     point = CapturingQdrant.calls[-1][2]["points"][0]
     assert point["payload"]["chunk_revision_id"]
+    assert point["payload"]["scope"] == "public"
+    assert point["payload"]["visible"] is True
     assert point["payload"]["index_generation_id"] == "index_test"
     assert point["vector"]["bm25_body"]["options"] == {
         "tokenizer": "multilingual",
         "language": "none",
+    }
+
+
+def test_qdrant_queries_are_always_bound_to_public_scope_and_generation() -> None:
+    CapturingQdrant.calls.clear()
+    index = CapturingQdrant(
+        "http://127.0.0.1:6333",
+        "formal",
+        generation_id="index_live",
+    )
+
+    index.dense([1.0, 0.0], 5, frozenset({ContentRole.BODY}))
+
+    payload = CapturingQdrant.calls[-1][2]
+    assert payload is not None
+    matches = {
+        condition["key"]: condition["match"]
+        for condition in payload["filter"]["must"]
+    }
+    assert matches == {
+        "scope": {"value": "public"},
+        "index_generation_id": {"value": "index_live"},
+        "visible": {"value": True},
+        "content_role": {"any": ["body"]},
     }
 
 
@@ -589,21 +616,23 @@ class StatefulQdrant(QdrantIndex):
                 payload["vectors"][self.dense_name]["size"],
             )
             return {"status": "ok"}
+        if method == "PUT" and path.endswith("/index?wait=true"):
+            return {"status": "ok"}
         if method == "PUT" and "/points" in path:
             object.__setattr__(self, "upsert_calls", self.upsert_calls + 1)
             for point in payload["points"]:
                 self.points[point["id"]] = point
             return {"status": "ok"}
         if method == "POST" and path.endswith("/points/count"):
-            generation_id = None
-            if payload and "filter" in payload:
-                generation_id = payload["filter"]["must"][0]["match"]["value"]
             points = self.points.values()
-            if generation_id is not None:
+            conditions = payload.get("filter", {}).get("must", []) if payload else []
+            for condition in conditions:
+                key = condition["key"]
+                value = condition["match"]["value"]
                 points = (
                     point
                     for point in points
-                    if point["payload"].get("index_generation_id") == generation_id
+                    if point["payload"].get(key) == value
                 )
             return {"result": {"count": sum(1 for _point in points)}}
         raise AssertionError(f"unexpected request: {method} {path}")
@@ -647,12 +676,21 @@ def test_qdrant_lifecycle_reuses_complete_generation_across_services(
 
     first = IndexingService(collection, index, embedding).build()
     upserts_after_first = index.upsert_calls
+    index.points["personal"] = {
+        "payload": {
+            "scope": "personal",
+            "user_id": "u1",
+            "knowledge_base_id": "kb1",
+            "visible": True,
+        }
+    }
     second = IndexingService(collection, index, embedding).build()
 
     assert first.indexed is True
     assert second.indexed is False
     assert first.generation == second.generation
-    assert len(index.points) == len(collection.chunks)
+    assert len(index.points) == len(collection.chunks) + 1
+    assert "personal" in index.points
     assert index.upsert_calls == upserts_after_first
     assert embedding.calls == 1
 
@@ -664,10 +702,44 @@ def test_qdrant_lifecycle_rejects_mixed_generations(
     index = StatefulQdrant("http://127.0.0.1:6333", "generation_conflict")
     object.__setattr__(index, "exists", True)
     object.__setattr__(index, "dense_dimension", 384)
-    index.points["old"] = {"payload": {"index_generation_id": "index_old"}}
+    index.points["old"] = {
+        "payload": {
+            "scope": "public",
+            "index_generation_id": "index_old",
+            "visible": True,
+        }
+    }
 
     with pytest.raises(IndexGenerationConflict, match="another index generation"):
         IndexingService(collection, index, HashingEmbeddingProvider()).build()
+
+
+def test_public_generation_readiness_ignores_personal_points() -> None:
+    index = StatefulQdrant("http://127.0.0.1:6333", "unified_generation")
+    object.__setattr__(index, "exists", True)
+    object.__setattr__(index, "dense_dimension", 8)
+    index.points.update(
+        {
+            "public": {
+                "payload": {
+                    "scope": "public",
+                    "index_generation_id": "index_live",
+                    "visible": True,
+                }
+            },
+            "personal": {
+                "payload": {
+                    "scope": "personal",
+                    "user_id": "u1",
+                    "knowledge_base_id": "kb1",
+                    "kb_generation_id": "personal_live",
+                    "visible": True,
+                }
+            },
+        }
+    )
+
+    assert index.generation_is_ready("index_live", 1) is True
 
 
 def test_qdrant_validate_existing_does_not_create_missing_collection() -> None:

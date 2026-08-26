@@ -194,11 +194,11 @@ class ContextComposer:
         ]
         selected_sources = ",".join(turn.knowledge_sources) or "none"
         source_instruction = {
-            ("personal", "public"): "两类检索可分别调用后综合。",
-            ("personal",): "仅可调用 retrieve_personal_knowledge。",
-            ("public",): "仅可调用 retrieve_knowledge。",
+            ("personal", "public"): "retrieve_knowledge 将检索两类来源并统一排序。",
+            ("personal",): "retrieve_knowledge 仅检索当前用户获授权的个人库。",
+            ("public",): "retrieve_knowledge 仅检索公共库。",
             (): "禁止调用知识库检索 Tool。",
-        }.get(turn.knowledge_sources, "仅用实际列出的检索 Tool。")
+        }.get(turn.knowledge_sources, "retrieve_knowledge 仅检索实际列出的来源。")
         sections.append(ContextSection(
             "knowledge_sources", "Knowledge source selection",
             (

@@ -197,7 +197,7 @@ async def run_live_evaluation(
         )
     personal_index = PersonalQdrantIndex(
         base_url=config.RAG_QDRANT_BASE_URL,
-        collection=config.PERSONAL_KB_QDRANT_COLLECTION,
+        collection=config.RAG_QDRANT_COLLECTION,
         api_key=os.environ.get("QDRANT_API_KEY"),
         timeout=config.RAG_QDRANT_TIMEOUT,
         upsert_batch_size=config.RAG_QDRANT_UPSERT_BATCH_SIZE,
@@ -260,7 +260,7 @@ async def run_live_evaluation(
         "global_source_map_sha256": _sha256(global_source_map_path),
         "database_path": str(database.resolve()),
         "global_deployment": str(config.RAG_INDEX_DEPLOYMENT_MANIFEST_PATH),
-        "personal_collection": config.PERSONAL_KB_QDRANT_COLLECTION,
+        "unified_collection": config.RAG_QDRANT_COLLECTION,
         "personal_generation_id": state["generation_id"],
         "top_k": top_k,
         "eligible_case_count": len(eligible),

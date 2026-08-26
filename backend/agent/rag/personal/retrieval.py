@@ -58,6 +58,7 @@ class PersonalKnowledgeRetrievalService:
             *(() if knowledge_base_id is None else (knowledge_base_id,)),
         )
         generation_id = state["generation_id"]
+        resolved_knowledge_base_id = str(state["knowledge_base_id"])
         filenames: dict[str, str] = state["files"]
         if not state["collection_ready"]:
             return self._empty(query, "personal_collection_not_ready")
@@ -79,6 +80,7 @@ class PersonalKnowledgeRetrievalService:
                 self.route_limit,
                 user_id=user_id,
                 generation_id=generation_id,
+                knowledge_base_id=resolved_knowledge_base_id,
                 file_ids=file_ids,
             ),
             asyncio.to_thread(
@@ -88,6 +90,7 @@ class PersonalKnowledgeRetrievalService:
                 self.route_limit,
                 user_id=user_id,
                 generation_id=generation_id,
+                knowledge_base_id=resolved_knowledge_base_id,
                 file_ids=file_ids,
             ),
             asyncio.to_thread(
@@ -97,6 +100,7 @@ class PersonalKnowledgeRetrievalService:
                 self.route_limit,
                 user_id=user_id,
                 generation_id=generation_id,
+                knowledge_base_id=resolved_knowledge_base_id,
                 file_ids=file_ids,
             ),
         )

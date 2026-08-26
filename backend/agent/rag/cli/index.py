@@ -83,6 +83,7 @@ def verify_deployment(arguments: argparse.Namespace) -> IndexDeployment:
     index = _qdrant_index(
         deployment.qdrant_base_url,
         deployment.qdrant_collection,
+        generation_id=deployment.generation.index_generation_id,
     )
     if index.configuration_fingerprint != deployment.generation.index_fingerprint:
         raise ValueError("Qdrant configuration does not match index generation")
@@ -120,6 +121,7 @@ def query_deployment(arguments: argparse.Namespace) -> dict[str, Any]:
     index = _qdrant_index(
         deployment.qdrant_base_url,
         deployment.qdrant_collection,
+        generation_id=deployment.generation.index_generation_id,
     )
     reranker = _reranker(
         arguments.reranker_backend,
@@ -168,7 +170,12 @@ def _embedding_provider(
     )
 
 
-def _qdrant_index(base_url: str, collection: str) -> QdrantIndex:
+def _qdrant_index(
+    base_url: str,
+    collection: str,
+    *,
+    generation_id: str | None = None,
+) -> QdrantIndex:
     """使用环境变量中的可选密钥创建 Qdrant 适配器。"""
 
     return QdrantIndex(
@@ -177,6 +184,7 @@ def _qdrant_index(base_url: str, collection: str) -> QdrantIndex:
         api_key=os.environ.get("QDRANT_API_KEY"),
         timeout=core_config.RAG_QDRANT_TIMEOUT,
         upsert_batch_size=core_config.RAG_QDRANT_UPSERT_BATCH_SIZE,
+        generation_id=generation_id,
     )
 
 

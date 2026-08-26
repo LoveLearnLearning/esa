@@ -68,8 +68,15 @@ class _Index:
         self.recreated += 1
         self.points.clear()
 
+    def ensure_collection(self, dense_dimension: int) -> None:
+        assert dense_dimension == 8
+
+    def maintenance_delete_personal_scope(self) -> None:
+        self.recreated += 1
+        self.points.clear()
+
     def upsert_hidden(
-        self, chunks, vectors, *, user_id, file_id, generation_id,
+        self, chunks, vectors, *, user_id, knowledge_base_id, file_id, generation_id,
         ingestion_revision,
     ) -> None:
         assert len(chunks) == len(vectors)
@@ -77,7 +84,8 @@ class _Index:
         self.points[(user_id, generation_id, file_id)] = (len(chunks), False)
 
     def count(
-        self, *, user_id, generation_id, file_id=None, visible=True
+        self, *, user_id, generation_id, knowledge_base_id=None,
+        file_id=None, visible=True
     ) -> int:
         return sum(
             count
@@ -90,7 +98,7 @@ class _Index:
         )
 
     def set_file_visibility(
-        self, *, user_id, file_id, generation_id, visible
+        self, *, user_id, knowledge_base_id=None, file_id, generation_id, visible
     ) -> None:
         key = (user_id, generation_id, file_id)
         count, _old = self.points[key]
@@ -98,6 +106,9 @@ class _Index:
 
     def maintenance_count_all(self) -> int:
         return sum(count for count, _visible in self.points.values())
+
+    def maintenance_count_personal(self) -> int:
+        return self.maintenance_count_all()
 
 
 def test_authority_rebuild_recreates_only_committed_visible_points(
@@ -121,6 +132,7 @@ def test_authority_rebuild_recreates_only_committed_visible_points(
     records = [
         {
             "user_id": "u1",
+            "knowledge_base_id": "kb1",
             "generation_id": "g1",
             "embedding_fingerprint": "embedding-fingerprint",
             "chunk_fingerprint": ingestion.pipeline_fingerprint,

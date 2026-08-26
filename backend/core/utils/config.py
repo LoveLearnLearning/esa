@@ -431,9 +431,12 @@ PERSONAL_KB_MAX_USER_BYTES: int = _int_from_env(
     "PERSONAL_KB_MAX_USER_BYTES", 10 * 1024 * 1024 * 1024
 )
 PERSONAL_KB_MAX_USER_FILES: int = _int_from_env("PERSONAL_KB_MAX_USER_FILES", 1000)
-PERSONAL_KB_QDRANT_COLLECTION: str = _str_from_env(
-    "PERSONAL_KB_QDRANT_COLLECTION", "esa_personal_kb_qwen3_4b"
+# Public and personal points share one Qdrant collection.  Tenant boundaries
+# are payload filters, not collection names.
+RAG_QDRANT_COLLECTION: str = _str_from_env(
+    "RAG_QDRANT_COLLECTION", "esa_knowledge_unified_qwen3_4b"
 )
+PERSONAL_KB_QDRANT_COLLECTION: str = RAG_QDRANT_COLLECTION
 PERSONAL_KB_SNAPSHOT_MAX_DELAY_SECONDS: int = _int_from_env(
     "PERSONAL_KB_SNAPSHOT_MAX_DELAY_SECONDS", 600
 )
@@ -588,9 +591,6 @@ RAG_INDEX_DEPLOYMENT_ROOT: Path = _path_from_env(
 
 # qdrant
 RAG_QDRANT_BASE_URL: str = _str_from_env("RAG_QDRANT_BASE_URL", "http://127.0.0.1:6333")
-RAG_QDRANT_COLLECTION: str = _str_from_env(
-    "RAG_QDRANT_COLLECTION", "cs_textbooks_qwen3_20260822"
-)
 RAG_QDRANT_TIMEOUT: float = _float_from_env("RAG_QDRANT_TIMEOUT", 30.0, minimum=0.001)
 RAG_QDRANT_UPSERT_BATCH_SIZE: int = _int_from_env("RAG_QDRANT_UPSERT_BATCH_SIZE", 64)
 
@@ -772,10 +772,6 @@ def validate_startup_config() -> None:
                 f"ESA_MODEL_PATH {configured_base}"
             )
     if PERSONAL_KB_ENABLED:
-        if PERSONAL_KB_QDRANT_COLLECTION == RAG_QDRANT_COLLECTION:
-            raise RuntimeError(
-                "PERSONAL_KB_QDRANT_COLLECTION must not reuse the global RAG collection"
-            )
         if not PERSONAL_KB_ROOT.is_dir():
             raise RuntimeError(
                 f"PERSONAL_KB_ROOT is not an existing directory: {PERSONAL_KB_ROOT}"

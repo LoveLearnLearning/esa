@@ -376,6 +376,7 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                 (user_id, resolved),
             ).fetchall()
         return {
+            "knowledge_base_id": resolved,
             "generation_id": (
                 (
                     base["catalog_generation_id"]
@@ -421,7 +422,8 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
         with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
-                SELECT c.user_id, c.active_generation_id AS generation_id,
+                SELECT c.user_id, c.knowledge_base_id,
+                       c.active_generation_id AS generation_id,
                        g.embedding_fingerprint, g.chunk_fingerprint,
                        g.index_fingerprint, g.locator_schema_version,
                        f.file_id, f.filename, f.media_type, f.sha256,
@@ -446,7 +448,8 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
             if not rows:
                 rows = connection.execute(
                     """
-                    SELECT b.user_id, b.active_generation_id AS generation_id,
+                    SELECT b.user_id, f.knowledge_base_id,
+                           b.active_generation_id AS generation_id,
                            g.embedding_fingerprint, g.chunk_fingerprint,
                            g.index_fingerprint, g.locator_schema_version,
                            f.file_id, f.filename, f.media_type, f.sha256,
@@ -1434,23 +1437,16 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
     ) -> str | None:
         """Queue a full rebuild; return ``None`` for an empty knowledge base."""
 
+        resolved_knowledge_base_id = self.resolve_knowledge_base_id(
+            user_id=user_id,
+            knowledge_base_id=knowledge_base_id,
+        )
         now = self._now()
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 self._ensure_base(connection, user_id, now)
                 self._ensure_not_purging(connection, user_id)
-                if knowledge_base_id is not None:
-                    catalog = connection.execute(
-                        """
-                        SELECT knowledge_base_id
-                        FROM personal_knowledge_base_catalogs
-                        WHERE user_id = ? AND knowledge_base_id = ?
-                        """,
-                        (user_id, knowledge_base_id),
-                    ).fetchone()
-                    if catalog is None:
-                        raise PersonalKnowledgeBaseNotFound("个人知识库不存在")
                 if self._has_mutex_job(connection, user_id):
                     raise PersonalKnowledgeBaseConflict(
                         "personal knowledge-base upload or rebuild already in progress"
@@ -1461,10 +1457,10 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                         """
                         SELECT file_id FROM personal_knowledge_base_files
                         WHERE user_id = ? AND tombstoned_at IS NULL
-                          AND (? IS NULL OR knowledge_base_id = ?)
+                          AND knowledge_base_id = ?
                         ORDER BY uploaded_at, file_id
                         """,
-                        (user_id, knowledge_base_id, knowledge_base_id),
+                        (user_id, resolved_knowledge_base_id),
                     ).fetchall()
                 ]
                 if not file_ids:
@@ -1493,7 +1489,7 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                         job_id, user_id, revision,
                         json.dumps({
                             "file_ids": file_ids,
-                            "knowledge_base_id": knowledge_base_id,
+                            "knowledge_base_id": resolved_knowledge_base_id,
                         }),
                         now, now,
                     ),
@@ -1509,7 +1505,7 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                         str(uuid.uuid4()), user_id, revision,
                         json.dumps({
                             "file_ids": file_ids,
-                            "knowledge_base_id": knowledge_base_id,
+                            "knowledge_base_id": resolved_knowledge_base_id,
                         }), now, now,
                     ),
                 )
@@ -2639,7 +2635,10 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                 )
                 if old_generation_id is not None:
                     cleanup_job_id = str(uuid.uuid4())
-                    payload = json.dumps({"generation_id": old_generation_id})
+                    payload = json.dumps({
+                        "generation_id": old_generation_id,
+                        "knowledge_base_id": knowledge_base_id,
+                    })
                     connection.execute(
                         """
                         INSERT INTO personal_knowledge_base_jobs (

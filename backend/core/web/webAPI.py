@@ -197,7 +197,6 @@ from backend.core.utils.config import (
     PERSONAL_KB_LIBREOFFICE_BIN,
     PERSONAL_KB_OFFICE_PREVIEW_MAX_BYTES,
     PERSONAL_KB_OFFICE_PREVIEW_TIMEOUT_SECONDS,
-    PERSONAL_KB_QDRANT_COLLECTION,
     PERSONAL_KB_RESTORE_ON_STARTUP,
     PERSONAL_KB_ROOT,
     PERSONAL_KB_SNAPSHOT_MAX_DELAY_SECONDS,
@@ -612,7 +611,7 @@ async def lifespan(app: FastAPI):
                 warmup()
         personal_index = PersonalQdrantIndex(
             base_url=RAG_QDRANT_BASE_URL,
-            collection=PERSONAL_KB_QDRANT_COLLECTION,
+            collection=RAG_QDRANT_COLLECTION,
             api_key=os.environ.get("QDRANT_API_KEY"),
             timeout=RAG_QDRANT_TIMEOUT,
             upsert_batch_size=RAG_QDRANT_UPSERT_BATCH_SIZE,
@@ -679,6 +678,16 @@ async def lifespan(app: FastAPI):
                 locator_schema_version=LOCATOR_SCHEMA_VERSION,
                 max_delay_seconds=PERSONAL_KB_SNAPSHOT_MAX_DELAY_SECONDS,
                 retention=PERSONAL_KB_SNAPSHOT_RETENTION,
+                public_generation_id=(
+                    getattr(app.state.rag_service.index, "generation_id", None)
+                    if app.state.rag_service is not None
+                    else None
+                ),
+                public_chunk_count=(
+                    len(app.state.rag_service.collection.chunks)
+                    if app.state.rag_service is not None
+                    else 0
+                ),
                 discard_file_artifacts=personal_kb_storage.discard_artifacts,
             )
         )

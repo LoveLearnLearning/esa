@@ -84,6 +84,7 @@ def create_retrieval_service(
         api_key=os.environ.get("QDRANT_API_KEY"),
         timeout=config.RAG_QDRANT_TIMEOUT,
         upsert_batch_size=config.RAG_QDRANT_UPSERT_BATCH_SIZE,
+        generation_id=generation.index_generation_id,
     )
     if index.configuration_fingerprint != generation.index_fingerprint:
         raise RuntimeError("RAG deployment 与 Qdrant 索引配置不一致")

@@ -144,8 +144,8 @@ def test_knowledge_source_selection_filters_retrieval_tools():
         policy_versions=("learning.v1",),
         knowledge_sources=("personal",),
     )
-    assert "retrieve_personal_knowledge" in personal_only.capabilities.tool_names
-    assert "retrieve_knowledge" not in personal_only.capabilities.tool_names
+    assert "retrieve_knowledge" in personal_only.capabilities.tool_names
+    assert "retrieve_personal_knowledge" not in personal_only.capabilities.tool_names
 
     public_only = runtime.compile(
         skill_scopes=definition.skill_scopes,

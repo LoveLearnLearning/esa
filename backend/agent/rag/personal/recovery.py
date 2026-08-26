@@ -81,10 +81,8 @@ class PersonalCollectionRecovery:
             )
             if self._identity(current) != self._identity(authority):
                 raise RuntimeError("personal rebuild authority changed during startup")
-            await asyncio.to_thread(
-                self.index.maintenance_recreate_collection,
-                self.dense_dimension,
-            )
+            await asyncio.to_thread(self.index.ensure_collection, self.dense_dimension)
+            await asyncio.to_thread(self.index.maintenance_delete_personal_scope)
             expected_by_tenant: dict[tuple[str, str], int] = defaultdict(int)
             for record, chunks, vectors in prepared:
                 await asyncio.to_thread(
@@ -92,6 +90,7 @@ class PersonalCollectionRecovery:
                     chunks,
                     vectors,
                     user_id=record["user_id"],
+                    knowledge_base_id=record["knowledge_base_id"],
                     file_id=record["file_id"],
                     generation_id=record["generation_id"],
                     ingestion_revision=int(record["ingestion_revision"]),
@@ -100,6 +99,7 @@ class PersonalCollectionRecovery:
                     self.index.count,
                     user_id=record["user_id"],
                     generation_id=record["generation_id"],
+                    knowledge_base_id=record["knowledge_base_id"],
                     file_id=record["file_id"],
                     visible=False,
                 )
@@ -108,6 +108,7 @@ class PersonalCollectionRecovery:
                 await asyncio.to_thread(
                     self.index.set_file_visibility,
                     user_id=record["user_id"],
+                    knowledge_base_id=record["knowledge_base_id"],
                     file_id=record["file_id"],
                     generation_id=record["generation_id"],
                     visible=True,
@@ -124,7 +125,7 @@ class PersonalCollectionRecovery:
                 )
                 if actual != expected:
                     raise RuntimeError("authority rebuild generation count mismatch")
-            total = await asyncio.to_thread(self.index.maintenance_count_all)
+            total = await asyncio.to_thread(self.index.maintenance_count_personal)
             if total != sum(expected_by_tenant.values()):
                 raise RuntimeError("authority rebuild collection count mismatch")
             await asyncio.to_thread(self.store.mark_collection_rebuilt)
@@ -205,7 +206,8 @@ class PersonalCollectionRecovery:
     def _identity(records: list[dict[str, Any]]) -> tuple[tuple[Any, ...], ...]:
         return tuple(
             (
-                record["user_id"], record["generation_id"], record["file_id"],
+                record["user_id"], record["knowledge_base_id"],
+                record["generation_id"], record["file_id"],
                 record["sha256"], record["ingestion_revision"],
                 record["index_count"],
             )

@@ -34,10 +34,8 @@ ATTACHMENT_TOOLS = frozenset(
         "parse_image_attachment",
     }
 )
-PERSONAL_KNOWLEDGE_TOOLS = frozenset({"retrieve_personal_knowledge"})
-PUBLIC_KNOWLEDGE_TOOLS = frozenset(
-    {"retrieve_knowledge", "get_knowledge_base_stats"}
-)
+UNIFIED_KNOWLEDGE_TOOLS = frozenset({"retrieve_knowledge"})
+PUBLIC_KNOWLEDGE_METADATA_TOOLS = frozenset({"get_knowledge_base_stats"})
 
 
 class BoundToolExecutor:
@@ -136,51 +134,29 @@ class BoundToolExecutor:
                     assignment_id=self.context.authorized_resources.assignment_id,
                 )
             if name == "retrieve_knowledge":
-                if "public" not in self.context.knowledge_sources:
+                if not self.context.knowledge_sources:
                     return {
                         "ok": False,
                         "error": "knowledge_source_not_selected",
-                        "source": "public",
                     }
-                from backend.agent.rag.agent_api import retrieve_knowledge_result
+                from backend.agent.rag.unified_retrieval import (
+                    retrieve_selected_knowledge,
+                )
 
-                service = self.context.runtime_dependencies.rag_service
                 provider = self.context.runtime_dependencies.token_counter
                 counter = getattr(provider, "count_tokens", None)
-                return retrieve_knowledge_result(
-                    service=service,
+                return await retrieve_selected_knowledge(
+                    knowledge_sources=self.context.knowledge_sources,
+                    user_id=self.context.user_id,
+                    knowledge_base_id=self.context.personal_knowledge_base_id,
+                    public_service=self.context.runtime_dependencies.rag_service,
+                    personal_service=(
+                        self.context.runtime_dependencies
+                        .personal_knowledge_retrieval_service
+                    ),
                     token_counter=counter if callable(counter) else None,
                     **normalized,
                 )
-            if name == "retrieve_personal_knowledge":
-                if "personal" not in self.context.knowledge_sources:
-                    return {
-                        "ok": False,
-                        "error": "knowledge_source_not_selected",
-                        "source": "personal",
-                    }
-                service = (
-                    self.context.runtime_dependencies
-                    .personal_knowledge_retrieval_service
-                )
-                if service is None:
-                    return {
-                        "query": normalized["query"],
-                        "result_count": 0,
-                        "results": [],
-                        "degraded": ["personal_knowledge_base_unavailable"],
-                        "rankings": {},
-                    }
-                search_arguments = {
-                    "user_id": self.context.user_id,
-                    "query": normalized["query"],
-                    "top_k": normalized.get("top_k", 5),
-                }
-                if self.context.personal_knowledge_base_id is not None:
-                    search_arguments["knowledge_base_id"] = (
-                        self.context.personal_knowledge_base_id
-                    )
-                return await service.search(**search_arguments)
             if name == "get_knowledge_base_stats":
                 from backend.agent.rag.agent_api import knowledge_base_stats
 
@@ -323,10 +299,10 @@ class CapabilityRuntime:
             excluded_tools.update(RESEARCH_WORKFLOW_TOOLS)
         if has_attachments is False:
             excluded_tools.update(ATTACHMENT_TOOLS)
-        if "personal" not in knowledge_sources:
-            excluded_tools.update(PERSONAL_KNOWLEDGE_TOOLS)
+        if not knowledge_sources:
+            excluded_tools.update(UNIFIED_KNOWLEDGE_TOOLS)
         if "public" not in knowledge_sources:
-            excluded_tools.update(PUBLIC_KNOWLEDGE_TOOLS)
+            excluded_tools.update(PUBLIC_KNOWLEDGE_METADATA_TOOLS)
         tools = ScopedToolView.compile(
             tr,
             tool_scopes,

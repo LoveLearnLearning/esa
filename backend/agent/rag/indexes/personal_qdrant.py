@@ -13,6 +13,12 @@ from ..fingerprints import configuration_sha256
 from ..retrieval.contracts import RankedItem
 from .errors import CollectionNotFound, IndexGenerationConflict, IndexUnavailable
 from .qdrant import QdrantIndex
+from .unified_schema import (
+    PERSONAL_SCOPE,
+    UNIFIED_COLLECTION_SCHEMA_VERSION,
+    UNIFIED_PAYLOAD_INDEXES,
+    public_filter,
+)
 
 
 @dataclass(frozen=True)
@@ -39,7 +45,8 @@ class PersonalQdrantIndex:
     def configuration_fingerprint(self) -> str:
         return configuration_sha256(
             {
-                "backend": "personal-qdrant-rest-0.1",
+                "backend": "personal-qdrant-rest-0.2",
+                "collection_schema": UNIFIED_COLLECTION_SCHEMA_VERSION,
                 "dense_name": self.dense_name,
                 "body_name": self.body_name,
                 "heading_name": self.heading_name,
@@ -48,6 +55,7 @@ class PersonalQdrantIndex:
                 "tenant_payload": [
                     "scope",
                     "user_id",
+                    "knowledge_base_id",
                     "file_id",
                     "kb_generation_id",
                     "ingestion_revision",
@@ -80,7 +88,7 @@ class PersonalQdrantIndex:
         return client._request(method, path, payload)
 
     def create_collection(self, dense_dimension: int) -> None:
-        """Create the isolated collection and every tenant filter payload index."""
+        """Create the unified collection and every shared payload index."""
 
         if dense_dimension <= 0:
             raise ValueError("dense_dimension must be positive")
@@ -97,17 +105,12 @@ class PersonalQdrantIndex:
                 },
             },
         )
-        for field_name in ("scope", "user_id", "file_id", "kb_generation_id"):
+        for field_name, field_schema in UNIFIED_PAYLOAD_INDEXES:
             self._request(
                 "PUT",
                 f"/collections/{quote(self.collection)}/index?wait=true",
-                {"field_name": field_name, "field_schema": "keyword"},
+                {"field_name": field_name, "field_schema": field_schema},
             )
-        self._request(
-            "PUT",
-            f"/collections/{quote(self.collection)}/index?wait=true",
-            {"field_name": "visible", "field_schema": "bool"},
-        )
 
     def ensure_collection(self, dense_dimension: int) -> None:
         """Create once or validate the existing named-vector configuration."""
@@ -139,9 +142,15 @@ class PersonalQdrantIndex:
             raise IndexGenerationConflict(
                 "personal Qdrant named vectors do not match configuration"
             )
+        for field_name, field_schema in UNIFIED_PAYLOAD_INDEXES:
+            self._request(
+                "PUT",
+                f"/collections/{quote(self.collection)}/index?wait=true",
+                {"field_name": field_name, "field_schema": field_schema},
+            )
 
     def maintenance_count_all(self) -> int:
-        """Count the isolated collection for snapshot integrity metadata.
+        """Count every scope for whole unified-collection snapshot metadata.
 
         This deliberately maintenance-only operation is not used by retrieval
         or tenant mutation code; those paths must use :meth:`count`.
@@ -158,6 +167,64 @@ class PersonalQdrantIndex:
             raise IndexUnavailable(
                 "personal Qdrant maintenance count response is incomplete"
             ) from exc
+
+    def maintenance_count_personal(self) -> int:
+        """Count only personal points in the shared collection."""
+
+        response = self._request(
+            "POST",
+            f"/collections/{quote(self.collection)}/points/count",
+            {
+                "exact": True,
+                "filter": {
+                    "must": [
+                        {"key": "scope", "match": {"value": PERSONAL_SCOPE}}
+                    ]
+                },
+            },
+        )
+        try:
+            return int(response["result"]["count"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise IndexUnavailable(
+                "personal Qdrant scope count response is incomplete"
+            ) from exc
+
+    def maintenance_count_public(self, generation_id: str | None = None) -> int:
+        """Count the public scope, optionally bound to one deployment generation."""
+
+        response = self._request(
+            "POST",
+            f"/collections/{quote(self.collection)}/points/count",
+            {
+                "exact": True,
+                "filter": public_filter(
+                    generation_id=generation_id,
+                    visible=None,
+                ),
+            },
+        )
+        try:
+            return int(response["result"]["count"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise IndexUnavailable(
+                "unified Qdrant public count response is incomplete"
+            ) from exc
+
+    def maintenance_delete_personal_scope(self) -> None:
+        """Delete personal points while preserving the public scope."""
+
+        self._request(
+            "POST",
+            f"/collections/{quote(self.collection)}/points/delete?wait=true",
+            {
+                "filter": {
+                    "must": [
+                        {"key": "scope", "match": {"value": PERSONAL_SCOPE}}
+                    ]
+                }
+            },
+        )
 
     def maintenance_recreate_collection(self, dense_dimension: int) -> None:
         """Replace only the configured derived personal collection."""
@@ -189,7 +256,7 @@ class PersonalQdrantIndex:
             raise ValueError("maintenance tenant identity cannot be blank")
         tenant_file_filter = {
             "must": [
-                {"key": "scope", "match": {"value": "personal"}},
+                {"key": "scope", "match": {"value": PERSONAL_SCOPE}},
                 {"key": "user_id", "match": {"value": user_id}},
                 {"key": "file_id", "match": {"value": file_id}},
             ]
@@ -273,6 +340,7 @@ class PersonalQdrantIndex:
         *,
         user_id: str,
         generation_id: str,
+        knowledge_base_id: str | None = None,
         visible: bool | None = True,
         file_id: str | None = None,
         file_ids: Sequence[str] | None = None,
@@ -283,10 +351,19 @@ class PersonalQdrantIndex:
         if not user_id or not generation_id:
             raise ValueError("user_id and generation_id are required")
         must: list[dict[str, Any]] = [
-            {"key": "scope", "match": {"value": "personal"}},
+            {"key": "scope", "match": {"value": PERSONAL_SCOPE}},
             {"key": "user_id", "match": {"value": user_id}},
             {"key": "kb_generation_id", "match": {"value": generation_id}},
         ]
+        if knowledge_base_id is not None:
+            if not knowledge_base_id:
+                raise ValueError("knowledge_base_id cannot be blank")
+            must.append(
+                {
+                    "key": "knowledge_base_id",
+                    "match": {"value": knowledge_base_id},
+                }
+            )
         if visible is not None:
             must.append({"key": "visible", "match": {"value": visible}})
         if file_id is not None:
@@ -327,26 +404,31 @@ class PersonalQdrantIndex:
         dense_vector: Sequence[float],
         *,
         user_id: str,
+        knowledge_base_id: str,
         file_id: str,
         generation_id: str,
         ingestion_revision: int,
     ) -> dict[str, Any]:
-        if not user_id or not file_id or not generation_id:
+        if not user_id or not knowledge_base_id or not file_id or not generation_id:
             raise ValueError("tenant point identity cannot be blank")
         if ingestion_revision <= 0:
             raise ValueError("ingestion_revision must be positive")
         payload = chunk.model_dump(mode="json")
         payload.update(
             {
-                "scope": "personal",
+                "scope": PERSONAL_SCOPE,
                 "user_id": user_id,
+                "knowledge_base_id": knowledge_base_id,
                 "file_id": file_id,
                 "kb_generation_id": generation_id,
                 "ingestion_revision": ingestion_revision,
                 "visible": False,
             }
         )
-        identity = f"personal://{user_id}/{generation_id}/{chunk.chunk_id}"
+        identity = (
+            f"personal://{user_id}/{knowledge_base_id}/"
+            f"{generation_id}/{chunk.chunk_id}"
+        )
         return {
             "id": str(uuid.uuid5(uuid.NAMESPACE_URL, identity)),
             "vector": {
@@ -363,6 +445,7 @@ class PersonalQdrantIndex:
         dense_vectors: Sequence[Sequence[float]],
         *,
         user_id: str,
+        knowledge_base_id: str,
         file_id: str,
         generation_id: str,
         ingestion_revision: int,
@@ -374,6 +457,7 @@ class PersonalQdrantIndex:
                 chunk,
                 vector,
                 user_id=user_id,
+                knowledge_base_id=knowledge_base_id,
                 file_id=file_id,
                 generation_id=generation_id,
                 ingestion_revision=ingestion_revision,
@@ -392,6 +476,7 @@ class PersonalQdrantIndex:
         *,
         user_id: str,
         generation_id: str,
+        knowledge_base_id: str | None = None,
         file_id: str | None = None,
         visible: bool | None = True,
     ) -> int:
@@ -403,6 +488,7 @@ class PersonalQdrantIndex:
                 "filter": self.tenant_filter(
                     user_id=user_id,
                     generation_id=generation_id,
+                    knowledge_base_id=knowledge_base_id,
                     file_id=file_id,
                     visible=visible,
                 ),
@@ -419,6 +505,7 @@ class PersonalQdrantIndex:
         user_id: str,
         file_id: str,
         generation_id: str,
+        knowledge_base_id: str | None = None,
         visible: bool,
     ) -> None:
         self._request(
@@ -429,6 +516,7 @@ class PersonalQdrantIndex:
                 "filter": self.tenant_filter(
                     user_id=user_id,
                     generation_id=generation_id,
+                    knowledge_base_id=knowledge_base_id,
                     file_id=file_id,
                     visible=None,
                 ),
@@ -441,6 +529,7 @@ class PersonalQdrantIndex:
         user_id: str,
         file_id: str,
         generation_id: str,
+        knowledge_base_id: str | None = None,
     ) -> None:
         self._request(
             "POST",
@@ -449,13 +538,20 @@ class PersonalQdrantIndex:
                 "filter": self.tenant_filter(
                     user_id=user_id,
                     generation_id=generation_id,
+                    knowledge_base_id=knowledge_base_id,
                     file_id=file_id,
                     visible=None,
                 )
             },
         )
 
-    def delete_generation(self, *, user_id: str, generation_id: str) -> None:
+    def delete_generation(
+        self,
+        *,
+        user_id: str,
+        knowledge_base_id: str,
+        generation_id: str,
+    ) -> None:
         self._request(
             "POST",
             f"/collections/{quote(self.collection)}/points/delete?wait=true",
@@ -463,6 +559,7 @@ class PersonalQdrantIndex:
                 "filter": self.tenant_filter(
                     user_id=user_id,
                     generation_id=generation_id,
+                    knowledge_base_id=knowledge_base_id,
                     visible=None,
                 )
             },
@@ -476,6 +573,7 @@ class PersonalQdrantIndex:
         *,
         user_id: str,
         generation_id: str,
+        knowledge_base_id: str | None = None,
         content_roles: frozenset[ContentRole] | None = None,
         file_ids: Sequence[str] | None = None,
     ) -> list[RankedItem]:
@@ -492,6 +590,7 @@ class PersonalQdrantIndex:
                 "filter": self.tenant_filter(
                     user_id=user_id,
                     generation_id=generation_id,
+                    knowledge_base_id=knowledge_base_id,
                     content_roles=content_roles,
                     file_ids=file_ids,
                 ),
@@ -514,12 +613,14 @@ class PersonalQdrantIndex:
         *,
         user_id: str,
         generation_id: str,
+        knowledge_base_id: str | None = None,
         content_roles: frozenset[ContentRole] | None = None,
         file_ids: Sequence[str] | None = None,
     ) -> list[RankedItem]:
         return self._query(
             list(query_vector), self.dense_name, limit,
             user_id=user_id, generation_id=generation_id,
+            knowledge_base_id=knowledge_base_id,
             content_roles=content_roles,
             file_ids=file_ids,
         )
@@ -531,12 +632,14 @@ class PersonalQdrantIndex:
         *,
         user_id: str,
         generation_id: str,
+        knowledge_base_id: str | None = None,
         content_roles: frozenset[ContentRole] | None = None,
         file_ids: Sequence[str] | None = None,
     ) -> list[RankedItem]:
         return self._query(
             self._bm25_document(query), self.body_name, limit,
             user_id=user_id, generation_id=generation_id,
+            knowledge_base_id=knowledge_base_id,
             content_roles=content_roles,
             file_ids=file_ids,
         )
@@ -548,12 +651,14 @@ class PersonalQdrantIndex:
         *,
         user_id: str,
         generation_id: str,
+        knowledge_base_id: str | None = None,
         content_roles: frozenset[ContentRole] | None = None,
         file_ids: Sequence[str] | None = None,
     ) -> list[RankedItem]:
         return self._query(
             self._bm25_document(query), self.heading_name, limit,
             user_id=user_id, generation_id=generation_id,
+            knowledge_base_id=knowledge_base_id,
             content_roles=content_roles,
             file_ids=file_ids,
         )
@@ -566,6 +671,7 @@ class PersonalQdrantIndex:
         *,
         user_id: str,
         generation_id: str,
+        knowledge_base_id: str,
         file_ids: Sequence[str],
     ) -> list[dict[str, Any]]:
         """Return tenant-filtered payloads for personal evidence assembly."""
@@ -585,6 +691,7 @@ class PersonalQdrantIndex:
                 "filter": self.tenant_filter(
                     user_id=user_id,
                     generation_id=generation_id,
+                    knowledge_base_id=knowledge_base_id,
                     file_ids=file_ids,
                 ),
             },

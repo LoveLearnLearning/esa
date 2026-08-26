@@ -11,7 +11,8 @@ def test_official_rag_identity_and_retrieval_defaults_are_frozen() -> None:
     """验证 `official_rag_identity_and_retrieval_defaults_are_frozen` 场景。"""
     assert config.RAG_COLLECTION_ID == "collection_f645d539e0ae078ba11d7e88"
     assert config.RAG_DEPLOYMENT_ID == "deployment_57fdb5e345322c2181e16ee1"
-    assert config.RAG_QDRANT_COLLECTION == "cs_textbooks_qwen3_20260822"
+    assert config.RAG_QDRANT_COLLECTION == "esa_knowledge_unified_qwen3_4b"
+    assert config.PERSONAL_KB_QDRANT_COLLECTION == config.RAG_QDRANT_COLLECTION
     assert config.RAG_EMBEDDING_DIMENSION == 2560
     assert config.RAG_FUSION_METHOD == "dense"
     assert config.RAG_DENSE_WEIGHT == 1.0

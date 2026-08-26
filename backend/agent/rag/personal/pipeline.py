@@ -61,12 +61,12 @@ class PersonalUploadPipeline:
         if not file_ids:
             raise ValueError("upload job has no files")
         knowledge_base_id = job["payload"].get("knowledge_base_id")
+        if not isinstance(knowledge_base_id, str) or not knowledge_base_id:
+            raise ValueError("upload job has no knowledge_base_id")
         await asyncio.to_thread(self.index.ensure_collection, self.dense_dimension)
         generation_id = self.store.ensure_active_generation(
             user_id=user_id,
-            knowledge_base_id=(
-                str(knowledge_base_id) if knowledge_base_id is not None else None
-            ),
+            knowledge_base_id=knowledge_base_id,
             collection_name=self.index.collection,
             embedding_fingerprint=self.embedding_fingerprint,
             chunk_fingerprint=self.ingestion.pipeline_fingerprint,
@@ -139,6 +139,7 @@ class PersonalUploadPipeline:
             await asyncio.to_thread(
                 self.index.set_file_visibility,
                 user_id=user_id,
+                knowledge_base_id=knowledge_base_id,
                 file_id=record["file_id"],
                 generation_id=generation_id,
                 visible=False,
@@ -148,6 +149,7 @@ class PersonalUploadPipeline:
                 chunks,
                 vectors,
                 user_id=user_id,
+                knowledge_base_id=knowledge_base_id,
                 file_id=record["file_id"],
                 generation_id=generation_id,
                 ingestion_revision=int(record["ingestion_revision"]),
@@ -163,6 +165,7 @@ class PersonalUploadPipeline:
                 self.index.count,
                 user_id=user_id,
                 generation_id=generation_id,
+                knowledge_base_id=knowledge_base_id,
                 file_id=record["file_id"],
                 visible=False,
             )
@@ -211,6 +214,7 @@ class PersonalUploadPipeline:
                 await asyncio.to_thread(
                     self.index.set_file_visibility,
                     user_id=user_id,
+                    knowledge_base_id=knowledge_base_id,
                     file_id=item.file_id,
                     generation_id=generation_id,
                     visible=True,
@@ -219,6 +223,7 @@ class PersonalUploadPipeline:
                     self.index.count,
                     user_id=user_id,
                     generation_id=generation_id,
+                    knowledge_base_id=knowledge_base_id,
                     file_id=item.file_id,
                     visible=True,
                 )

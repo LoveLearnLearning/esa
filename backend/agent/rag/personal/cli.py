@@ -25,7 +25,7 @@ from backend.core.utils.config import (
     PERSONAL_KB_MAX_IMAGE_PIXELS,
     PERSONAL_KB_MAX_PAGES,
     PERSONAL_KB_ORPHAN_RETENTION_SECONDS,
-    PERSONAL_KB_QDRANT_COLLECTION,
+    RAG_QDRANT_COLLECTION,
     PERSONAL_KB_ROOT,
     RAG_QDRANT_BASE_URL,
     RAG_QDRANT_TIMEOUT,
@@ -56,7 +56,7 @@ def _parser() -> argparse.ArgumentParser:
 def _index() -> PersonalQdrantIndex:
     return PersonalQdrantIndex(
         base_url=RAG_QDRANT_BASE_URL,
-        collection=PERSONAL_KB_QDRANT_COLLECTION,
+        collection=RAG_QDRANT_COLLECTION,
         api_key=os.environ.get("QDRANT_API_KEY"),
         timeout=RAG_QDRANT_TIMEOUT,
         upsert_batch_size=RAG_QDRANT_UPSERT_BATCH_SIZE,
