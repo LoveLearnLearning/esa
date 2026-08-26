@@ -1112,8 +1112,117 @@ def web_search_failed(detail: str = WEB_SEARCH_NOT_CONFIGURED) -> dict[str, Any]
     return _exec_error("web_search", detail)
 
 
+def retrieve_federated_knowledge(query: str, top_k: int = 5,
+                                 similarity_threshold: float | None = None) -> dict[str, Any]:
+    """联合检索在**两个 scope 都不可用**时的返回。
+
+    ⚠️ 只能产出这一种状态。成功返回需要真实 RAG 服务，我们没有，
+    也**不许编**（理由见本文件抬头那次 220 条样本的教训，以及《02》「不伪造」承诺）。
+
+    结构不是手写的：2026-08-22 直接跑了后端
+    `backend/agent/rag/federated.py::retrieve_federated_knowledge_payload`
+    （`personal_service=None` / `public_service=None`），逐字段抄回来。
+    个人库无服务 → `_empty_personal` 给 `personal_knowledge_base_unavailable`；
+    公共库无服务 → `retrieve_knowledge_payload` 抛错 → `public_retrieval_failed`；
+    `_merge_payloads` 再给两者加上 `scope:` 前缀。
+
+    Args:
+        query: str => 检索问题。
+        top_k: int => 最多返回多少条（降级时无影响，保留以对齐 schema）。
+        similarity_threshold: float | None => 仅作用于公共库 Reranker（降级时无影响）。
+
+    Returns:
+        dict[str, Any] => 与线上逐字段一致的降级载荷。
+    """
+    return {
+        "query": query,
+        "result_count": 0,
+        "results": [],
+        "sources": [],
+        "context_text": "",
+        "degraded": [
+            "personal:personal_knowledge_base_unavailable",
+            "public:public_retrieval_failed",
+        ],
+        "rankings": {"federated": [], "personal": [], "public": []},
+        "federation": {
+            "mode": "personal_and_public",
+            "personal_candidates": 0,
+            "public_candidates": 0,
+        },
+    }
+
+
+def retrieve_personal_knowledge(query: str, top_k: int = 5) -> dict[str, Any]:
+    """个人知识库在**服务不可用**时的返回。
+
+    同样只能产出这一种状态，理由见 `retrieve_federated_knowledge`。
+    结构抄自 `backend/agent/workspaces/capability_runtime.py:122-133`
+    （`personal_knowledge_retrieval_service is None` 那一支）。
+
+    Args:
+        query: str => 检索问题。
+        top_k: int => 最多返回多少条（不可用时无影响）。
+
+    Returns:
+        dict[str, Any] => 与线上逐字段一致的不可用载荷。
+    """
+    return {
+        "query": query,
+        "result_count": 0,
+        "results": [],
+        "degraded": ["personal_knowledge_base_unavailable"],
+        "rankings": {},
+    }
+
+
+def run_in_sandbox(command: str, workdir: str = ".",
+                   timeout_seconds: float = 30, *,
+                   _stdout: str = "", _stderr: str = "",
+                   _exit_code: int = 0, _duration_ms: int = 12) -> dict[str, Any]:
+    """沙箱执行的返回封装。
+
+    ⚠️ 这个函数**不真的执行命令** —— 它只负责套上线上那层封装。
+    `_stdout` / `_exit_code` 必须由调用方给出**真实跑过一次**的结果
+    （生成器里挑的都是与环境无关的命令，本机跑一次即可复现）。
+    编造 stdout 等于教模型消费一个假的执行结果。
+
+    封装逐字段抄自 `backend/sandbox/sandbox.py::_result`（317-333 行）。
+    `duration_ms` 线上是实测耗时，样本里取一个合理定值即可 —— 模型消费的是结构。
+
+    Args:
+        command: str => 执行的 shell 命令。
+        workdir: str => `/workspace` 内的相对目录。
+        timeout_seconds: float => 超时秒数。
+        _stdout: str => 真实标准输出。
+        _stderr: str => 真实标准错误。
+        _exit_code: int => 真实退出码。
+        _duration_ms: int => 耗时占位。
+
+    Returns:
+        dict[str, Any] => 与线上逐字段一致的执行结果。
+    """
+    return {
+        "ok": _exit_code == 0,
+        "exit_code": _exit_code,
+        "stdout": _stdout,
+        "stderr": _stderr,
+        "output_truncated": False,
+        "duration_ms": _duration_ms,
+        "workspace": "/workspace",
+    }
+
+
+def sandbox_disabled() -> dict[str, Any]:
+    """沙箱未启用时的返回（`sandbox.py:127`）。"""
+    return {"ok": False, "error": "sandbox_disabled"}
+
+
 FIXTURE_FUNCTIONS = {
     "arxiv_search": arxiv_search,
+    "retrieve_federated_knowledge": retrieve_federated_knowledge,
+    "retrieve_personal_knowledge": retrieve_personal_knowledge,
+    "run_in_sandbox": run_in_sandbox,
     "get_time": get_time,
     "get_weather": get_weather,
     "recommend_practice": recommend_practice,

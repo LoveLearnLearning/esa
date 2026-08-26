@@ -277,7 +277,7 @@ def main() -> int:
     size_kb = out_path.stat().st_size / 1024
     print(f"\n{len(messages)} 条消息 x {len(STYLES)} 风格 x {len(tones)} 语调 "
           f"= {len(index)} 次渲染 → 只有 {len(prompts)} 种不同的提示词")
-    print(f"缓存 {size_kb:.0f}KB → {out_path.relative_to(ROOT)}")
+    print(f"缓存 {size_kb:.0f}KB → {backend_repo.display_path(out_path, ROOT)}")
     print(f"  来源：{backend.describe()}")
     print(f"  长度：{min(len(p) for p in prompts.values())}–{max(len(p) for p in prompts.values())} 字符")
     print("  路由命中分布：")

@@ -114,7 +114,11 @@ wrapped:
     err: "RAG retrieval service is not configured; configure it during the ESA application lifespan"
     src: backend/agent/rag/agent_api.py:41-44
     lures: [retrieve_knowledge, get_knowledge_base_stats, load_skill]
-    q: "从知识库里查一下红黑树删除操作的完整步骤"
+    # 2026-08-22：措辞改成**明确限定公共库**。上游把 retrieve_knowledge 从「默认」
+    # 降成了「用户明确指定公共库，或个人库无结果时才调」，默认位置让给了
+    # retrieve_federated_knowledge。原话「从知识库里查」在新语义下是含糊的，
+    # 照旧会教模型把公共库当默认。
+    q: "只查课程公共资料，红黑树删除操作的完整步骤是什么"
     a: |
       知识库这次没接上（[Error]: RAG retrieval service is not configured; configure it during the ESA
       application lifespan），检索服务还没在本次会话里初始化，所以我拿不到你们课程资料里的原文。
@@ -407,6 +411,9 @@ registry:
     # 所以必须单独登记字面量。两种长相都是真的，都要留。
     - { text: "RAG retrieval service is not configured; configure it during the ESA application lifespan",
         src: backend/agent/rag/agent_api.py:78-81 }
+    # 2026-08-22：沙箱未启用。逐行打开看过 —— 那一行就是
+    #   return {"ok": False, "error": "sandbox_disabled"}
+    - { text: "sandbox_disabled", src: backend/sandbox/sandbox.py:128 }
     # 2026-08-19（④-4）：学情工具的参数校验错误。三句都在
     # backend/agent/tools/learning/runtime.py 里，**逐行打开看过**才登记的
     # （5.30：带 src 行号不等于核过了）。
@@ -481,6 +488,11 @@ blocked:
       我不会照着印象编一份报告给你，那比不给更误导。换普通会话再问我一次就能查到；
       要是你现在就想过一遍，可以口头跟我说说哪几章有把握、哪几章没有，我帮你梳理。
 
+  # ⚠️ 这里原本还有一条 `blocked_record_answer`（第一次调用是 record_answer）。
+  # 2026-08-19 删掉：那时 record_answer 已被标为弃用，它教的是「先调一个不该调的
+  # 工具，再教怎么擦屁股」，不满足本文件第二节「换成谁都会这么调」那条硬规矩。
+  # 2026-08-24 上游把 record_answer 从注册表整个删了，这条更不可能回来。
+  # 同一种失败长相由紧接着的 blocked_record_learning_evidence 覆盖，没有缺口。
   - id: blocked_record_learning_evidence
     tool: record_learning_evidence
     mode: isolated

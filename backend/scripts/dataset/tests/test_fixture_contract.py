@@ -214,6 +214,54 @@ def main() -> int:
             f"observation 序列化与后端逐字一致（{len(fmt)} 条探针）",
             not bad, "；".join(bad[:3])))
 
+    # --- 2026-08-22 新增的三个工具（上游 885029d / b40a4e3）---
+    #
+    # 前两个我们**只能产出降级态**（没有 RAG 服务），所以契约只钉降级形态。
+    # 结构不是手写的：直接跑了后端
+    # `backend/agent/rag/federated.py::retrieve_federated_knowledge_payload`
+    # （两个 service 都传 None），逐字段抄回来的。
+    FED_KEYS = {"query", "result_count", "results", "sources", "context_text",
+                "degraded", "rankings", "federation"}          # federated.py:_merge_payloads
+    PERSONAL_KEYS = {"query", "result_count", "results", "degraded", "rankings"}
+    #                                       capability_runtime.py:122-133（service is None 那支）
+    SANDBOX_KEYS = {"ok", "exit_code", "stdout", "stderr",
+                    "output_truncated", "duration_ms", "workspace"}   # sandbox.py:317-333
+
+    fed = fixtures.retrieve_federated_knowledge("最小生成树")
+    results.append(check("retrieve_federated_knowledge 字段集", set(fed) == FED_KEYS,
+                         f"多/少：{set(fed) ^ FED_KEYS}"))
+    results.append(check(
+        "retrieve_federated_knowledge 降级标记带 scope 前缀",
+        fed["degraded"] == ["personal:personal_knowledge_base_unavailable",
+                            "public:public_retrieval_failed"],
+        f"实际 {fed['degraded']}"))
+    results.append(check("retrieve_federated_knowledge 降级时 results 为空",
+                         fed["result_count"] == 0 and fed["results"] == [], ""))
+    results.append(check(
+        "retrieve_federated_knowledge 的 federation 段",
+        fed["federation"] == {"mode": "personal_and_public",
+                              "personal_candidates": 0, "public_candidates": 0},
+        f"实际 {fed['federation']}"))
+
+    per = fixtures.retrieve_personal_knowledge("哈希冲突")
+    results.append(check("retrieve_personal_knowledge 字段集", set(per) == PERSONAL_KEYS,
+                         f"多/少：{set(per) ^ PERSONAL_KEYS}"))
+    results.append(check("retrieve_personal_knowledge 降级标记",
+                         per["degraded"] == ["personal_knowledge_base_unavailable"],
+                         f"实际 {per['degraded']}"))
+
+    box = fixtures.run_in_sandbox("python3 -c \"print(1)\"", _stdout="1\n", _exit_code=0)
+    results.append(check("run_in_sandbox 字段集", set(box) == SANDBOX_KEYS,
+                         f"多/少：{set(box) ^ SANDBOX_KEYS}"))
+    results.append(check("run_in_sandbox 的 ok 由 exit_code 决定",
+                         box["ok"] is True
+                         and fixtures.run_in_sandbox("x", _exit_code=1)["ok"] is False, ""))
+    results.append(check("run_in_sandbox 的 workspace 固定为 /workspace",
+                         box["workspace"] == "/workspace", f"实际 {box['workspace']!r}"))
+    dis = fixtures.sandbox_disabled()
+    results.append(check("sandbox_disabled 形态", dis == {"ok": False, "error": "sandbox_disabled"},
+                         f"实际 {dis}"))
+
     # --- 对着真实抓取校验结构（2026-08-15 新增，这是本文件的权威部分）---
     results.extend(check_against_real_captures())
 
@@ -483,6 +531,41 @@ def check_memory_behaviour(root: Path) -> list[bool]:
     lpath = root / "dataset/data/cache/learning_real.json"
     if lpath.exists():
         lcalls = json.loads(lpath.read_text(encoding="utf-8"))["calls"]
+        # ⚠️ 这个过滤条件是 2026-08-24 上游加的，理由成立：后端删掉 `record_answer`
+        # 之后，缓存里还留着它的阻断记录，而 fixtures 已经没有对应 builder。
+        # 但**只写这一句是 fail-open** —— 后端明天新增一个会被阻断的工具、
+        # 我们没跟着写 builder，这里会静默跳过它，测试照样全绿（5.32 / 5.35 同款）。
+        # 所以补一道反向闸门：当前工具快照里**还在**的工具，缺 builder 一律当场失败；
+        # 只有快照里已经没有的（= 后端删了）才允许跳过。
+        # 豁免必须**声明 + 带理由**，不能靠「反正跳过了」。理由和 `gold.score_exclude`
+        # 一样：没写进文件里的豁免，等于偷偷把闸门关小了。
+        # 每条豁免都是「后端已删、我们的快照还没重生成」这个窗口期的临时状态；
+        # 重生成之后该工具会从快照里消失，那时这条豁免就是死条目 —— 下面第二道
+        # 检查会要求把它删掉，免得豁免表越积越长、再没人敢动。
+        DELETED_UPSTREAM = {
+            "record_answer": "2026-08-24 上游从注册表删除（CI 现在断言它不存在）；"
+                             "我们的快照仍是 c2d1f09 的 26 个，待下一轮重生成一并清掉",
+        }
+        snapshot = json.loads(
+            (root / "dataset/schemas/tool_schemas.json").read_text(encoding="utf-8"))
+        live_tools = {(s.get("function", s))["name"] for s in snapshot}
+        uncovered = sorted({
+            c["tool"] for c in lcalls
+            if c["mode"] != "normal" and "result" in c
+            and c["tool"] in live_tools
+            and c["tool"] not in fixtures.BLOCKED_BUILDERS
+            and c["tool"] not in DELETED_UPSTREAM
+        })
+        results.append(check(
+            "阻断载荷：快照里还在的工具都有 builder",
+            not uncovered,
+            f"缺 builder：{uncovered}（要么补进 BLOCKED_BUILDERS，"
+            f"要么确认后端已删并写进 DELETED_UPSTREAM 带上理由）"))
+        stale = sorted(t for t in DELETED_UPSTREAM if t not in live_tools)
+        results.append(check(
+            "豁免表没有死条目",
+            not stale,
+            f"{stale} 已不在快照里，豁免可以删了（留着等于永久放宽这道闸门）"))
         real_blocked = {
             (c["mode"], c["tool"]): c["result"]
             for c in lcalls
