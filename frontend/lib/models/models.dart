@@ -1025,18 +1025,26 @@ class SourceCitation {
     required this.label,
     this.filename,
     this.fileId,
+    this.documentId,
     this.previewUrl,
     this.page,
     this.section,
+    this.sourceType = 'public',
+    this.highlightText,
+    this.originalText,
   });
 
   final int index;
   final String label;
   final String? filename;
   final String? fileId;
+  final String? documentId;
   final String? previewUrl;
   final int? page;
   final String? section;
+  final String sourceType;
+  final String? highlightText;
+  final String? originalText;
 
   String get locationLabel {
     // Public knowledge-base citations do not have a local file to open. Keep
@@ -1059,6 +1067,7 @@ class SourceCitation {
   }
 
   bool get canOpen =>
+      originalText?.trim().isNotEmpty == true ||
       (filename != null && filename!.trim().isNotEmpty) ||
       (fileId != null && fileId!.trim().isNotEmpty) ||
       (previewUrl != null && previewUrl!.trim().isNotEmpty);

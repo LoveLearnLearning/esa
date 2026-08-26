@@ -17,12 +17,21 @@ class KnowledgeMapPage extends StatefulWidget {
   const KnowledgeMapPage({
     super.key,
     required this.onOpenChat,
+    this.onConversationCreated,
     this.onOpenSchedule,
     this.api,
     this.embedded = false,
   });
 
   final VoidCallback onOpenChat;
+
+  /// Called after the explanation message has created a real conversation.
+  ///
+  /// `AppState.newConversation()` intentionally creates a local blank state;
+  /// the server conversation is created lazily by `AppState.send()`.  The
+  /// callback lets the owning shell bind navigation to that server id once it
+  /// exists.
+  final Future<void> Function(String conversationId)? onConversationCreated;
   final VoidCallback? onOpenSchedule;
   final ApiClient? api;
   final bool embedded;
@@ -297,6 +306,10 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
     widget.onOpenChat();
     await createConversation;
     await app.send('请针对“${node.name}”结合我的掌握度、记忆状态、学习证据和薄弱前置进行讲解，并给我一道检验理解的小题。');
+    final conversationId = app.activeId;
+    if (conversationId != null && widget.onConversationCreated != null) {
+      await widget.onConversationCreated!(conversationId);
+    }
   }
 
   Future<void> _showAddMenu() async {

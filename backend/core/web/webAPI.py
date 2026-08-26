@@ -242,6 +242,7 @@ from backend.core.web.routers import (
     memories,
     planner,
     personal_knowledge_base,
+    public_knowledge_base,
     preferences,
     research,
     research_capabilities,
@@ -813,6 +814,7 @@ business_router.include_router(schedule_hust.router)
 business_router.include_router(memories.router)
 business_router.include_router(planner.router)
 business_router.include_router(personal_knowledge_base.router)
+business_router.include_router(public_knowledge_base.router)
 business_router.include_router(workspaces.router)
 business_router.include_router(research.router)
 business_router.include_router(research_capabilities.router)

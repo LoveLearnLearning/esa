@@ -2191,6 +2191,56 @@ class ApiClient {
     return content;
   }
 
+  /// Fetch the retained source file rather than a parser-derived preview.
+  /// Source citations should open this endpoint so users see the original
+  /// document that was indexed.
+  Future<AttachmentContent> fetchPersonalKnowledgeBaseOriginal(
+    KnowledgeBaseFile file, {
+    RequestCancellation? cancellation,
+  }) async {
+    final transfer = await _openPersonalKnowledgeBaseTransfer(
+      file,
+      endpoint: 'content',
+      cancellation: cancellation,
+    );
+    cancellation?.attach(transfer.cancel);
+    final builder = BytesBuilder(copy: false);
+    try {
+      await for (final chunk in transfer.chunks) {
+        builder.add(chunk);
+      }
+    } finally {
+      cancellation?.detach();
+      transfer.cancel();
+    }
+    return AttachmentContent(
+      bytes: builder.takeBytes(),
+      mediaType: transfer.mediaType,
+      filename: file.filename,
+    );
+  }
+
+  Future<AttachmentContent> fetchSourcePreview(String url) async {
+    final parsed = Uri.tryParse(url);
+    if (parsed == null) throw ApiException(400, '来源地址无效');
+    final target = parsed.hasScheme ? parsed : _uri(url);
+    final localHost = const {
+      'localhost',
+      '127.0.0.1',
+      '::1',
+    }.contains(target.host.toLowerCase());
+    if (target.scheme != 'https' && !(target.scheme == 'http' && localHost)) {
+      throw ApiException(400, '来源地址必须使用 HTTPS');
+    }
+    final response = await http.get(target, headers: _headers(auth: true));
+    if (response.statusCode != 200) _fail(response);
+    return AttachmentContent(
+      bytes: response.bodyBytes,
+      mediaType: response.headers['content-type'] ?? 'application/octet-stream',
+      filename: target.pathSegments.isEmpty ? '来源文件' : target.pathSegments.last,
+    );
+  }
+
   Future<AttachmentTransfer> _openPersonalKnowledgeBaseTransfer(
     KnowledgeBaseFile file, {
     required String endpoint,

@@ -371,11 +371,18 @@ def _v2_display_projection(
             {
                 "rank": rank,
                 "chunk_id": hit.chunk_id,
+                "document_id": primary.document_id,
+                "source_type": "public",
+                "preview_url": (
+                    f"/knowledge-base/public/documents/"
+                    f"{primary.document_id}/content"
+                ),
                 "source_ref": primary.evidence_id,
                 "source": _display_document_name(primary.document_name),
                 "section": " / ".join(primary.section_path) or None,
                 "page": _page_number(locator),
                 "location": _display_locator(locator),
+                "highlight_text": primary.evidence_text,
                 "quote_eligible": bool(hit.evidence)
                 and all(item.quote_eligible for item in hit.evidence),
             }

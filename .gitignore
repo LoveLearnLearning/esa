@@ -193,7 +193,6 @@ database/
 
 # Repository-local service state and generated corpus outputs
 /.qdrant-initialized
-/snapshots/
 /data/rebuild-smoke-*/
 /docs/reports/DOCIR_FULL_CORPUS_EVALUATION_*.md
 /*.tar.gz

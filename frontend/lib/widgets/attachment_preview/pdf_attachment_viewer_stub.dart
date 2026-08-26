@@ -9,11 +9,13 @@ class PdfAttachmentViewer extends StatelessWidget {
     required this.bytes,
     required this.mediaType,
     this.page,
+    this.searchText,
   });
 
   final Uint8List bytes;
   final String mediaType;
   final int? page;
+  final String? searchText;
 
   @override
   Widget build(BuildContext context) =>

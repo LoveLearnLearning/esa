@@ -578,6 +578,10 @@ RAG_COLLECTION_MANIFEST_PATH: Path = _path_from_env(
     RAG_WORKSPACE_ROOT
     / f"artifacts/chunk/collections/{RAG_COLLECTION_ID}/manifest.json",
 )
+RAG_PUBLIC_DOCIR_ROOT: Path = _path_from_env(
+    "RAG_PUBLIC_DOCIR_ROOT",
+    RAG_WORKSPACE_ROOT / "artifacts/docir/runs/full-corpus-20260802",
+)
 RAG_INDEX_DEPLOYMENT_ROOT: Path = _path_from_env(
     "RAG_INDEX_DEPLOYMENT_ROOT", RAG_WORKSPACE_ROOT / "artifacts/rag/indexes"
 )

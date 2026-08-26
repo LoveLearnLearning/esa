@@ -85,6 +85,14 @@ class _AttachmentSession {
   );
 }
 
+class _SourceSession {
+  const _SourceSession({required this.citation, this.file, this.content});
+
+  final SourceCitation citation;
+  final KnowledgeBaseFile? file;
+  final AttachmentContent? content;
+}
+
 class ChatPage extends StatefulWidget {
   const ChatPage({
     super.key,
@@ -135,6 +143,7 @@ class _ChatPageState extends State<ChatPage> {
   TaskMode? _taskMode;
   _CodeSession? _codeSession;
   _AttachmentSession? _attachmentSession;
+  _SourceSession? _sourceSession;
   int _attachmentLoadRequest = 0;
   double _editorWidth = 0.46;
   bool _pendingSend = false;
@@ -376,6 +385,10 @@ class _ChatPageState extends State<ChatPage> {
     _setStatePreservingChatScroll(() => _attachmentSession = null);
   }
 
+  void _closeSource() {
+    _setStatePreservingChatScroll(() => _sourceSession = null);
+  }
+
   void _retryAttachment() {
     final session = _attachmentSession;
     if (session == null) return;
@@ -573,12 +586,14 @@ class _ChatPageState extends State<ChatPage> {
       _taskMode = null;
       _codeSession = null;
       _attachmentSession = null;
+      _sourceSession = null;
     }
     if (_lastActiveId != app.activeId) {
       _lastActiveId = app.activeId;
       _userScrollInProgress = false;
       _codeSession = null;
       _attachmentSession = null;
+      _sourceSession = null;
       _attachmentLoadRequest++;
       _chatTransitionScheduled = false;
       if (app.activeId == null) _pendingSend = false;
@@ -719,7 +734,10 @@ class _ChatPageState extends State<ChatPage> {
           : _messageList(context, app),
     );
     final panelCompact = pageWidth < 900;
-    final hasPanel = _codeSession != null || _attachmentSession != null;
+    final hasPanel =
+        _codeSession != null ||
+        _attachmentSession != null ||
+        _sourceSession != null;
     Widget panel({required bool compact}) {
       final code = _codeSession;
       if (code != null) {
@@ -742,6 +760,16 @@ class _ChatPageState extends State<ChatPage> {
           onRunCode: (value, language) =>
               _executeCode(app, code.id, value, language, source: code.source),
           onClose: _closeCodeEditor,
+        );
+      }
+      final source = _sourceSession;
+      if (source != null) {
+        return _SourcePreviewDialog(
+          citation: source.citation,
+          file: source.file,
+          content: source.content,
+          embedded: true,
+          onClose: _closeSource,
         );
       }
       final attachment = _attachmentSession!;
@@ -1012,6 +1040,9 @@ class _ChatPageState extends State<ChatPage> {
     for (var i = firstToolIndex; i < assistantIndex; i++) {
       final message = messages[i];
       if (!message.isTool || message.text.trim().isEmpty) continue;
+      final toolSourceType = message.name == 'retrieve_personal_knowledge'
+          ? 'personal'
+          : 'public';
       try {
         final payload = jsonDecode(message.text);
         if (payload is! Map) continue;
@@ -1048,6 +1079,13 @@ class _ChatPageState extends State<ChatPage> {
                       result['documentId'])
                   ?.toString()
                   .trim();
+          final documentId =
+              (result['document_id'] ??
+                      result['documentId'] ??
+                      sourceMap?['document_id'] ??
+                      sourceMap?['documentId'])
+                  ?.toString()
+                  .trim();
           final previewUrl =
               (result['preview_url'] ??
                       result['previewUrl'] ??
@@ -1058,14 +1096,43 @@ class _ChatPageState extends State<ChatPage> {
           final location = result['location'];
           final page = _citationPage(result, location);
           final section = result['section']?.toString().trim();
+          final sourceType =
+              (result['source_type'] ??
+                      result['sourceType'] ??
+                      sourceMap?['source_type'] ??
+                      sourceMap?['sourceType'])
+                  ?.toString()
+                  .trim()
+                  .toLowerCase() ??
+              toolSourceType;
+          final highlightText =
+              (result['highlight_text'] ??
+                      result['highlightText'] ??
+                      result['evidence_text'] ??
+                      result['content'])
+                  ?.toString()
+                  .trim();
+          final originalText =
+              (result['original_text'] ??
+                      result['originalText'] ??
+                      result['raw_text'] ??
+                      result['quote'])
+                  ?.toString()
+                  .trim();
           final citation = SourceCitation(
             index: resultIndex + 1,
             label: '来源 ${resultIndex + 1} · $sourceLabel',
             filename: filename,
             fileId: fileId?.isEmpty == true ? null : fileId,
+            documentId: documentId?.isEmpty == true ? null : documentId,
             previewUrl: previewUrl?.isEmpty == true ? null : previewUrl,
             page: page,
             section: section?.isEmpty == true ? null : section,
+            sourceType: sourceType == 'personal' ? 'personal' : 'public',
+            highlightText: highlightText?.isEmpty == true
+                ? null
+                : highlightText,
+            originalText: originalText?.isEmpty == true ? null : originalText,
           );
           if (!output.any(
             (item) =>
@@ -1117,9 +1184,27 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _openSource(SourceCitation citation) async {
     final filename = citation.filename;
-    if (filename == null || filename.isEmpty) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
+      if (citation.sourceType != 'personal') {
+        if (citation.originalText?.trim().isNotEmpty == true) {
+          await _showSourcePreview(citation, null, null);
+          return;
+        }
+        if (citation.previewUrl?.trim().isNotEmpty == true) {
+          final content = await AppScope.of(
+            context,
+          ).api.fetchSourcePreview(citation.previewUrl!);
+          if (!mounted) return;
+          await _showSourcePreview(citation, null, content);
+          return;
+        }
+        messenger.showSnackBar(
+          const SnackBar(content: Text('公共知识库暂未提供原文预览地址')),
+        );
+        return;
+      }
+      if (filename == null || filename.isEmpty) return;
       final snapshot = await AppScope.of(
         context,
       ).api.getPersonalKnowledgeBase();
@@ -1138,16 +1223,9 @@ class _ChatPageState extends State<ChatPage> {
       }
       final content = await AppScope.of(
         context,
-      ).api.fetchPersonalKnowledgeBasePreview(file);
+      ).api.fetchPersonalKnowledgeBaseOriginal(file);
       if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (_) => _SourcePreviewDialog(
-          file: file!,
-          content: content,
-          page: citation.page,
-        ),
-      );
+      await _showSourcePreview(citation, file, content);
     } on ApiException catch (error) {
       if (mounted) {
         messenger.showSnackBar(SnackBar(content: Text(error.detail)));
@@ -1157,6 +1235,22 @@ class _ChatPageState extends State<ChatPage> {
         messenger.showSnackBar(const SnackBar(content: Text('来源预览加载失败，请重试')));
       }
     }
+  }
+
+  Future<void> _showSourcePreview(
+    SourceCitation citation,
+    KnowledgeBaseFile? file,
+    AttachmentContent? content,
+  ) async {
+    if (!mounted) return;
+    _setStatePreservingChatScroll(
+      () => _sourceSession = _SourceSession(
+        citation: citation,
+        file: file,
+        content: content,
+      ),
+      pauseFollowing: true,
+    );
   }
 
   bool _sameSourceFilename(String left, String right) {
@@ -1366,78 +1460,135 @@ class _CodeExecutionDialog extends StatelessWidget {
 
 class _SourcePreviewDialog extends StatelessWidget {
   const _SourcePreviewDialog({
-    required this.file,
-    required this.content,
-    this.page,
+    required this.citation,
+    this.file,
+    this.content,
+    this.embedded = false,
+    this.onClose,
   });
 
-  final KnowledgeBaseFile file;
-  final AttachmentContent content;
-  final int? page;
+  final SourceCitation citation;
+  final KnowledgeBaseFile? file;
+  final AttachmentContent? content;
+  final bool embedded;
+  final VoidCallback? onClose;
 
-  @override
-  Widget build(BuildContext context) {
-    final isPdf =
-        content.mediaType.startsWith('application/pdf') ||
-        file.extension == 'pdf';
-    final text = utf8.decode(content.bytes, allowMalformed: true);
-    return Dialog(
-      insetPadding: const EdgeInsets.all(24),
-      child: SizedBox(
-        width: 920,
-        height: 700,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 10, 10),
-              child: Row(
-                children: [
-                  const Icon(LucideIcons.fileText, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      file.filename,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                  ),
-                  if (page != null) Text('第$page页'),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(LucideIcons.x, size: 18),
-                  ),
-                ],
-              ),
-            ),
-            Divider(height: 1, color: context.n.divider),
-            Expanded(
-              child: isPdf
-                  ? PdfAttachmentViewer(
-                      bytes: content.bytes,
-                      mediaType: content.mediaType,
-                      page: page,
-                    )
-                  : SelectionArea(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(18),
-                        child: SelectableText(
-                          text,
-                          style: const TextStyle(
-                            fontFamily: 'JetBrainsMono',
-                            fontSize: 12.5,
-                            height: 1.55,
-                          ),
-                        ),
-                      ),
-                    ),
-            ),
-          ],
+  Widget _highlightedText(BuildContext context, String value) {
+    final highlight = citation.highlightText?.trim();
+    if (highlight == null || highlight.isEmpty) {
+      return SelectableText(
+        value,
+        style: const TextStyle(
+          fontFamily: 'JetBrainsMono',
+          fontSize: 12.5,
+          height: 1.55,
+        ),
+      );
+    }
+    final lower = value.toLowerCase();
+    final needle = highlight.toLowerCase();
+    final spans = <TextSpan>[];
+    var cursor = 0;
+    while (cursor < value.length) {
+      final index = lower.indexOf(needle, cursor);
+      if (index < 0) {
+        spans.add(TextSpan(text: value.substring(cursor)));
+        break;
+      }
+      if (index > cursor) {
+        spans.add(TextSpan(text: value.substring(cursor, index)));
+      }
+      spans.add(
+        TextSpan(
+          text: value.substring(index, index + highlight.length),
+          style: TextStyle(
+            backgroundColor: Colors.amber.withValues(alpha: .35),
+            color: context.scheme.onSurface,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+      cursor = index + highlight.length;
+    }
+    return SelectionArea(
+      child: RichText(
+        text: TextSpan(
+          style: TextStyle(
+            color: context.scheme.onSurface,
+            fontFamily: 'JetBrainsMono',
+            fontSize: 12.5,
+            height: 1.55,
+          ),
+          children: spans,
         ),
       ),
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentFile = file;
+    final currentContent = content;
+    final isPdf =
+        currentContent != null &&
+        (currentContent.mediaType.startsWith('application/pdf') ||
+            currentFile?.extension == 'pdf');
+    final text = currentContent == null
+        ? (citation.originalText ?? '公共知识库未返回原文内容。')
+        : utf8.decode(currentContent.bytes, allowMalformed: true);
+    final body = SizedBox(
+      width: embedded ? double.infinity : 920,
+      height: embedded ? double.infinity : 700,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 10, 10),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.fileText, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    currentFile?.filename ??
+                        citation.filename ??
+                        citation.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                if (citation.page != null) Text('第${citation.page}页'),
+                IconButton(
+                  tooltip: '关闭',
+                  onPressed: onClose ?? () => Navigator.pop(context),
+                  icon: const Icon(LucideIcons.x, size: 18),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: context.n.divider),
+          Expanded(
+            child: isPdf
+                ? PdfAttachmentViewer(
+                    bytes: currentContent.bytes,
+                    mediaType: currentContent.mediaType,
+                    page: citation.page,
+                    searchText: citation.highlightText,
+                  )
+                : SelectionArea(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(18),
+                      child: _highlightedText(context, text),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+    return embedded
+        ? ColoredBox(color: context.scheme.surface, child: body)
+        : Dialog(insetPadding: const EdgeInsets.all(24), child: body);
   }
 }
 

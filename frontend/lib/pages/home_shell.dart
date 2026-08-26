@@ -137,6 +137,7 @@ class _HomeShellState extends State<HomeShell> {
     StudentSection.knowledge => KnowledgeMapPage(
       embedded: true,
       onOpenChat: _showLearningChat,
+      onConversationCreated: _openLearningConversation,
       onOpenSchedule: () => unawaited(_select(StudentSection.schedule)),
     ),
     StudentSection.knowledgeBase => const PersonalKnowledgeBasePage(),
