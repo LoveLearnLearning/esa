@@ -330,7 +330,6 @@ class _HomeShellState extends State<HomeShell> {
         _section == StudentSection.research && _activeResearchProject != null;
     return Scaffold(
       key: _mobileScaffoldKey,
-      resizeToAvoidBottomInset: false,
       drawer: historyAvailable
           ? HistoryDrawer(
               onNewConversation: () => unawaited(_startNewConversation()),
@@ -379,14 +378,20 @@ class _HomeShellState extends State<HomeShell> {
           ],
         ),
       ),
-      bottomNavigationBar: keyboardOpen
-          ? null
-          : _MobileBottomBar(
-              research: _inResearch,
-              onLearning: () => unawaited(_select(StudentSection.home)),
-              onResearch: () => unawaited(_select(StudentSection.research)),
-              onProfile: () => showProfileSheet(context),
-            ),
+      bottomNavigationBar: AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        alignment: Alignment.bottomCenter,
+        child: keyboardOpen
+            ? const SizedBox.shrink()
+            : _MobileBottomBar(
+                research: _inResearch,
+                onLearning: () => unawaited(_select(StudentSection.home)),
+                onResearch: () =>
+                    unawaited(_select(StudentSection.research)),
+                onProfile: () => showProfileSheet(context),
+              ),
+      ),
     );
   }
 }

@@ -311,7 +311,6 @@ class _TeacherShellState extends State<TeacherShell> {
     ).availableWorkspaces.any((item) => item.type == WorkspaceType.learning);
     return Scaffold(
       key: _scaffoldKey,
-      resizeToAvoidBottomInset: false,
       drawer: Drawer(
         child: SafeArea(
           child: _TeacherSidebar(
@@ -357,14 +356,19 @@ class _TeacherShellState extends State<TeacherShell> {
           ],
         ),
       ),
-      bottomNavigationBar: keyboardOpen
-          ? null
-          : _TeacherBottomBar(
-              section: _section,
-              showLearning: showLearning,
-              onSelect: (section) => unawaited(_select(section)),
-              onProfile: () => showProfileSheet(context),
-            ),
+      bottomNavigationBar: AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        alignment: Alignment.bottomCenter,
+        child: keyboardOpen
+            ? const SizedBox.shrink()
+            : _TeacherBottomBar(
+                section: _section,
+                showLearning: showLearning,
+                onSelect: (section) => unawaited(_select(section)),
+                onProfile: () => showProfileSheet(context),
+              ),
+      ),
     );
   }
 }
