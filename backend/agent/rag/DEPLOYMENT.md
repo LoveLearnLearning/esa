@@ -1,7 +1,9 @@
-# Frozen RAG deployment and Agent contracts
+# Unified Qdrant deployment and Agent contracts
 
-The production baseline is frozen to the following identity. Runtime artifacts
-remain outside Git and must be provisioned before `RAG_ENABLED=true`.
+The following identity describes the historical public-only baseline. It is
+input to a rebuild, not the name or schema that a new deployment must preserve.
+Runtime artifacts remain outside Git and must be provisioned before
+`RAG_ENABLED=true`.
 
 - Collection: `collection_e55166f798ef1c361c72de9a` (11 documents, 941 chunks)
 - Deployment: `deployment_357bd9c84d8404fae42c2740`
@@ -21,22 +23,63 @@ deployable template is `.env.example`. A deployment manifest owns the indexed
 embedding identity, while `RAG_EMBEDDING_MODEL_PATH` may point at an equivalent
 local model copy used to load it.
 
-## B1/B2 freeze
+## Agent result contracts
 
-`get_knowledge_base_stats` is B1 v1 and `retrieve_knowledge` is B2 v1. Their
-exact top-level and result key order is declared in `agent_api.py` and enforced
-by `tests/test_agent_api.py`. In particular, B2 `results[].location` is present,
-and `results[].page` is populated only for a `kind=page` locator. Contract
-changes require a new version, updated real fixtures, and regenerated training
-data; they must not be introduced as silent additive fields.
+`get_knowledge_base_stats` remains the public deployment metadata contract.
+Public-only retrieval retains the separated v2 model/display/audit adapter in
+`agent_api.py`; the Agent-facing federation wraps it together with personal
+results as `retrieve_knowledge.unified.v1`. The final serialized model JSON is
+still limited to 2048 tokens, while complete source material stays in the audit
+projection. Contract changes require a new version, updated fixtures, and
+regenerated training schema/data; they must not be introduced silently.
 
-## Personal collection lifecycle
+## Unified collection protocol
 
-The personal collection is separately configured by `PERSONAL_KB_QDRANT_COLLECTION`
-and must never equal the frozen global collection. Run one ESA Uvicorn worker and
-one Qdrant process per Slurm Job. Keep SQLite, uploaded sources, DocIR/Chunk
-artifacts, and `PERSONAL_KB_SNAPSHOT_ROOT` on persistent storage; keep active
-Qdrant storage and parsing work under the Job-local temporary root.
+Public and personal Points use the one collection named by
+`RAG_QDRANT_COLLECTION`. `PERSONAL_KB_QDRANT_COLLECTION` is only a deprecated
+configuration alias to that same value; it is not a second deployment knob.
+Every Point is selected by server-built Qdrant filters:
+
+- public: `scope=public + visible=true + index_generation_id`;
+- personal: `scope=personal + visible=true + user_id + knowledge_base_id + kb_generation_id`, plus the SQLite live-file allowlist;
+- personal file deletion: the personal filter above plus `file_id`, followed by an exact count-to-zero check.
+
+The unified collection requires keyword payload indexes for `scope`,
+`content_role`, `index_generation_id`, `kb_generation_id`, `user_id`,
+`knowledge_base_id`, `file_id`, and `document_id`, plus a bool index for
+`visible`. `user_id` is always injected from authenticated server context. It
+is never accepted from the model or trusted merely because a client supplied
+it.
+
+The frontend continues to send `knowledge_sources` and an optional
+`personal_knowledge_base_id`. The Agent sees only `retrieve_knowledge`.
+Server-bound selection decides whether that call searches public, personal, or
+both scopes. A two-scope search is merged by source-level RRF, because public
+and personal raw scores do not share a comparable scale.
+
+## Rebuild and cutover
+
+Build a new named collection on every target machine. Do not reinterpret,
+rename, or mutate an existing experimental/public/personal collection in
+place:
+
+1. Choose a fresh `RAG_QDRANT_COLLECTION` name and build the public deployment into it.
+2. Verify the public generation, exact public Point count, payload indexes, and a `scope=public` query.
+3. Start the personal lifecycle against the same name. It restores a compatible unified snapshot or rebuilds only `scope=personal` from SQLite and durable sources.
+4. Verify public and personal scope counts, one public-only query, one personal-only query, and one combined query for an authenticated test user.
+5. Delete a test personal document and prove only its `user_id + knowledge_base_id + kb_generation_id + file_id` Points reach zero while public count remains unchanged.
+6. Switch the deployment manifest/environment to the verified collection. Retain the old collection until rollback and backup requirements are satisfied.
+
+Use this procedure independently for local development and the 8×A800 system;
+no collection currently present on either machine is an input assumption of
+the backend protocol.
+
+## Personal lifecycle in the unified collection
+
+Run one ESA Uvicorn worker and one Qdrant process per Slurm Job. Keep SQLite,
+uploaded sources, DocIR/Chunk artifacts, and `PERSONAL_KB_SNAPSHOT_ROOT` on
+persistent storage; keep active Qdrant storage and parsing work under the
+Job-local temporary root.
 
 Startup restores a checksummed snapshot whose embedding, index, locator,
 collection, and point count are compatible. If its sequence is below SQLite's
@@ -49,8 +92,10 @@ a valid replay cursor. Before lifespan startup completes, interrupted
 `running/applying` jobs are requeued and drained in per-user revision order. A
 terminal replay failure leaves personal retrieval not-ready for an operator to
 inspect and explicitly retry. If no compatible snapshot is usable, startup
-recreates the personal collection from the
-committed SQLite generation state and durable sources before readiness. The
+clears and rebuilds only `scope=personal` from the committed SQLite generation
+state and durable sources; it never recreates the shared collection. Unified
+snapshots bind the public generation/count, which are checked again after
+restore before personal readiness. The
 personal worker starts only after that validation. Shutdown first stops new
 personal jobs, waits for active checkpoints, and then flushes a final snapshot
 while Qdrant is still running. A stale snapshot is never served as current.
