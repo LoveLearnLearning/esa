@@ -10,7 +10,6 @@ from backend.agent.tools.context import ToolExecutionContext
 from backend.agent.tools.tools import tr
 from backend.core.log.logger import pipeline_log_context
 
-
 YOU_MCP_SERVER = "you"
 YOU_MCP_SEARCH_TOOL = "you-search"
 
