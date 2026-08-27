@@ -126,7 +126,7 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> {
+class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _scrollController = ScrollController();
   final _streamRenderingPaused = ValueNotifier(false);
@@ -148,6 +148,7 @@ class _ChatPageState extends State<ChatPage> {
   double _editorWidth = 0.46;
   bool _pendingSend = false;
   bool _chatTransitionScheduled = false;
+  bool _keyboardWasOpen = false;
   Set<KnowledgeSource> _knowledgeSources = const {
     KnowledgeSource.personal,
     KnowledgeSource.public,
@@ -161,6 +162,12 @@ class _ChatPageState extends State<ChatPage> {
       widget.composerKey ?? _internalComposerKey;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (AppScope.of(context).api.sessionId != null &&
@@ -168,6 +175,26 @@ class _ChatPageState extends State<ChatPage> {
         !_knowledgeBasesLoading) {
       unawaited(_loadPersonalKnowledgeBases());
     }
+  }
+
+  /// 手机浏览器直接收起虚拟键盘（不点发送）时，输入框焦点可能仍保留，
+  /// 导致 MediaQuery.viewInsets 未归零、页面底部残留键盘高度的黑屏/顶起。
+  /// 检测到键盘从打开变为收起后主动释放焦点，让外层布局随 viewInsets 恢复。
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    if (!mounted) return;
+    // 内层 Scaffold 会被外层 resizeToAvoidBottomInset 移除 viewInsets，
+    // 必须直接从 platformDispatcher 读取真实的键盘 inset。
+    final bottom = WidgetsBinding.instance.platformDispatcher.views.isEmpty
+        ? 0.0
+        : WidgetsBinding.instance.platformDispatcher.views.first.viewInsets
+            .bottom;
+    final keyboardOpen = bottom > 0;
+    if (_keyboardWasOpen && !keyboardOpen) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
+    _keyboardWasOpen = keyboardOpen;
   }
 
   Future<void> _loadPersonalKnowledgeBases() async {
@@ -218,6 +245,7 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _streamRenderingPaused.dispose();
     _scrollController.dispose();
     super.dispose();

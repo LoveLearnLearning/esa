@@ -140,6 +140,16 @@ Agent 默认使用 `retrieve_knowledge`。模型投影只包含一次正文、�
 Reranker 阶段，不再把任意检索分数标记为 RRF。检索服务自身的上下文预算仍由
 `RAG_MAX_CONTEXT_TOKENS` 控制。
 
+Agent runtime 在检索前按原始用户消息选择 `MINIMAL / SOURCE / LOCATION / FULL`
+model view；`BoundToolExecutor` 在统一检索完成后只替换 `model_content`，展示和审计
+通道继续保留完整数据。完整源结果保持 `retrieve_knowledge.unified.v1`；投影后的
+模型视图使用独立的 `retrieve_knowledge.model_context.v1`，同时声明源契约版本。
+正式 Schema 位于 `contracts/retrieve_knowledge_model_context_v1.schema.json`。
+`RAG_METADATA_PROJECTION_MODE` 默认 `off`；只有目标模型 fixture、成功检索训练数据和
+评测完成后才应显式设为 `rule`。`off` 会原样返回此前的三通道
+`ToolExecutionResult`。Router/Projector 或源版本校验失败也会 fail-open 到旧
+`model_content`，并在 audit 的 `metadata_projection` 中记录降级。
+
 当前真实 Evidence 的来源均为 `native_or_ocr_unverified`，因此 `quote_eligible=false`、
 `citation_mode=paraphrase_only_unverified`。工具契约和 Agent 系统策略都要求上层只能
 转述并说明“解析或 OCR 未经验证”，禁止把这些内容包装成逐字原文。

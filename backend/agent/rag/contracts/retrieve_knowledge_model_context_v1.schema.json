@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://esa.local/contracts/retrieve_knowledge.model_context.v1.schema.json",
+  "title": "ESA retrieve_knowledge Agent model context v1",
+  "description": "Versioned model-facing projection of retrieve_knowledge.unified.v1. This is not the display or audit contract.",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "source_contract_version",
+    "profile",
+    "results"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "retrieve_knowledge.model_context.v1"
+    },
+    "source_contract_version": {
+      "const": "retrieve_knowledge.unified.v1"
+    },
+    "profile": {
+      "enum": ["MINIMAL", "SOURCE", "LOCATION", "FULL"]
+    },
+    "results": {
+      "type": "array"
+    },
+    "retrieval_metadata": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {"profile": {"const": "MINIMAL"}},
+        "required": ["profile"]
+      },
+      "then": {
+        "properties": {
+          "results": {"items": {"$ref": "#/$defs/minimal_result"}}
+        },
+        "not": {"required": ["retrieval_metadata"]}
+      }
+    },
+    {
+      "if": {
+        "properties": {"profile": {"const": "SOURCE"}},
+        "required": ["profile"]
+      },
+      "then": {
+        "properties": {
+          "results": {"items": {"$ref": "#/$defs/source_result"}}
+        },
+        "not": {"required": ["retrieval_metadata"]}
+      }
+    },
+    {
+      "if": {
+        "properties": {"profile": {"const": "LOCATION"}},
+        "required": ["profile"]
+      },
+      "then": {
+        "properties": {
+          "results": {"items": {"$ref": "#/$defs/location_result"}}
+        },
+        "not": {"required": ["retrieval_metadata"]}
+      }
+    },
+    {
+      "if": {
+        "properties": {"profile": {"const": "FULL"}},
+        "required": ["profile"]
+      },
+      "then": {
+        "properties": {
+          "results": {"items": {"$ref": "#/$defs/full_result"}}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "citation_mode": {
+      "enum": [
+        "verbatim_allowed",
+        "paraphrase_only_unverified"
+      ]
+    },
+    "ref": {
+      "type": "string",
+      "pattern": "^C[1-9][0-9]*$"
+    },
+    "minimal_result": {
+      "type": "object",
+      "required": ["ref", "content", "citation_mode"],
+      "properties": {
+        "ref": {"$ref": "#/$defs/ref"},
+        "content": {"type": "string"},
+        "citation_mode": {"$ref": "#/$defs/citation_mode"}
+      },
+      "additionalProperties": false
+    },
+    "source_result": {
+      "type": "object",
+      "required": ["ref", "content", "citation_mode", "source"],
+      "properties": {
+        "ref": {"$ref": "#/$defs/ref"},
+        "content": {"type": "string"},
+        "citation_mode": {"$ref": "#/$defs/citation_mode"},
+        "source": {"type": ["string", "null"]},
+        "author": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "location_result": {
+      "type": "object",
+      "required": [
+        "ref",
+        "content",
+        "citation_mode",
+        "source",
+        "section",
+        "page"
+      ],
+      "properties": {
+        "ref": {"$ref": "#/$defs/ref"},
+        "content": {"type": "string"},
+        "citation_mode": {"$ref": "#/$defs/citation_mode"},
+        "source": {"type": ["string", "null"]},
+        "author": {"type": "string"},
+        "section": {"type": ["string", "null"]},
+        "page": {"type": ["integer", "null"]},
+        "location": {}
+      },
+      "additionalProperties": false
+    },
+    "full_result": {
+      "type": "object",
+      "required": ["ref", "content", "citation_mode", "metadata"],
+      "properties": {
+        "ref": {"$ref": "#/$defs/ref"},
+        "content": {"type": "string"},
+        "citation_mode": {"$ref": "#/$defs/citation_mode"},
+        "metadata": {"type": "object"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

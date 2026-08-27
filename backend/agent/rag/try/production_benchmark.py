@@ -16,6 +16,7 @@ for path in (ROOT, HERE):
 
 from backend.agent.rag.context_projection import (  # noqa: E402
     ContextSerializer,
+    MODEL_CONTEXT_CONTRACT_VERSION,
     MetadataProjectionMiddleware,
     MetadataProjector,
 )
@@ -27,6 +28,9 @@ from backend.agent.rag.context_routing import (  # noqa: E402
     RuleBasedContextRouter,
 )
 from backend.agent.rag.retrieval.context import estimate_tokens  # noqa: E402
+from backend.agent.rag.unified_retrieval import (  # noqa: E402
+    CONTRACT_VERSION as UNIFIED_CONTRACT_VERSION,
+)
 from backend.agent.tools.catalog import compact_tool_schema  # noqa: E402
 from backend.agent.tools.rag_tool import retrieve_knowledge  # noqa: E402, F401
 from backend.agent.tools.tools import tr  # noqa: E402
@@ -214,6 +218,8 @@ def run() -> dict[str, Any]:
 
     return {
         "method": {
+            "model_contract_version": MODEL_CONTEXT_CONTRACT_VERSION,
+            "source_contract_version": UNIFIED_CONTRACT_VERSION,
             "tokenizer": "backend.agent.rag.retrieval.context.estimate_tokens",
             "actual_agent_tokenizer_available": False,
             "reason": "the workspace has no deployed Agent model tokenizer files",

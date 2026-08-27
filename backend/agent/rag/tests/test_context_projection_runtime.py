@@ -6,7 +6,9 @@ import asyncio
 import json
 
 from backend.agent.agent import Agent
+from backend.agent.rag.context_projection import MODEL_CONTEXT_CONTRACT_VERSION
 from backend.agent.rag.context_routing import MetadataProfile, RouteDecision
+from backend.agent.rag.unified_retrieval import CONTRACT_VERSION
 from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.context import AgentRuntimeDependencies
 from backend.agent.tools.tools import tr
@@ -51,6 +53,7 @@ def _turn(
 def _retrieval_result(query: str) -> ToolExecutionResult:
     return ToolExecutionResult(
         model_content={
+            "contract_version": CONTRACT_VERSION,
             "query": query,
             "result_count": 2,
             "results": [
@@ -77,6 +80,7 @@ def _retrieval_result(query: str) -> ToolExecutionResult:
             "budget": {"limit": 2048},
         },
         display_content={
+            "contract_version": CONTRACT_VERSION,
             "results": [
                 {
                     "rank": 1,
@@ -99,6 +103,7 @@ def _retrieval_result(query: str) -> ToolExecutionResult:
             ]
         },
         audit_metadata={
+            "contract_version": CONTRACT_VERSION,
             "fusion": {"ranking": ["a", "b"]},
             "response": {"hits": ["full-a", "full-b"]},
         },
@@ -137,6 +142,10 @@ def test_runtime_routes_before_bound_retrieval_and_projects_after(monkeypatch) -
             {"query": "rewritten tool query", "top_k": 2},
         )
     )
+    assert result.model_content["contract_version"] == (
+        MODEL_CONTEXT_CONTRACT_VERSION
+    )
+    assert result.model_content["source_contract_version"] == CONTRACT_VERSION
     assert result.model_content["profile"] == "LOCATION"
     assert result.model_content["results"][0]["page"] == 7
     assert result.display_content is original.display_content
@@ -170,6 +179,14 @@ def test_feature_flag_off_returns_exact_old_three_channel_result(monkeypatch) ->
         )
     )
     assert result is original
+
+
+def test_runtime_dependency_default_keeps_projection_disabled() -> None:
+    run = WorkspaceRuntime(AgentRuntimeDependencies(rag_service=object())).prepare(
+        _turn("它来自哪本书？")
+    )
+
+    assert run.execution_context.retrieval_projection_context is None
 
 
 def test_projection_exception_fails_open_without_failing_rag(monkeypatch) -> None:
@@ -301,6 +318,9 @@ def test_custom_router_replaces_rules_without_downstream_changes(monkeypatch) ->
         )
     )
     assert result.model_content["profile"] == "SOURCE"
+    assert result.model_content["contract_version"] == (
+        MODEL_CONTEXT_CONTRACT_VERSION
+    )
     assert result.audit_metadata["metadata_projection"]["router_type"] == "finetuned"
     assert captured["route_input"].current_user_message == "普通查询"
     assert captured["route_input"].recent_user_messages == ("上一轮用户问题",)
@@ -434,7 +454,12 @@ def test_agent_tool_message_contains_projected_model_but_visible_display(monkeyp
 
     llm_tool = provider.observed[1][-1]
     assert llm_tool["role"] == "tool"
-    assert json.loads(llm_tool["content"])["profile"] == "SOURCE"
+    llm_model_content = json.loads(llm_tool["content"])
+    assert llm_model_content["contract_version"] == (
+        MODEL_CONTEXT_CONTRACT_VERSION
+    )
+    assert llm_model_content["source_contract_version"] == CONTRACT_VERSION
+    assert llm_model_content["profile"] == "SOURCE"
     visible_tool = next(item for item in messages if item["role"] == "tool")
     assert json.loads(visible_tool["content"]) == original.display_content
     assert json.loads(visible_tool["model_content"])["profile"] == "SOURCE"
