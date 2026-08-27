@@ -72,6 +72,7 @@ from backend.core.utils.models import (
     SessionPrincipal,
     UserRecord,
 )
+from backend.core.utils import config as app_config
 from backend.core.message.budget import PromptBudgetExceeded
 from backend.core.web.concurrency import (
     ConversationTurnCoordinator,
@@ -830,6 +831,8 @@ def _runtime_dependencies(
         personal_knowledge_retrieval_service=getattr(
             state, "personal_knowledge_retrieval_service", None
         ),
+        retrieval_context_router=getattr(state, "retrieval_context_router", None),
+        metadata_projection_mode=app_config.RAG_METADATA_PROJECTION_MODE,
         mcp_client_manager=getattr(state, "mcp_client_manager", None),
         sandbox_service=getattr(state, "sandbox_service", None),
     )

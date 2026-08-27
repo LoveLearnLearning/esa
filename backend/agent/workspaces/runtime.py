@@ -4,6 +4,14 @@
 
 from __future__ import annotations
 
+import logging
+
+from backend.agent.rag.context_routing import (
+    RetrievalProjectionContext,
+    RetrievalRouteInput,
+    RouteDecision,
+    RuleBasedContextRouter,
+)
 from backend.agent.tools.context import AgentRuntimeDependencies, ToolExecutionContext
 from backend.agent.workspaces.capability_runtime import CapabilityRuntime
 from backend.agent.workspaces.context_composer import ContextComposer, StrategyAugmentation
@@ -13,6 +21,11 @@ from backend.agent.workspaces.models import AgentRunSpec, AgentTurnInput, Execut
 from backend.agent.workspaces.profile_registry import DEFAULT_PROFILE_REGISTRY, WorkspaceProfileRegistry
 from backend.agent.workspaces.run_spec_builder import RunSpecBuilder
 from backend.core.utils.config import WORKSPACE_CONTEXT_MAX_TOKENS
+
+
+logger = logging.getLogger(__name__)
+_ROUTER_CONTEXT_MESSAGE_LIMIT = 4
+_ROUTER_CONTEXT_CHAR_LIMIT = 1_000
 
 
 class WorkspaceRuntime:
@@ -30,6 +43,50 @@ class WorkspaceRuntime:
         self.composer = ContextComposer(max_tokens=WORKSPACE_CONTEXT_MAX_TOKENS)
         self.learning = LearningAdapter()
         self.builder = RunSpecBuilder()
+
+    def _retrieval_projection_context(
+        self,
+        turn: AgentTurnInput,
+    ) -> RetrievalProjectionContext | None:
+        """Route once per immutable turn before any retrieval tool execution."""
+
+        if (
+            self.dependencies.metadata_projection_mode == "off"
+            or not turn.knowledge_sources
+        ):
+            return None
+        recent_user_messages = tuple(
+            str(item.get("content", ""))[:_ROUTER_CONTEXT_CHAR_LIMIT]
+            for item in turn.history
+            if item.get("role") == "user" and item.get("content")
+        )[-_ROUTER_CONTEXT_MESSAGE_LIMIT:]
+        route_input = RetrievalRouteInput(
+            current_user_message=turn.current_message,
+            recent_user_messages=recent_user_messages,
+        )
+        router = (
+            self.dependencies.retrieval_context_router
+            or RuleBasedContextRouter()
+        )
+        try:
+            decision = router.route(route_input)
+            if not isinstance(decision, RouteDecision):
+                raise TypeError("context router returned an invalid decision")
+        except Exception as error:  # noqa: BLE001 - optimization must fail open
+            reason = f"router_error:{type(error).__name__}"
+            logger.exception(
+                "metadata projection router failed; retrieval will use old model_content"
+            )
+            return RetrievalProjectionContext(
+                enabled=True,
+                route_input=route_input,
+                fallback_reason=reason,
+            )
+        return RetrievalProjectionContext(
+            enabled=True,
+            route_input=route_input,
+            decision=decision,
+        )
 
     def prepare(self, turn: AgentTurnInput) -> ExecutableAgentRun:
         """准备 `prepare` 相关数据。
@@ -105,6 +162,7 @@ class WorkspaceRuntime:
             total_weeks=turn.request_metadata.get("total_weeks"),
             knowledge_sources=turn.knowledge_sources,
             personal_knowledge_base_id=turn.personal_knowledge_base_id,
+            retrieval_projection_context=self._retrieval_projection_context(turn),
         )
         return self.builder.build(
             turn=turn,

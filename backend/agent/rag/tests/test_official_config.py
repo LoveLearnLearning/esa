@@ -17,6 +17,7 @@ def test_official_rag_identity_and_retrieval_defaults_are_frozen() -> None:
     assert config.RAG_FUSION_METHOD == "dense"
     assert config.RAG_DENSE_WEIGHT == 1.0
     assert config.RAG_RERANKER_ENABLED is False
+    assert config.RAG_METADATA_PROJECTION_MODE == "rule"
     assert config.RAG_DENSE_LIMIT == 100
     assert config.RAG_BM25_BODY_LIMIT == 100
     assert config.RAG_BM25_HEADING_LIMIT == 100

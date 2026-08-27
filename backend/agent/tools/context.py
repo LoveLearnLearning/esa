@@ -6,7 +6,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, Mapping, Protocol
+from typing import TYPE_CHECKING, Any, Mapping, Protocol
+
+if TYPE_CHECKING:
+    from backend.agent.rag.context_routing import (
+        ContextRouter,
+        RetrievalProjectionContext,
+    )
 
 from backend.agent.workspaces.routing import ResourceScope, WorkspaceRoute
 
@@ -49,12 +55,16 @@ class AgentRuntimeDependencies:
     rag_service: Any | None = None
     token_counter: Any | None = None
     personal_knowledge_retrieval_service: Any | None = None
+    retrieval_context_router: "ContextRouter | None" = None
+    metadata_projection_mode: str = "off"
     mcp_client_manager: Any | None = None
     sandbox_service: Any | None = None
     extra: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """完成实例初始化后的校验与派生字段构建。"""
+        if self.metadata_projection_mode not in {"off", "rule"}:
+            raise ValueError("metadata_projection_mode must be off or rule")
         object.__setattr__(self, "extra", MappingProxyType(dict(self.extra)))
 
 
@@ -73,6 +83,7 @@ class ToolExecutionContext:
     total_weeks: int | None = None
     knowledge_sources: tuple[str, ...] = ("personal", "public")
     personal_knowledge_base_id: str | None = None
+    retrieval_projection_context: "RetrievalProjectionContext | None" = None
 
     def __post_init__(self) -> None:
         """完成实例初始化后的校验与派生字段构建。"""

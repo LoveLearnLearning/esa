@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -36,6 +37,7 @@ ATTACHMENT_TOOLS = frozenset(
 )
 UNIFIED_KNOWLEDGE_TOOLS = frozenset({"retrieve_knowledge"})
 PUBLIC_KNOWLEDGE_METADATA_TOOLS = frozenset({"get_knowledge_base_stats"})
+logger = logging.getLogger(__name__)
 
 
 class BoundToolExecutor:
@@ -145,7 +147,7 @@ class BoundToolExecutor:
 
                 provider = self.context.runtime_dependencies.token_counter
                 counter = getattr(provider, "count_tokens", None)
-                return await retrieve_selected_knowledge(
+                result = await retrieve_selected_knowledge(
                     knowledge_sources=self.context.knowledge_sources,
                     user_id=self.context.user_id,
                     knowledge_base_id=self.context.personal_knowledge_base_id,
@@ -157,6 +159,41 @@ class BoundToolExecutor:
                     token_counter=counter if callable(counter) else None,
                     **normalized,
                 )
+                projection_context = self.context.retrieval_projection_context
+                if projection_context is None:
+                    return result
+                from backend.agent.rag.context_projection import (
+                    MetadataProjectionMiddleware,
+                    projection_fallback_result,
+                )
+                from backend.agent.rag.context_routing import (
+                    RetrievalProjectionContext,
+                )
+                from backend.core.utils.models import ToolExecutionResult
+
+                if not isinstance(result, ToolExecutionResult):
+                    return result
+                if not isinstance(projection_context, RetrievalProjectionContext):
+                    logger.error(
+                        "metadata projection context has invalid type; using old model_content"
+                    )
+                    return result
+                middleware = MetadataProjectionMiddleware()
+                try:
+                    return middleware.apply(
+                        result,
+                        projection_context,
+                        token_counter=counter if callable(counter) else None,
+                    )
+                except Exception as error:  # noqa: BLE001 - fail-open optimization
+                    logger.exception(
+                        "metadata projection failed; retrieval will use old model_content"
+                    )
+                    return projection_fallback_result(
+                        result,
+                        projection_context,
+                        f"projection_error:{type(error).__name__}",
+                    )
             if name == "get_knowledge_base_stats":
                 from backend.agent.rag.agent_api import knowledge_base_stats
 
