@@ -1,0 +1,434 @@
+{
+  "method": {
+    "model_contract_version": "retrieve_knowledge.model_context.v1",
+    "source_contract_version": "retrieve_knowledge.unified.v1",
+    "tokenizer": "backend.agent.rag.retrieval.context.estimate_tokens",
+    "actual_agent_tokenizer_available": false,
+    "reason": "the workspace has no deployed Agent model tokenizer files",
+    "end_to_end_scope": "two model input prompts; common system/history/unrelated tools omitted",
+    "serializer_selected": "compact_json.v1",
+    "serializer_reason": "preserves structured citation/location semantics without changing Agent serialization"
+  },
+  "tool_schema": {
+    "name": "retrieve_knowledge",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "top_k": {
+          "type": "integer",
+          "default": 5
+        },
+        "similarity_threshold": {
+          "type": "number",
+          "description": "公共库最低 Reranker 分数阈值。"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    },
+    "sha256": "0916e8712b611cafce29d04863e926463e1c523c15a64332b802518ced5726ef"
+  },
+  "cases": [
+    {
+      "case": "projection_off",
+      "profile": "OFF",
+      "model_content": {
+        "contract_version": "retrieve_knowledge.unified.v1",
+        "query": "黑盒测试和白盒测试有什么区别？",
+        "selected_sources": [
+          "public"
+        ],
+        "result_count": 3,
+        "results": [
+          {
+            "rank": 1,
+            "scope": "public",
+            "chunk_id": "chunk-black",
+            "content": "黑盒测试只根据外部可观察的输入和输出验证系统，不要求了解内部实现。",
+            "source_ref": "ev-black-1",
+            "quote_eligible": true,
+            "citation_mode": "verbatim_allowed",
+            "retrieval_score": 0.873,
+            "rerank_score": 0.941
+          },
+          {
+            "rank": 2,
+            "scope": "public",
+            "chunk_id": "chunk-white",
+            "content": "白盒测试依据代码、控制流或数据流设计用例，关注内部路径、分支和覆盖率。",
+            "source_ref": "ev-white-1",
+            "quote_eligible": true,
+            "citation_mode": "verbatim_allowed",
+            "retrieval_score": 0.844,
+            "rerank_score": 0.918
+          },
+          {
+            "rank": 3,
+            "scope": "public",
+            "chunk_id": "chunk-combine",
+            "content": "两种方法互补：黑盒面向行为，白盒面向结构；实际项目通常结合使用。",
+            "source_ref": "ev-combine-1",
+            "quote_eligible": false,
+            "citation_mode": "paraphrase_only_unverified",
+            "retrieval_score": 0.801,
+            "rerank_score": 0.887
+          }
+        ],
+        "citation_policy": {
+          "verbatim_requires_quote_eligible": true,
+          "when_ineligible": "paraphrase_and_disclose_unverified_extraction"
+        },
+        "execution": {
+          "configured_method": "dense",
+          "applied_method": "dense",
+          "ranking_method": "retrieval",
+          "reranker_applied": true,
+          "weights": {
+            "dense_weight": 1.0
+          },
+          "degraded": []
+        },
+        "budget": {
+          "limit": 2048,
+          "original_token_count": 999,
+          "returned_token_count": 999,
+          "truncated": false,
+          "counter": "agent_tokenizer"
+        }
+      },
+      "model_content_tokens": 497,
+      "end_to_end_input_estimate": 1125,
+      "compact_text_tokens": null,
+      "saved_model_tokens": 0,
+      "model_saving_ratio": 0.0,
+      "saved_end_to_end_input": 0,
+      "end_to_end_saving_ratio": 0.0
+    },
+    {
+      "case": "minimal",
+      "profile": "MINIMAL",
+      "model_content": {
+        "contract_version": "retrieve_knowledge.model_context.v1",
+        "source_contract_version": "retrieve_knowledge.unified.v1",
+        "profile": "MINIMAL",
+        "results": [
+          {
+            "ref": "C1",
+            "content": "黑盒测试只根据外部可观察的输入和输出验证系统，不要求了解内部实现。",
+            "citation_mode": "verbatim_allowed"
+          },
+          {
+            "ref": "C2",
+            "content": "白盒测试依据代码、控制流或数据流设计用例，关注内部路径、分支和覆盖率。",
+            "citation_mode": "verbatim_allowed"
+          },
+          {
+            "ref": "C3",
+            "content": "两种方法互补：黑盒面向行为，白盒面向结构；实际项目通常结合使用。",
+            "citation_mode": "paraphrase_only_unverified"
+          }
+        ]
+      },
+      "model_content_tokens": 214,
+      "end_to_end_input_estimate": 748,
+      "compact_text_tokens": 118,
+      "saved_model_tokens": 283,
+      "model_saving_ratio": 0.569416,
+      "saved_end_to_end_input": 377,
+      "end_to_end_saving_ratio": 0.335111
+    },
+    {
+      "case": "source",
+      "profile": "SOURCE",
+      "model_content": {
+        "contract_version": "retrieve_knowledge.model_context.v1",
+        "source_contract_version": "retrieve_knowledge.unified.v1",
+        "profile": "SOURCE",
+        "results": [
+          {
+            "ref": "C1",
+            "content": "黑盒测试只根据外部可观察的输入和输出验证系统，不要求了解内部实现。",
+            "citation_mode": "verbatim_allowed",
+            "source": "软件测试基础.pdf"
+          },
+          {
+            "ref": "C2",
+            "content": "白盒测试依据代码、控制流或数据流设计用例，关注内部路径、分支和覆盖率。",
+            "citation_mode": "verbatim_allowed",
+            "source": "软件测试基础.pdf"
+          },
+          {
+            "ref": "C3",
+            "content": "两种方法互补：黑盒面向行为，白盒面向结构；实际项目通常结合使用。",
+            "citation_mode": "paraphrase_only_unverified",
+            "source": "软件测试基础.pdf"
+          }
+        ]
+      },
+      "model_content_tokens": 259,
+      "end_to_end_input_estimate": 805,
+      "compact_text_tokens": 151,
+      "saved_model_tokens": 238,
+      "model_saving_ratio": 0.478873,
+      "saved_end_to_end_input": 320,
+      "end_to_end_saving_ratio": 0.284444
+    },
+    {
+      "case": "location",
+      "profile": "LOCATION",
+      "model_content": {
+        "contract_version": "retrieve_knowledge.model_context.v1",
+        "source_contract_version": "retrieve_knowledge.unified.v1",
+        "profile": "LOCATION",
+        "results": [
+          {
+            "ref": "C1",
+            "content": "黑盒测试只根据外部可观察的输入和输出验证系统，不要求了解内部实现。",
+            "citation_mode": "verbatim_allowed",
+            "source": "软件测试基础.pdf",
+            "section": "第三章 / 测试方法",
+            "page": 12
+          },
+          {
+            "ref": "C2",
+            "content": "白盒测试依据代码、控制流或数据流设计用例，关注内部路径、分支和覆盖率。",
+            "citation_mode": "verbatim_allowed",
+            "source": "软件测试基础.pdf",
+            "section": "第三章 / 测试方法",
+            "page": 13
+          },
+          {
+            "ref": "C3",
+            "content": "两种方法互补：黑盒面向行为，白盒面向结构；实际项目通常结合使用。",
+            "citation_mode": "paraphrase_only_unverified",
+            "source": "软件测试基础.pdf",
+            "section": "第三章 / 测试方法",
+            "page": 14
+          }
+        ]
+      },
+      "model_content_tokens": 322,
+      "end_to_end_input_estimate": 886,
+      "compact_text_tokens": 196,
+      "saved_model_tokens": 175,
+      "model_saving_ratio": 0.352113,
+      "saved_end_to_end_input": 239,
+      "end_to_end_saving_ratio": 0.212444
+    },
+    {
+      "case": "full",
+      "profile": "FULL",
+      "model_content": {
+        "contract_version": "retrieve_knowledge.model_context.v1",
+        "source_contract_version": "retrieve_knowledge.unified.v1",
+        "profile": "FULL",
+        "results": [
+          {
+            "ref": "C1",
+            "content": "黑盒测试只根据外部可观察的输入和输出验证系统，不要求了解内部实现。",
+            "citation_mode": "verbatim_allowed",
+            "metadata": {
+              "rank": 1,
+              "scope": "public",
+              "chunk_id": "chunk-black",
+              "source_ref": "ev-black-1",
+              "quote_eligible": true,
+              "citation_mode": "verbatim_allowed",
+              "retrieval_score": 0.873,
+              "rerank_score": 0.941,
+              "document_id": "doc-testing-101",
+              "source": "软件测试基础.pdf",
+              "section": "第三章 / 测试方法",
+              "page": 12,
+              "location": {
+                "page": 12,
+                "bbox": [
+                  72,
+                  180,
+                  520,
+                  260
+                ]
+              },
+              "preview_url": "/knowledge-base/public/documents/doc-testing-101/content",
+              "highlight_text": "黑盒测试只根据外部可观察的输入和输出验证系统"
+            }
+          },
+          {
+            "ref": "C2",
+            "content": "白盒测试依据代码、控制流或数据流设计用例，关注内部路径、分支和覆盖率。",
+            "citation_mode": "verbatim_allowed",
+            "metadata": {
+              "rank": 2,
+              "scope": "public",
+              "chunk_id": "chunk-white",
+              "source_ref": "ev-white-1",
+              "quote_eligible": true,
+              "citation_mode": "verbatim_allowed",
+              "retrieval_score": 0.844,
+              "rerank_score": 0.918,
+              "document_id": "doc-testing-101",
+              "source": "软件测试基础.pdf",
+              "section": "第三章 / 测试方法",
+              "page": 13,
+              "location": {
+                "page": 13,
+                "bbox": [
+                  72,
+                  90,
+                  520,
+                  175
+                ]
+              },
+              "preview_url": "/knowledge-base/public/documents/doc-testing-101/content",
+              "highlight_text": "白盒测试依据代码、控制流或数据流设计用例"
+            }
+          },
+          {
+            "ref": "C3",
+            "content": "两种方法互补：黑盒面向行为，白盒面向结构；实际项目通常结合使用。",
+            "citation_mode": "paraphrase_only_unverified",
+            "metadata": {
+              "rank": 3,
+              "scope": "public",
+              "chunk_id": "chunk-combine",
+              "source_ref": "ev-combine-1",
+              "quote_eligible": false,
+              "citation_mode": "paraphrase_only_unverified",
+              "retrieval_score": 0.801,
+              "rerank_score": 0.887,
+              "document_id": "doc-testing-101",
+              "source": "软件测试基础.pdf",
+              "section": "第三章 / 测试方法",
+              "page": 14,
+              "location": {
+                "page": 14,
+                "bbox": [
+                  72,
+                  300,
+                  520,
+                  365
+                ]
+              },
+              "preview_url": "/knowledge-base/public/documents/doc-testing-101/content",
+              "highlight_text": "两种方法互补"
+            }
+          }
+        ],
+        "retrieval_metadata": {
+          "query": "黑盒测试和白盒测试有什么区别？",
+          "selected_sources": [
+            "public"
+          ],
+          "result_count": 3,
+          "citation_policy": {
+            "verbatim_requires_quote_eligible": true,
+            "when_ineligible": "paraphrase_and_disclose_unverified_extraction"
+          },
+          "execution": {
+            "configured_method": "dense",
+            "applied_method": "dense",
+            "ranking_method": "retrieval",
+            "reranker_applied": true,
+            "weights": {
+              "dense_weight": 1.0
+            },
+            "degraded": []
+          },
+          "budget": {
+            "limit": 2048,
+            "original_token_count": 999,
+            "returned_token_count": 999,
+            "truncated": false,
+            "counter": "agent_tokenizer"
+          }
+        }
+      },
+      "model_content_tokens": 949,
+      "end_to_end_input_estimate": 1701,
+      "compact_text_tokens": 118,
+      "saved_model_tokens": -452,
+      "model_saving_ratio": -0.909457,
+      "saved_end_to_end_input": -576,
+      "end_to_end_saving_ratio": -0.512
+    }
+  ],
+  "routing_quality": [
+    {
+      "query": "解释黑盒测试和白盒测试的区别",
+      "category": "normal",
+      "predicted_profile": "MINIMAL",
+      "expected_profile": "MINIMAL",
+      "correct": true
+    },
+    {
+      "query": "这个结论来自哪本书？",
+      "category": "source",
+      "predicted_profile": "SOURCE",
+      "expected_profile": "SOURCE",
+      "correct": true
+    },
+    {
+      "query": "这段内容在第几页？",
+      "category": "location",
+      "predicted_profile": "LOCATION",
+      "expected_profile": "LOCATION",
+      "correct": true
+    },
+    {
+      "query": "不用给我出处，直接解释",
+      "category": "negation",
+      "predicted_profile": "MINIMAL",
+      "expected_profile": "MINIMAL",
+      "correct": true
+    },
+    {
+      "query": "给出 chunk_id 和 retrieval_score",
+      "category": "debug",
+      "predicted_profile": "FULL",
+      "expected_profile": "FULL",
+      "correct": true
+    },
+    {
+      "query": "这个观点最早出现在哪里？",
+      "category": "ambiguous_location",
+      "predicted_profile": "MINIMAL",
+      "expected_profile": "LOCATION",
+      "correct": false
+    }
+  ],
+  "bad_cases": [
+    {
+      "query": "这个观点最早出现在哪里？",
+      "category": "ambiguous_location",
+      "predicted_profile": "MINIMAL",
+      "expected_profile": "LOCATION",
+      "correct": false
+    }
+  ],
+  "quality_checks": [
+    {
+      "case": "minimal_answer_sufficiency",
+      "passed": true,
+      "finding": "all ranked evidence text and citation safety modes remain"
+    },
+    {
+      "case": "source_correctness",
+      "passed": true,
+      "finding": "source view contains document names and omits page/location"
+    },
+    {
+      "case": "location_correctness",
+      "passed": true,
+      "finding": "location view keeps source/section/page; bbox remains server-side"
+    },
+    {
+      "case": "full_debug_visibility",
+      "passed": true,
+      "finding": "FULL exposes bounded model/display debug metadata"
+    }
+  ]
+}

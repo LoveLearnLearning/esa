@@ -1,9 +1,13 @@
 """Production projector, serializer, observability, and fallback tests."""
 
 import json
+from pathlib import Path
+
+from jsonschema import Draft202012Validator
 
 from backend.agent.rag.context_projection import (
     ContextSerializer,
+    MODEL_CONTEXT_CONTRACT_VERSION,
     MetadataProjectionMiddleware,
     MetadataProjector,
 )
@@ -16,9 +20,18 @@ from backend.agent.rag.context_routing import (
 from backend.core.utils.models import ToolExecutionResult
 
 
+SOURCE_CONTRACT_VERSION = "retrieve_knowledge.unified.v1"
+FIXTURES = Path(__file__).with_name("fixtures")
+MODEL_CONTEXT_SCHEMA = (
+    Path(__file__).parents[1]
+    / "contracts"
+    / "retrieve_knowledge_model_context_v1.schema.json"
+)
+
+
 def _result(*, missing: bool = False) -> ToolExecutionResult:
     model = {
-        "contract_version": "retrieve_knowledge.unified.v1",
+        "contract_version": SOURCE_CONTRACT_VERSION,
         "query": "黑盒与白盒",
         "results": [
             {
@@ -45,7 +58,7 @@ def _result(*, missing: bool = False) -> ToolExecutionResult:
         "budget": {"limit": 2048},
     }
     display = {
-        "contract_version": "retrieve_knowledge.unified.v1",
+        "contract_version": SOURCE_CONTRACT_VERSION,
         "results": [
             {
                 "rank": 1,
@@ -74,7 +87,7 @@ def _result(*, missing: bool = False) -> ToolExecutionResult:
     return ToolExecutionResult(
         model_content=model,
         display_content=display,
-        audit_metadata={"contract_version": "retrieve_knowledge.unified.v1", "trace": {"full": True}},
+        audit_metadata={"contract_version": SOURCE_CONTRACT_VERSION, "trace": {"full": True}},
     )
 
 
@@ -89,6 +102,37 @@ def _context(profile: MetadataProfile) -> RetrievalProjectionContext:
             reason_code="test",
         ),
     )
+
+
+def _fixture_result() -> ToolExecutionResult:
+    raw = json.loads(
+        (FIXTURES / "unified_v1_projection_source.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    return ToolExecutionResult(
+        model_content=raw["model_content"],
+        display_content=raw["display_content"],
+        audit_metadata=raw["audit_metadata"],
+    )
+
+
+def test_model_context_v1_matches_golden_fixtures_and_json_schema() -> None:
+    expected = json.loads(
+        (FIXTURES / "model_context_v1_expected.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    schema = json.loads(MODEL_CONTEXT_SCHEMA.read_text(encoding="utf-8"))
+    validator = Draft202012Validator(schema)
+
+    for profile in MetadataProfile:
+        projected = MetadataProjectionMiddleware().apply(
+            _fixture_result(),
+            _context(profile),
+        )
+        assert projected.model_content == expected[profile.value]
+        validator.validate(projected.model_content)
 
 
 def test_projector_profiles_have_exact_progressive_fields() -> None:
@@ -117,12 +161,20 @@ def test_middleware_projects_only_model_content_and_preserves_provenance() -> No
         token_counter=lambda text: len(text.encode("utf-8")),
     )
 
+    assert projected.model_content["contract_version"] == (
+        MODEL_CONTEXT_CONTRACT_VERSION
+    )
+    assert projected.model_content["source_contract_version"] == (
+        SOURCE_CONTRACT_VERSION
+    )
     assert projected.model_content["profile"] == "MINIMAL"
     assert projected.display_content is result.display_content
     assert projected.audit_metadata["contract_version"] == result.audit_metadata["contract_version"]
     assert projected.audit_metadata["trace"] is result.audit_metadata["trace"]
     metrics = projected.audit_metadata["metadata_projection"]
     assert metrics["status"] == "applied"
+    assert metrics["model_contract_version"] == MODEL_CONTEXT_CONTRACT_VERSION
+    assert metrics["source_contract_version"] == SOURCE_CONTRACT_VERSION
     assert metrics["counter"] == "agent_tokenizer"
     assert metrics["before_tokens"] > metrics["after_tokens"]
     assert metrics["ref_registry"]["C1"]["source_ref"] == "evidence-a"
@@ -157,6 +209,8 @@ def test_serializer_is_stable_unicode_safe_and_keeps_content_order() -> None:
     second = serializer.serialize(projection)
 
     assert first == second
+    assert first["contract_version"] == MODEL_CONTEXT_CONTRACT_VERSION
+    assert first["source_contract_version"] == SOURCE_CONTRACT_VERSION
     assert [item["ref"] for item in first["results"]] == ["C1", "C2"]
     assert "特殊字符" in first["results"][0]["content"]
     assert "\n" in first["results"][0]["content"]
@@ -201,9 +255,47 @@ def test_missing_route_decision_fails_open_to_original_model_content() -> None:
         "enabled": True,
         "status": "fallback",
         "fallback_reason": "router_error:RuntimeError",
+        "model_contract_version": MODEL_CONTEXT_CONTRACT_VERSION,
+        "source_contract_version": SOURCE_CONTRACT_VERSION,
         "query": "query",
         "recent_user_messages": [],
     }
+
+
+def test_missing_source_contract_version_fails_open() -> None:
+    result = _result()
+    result.model_content.pop("contract_version")
+
+    fallback = MetadataProjectionMiddleware().apply(
+        result,
+        _context(MetadataProfile.MINIMAL),
+    )
+
+    assert fallback.model_content is result.model_content
+    assert fallback.display_content is result.display_content
+    metadata = fallback.audit_metadata["metadata_projection"]
+    assert metadata["fallback_reason"] == "source_contract_version_missing"
+    assert metadata["source_contract_version"] is None
+    assert metadata["model_contract_version"] == MODEL_CONTEXT_CONTRACT_VERSION
+
+
+def test_unknown_source_contract_version_fails_open() -> None:
+    result = _result()
+    result.model_content["contract_version"] = "retrieve_knowledge.unified.v2"
+
+    fallback = MetadataProjectionMiddleware().apply(
+        result,
+        _context(MetadataProfile.MINIMAL),
+    )
+
+    assert fallback.model_content is result.model_content
+    metadata = fallback.audit_metadata["metadata_projection"]
+    assert metadata["fallback_reason"] == (
+        "unsupported_source_contract_version:retrieve_knowledge.unified.v2"
+    )
+    assert metadata["source_contract_version"] == (
+        "retrieve_knowledge.unified.v2"
+    )
 
 
 def test_disabled_context_returns_exact_old_result_object() -> None:

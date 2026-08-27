@@ -1,0 +1,57 @@
+{
+  "model_content": {
+    "contract_version": "retrieve_knowledge.unified.v1",
+    "query": "黑盒测试是什么？",
+    "result_count": 1,
+    "results": [
+      {
+        "rank": 1,
+        "scope": "public",
+        "chunk_id": "chunk-black",
+        "content": "黑盒测试根据输入和输出验证系统行为。",
+        "source_ref": "evidence-black",
+        "quote_eligible": true,
+        "citation_mode": "verbatim_allowed",
+        "retrieval_score": 0.91
+      }
+    ],
+    "citation_policy": {
+      "verbatim_requires_quote_eligible": true
+    },
+    "execution": {
+      "ranking_method": "single_source_rank"
+    },
+    "budget": {
+      "limit": 2048
+    }
+  },
+  "display_content": {
+    "contract_version": "retrieve_knowledge.unified.v1",
+    "query": "黑盒测试是什么？",
+    "result_count": 1,
+    "results": [
+      {
+        "rank": 1,
+        "scope": "public",
+        "chunk_id": "chunk-black",
+        "source_ref": "evidence-black",
+        "document_id": "document-testing",
+        "source": "软件测试基础.pdf",
+        "author": "测试教研组",
+        "section": "第三章 / 测试方法",
+        "page": 12,
+        "location": {
+          "page": 12,
+          "bbox": [72, 180, 520, 260]
+        },
+        "preview_url": "/documents/document-testing"
+      }
+    ]
+  },
+  "audit_metadata": {
+    "contract_version": "retrieve_knowledge.unified.v1",
+    "trace": {
+      "fixture": true
+    }
+  }
+}

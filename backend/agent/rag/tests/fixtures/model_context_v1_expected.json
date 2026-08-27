@@ -1,0 +1,88 @@
+{
+  "MINIMAL": {
+    "contract_version": "retrieve_knowledge.model_context.v1",
+    "source_contract_version": "retrieve_knowledge.unified.v1",
+    "profile": "MINIMAL",
+    "results": [
+      {
+        "ref": "C1",
+        "content": "黑盒测试根据输入和输出验证系统行为。",
+        "citation_mode": "verbatim_allowed"
+      }
+    ]
+  },
+  "SOURCE": {
+    "contract_version": "retrieve_knowledge.model_context.v1",
+    "source_contract_version": "retrieve_knowledge.unified.v1",
+    "profile": "SOURCE",
+    "results": [
+      {
+        "ref": "C1",
+        "content": "黑盒测试根据输入和输出验证系统行为。",
+        "citation_mode": "verbatim_allowed",
+        "source": "软件测试基础.pdf",
+        "author": "测试教研组"
+      }
+    ]
+  },
+  "LOCATION": {
+    "contract_version": "retrieve_knowledge.model_context.v1",
+    "source_contract_version": "retrieve_knowledge.unified.v1",
+    "profile": "LOCATION",
+    "results": [
+      {
+        "ref": "C1",
+        "content": "黑盒测试根据输入和输出验证系统行为。",
+        "citation_mode": "verbatim_allowed",
+        "source": "软件测试基础.pdf",
+        "author": "测试教研组",
+        "section": "第三章 / 测试方法",
+        "page": 12
+      }
+    ]
+  },
+  "FULL": {
+    "contract_version": "retrieve_knowledge.model_context.v1",
+    "source_contract_version": "retrieve_knowledge.unified.v1",
+    "profile": "FULL",
+    "results": [
+      {
+        "ref": "C1",
+        "content": "黑盒测试根据输入和输出验证系统行为。",
+        "citation_mode": "verbatim_allowed",
+        "metadata": {
+          "rank": 1,
+          "scope": "public",
+          "chunk_id": "chunk-black",
+          "source_ref": "evidence-black",
+          "quote_eligible": true,
+          "citation_mode": "verbatim_allowed",
+          "retrieval_score": 0.91,
+          "document_id": "document-testing",
+          "source": "软件测试基础.pdf",
+          "author": "测试教研组",
+          "section": "第三章 / 测试方法",
+          "page": 12,
+          "location": {
+            "page": 12,
+            "bbox": [72, 180, 520, 260]
+          },
+          "preview_url": "/documents/document-testing"
+        }
+      }
+    ],
+    "retrieval_metadata": {
+      "query": "黑盒测试是什么？",
+      "result_count": 1,
+      "citation_policy": {
+        "verbatim_requires_quote_eligible": true
+      },
+      "execution": {
+        "ranking_method": "single_source_rank"
+      },
+      "budget": {
+        "limit": 2048
+      }
+    }
+  }
+}
