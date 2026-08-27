@@ -161,10 +161,11 @@ design_handoff_esa_chat/
 frontend-web.tar.gz
 
 # Cluster-local launch and tunnel helpers
-run.sh
-gpu_proxy.sh
-artifacts
-runtime
+/run.sh
+/gpu_proxy.sh
+/artifacts/
+/runtime/
+/snapshots/
 /backend/data/user/
 # DocIR corpora and generated MinerU regression data stay local. Tests that
 # require them must skip clearly when they are unavailable.
