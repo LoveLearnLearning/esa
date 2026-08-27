@@ -539,18 +539,26 @@ def _prepare_message(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在！")
 
     # 读取模型历史 + 落库用户消息 同一事务原子完成 避免并发读-写竞态
+    # 当有附件时，在模型可见的消息中追加附件标记，确保 LLM 感知到新附件的存在
+    user_message_payload: dict = {
+        "role": "user",
+        "content": body.content,
+        "attachments": attachments or [],
+        "is_visible": True,
+    }
+    if attachments:
+        attachment_markers = " ".join(
+            f"[附件已上传: {a['filename']} (ID: {a['id']})]"
+            for a in attachments
+        )
+        user_message_payload["model_content"] = (
+            f"{body.content}\n\n{attachment_markers}"
+        )
     if body.replace_message_id is None:
         conversation_summary, history = (
             chat_store.get_compressed_model_history_and_append(
                 conversation_id,
-                [
-                    {
-                        "role": "user",
-                        "content": body.content,
-                        "attachments": attachments or [],
-                        "is_visible": True,
-                    }
-                ],
+                [user_message_payload],
             )
         )
         user_message_id = chat_store.latest_message_id(conversation_id)
