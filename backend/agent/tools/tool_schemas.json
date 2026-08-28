@@ -2,24 +2,6 @@
   {
     "type": "function",
     "function": {
-      "name": "get_weather",
-      "description": "查询指定城市天气。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "city": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "city"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
       "name": "get_time",
       "description": "查询当前时间。",
       "parameters": {

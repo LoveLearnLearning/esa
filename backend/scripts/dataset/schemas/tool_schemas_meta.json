@@ -22,7 +22,6 @@
     "get_review_timing",
     "get_time",
     "get_weak_prerequisites",
-    "get_weather",
     "load_skill",
     "math_solver",
     "propose_core_memory",

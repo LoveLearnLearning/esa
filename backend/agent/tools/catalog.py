@@ -32,7 +32,7 @@ LEARNING_TOOLS = frozenset(
 
 COMMON_TOOLS = frozenset(
     {
-        "get_weather", "get_time", "web_search", "arxiv_search", "calculator",
+        "get_time", "web_search", "arxiv_search", "calculator",
         "math_solver", "bitwise_calculator", "load_skill",
         "run_in_sandbox",
         "parse_pdf_attachment", "parse_word_attachment",
