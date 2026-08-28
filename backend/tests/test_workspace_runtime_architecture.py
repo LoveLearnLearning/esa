@@ -438,7 +438,7 @@ def test_context_composer_requires_parsing_referenced_attachments():
         fingerprint="f",
     )
     composed = ContextComposer().compose(turn, LEARNING_PROFILE, capabilities)
-    assert "先调用对应解析 Tool" in composed.rendered
+    assert "必须在回复前调用对应解析 Tool" in composed.rendered
     assert "不追问 Tool 已有标识" in composed.rendered
     assert "概括全文的主要内容" in composed.rendered
 
