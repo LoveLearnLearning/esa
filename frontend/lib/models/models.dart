@@ -1025,6 +1025,7 @@ class SourceCitation {
     required this.label,
     this.filename,
     this.fileId,
+    this.knowledgeBaseId,
     this.documentId,
     this.previewUrl,
     this.page,
@@ -1038,6 +1039,7 @@ class SourceCitation {
   final String label;
   final String? filename;
   final String? fileId;
+  final String? knowledgeBaseId;
   final String? documentId;
   final String? previewUrl;
   final int? page;
