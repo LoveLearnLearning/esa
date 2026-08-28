@@ -8,8 +8,6 @@ from backend.agent.memories.memory_models import (
     ProfileField,
     ProfileOrigin,
     ProfileSnapshot,
-    _TIKTOKEN_ENCODING,
-    _estimate_tokens,
 )
 from backend.core.message.build_prompt import build_system_prompt
 from backend.core.utils.models import PromptContext
@@ -73,10 +71,8 @@ def test_profile_snapshot_serializes_to_json():
     assert parsed == {"context": [{"field": "major", "value": "cs"}]}
 
 
-def test_profile_prompt_truncates_within_token_budget():
-    # 构造一个无限制序列化会远超 700 tokens 的快照:
-    # explicit_context 为少量高优先级字段 inferred_patterns 为大量大字段
-    """验证 `profile_prompt_truncates_within_token_budget` 场景。"""
+def test_profile_prompt_projection_has_no_artificial_token_limit():
+    """画像投影只按相关性筛选，不执行人为 token 截断。"""
     big_value = "知识点掌握度详细说明" * 50
     snapshot = ProfileSnapshot(
         user_id="u1",
@@ -106,36 +102,15 @@ def test_profile_prompt_truncates_within_token_budget():
         ],
     )
 
-    unlimited = snapshot.to_prompt_json(max_tokens=10**9)
-    limited = snapshot.to_prompt_json(max_tokens=700)
-
-    # 限制版本严格小于无限制版本
-    assert len(limited) < len(unlimited)
-
-    # 两者均为合法 JSON
-    unlimited_parsed = json.loads(unlimited)
-    limited_parsed = json.loads(limited)
+    projected = snapshot.to_prompt_json()
+    parsed = json.loads(projected)
 
     # 画像投影只保留固定数量的最高优先级模式。
-    assert len(unlimited_parsed["patterns"]) == 3
-
-    # explicit_context 字段被完整保留 (优先级高于 inferred_patterns)
-    assert "context" in limited_parsed
-    assert len(limited_parsed["context"]) == 2
-    assert limited_parsed["context"][0]["field"] == "major"
-    assert limited_parsed["context"][1]["field"] == "grade"
-
-    # inferred_patterns 被丢弃或截断 绝不会多于无限制版本
-    if "patterns" in limited_parsed:
-        assert len(limited_parsed["patterns"]) < len(
-            unlimited_parsed["patterns"]
-        )
-    else:
-        # 整段被丢弃也是合法的截断结果
-        assert "patterns" not in limited_parsed
-
-    # 限制后的 token 估算落在预算内
-    assert _estimate_tokens(limited) <= 700
+    assert len(parsed["patterns"]) == 3
+    assert parsed["context"] == [
+        {"field": "major", "value": "cs"},
+        {"field": "grade", "value": "大三"},
+    ]
 
 
 def test_irrelevant_context_fields_are_omitted_as_whole_fields():
@@ -163,49 +138,9 @@ def test_irrelevant_context_fields_are_omitted_as_whole_fields():
         ],
     )
 
-    limited = snapshot.to_prompt_json(max_tokens=700)
-    parsed = json.loads(limited)
+    projected = snapshot.to_prompt_json()
+    parsed = json.loads(projected)
 
     assert "context" not in parsed
-    assert "ctx_0" not in limited
-    assert json.dumps(parsed, ensure_ascii=False, separators=(",", ":")) == limited
-
-    # token 估算落在预算内
-    assert _estimate_tokens(limited) <= 700
-
-
-def test_estimate_tokens_english_reasonable():
-    """英文内容 token 估算应与 len//4 (4 字符/token) 在 20% 范围内一致。"""
-    text = "The quick brown fox jumps over the lazy dog"
-    estimate = _estimate_tokens(text)
-    expected = len(text) // 4
-    if _TIKTOKEN_ENCODING is None:
-        # 启发式模式: 纯 ASCII 按 4 字符/token 估算
-        assert abs(estimate - expected) <= 0.2 * expected
-    else:
-        # tiktoken 模式: 英文 token 数与 len//4 同一数量级
-        assert 0 < estimate <= 2 * max(expected, 1)
-
-
-def test_estimate_tokens_chinese_reasonable():
-    """中文内容 token 估算应与 len*1.5 (1.5 token/字符) 在 20% 范围内一致。"""
-    text = "你好世界这是一个用于测试的中文句子"
-    estimate = _estimate_tokens(text)
-    expected = len(text) * 1.5
-    if _TIKTOKEN_ENCODING is None:
-        # 启发式模式: 中文字符按 1.5 token/字符 估算
-        assert abs(estimate - expected) <= 0.2 * expected
-    else:
-        # tiktoken 模式: 中文 token 数与 len*1.5 同一数量级
-        assert 0 < estimate <= 2 * expected
-
-
-def test_estimate_tokens_mixed_reasonable():
-    """中英混合内容 token 估算应介于纯英文与纯中文估算之间。"""
-    text = "用户 major is 计算机科学 grade 大三"
-    estimate = _estimate_tokens(text)
-    assert estimate > 0
-    # 混合内容估算高于纯 ASCII 估算 (中文字符权重更高)
-    assert estimate > len(text) // 4
-    # 且低于全部按中文估算 (ASCII 字符权重更低)
-    assert estimate < len(text) * 1.5
+    assert "ctx_0" not in projected
+    assert json.dumps(parsed, ensure_ascii=False, separators=(",", ":")) == projected

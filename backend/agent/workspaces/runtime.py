@@ -20,9 +20,6 @@ from backend.agent.workspaces.learning_adapter import LearningAdapter
 from backend.agent.workspaces.models import AgentRunSpec, AgentTurnInput, ExecutableAgentRun
 from backend.agent.workspaces.profile_registry import DEFAULT_PROFILE_REGISTRY, WorkspaceProfileRegistry
 from backend.agent.workspaces.run_spec_builder import RunSpecBuilder
-from backend.core.utils.config import WORKSPACE_CONTEXT_MAX_TOKENS
-
-
 logger = logging.getLogger(__name__)
 _ROUTER_CONTEXT_MESSAGE_LIMIT = 4
 _ROUTER_CONTEXT_CHAR_LIMIT = 1_000
@@ -40,7 +37,7 @@ class WorkspaceRuntime:
         self.dependencies = dependencies
         self.profiles = profiles
         self.capabilities = CapabilityRuntime()
-        self.composer = ContextComposer(max_tokens=WORKSPACE_CONTEXT_MAX_TOKENS)
+        self.composer = ContextComposer()
         self.learning = LearningAdapter()
         self.builder = RunSpecBuilder()
 
@@ -163,6 +160,7 @@ class WorkspaceRuntime:
             knowledge_sources=turn.knowledge_sources,
             personal_knowledge_base_id=turn.personal_knowledge_base_id,
             retrieval_projection_context=self._retrieval_projection_context(turn),
+            context_compactor=turn.request_metadata.get("context_compactor"),
         )
         return self.builder.build(
             turn=turn,

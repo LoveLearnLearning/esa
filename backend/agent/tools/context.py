@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Mapping, Protocol
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Mapping, Protocol
 
 if TYPE_CHECKING:
     from backend.agent.rag.context_routing import (
@@ -84,6 +84,7 @@ class ToolExecutionContext:
     knowledge_sources: tuple[str, ...] = ("personal", "public")
     personal_knowledge_base_id: str | None = None
     retrieval_projection_context: "RetrievalProjectionContext | None" = None
+    context_compactor: Callable[[], Awaitable[Any]] | None = None
 
     def __post_init__(self) -> None:
         """完成实例初始化后的校验与派生字段构建。"""

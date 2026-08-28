@@ -14,7 +14,7 @@ from backend.agent.tools.context import AgentRuntimeDependencies, ToolExecutionC
 from backend.agent.tools.tool_register import ToolRegistry
 from backend.agent.tools.tools import tr
 from backend.agent.workspaces.capability_runtime import CapabilityRuntime
-from backend.agent.workspaces.context_composer import ContextComposer, _clip, _tokens
+from backend.agent.workspaces.context_composer import ContextComposer, _tokens
 from backend.agent.workspaces.models import (
     AgentTurnInput,
     LearningTurnContext,
@@ -374,7 +374,7 @@ class _ProfileSnapshot:
         return '{"explicit_context":[{"field":"major","value":"cs"}]}'
 
 
-def test_context_composer_order_trust_and_deterministic_clipping():
+def test_context_composer_order_trust_and_preserves_context():
     """验证 `context_composer_order_trust_and_deterministic_clipping` 场景。"""
     route = _route()
     capabilities = ResolvedCapabilities(
@@ -395,9 +395,7 @@ def test_context_composer_order_trust_and_deterministic_clipping():
         conversation_summary="S" * 1000,
         authorized_attachments=({"attachment_id": "a1", "status": "stored"},),
     )
-    # Keep enough budget for the profile/group ordering assertions while still
-    # forcing the long summary to be clipped deterministically.
-    composer = ContextComposer(max_tokens=2200)
+    composer = ContextComposer()
     first = composer.compose(turn, LEARNING_PROFILE, capabilities)
     second = composer.compose(turn, LEARNING_PROFILE, capabilities)
     assert first == second
@@ -413,7 +411,7 @@ def test_context_composer_order_trust_and_deterministic_clipping():
     assert first.rendered.index("# User profile data") < first.rendered.index(
         "# Group instructions"
     )
-    assert first.estimated_tokens <= 2200
+    assert "S" * 1000 in first.rendered
 
 
 def test_context_composer_requires_parsing_referenced_attachments():
@@ -445,16 +443,6 @@ def test_context_composer_requires_parsing_referenced_attachments():
     assert "概括全文的主要内容" in composed.rendered
 
 
-def test_context_composer_uses_cjk_aware_token_budget():
-    """Chinese content must not be estimated with the ASCII chars/4 rule."""
-    text = "你" * 10_000
-    assert _tokens(text) >= 10_000
-
-    clipped = _clip(text, 100)
-    assert clipped.endswith("...")
-    assert _tokens(clipped) <= 100
-
-
 def test_task_mode_is_server_compiled_as_trusted_context():
     capabilities = ResolvedCapabilities(
         skill_index="",
@@ -464,7 +452,7 @@ def test_task_mode_is_server_compiled_as_trusted_context():
         tool_names=frozenset(),
         fingerprint="f",
     )
-    composed = ContextComposer(max_tokens=2000).compose(
+    composed = ContextComposer().compose(
         _turn(_route(), task_mode="study_plan"),
         LEARNING_PROFILE,
         capabilities,

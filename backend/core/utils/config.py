@@ -128,33 +128,6 @@ AUXILIARY_MODEL_REQUEST_TIMEOUT: float = 180.0
 AGENT_LOOP_TIME: int = 10
 AGENT_TOOL_TIMEOUT_SECONDS: float = 30.0
 AGENT_STREAM_HEARTBEAT_SECONDS: float = 15.0
-WORKSPACE_CONTEXT_MAX_TOKENS: int = _positive_int_from_env(
-    "ESA_WORKSPACE_CONTEXT_MAX_TOKENS", 16_000
-)
-
-# Prompt budgets are soft quality targets except for the physical context limit.
-# All values remain environment-overridable so deployments can tune them without
-# changing the workspace/tool protocol.
-PROMPT_TARGET_INPUT_TOKENS: int = _positive_int_from_env(
-    "ESA_PROMPT_TARGET_INPUT_TOKENS", 5000
-)
-PROMPT_TOOL_SCHEMA_TARGET_TOKENS: int = _positive_int_from_env(
-    "ESA_PROMPT_TOOL_SCHEMA_TARGET_TOKENS", 2800
-)
-PROMPT_TOOL_SCHEMA_MAX_TOKENS: int = _positive_int_from_env(
-    "ESA_PROMPT_TOOL_SCHEMA_MAX_TOKENS", 3000
-)
-PROMPT_SAFETY_MARGIN_TOKENS: int = _positive_int_from_env(
-    "ESA_PROMPT_SAFETY_MARGIN_TOKENS", 512
-)
-PROMPT_BASE_TARGET_TOKENS: int = 350
-PROMPT_LEARNING_POLICY_TARGET_TOKENS: int = 350
-PROMPT_LEARNING_POLICY_MAX_TOKENS: int = 450
-PROMPT_SKILL_INDEX_MAX_TOKENS: int = 250
-PROMPT_PROFILE_TARGET_TOKENS: int = 250
-PROMPT_PROFILE_MAX_TOKENS: int = 300
-PROMPT_AUTO_SKILL_MAX_TOKENS: int = 450
-PROMPT_LAZY_SKILL_MAX_TOKENS: int = 500
 
 # Offline conversation context compression. Original messages are retained;
 # the summary only replaces old messages in the next model prompt.

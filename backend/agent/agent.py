@@ -32,6 +32,7 @@ from backend.core.utils.models import (
     ToolCall,
     ToolExecutionResult,
 )
+from backend.core.utils.errors import ModelContextOverflow
 
 
 logger = logging.getLogger(__name__)
@@ -364,6 +365,8 @@ class Agent:
         needs_final_synthesis = False
         final_generation_index = run_spec.loop_policy.max_iterations
         for iteration in range(run_spec.loop_policy.max_iterations):
+            run_spec, messages = await self._fit_context(messages, run_spec)
+            tool_schemas = [dict(item) for item in run_spec.tool_schemas]
             response = await self._generate(
                 messages,
                 tool_schemas,
@@ -529,6 +532,49 @@ class Agent:
 
         return new_messages
 
+    async def _fit_context(
+        self,
+        messages: list[dict],
+        run_spec: ExecutableAgentRun,
+    ) -> tuple[ExecutableAgentRun, list[dict]]:
+        """Ensure the current dynamic prompt fits the model's real capacity."""
+        inspect_prompt = getattr(self.llm_provider, "inspect_prompt", None)
+        if not callable(inspect_prompt):
+            return run_spec, messages
+
+        while True:
+            _prompt, input_tokens, input_limit = inspect_prompt(
+                messages,
+                [dict(item) for item in run_spec.tool_schemas],
+            )
+            if input_tokens <= input_limit:
+                return run_spec, messages
+
+            compactor = getattr(run_spec.execution_context, "context_compactor", None)
+            if not callable(compactor):
+                raise ModelContextOverflow(
+                    "model context exceeds max_model_len and cannot be compressed"
+                )
+            refreshed = await compactor()
+            if not isinstance(refreshed, ExecutableAgentRun):
+                raise ModelContextOverflow(
+                    "model context exceeds max_model_len and cannot be compressed"
+                )
+
+            last_user = max(
+                (index for index, item in enumerate(messages) if item.get("role") == "user"),
+                default=-1,
+            )
+            suffix = messages[last_user + 1 :] if last_user >= 0 else []
+            refreshed_messages = [dict(item) for item in refreshed.messages]
+            refreshed_messages.extend(dict(item) for item in suffix)
+            if refreshed_messages == messages and refreshed.tool_schemas == run_spec.tool_schemas:
+                raise ModelContextOverflow(
+                    "model context exceeds max_model_len and cannot be compressed"
+                )
+            run_spec = refreshed
+            messages = refreshed_messages
+
     async def run_stream(
         self,
         run_spec: ExecutableAgentRun,
@@ -584,6 +630,7 @@ class Agent:
         needs_final_synthesis = False
         final_generation_index = run_spec.loop_policy.max_iterations
         for iteration in range(run_spec.loop_policy.max_iterations):
+            run_spec, messages = await self._fit_context(messages, run_spec)
             stream_parser = self.llm_provider.create_stream_parser()
             generation = self._generate_stream(
                 messages,
