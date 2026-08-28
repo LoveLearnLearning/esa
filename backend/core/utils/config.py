@@ -576,7 +576,7 @@ LSP_DOCUMENT_FILENAMES: dict[str, str] = {
 RAG_ENABLED: bool = _bool_from_env("RAG_ENABLED", False)
 RAG_METADATA_PROJECTION_MODE: Literal["off", "rule"] = _choice_from_env(
     "RAG_METADATA_PROJECTION_MODE",
-    "rule",
+    "off",
     ("off", "rule"),
 )
 RAG_COLLECTION_ID = "collection_f645d539e0ae078ba11d7e88"

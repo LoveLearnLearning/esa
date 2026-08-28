@@ -13,6 +13,7 @@ import '../widgets/memory_sheet.dart';
 import '../widgets/history_drawer.dart';
 import '../widgets/agent_action_sheet.dart';
 import '../widgets/composer.dart';
+import '../widgets/conversation_move_dialog.dart';
 import 'chat_page.dart';
 import 'knowledge_map_page.dart';
 import 'planner_page.dart';
@@ -208,6 +209,8 @@ class _HomeShellState extends State<HomeShell> {
 
   Future<void> _startNewConversation() async {
     final app = AppScope.of(context);
+    // 新对话默认归入未分组，避免继续沿用到上一个分组对话的分组。
+    app.setActiveGroup(null);
     await app.newConversation();
     if (!mounted) return;
     setState(() {
@@ -822,6 +825,7 @@ class _WorkspaceSidebar extends StatelessWidget {
             conversation: conversation,
             onTap: () => onOpenConversation(conversation),
             onDelete: () => _deleteConversation(context, app, conversation),
+            onMoveToGroup: () => _moveConversation(context, app, conversation),
           ),
     ];
   }
@@ -887,6 +891,23 @@ class _WorkspaceSidebar extends StatelessWidget {
     );
     if (confirmed == true) {
       await app.deleteConversation(conversation.id);
+    }
+  }
+
+  Future<void> _moveConversation(
+    BuildContext context,
+    AppState app,
+    ChatConversation conversation,
+  ) async {
+    final target = await showMoveConversationDialog(context, app, conversation);
+    if (target == null || !context.mounted) return;
+    try {
+      await app.moveConversationToGroup(conversation.id, target.groupId);
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('移动失败：$error')));
     }
   }
 
@@ -1117,10 +1138,12 @@ class _ConversationEntry extends StatelessWidget {
     required this.conversation,
     required this.onTap,
     this.onDelete,
+    this.onMoveToGroup,
   });
   final ChatConversation conversation;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
+  final VoidCallback? onMoveToGroup;
 
   @override
   Widget build(BuildContext context) => ListTile(
@@ -1134,15 +1157,36 @@ class _ConversationEntry extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       style: const TextStyle(fontSize: 12.5),
     ),
-    trailing: onDelete == null
+    trailing: onDelete == null && onMoveToGroup == null
         ? null
-        : IconButton(
-            tooltip: '删除对话',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-            iconSize: 14,
-            icon: const Icon(LucideIcons.trash2),
-            onPressed: onDelete,
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (onMoveToGroup != null)
+                IconButton(
+                  tooltip: '移动到分组',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 26,
+                    minHeight: 26,
+                  ),
+                  iconSize: 14,
+                  icon: const Icon(LucideIcons.folderInput),
+                  onPressed: onMoveToGroup,
+                ),
+              if (onDelete != null)
+                IconButton(
+                  tooltip: '删除对话',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 26,
+                    minHeight: 26,
+                  ),
+                  iconSize: 14,
+                  icon: const Icon(LucideIcons.trash2),
+                  onPressed: onDelete,
+                ),
+            ],
           ),
     onTap: onTap,
   );

@@ -28,10 +28,28 @@ local model copy used to load it.
 `get_knowledge_base_stats` remains the public deployment metadata contract.
 Public-only retrieval retains the separated v2 model/display/audit adapter in
 `agent_api.py`; the Agent-facing federation wraps it together with personal
-results as `retrieve_knowledge.unified.v1`. The final serialized model JSON is
-still limited to 2048 tokens, while complete source material stays in the audit
-projection. Contract changes require a new version, updated fixtures, and
-regenerated training schema/data; they must not be introduced silently.
+results as `retrieve_knowledge.unified.v1`. That version identifies the full
+retrieval source contract and remains unchanged by Agent-only context
+projection.
+
+When `RAG_METADATA_PROJECTION_MODE=off`, the Agent receives the original
+`retrieve_knowledge.unified.v1` model view. When explicitly set to `rule`, the
+post-retrieval middleware sends the independently versioned
+`retrieve_knowledge.model_context.v1` view to the Agent. Its payload always
+declares both `contract_version=retrieve_knowledge.model_context.v1` and
+`source_contract_version=retrieve_knowledge.unified.v1`. Display content and
+the existing audit provenance remain on the source contract; projection audit
+records both identities. Missing or unsupported source versions fail open to
+the original model view instead of being relabeled.
+
+The model-context v1 schema is
+`backend/agent/rag/contracts/retrieve_knowledge_model_context_v1.schema.json`.
+Projection defaults to `off` until its target-model fixtures, successful
+retrieval observations, training data, and evaluation have been validated.
+The final serialized model JSON remains limited to 2048 tokens, while complete
+source material stays in the audit projection. Changes to either contract
+require a new version, updated fixtures, and regenerated training schema/data;
+they must not be introduced silently.
 
 ## Unified collection protocol
 

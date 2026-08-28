@@ -267,8 +267,9 @@ class ContextComposer:
             sections.append(ContextSection(
                 "attachment_policy", "Attachment handling policy",
                 (
-                    "附件未自动解析。用户指代附件并要求阅读、总结、解释、翻译、提取或检索时，"
-                    "先调用对应解析 Tool，query 使用实际任务；不追问 Tool 已有标识，不猜内容或路径。"
+                    "本轮有新附件授权，必须在回复前调用对应解析 Tool 获取内容后再回答。"
+                    "每轮附件独立授权，对话历史中已解析的附件不适用于本轮。"
+                    "不追问 Tool 已有标识，不猜内容或路径。"
                 ),
                 "trusted_system", 125,
             ))

@@ -13,11 +13,15 @@ from backend.agent.rag.context_routing import (
     RetrievalProjectionContext,
 )
 from backend.agent.rag.retrieval.context import estimate_tokens
+from backend.agent.rag.unified_retrieval import (
+    CONTRACT_VERSION as UNIFIED_CONTRACT_VERSION,
+)
 from backend.core.utils.models import ToolExecutionResult
 
 
 logger = logging.getLogger(__name__)
 DEFAULT_MODEL_TOKEN_BUDGET = 2_048
+MODEL_CONTEXT_CONTRACT_VERSION = "retrieve_knowledge.model_context.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +49,7 @@ class CanonicalRetrievalItem:
 class ProjectedRetrievalContext:
     """Canonical projection prior to choosing its model representation."""
 
+    source_contract_version: str
     profile: MetadataProfile
     results: tuple[Mapping[str, Any], ...]
     ref_registry: Mapping[str, Mapping[str, Any]]
@@ -148,6 +153,11 @@ class MetadataProjector:
         result: ToolExecutionResult,
         profile: MetadataProfile,
     ) -> ProjectedRetrievalContext:
+        source_contract_version = ""
+        if isinstance(result.model_content, Mapping):
+            raw_version = result.model_content.get("contract_version")
+            if isinstance(raw_version, str):
+                source_contract_version = raw_version
         items = self.adapter.adapt(result)
         missing: list[str] = []
         projected: list[Mapping[str, Any]] = []
@@ -207,7 +217,9 @@ class MetadataProjector:
         if profile is MetadataProfile.FULL and isinstance(result.model_content, Mapping):
             retrieval_metadata = dict(result.model_content)
             retrieval_metadata.pop("results", None)
+            retrieval_metadata.pop("contract_version", None)
         return ProjectedRetrievalContext(
+            source_contract_version=source_contract_version,
             profile=profile,
             results=tuple(projected),
             ref_registry=registry,
@@ -222,7 +234,11 @@ class ContextSerializer:
     mode = "compact_json.v1"
 
     def serialize(self, projected: ProjectedRetrievalContext) -> dict[str, Any]:
+        if projected.source_contract_version != UNIFIED_CONTRACT_VERSION:
+            raise ValueError("unsupported retrieval source contract")
         payload: dict[str, Any] = {
+            "contract_version": MODEL_CONTEXT_CONTRACT_VERSION,
+            "source_contract_version": projected.source_contract_version,
             "profile": projected.profile.value,
             "results": [dict(item) for item in projected.results],
         }
@@ -270,10 +286,17 @@ def projection_fallback_result(
     if not isinstance(result.audit_metadata, Mapping):
         return result
     audit = dict(result.audit_metadata)
+    source_contract_version = None
+    if isinstance(result.model_content, Mapping):
+        raw_version = result.model_content.get("contract_version")
+        if isinstance(raw_version, str):
+            source_contract_version = raw_version
     projection_audit: dict[str, Any] = {
         "enabled": True,
         "status": "fallback",
         "fallback_reason": reason,
+        "model_contract_version": MODEL_CONTEXT_CONTRACT_VERSION,
+        "source_contract_version": source_contract_version,
         "query": context.route_input.current_user_message,
         "recent_user_messages": list(context.route_input.recent_user_messages),
     }
@@ -320,6 +343,24 @@ class MetadataProjectionMiddleware:
             )
         if not isinstance(result.audit_metadata, Mapping):
             return result
+
+        source_contract_version = None
+        if isinstance(result.model_content, Mapping):
+            raw_version = result.model_content.get("contract_version")
+            if isinstance(raw_version, str):
+                source_contract_version = raw_version
+        if source_contract_version is None:
+            return projection_fallback_result(
+                result,
+                context,
+                "source_contract_version_missing",
+            )
+        if source_contract_version != UNIFIED_CONTRACT_VERSION:
+            return projection_fallback_result(
+                result,
+                context,
+                f"unsupported_source_contract_version:{source_contract_version}",
+            )
 
         projected = self.projector.project(result, context.decision.profile)
         model_content = self.serializer.serialize(projected)
@@ -379,6 +420,8 @@ class MetadataProjectionMiddleware:
         audit["metadata_projection"] = {
             "enabled": True,
             "status": "applied",
+            "model_contract_version": MODEL_CONTEXT_CONTRACT_VERSION,
+            "source_contract_version": source_contract_version,
             "profile": context.decision.profile.value,
             "predicted_profile": context.decision.profile.value,
             "corrected_profile": None,
