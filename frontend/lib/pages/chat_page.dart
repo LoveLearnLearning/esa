@@ -1114,6 +1114,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       sourceMap?['documentId'])
                   ?.toString()
                   .trim();
+          final knowledgeBaseId =
+              (result['knowledge_base_id'] ??
+                      result['knowledgeBaseId'] ??
+                      sourceMap?['knowledge_base_id'] ??
+                      sourceMap?['knowledgeBaseId'])
+                  ?.toString()
+                  .trim();
           final previewUrl =
               (result['preview_url'] ??
                       result['previewUrl'] ??
@@ -1152,6 +1159,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             label: '来源 ${resultIndex + 1} · $sourceLabel',
             filename: filename,
             fileId: fileId?.isEmpty == true ? null : fileId,
+            knowledgeBaseId: knowledgeBaseId?.isEmpty == true
+                ? null
+                : knowledgeBaseId,
             documentId: documentId?.isEmpty == true ? null : documentId,
             previewUrl: previewUrl?.isEmpty == true ? null : previewUrl,
             page: page,
@@ -1233,9 +1243,29 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         return;
       }
       if (filename == null || filename.isEmpty) return;
-      final snapshot = await AppScope.of(
-        context,
-      ).api.getPersonalKnowledgeBase();
+      if (citation.fileId?.isNotEmpty == true) {
+        final directFile = KnowledgeBaseFile(
+          id: citation.fileId!,
+          filename: filename,
+          mediaType: 'application/octet-stream',
+          sizeBytes: 0,
+          status: KnowledgeBaseBuildStatus.ready,
+          progress: 1,
+          chunkCount: 0,
+          indexCount: 0,
+          uploadedAt: null,
+        );
+        final content = await AppScope.of(
+          context,
+        ).api.fetchPersonalKnowledgeBaseOriginal(directFile);
+        if (!mounted) return;
+        await _showSourcePreview(citation, directFile, content);
+        return;
+      }
+      final snapshot = await AppScope.of(context).api.getPersonalKnowledgeBase(
+        knowledgeBaseId:
+            citation.knowledgeBaseId ?? _selectedPersonalKnowledgeBaseId,
+      );
       KnowledgeBaseFile? file;
       for (final candidate in snapshot.files) {
         if ((citation.fileId != null && candidate.id == citation.fileId) ||

@@ -120,6 +120,13 @@ def test_personal_retrieval_forces_trusted_tenant_and_returns_locator(
 
     assert result["result_count"] == 1
     assert result["results"][0]["source"] == "notes.txt"
+    assert result["results"][0]["source_type"] == "personal"
+    assert result["results"][0]["file_id"] == "live-file"
+    assert result["results"][0]["knowledge_base_id"] == "kb-a"
+    assert result["results"][0]["preview_url"].endswith(
+        "/files/live-file/content"
+    )
+    assert result["results"][0]["highlight_text"]
     assert result["results"][0]["location"]["kind"] == "text_lines"
     assert index.calls == [
         ("trusted-user", "active-generation", ("live-file",)),

@@ -142,6 +142,13 @@ class PersonalKnowledgeRetrievalService:
                     "score_type": "rrf",
                     "rank": rank,
                     "source": filename,
+                    "source_type": "personal",
+                    "file_id": str(raw["file_id"]),
+                    "knowledge_base_id": resolved_knowledge_base_id,
+                    "preview_url": (
+                        f"/me/knowledge-base/files/{raw['file_id']}/content"
+                    ),
+                    "highlight_text": primary.evidence_text,
                     "section": " / ".join(primary.section_path) or None,
                     "location": locator,
                     "chunk_id": chunk.chunk_id,
