@@ -37,6 +37,7 @@ from backend.core.utils.models import (
 logger = logging.getLogger(__name__)
 
 _EMPTY_VISIBLE_RESPONSE = "模型本轮未返回可展示正文，请重试。"
+_TOOL_SYNTHESIS_FALLBACK = "工具已返回结果，但模型未能形成完整答复，请重试。"
 
 _TERMINAL_TOOL_ERRORS = frozenset(
     {"tool_not_available", "resource_capability_required"}
@@ -48,6 +49,33 @@ def _terminal_tool_error(result: object) -> str | None:
         return None
     error = result.get("error")
     return error if isinstance(error, str) and error in _TERMINAL_TOOL_ERRORS else None
+
+
+def _tool_call_signature(tool_call: ToolCall) -> tuple[str, str]:
+    """Return a stable identity for one tool name and its JSON arguments."""
+
+    arguments = json.dumps(
+        tool_call.arguments,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return tool_call.name, arguments
+
+
+def _successful_tool_result(result: object) -> bool:
+    """Whether an observation is safe to reuse within the current agent turn."""
+
+    if isinstance(result, Mapping):
+        return result.get("ok") is not False and result.get("allowed") is not False
+    if isinstance(result, str):
+        normalized = result.strip().lower()
+        return not (
+            normalized.startswith("[error]")
+            or normalized.endswith("skill not found!")
+        )
+    return True
 
 
 def _tool_unavailable_message(name: str, error: str) -> str:
@@ -331,7 +359,10 @@ class Agent:
         """执行 `loop` 相关数据。"""
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
         terminal_tool_errors: dict[str, str] = {}
+        completed_tool_results: dict[tuple[str, str], str] = {}
         stop_loop = False
+        needs_final_synthesis = False
+        final_generation_index = run_spec.loop_policy.max_iterations
         for iteration in range(run_spec.loop_policy.max_iterations):
             response = await self._generate(
                 messages,
@@ -386,6 +417,8 @@ class Agent:
                 }
             )
 
+            executed_tool_call = False
+            repeated_successful_call = False
             for tool_call in tool_calls:
                 previous_error = terminal_tool_errors.get(tool_call.name)
                 if previous_error is not None:
@@ -405,6 +438,25 @@ class Agent:
                     )
                     stop_loop = True
                     break
+                signature = _tool_call_signature(tool_call)
+                cached_model_text = completed_tool_results.get(signature)
+                if cached_model_text is not None:
+                    # Keep the model protocol balanced, but do not execute or
+                    # display an identical successful operation twice.
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "name": tool_call.name,
+                            "content": cached_model_text,
+                        }
+                    )
+                    repeated_successful_call = True
+                    logger.warning(
+                        "agent skipped repeated successful tool call run_id=%s tool=%s",
+                        run_spec.run_metadata.get("run_id"),
+                        tool_call.name,
+                    )
+                    continue
                 tool_call_id = f"tool-{uuid4().hex}"
                 result = await asyncio.wait_for(
                     run_spec.tool_executor.execute(
@@ -418,6 +470,7 @@ class Agent:
                 )
                 model_text = serialize_tool_result(model_result)
                 display_text = serialize_tool_result(display_result)
+                executed_tool_call = True
 
                 messages.append(
                     {
@@ -442,19 +495,28 @@ class Agent:
                 terminal_error = _terminal_tool_error(model_result)
                 if terminal_error is not None:
                     terminal_tool_errors[tool_call.name] = terminal_error
+                elif _successful_tool_result(model_result):
+                    completed_tool_results[signature] = model_text
 
             if stop_loop:
                 break
+            if repeated_successful_call and not executed_tool_call:
+                needs_final_synthesis = True
+                final_generation_index = iteration + 1
+                break
 
         else:
-            # A model that keeps requesting tools must still produce a visible
-            # turn result.  Give it one final text-only pass so the user gets a
-            # useful synthesis instead of an apparently empty successful reply.
+            needs_final_synthesis = True
+
+        if needs_final_synthesis:
+            # A repeated successful call or an exhausted loop must still end in
+            # one useful answer.  Remove tools for the final synthesis so the
+            # model cannot request the same observation again.
             final_response = await self._generate(
                 messages,
                 [],
                 run_spec,
-                generation_index=run_spec.loop_policy.max_iterations,
+                generation_index=final_generation_index,
             )
             final_parsed = self.llm_provider.parse_output(final_response, [])
             self._append_final_answer(
@@ -462,10 +524,7 @@ class Agent:
                 new_messages,
                 final_response,
                 final_parsed,
-                fallback=(
-                    "工具调用已达到本轮上限，暂未形成完整答复。"
-                    "请缩小问题范围后重试。"
-                ),
+                fallback=_TOOL_SYNTHESIS_FALLBACK,
             )
 
         return new_messages
@@ -520,7 +579,10 @@ class Agent:
         """执行 `stream loop` 相关数据。"""
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
         terminal_tool_errors: dict[str, str] = {}
+        completed_tool_results: dict[tuple[str, str], str] = {}
         stop_loop = False
+        needs_final_synthesis = False
+        final_generation_index = run_spec.loop_policy.max_iterations
         for iteration in range(run_spec.loop_policy.max_iterations):
             stream_parser = self.llm_provider.create_stream_parser()
             generation = self._generate_stream(
@@ -650,6 +712,8 @@ class Agent:
                 }
             )
 
+            executed_tool_call = False
+            repeated_successful_call = False
             for tool_call in tool_calls:
                 previous_error = terminal_tool_errors.get(tool_call.name)
                 if previous_error is not None:
@@ -673,6 +737,23 @@ class Agent:
                     )
                     stop_loop = True
                     break
+                signature = _tool_call_signature(tool_call)
+                cached_model_text = completed_tool_results.get(signature)
+                if cached_model_text is not None:
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "name": tool_call.name,
+                            "content": cached_model_text,
+                        }
+                    )
+                    repeated_successful_call = True
+                    logger.warning(
+                        "agent skipped repeated successful tool call run_id=%s tool=%s",
+                        run_spec.run_metadata.get("run_id"),
+                        tool_call.name,
+                    )
+                    continue
                 tool_call_id = f"tool-{uuid4().hex}"
                 yield AgentStreamEvent(
                     event="tool_start",
@@ -707,6 +788,7 @@ class Agent:
                 )
                 model_text = serialize_tool_result(model_result)
                 display_text = serialize_tool_result(display_result)
+                executed_tool_call = True
 
                 tool_message = {
                     "role": "tool",
@@ -740,11 +822,20 @@ class Agent:
                 terminal_error = _terminal_tool_error(model_result)
                 if terminal_error is not None:
                     terminal_tool_errors[tool_call.name] = terminal_error
+                elif _successful_tool_result(model_result):
+                    completed_tool_results[signature] = model_text
 
             if stop_loop:
                 break
+            if repeated_successful_call and not executed_tool_call:
+                needs_final_synthesis = True
+                final_generation_index = iteration + 1
+                break
 
         else:
+            needs_final_synthesis = True
+
+        if needs_final_synthesis:
             # See the non-streaming loop: force one text-only synthesis after
             # repeated tool calls, and never complete with an empty assistant
             # message.  The forced pass is streamed normally so the Flutter UI
@@ -754,7 +845,7 @@ class Agent:
                 messages,
                 [],
                 run_spec,
-                generation_index=run_spec.loop_policy.max_iterations,
+                generation_index=final_generation_index,
             ).__aiter__()
             emitted_content = False
             try:
@@ -777,10 +868,7 @@ class Agent:
                 final_parsed,
             )
             if not final_content:
-                final_content = (
-                    "工具调用已达到本轮上限，暂未形成完整答复。"
-                    "请缩小问题范围后重试。"
-                )
+                final_content = _TOOL_SYNTHESIS_FALLBACK
             if not emitted_content:
                 yield AgentStreamEvent(
                     event="content",

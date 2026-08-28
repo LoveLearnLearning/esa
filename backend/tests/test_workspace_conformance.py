@@ -812,11 +812,157 @@ def test_stream_stops_repeating_a_tool_that_is_not_available():
     assert events[-1].event == "complete"
 
 
+def test_agent_executes_an_identical_successful_tool_call_only_once():
+    """成功的同名同参只读查询不应一直执行到循环上限。"""
+
+    class Executor:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _name, _arguments):
+            self.calls += 1
+            return {
+                "allowed": True,
+                "course": "数据结构",
+                "has_records": False,
+                "total_points": 0,
+                "avg_mastery": 0.0,
+                "weak_points": [],
+                "strong_points": [],
+                "stale_points": [],
+            }
+
+    class Provider:
+        async def generate(self, _messages, schemas):
+            if schemas:
+                return (
+                    '<tool_call>{"name":"get_mastery_report",'
+                    '"arguments":{"course":"数据结构"}}</tool_call>'
+                )
+            return "暂无掌握记录，我会按零基础安排三天复习计划。"
+
+        def parse_output(self, response, _schemas):
+            if response.startswith("<tool_call>"):
+                return ParsedOutput(
+                    tool_calls=[
+                        ToolCall("get_mastery_report", {"course": "数据结构"})
+                    ]
+                )
+            return ParsedOutput(content=response)
+
+    executor = Executor()
+    run_spec = SimpleNamespace(
+        messages=({"role": "user", "content": "每天 5 小时，制定复习计划"},),
+        tool_schemas=({"function": {"name": "get_mastery_report"}},),
+        loop_policy=SimpleNamespace(max_iterations=4, tool_timeout_seconds=1),
+        tool_executor=executor,
+        run_metadata={
+            "request_id": "request-repeated-success",
+            "run_id": "run-repeated-success",
+            "conversation_id": "conversation-test",
+            "workspace_type": "learning",
+        },
+        capability_fingerprint="capability-test",
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = Provider()
+
+    messages = asyncio.run(agent.run(run_spec))
+
+    assert executor.calls == 1
+    assert sum(message.get("role") == "tool" for message in messages) == 1
+    assert messages[-1]["content"] == "暂无掌握记录，我会按零基础安排三天复习计划。"
+
+
+def test_stream_executes_an_identical_successful_tool_call_only_once():
+    """流式路径与同步路径使用相同的成功调用去重语义。"""
+
+    class Executor:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _name, _arguments):
+            self.calls += 1
+            return {
+                "allowed": True,
+                "course": "数据结构",
+                "has_records": False,
+                "total_points": 0,
+            }
+
+    class StreamParser:
+        def __init__(self):
+            self.raw_text = ""
+
+        def feed(self, chunk):
+            self.raw_text += chunk
+            if chunk.startswith("<tool_call>"):
+                return []
+            return [("content", chunk)]
+
+        def finish(self):
+            return []
+
+    class Provider:
+        async def generate_stream(self, _messages, schemas):
+            if schemas:
+                yield (
+                    '<tool_call>{"name":"get_mastery_report",'
+                    '"arguments":{"course":"数据结构"}}</tool_call>'
+                )
+                return
+            yield "暂无掌握记录，我会按零基础安排三天复习计划。"
+
+        def create_stream_parser(self):
+            return StreamParser()
+
+        def parse_output(self, response, _schemas):
+            if response.startswith("<tool_call>"):
+                return ParsedOutput(
+                    tool_calls=[
+                        ToolCall("get_mastery_report", {"course": "数据结构"})
+                    ]
+                )
+            return ParsedOutput(content=response)
+
+    executor = Executor()
+    run_spec = SimpleNamespace(
+        messages=({"role": "user", "content": "每天 5 小时，制定复习计划"},),
+        tool_schemas=({"function": {"name": "get_mastery_report"}},),
+        loop_policy=SimpleNamespace(max_iterations=4, tool_timeout_seconds=1),
+        tool_executor=executor,
+        run_metadata={
+            "request_id": "request-stream-repeated-success",
+            "run_id": "run-stream-repeated-success",
+            "conversation_id": "conversation-test",
+            "workspace_type": "learning",
+        },
+        capability_fingerprint="capability-test",
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = Provider()
+
+    async def collect_stream():
+        return [event async for event in agent.run_stream(run_spec)]
+
+    events = asyncio.run(collect_stream())
+
+    assert executor.calls == 1
+    assert [event.event for event in events].count("tool") == 1
+    assert events[-1].data["messages"][-1]["content"] == (
+        "暂无掌握记录，我会按零基础安排三天复习计划。"
+    )
+
+
 def test_agent_forces_visible_final_answer_after_tool_loop_limit():
     """工具循环耗尽后不能以空助手消息成功结束。"""
 
     class Executor:
+        def __init__(self):
+            self.calls = 0
+
         async def execute(self, _name, _arguments):
+            self.calls += 1
             return {"ok": True, "result": "evidence"}
 
     class Provider:
@@ -826,19 +972,29 @@ def test_agent_forces_visible_final_answer_after_tool_loop_limit():
         async def generate(self, messages, schemas):
             self.calls.append((list(messages), list(schemas)))
             if schemas:
-                return "<tool_call>{\"name\":\"fake_tool\",\"arguments\":{}}</tool_call>"
+                attempt = len(self.calls)
+                return (
+                    '<tool_call>{"name":"fake_tool","arguments":'
+                    f'{{"attempt":{attempt}}}}}</tool_call>'
+                )
             return "最终基于工具结果给出总结。"
 
         def parse_output(self, response, _schemas):
             if response.startswith("<tool_call>"):
-                return ParsedOutput(tool_calls=[ToolCall("fake_tool", {})])
+                payload = json.loads(
+                    response.removeprefix("<tool_call>").removesuffix("</tool_call>")
+                )
+                return ParsedOutput(
+                    tool_calls=[ToolCall(payload["name"], payload["arguments"])]
+                )
             return ParsedOutput(content=response)
 
+    executor = Executor()
     run_spec = SimpleNamespace(
         messages=({"role": "user", "content": "question"},),
         tool_schemas=({"function": {"name": "fake_tool"}},),
         loop_policy=SimpleNamespace(max_iterations=2, tool_timeout_seconds=1),
-        tool_executor=Executor(),
+        tool_executor=executor,
         run_metadata={
             "request_id": "request-loop-limit",
             "run_id": "run-loop-limit",
@@ -855,6 +1011,7 @@ def test_agent_forces_visible_final_answer_after_tool_loop_limit():
 
     assert messages[-1]["role"] == "assistant"
     assert messages[-1]["content"] == "最终基于工具结果给出总结。"
+    assert executor.calls == 2
     assert provider.calls[-1][1] == []
 
 
@@ -862,7 +1019,11 @@ def test_stream_forces_visible_final_answer_after_tool_loop_limit():
     """流式工具循环耗尽后也必须继续发送纯文本总结。"""
 
     class Executor:
+        def __init__(self):
+            self.calls = 0
+
         async def execute(self, _name, _arguments):
+            self.calls += 1
             return {"ok": True, "result": "evidence"}
 
     class StreamParser:
@@ -887,7 +1048,11 @@ def test_stream_forces_visible_final_answer_after_tool_loop_limit():
         async def generate_stream(self, messages, schemas):
             self.calls.append((list(messages), list(schemas)))
             if schemas:
-                yield "<tool_call>{\"name\":\"fake_tool\",\"arguments\":{}}</tool_call>"
+                attempt = len(self.calls)
+                yield (
+                    '<tool_call>{"name":"fake_tool","arguments":'
+                    f'{{"attempt":{attempt}}}}}</tool_call>'
+                )
                 return
             yield "最终基于工具结果给出总结。"
 
@@ -896,14 +1061,20 @@ def test_stream_forces_visible_final_answer_after_tool_loop_limit():
 
         def parse_output(self, response, _schemas):
             if response.startswith("<tool_call>"):
-                return ParsedOutput(tool_calls=[ToolCall("fake_tool", {})])
+                payload = json.loads(
+                    response.removeprefix("<tool_call>").removesuffix("</tool_call>")
+                )
+                return ParsedOutput(
+                    tool_calls=[ToolCall(payload["name"], payload["arguments"])]
+                )
             return ParsedOutput(content=response)
 
+    executor = Executor()
     run_spec = SimpleNamespace(
         messages=({"role": "user", "content": "question"},),
         tool_schemas=({"function": {"name": "fake_tool"}},),
         loop_policy=SimpleNamespace(max_iterations=2, tool_timeout_seconds=1),
-        tool_executor=Executor(),
+        tool_executor=executor,
         run_metadata={
             "request_id": "request-stream-loop-limit",
             "run_id": "run-stream-loop-limit",
@@ -921,6 +1092,7 @@ def test_stream_forces_visible_final_answer_after_tool_loop_limit():
 
     events = asyncio.run(collect_stream())
 
+    assert executor.calls == 2
     assert provider.calls[-1][1] == []
     assert events[-1].event == "complete"
     assert events[-1].data["messages"][-1]["content"] == (
