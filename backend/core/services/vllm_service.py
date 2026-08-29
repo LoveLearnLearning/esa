@@ -68,6 +68,7 @@ class LLMProvider:
         kv_cache_dtype: CacheDType = "auto",
         max_num_seqs: int = 1,
         tensor_parallel_size: int = 1,
+        pipeline_parallel_size: int = 1,
         lora_path: str | Path | None = None,
         lora_name: str = "esa-agent",
         lora_max_rank: int = 16,
@@ -109,13 +110,14 @@ class LLMProvider:
                 base_model_name=str(self.model_path),
             )
         logger.info(
-            "正在加载千问模型：path=%s，LoRA=%s，TP=%s，"
+            "正在加载千问模型：path=%s，LoRA=%s，TP=%s，PP=%s，"
             "max_model_len=%s，max_output_tokens=%s，enforce_eager=%s，"
             "performance_mode=%s，fully_sharded_loras=%s，"
             "specialize_active_lora=%s",
             self.model_path,
             self.lora_request.lora_path if self.lora_request else "disabled",
             tensor_parallel_size,
+            pipeline_parallel_size,
             max_model_len,
             max_output_tokens,
             enforce_eager,
@@ -130,6 +132,7 @@ class LLMProvider:
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
             tensor_parallel_size=tensor_parallel_size,
+            pipeline_parallel_size=pipeline_parallel_size,
             enforce_eager=enforce_eager,
             quantization=quantization,
             dtype=dtype,

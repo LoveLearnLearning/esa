@@ -148,6 +148,9 @@ class BoundToolExecutor:
                 provider = self.context.runtime_dependencies.token_counter
                 counter = getattr(provider, "count_tokens", None)
                 result = await retrieve_selected_knowledge(
+                    query=normalized["query"],
+                    top_k=normalized.get("top_k", 5),
+                    similarity_threshold=normalized.get("similarity_threshold"),
                     knowledge_sources=self.context.knowledge_sources,
                     user_id=self.context.user_id,
                     knowledge_base_id=self.context.personal_knowledge_base_id,
@@ -157,7 +160,6 @@ class BoundToolExecutor:
                         .personal_knowledge_retrieval_service
                     ),
                     token_counter=counter if callable(counter) else None,
-                    **normalized,
                 )
                 projection_context = self.context.retrieval_projection_context
                 if projection_context is None:

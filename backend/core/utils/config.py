@@ -74,7 +74,12 @@ if MODEL_MAX_OUTPUT_TOKENS >= MODEL_MAX_MODEL_LENGTH:
     )
 MODEL_MAX_NUM_SEQS: int = 16
 MODEL_QUANTIZATION: QuantizationMethods | None = None
-MODEL_TENSOR_PARALLEL_SIZE: int = 4
+MODEL_TENSOR_PARALLEL_SIZE: int = _positive_int_from_env(
+    "ESA_MODEL_TENSOR_PARALLEL_SIZE", 2
+)
+MODEL_PIPELINE_PARALLEL_SIZE: int = _positive_int_from_env(
+    "ESA_MODEL_PIPELINE_PARALLEL_SIZE", 3
+)
 MODEL_ENFORCE_EAGER: bool = _bool_from_env("ESA_MODEL_ENFORCE_EAGER", False)
 MODEL_PERFORMANCE_MODE: Literal["balanced", "interactivity", "throughput"] = cast(
     Literal["balanced", "interactivity", "throughput"],

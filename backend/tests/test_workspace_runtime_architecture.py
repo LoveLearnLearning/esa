@@ -564,6 +564,17 @@ def test_bound_rag_tool_uses_the_turn_runtime_dependencies(monkeypatch):
     assert captured["public_service"] is sentinel
     assert captured["top_k"] == 3
 
+    captured.clear()
+    result = asyncio.run(
+        compiled.bind(context).execute(
+            "retrieve_knowledge", {"query": "binary search"}
+        )
+    )
+
+    assert result == {"query": "binary search", "result_count": 0}
+    assert captured["top_k"] == 5
+    assert captured["similarity_threshold"] is None
+
 
 def test_unified_knowledge_tool_uses_context_identity_not_model_argument():
     register_builtin_tools()
