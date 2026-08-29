@@ -28,6 +28,11 @@ class InvitationResponseRequest(BaseModel):
     accept: bool
 
 
+class JoinClassRequest(BaseModel):
+    """表示 `join class request` 数据结构。"""
+    class_code: str = Field(min_length=8, max_length=8, pattern=r"^[A-Za-z0-9]{8}$")
+
+
 class QuestionInput(BaseModel):
     """表示 `question input` 数据结构。"""
     question_type: Literal["short_answer", "code"] = "short_answer"

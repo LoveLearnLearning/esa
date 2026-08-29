@@ -2714,6 +2714,18 @@ class ApiClient {
         .toList();
   }
 
+  Future<TeachingClass> joinTeachingClass(String classCode) async {
+    final response = await http.post(
+      _uri('/student/classes/join'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'class_code': classCode.trim().toUpperCase()}),
+    );
+    if (response.statusCode != 200) _fail(response);
+    return TeachingClass.fromJson(
+      Map<String, dynamic>.from(_decode(response) as Map),
+    );
+  }
+
   Future<void> respondClassInvitation(String membershipId, bool accept) async {
     final response = await http.post(
       _uri('/student/invitations/$membershipId/respond'),
