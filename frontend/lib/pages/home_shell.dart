@@ -99,14 +99,24 @@ class _HomeShellState extends State<HomeShell> {
     });
   }
 
-  Future<void> _openAssignment(TeachingAssignment assignment) async {
-    await AppScope.of(context).openLearningAssignmentContext(assignment);
+  Future<void> _openAssignment(
+    TeachingAssignment assignment, {
+    String? initialPrompt,
+  }) async {
+    await AppScope.of(
+      context,
+    ).openLearningAssignmentContext(assignment, initialPrompt: initialPrompt);
     if (!mounted) return;
     setState(() {
       _section = StudentSection.home;
       _learningChatOpen = true;
       _researchProjectChatOpen = false;
     });
+    if (initialPrompt != null && initialPrompt.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _composerKey.currentState?.setText(initialPrompt);
+      });
+    }
   }
 
   Widget _page() => switch (_section) {
@@ -129,7 +139,9 @@ class _HomeShellState extends State<HomeShell> {
       onStartChat: _openChatInput,
     ),
     StudentSection.assignments => StudentAssignmentsPage(
-      onOpenChat: _openAssignment,
+      onOpenChat: (assignment) => _openAssignment(assignment),
+      onOpenChatWithPrompt: _openAssignment,
+      onHome: _showHome,
     ),
     StudentSection.schedule => PlannerPage(
       initialTab: PlannerTab.schedule,
@@ -391,8 +403,7 @@ class _HomeShellState extends State<HomeShell> {
             : _MobileBottomBar(
                 research: _inResearch,
                 onLearning: () => unawaited(_select(StudentSection.home)),
-                onResearch: () =>
-                    unawaited(_select(StudentSection.research)),
+                onResearch: () => unawaited(_select(StudentSection.research)),
                 onProfile: () => showProfileSheet(context),
               ),
       ),

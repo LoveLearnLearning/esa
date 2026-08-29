@@ -5,7 +5,9 @@
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
+import string
 from contextlib import closing
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -33,6 +35,7 @@ class TeachingStore(BaseSQLiteStore):
                 """
                 CREATE TABLE IF NOT EXISTS teaching_classes (
                     class_id TEXT PRIMARY KEY,
+                    class_code TEXT UNIQUE,
                     owner_teacher_id TEXT NOT NULL,
                     name TEXT NOT NULL,
                     canonical_course TEXT NOT NULL,
@@ -160,6 +163,28 @@ class TeachingStore(BaseSQLiteStore):
                 ON teaching_audit_log(resource_type, resource_id, created_at DESC);
                 """
             )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(teaching_classes)")}
+            if "class_code" not in columns:
+                connection.execute("ALTER TABLE teaching_classes ADD COLUMN class_code TEXT")
+            connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_teaching_classes_code "
+                "ON teaching_classes(class_code)"
+            )
+            alphabet = string.ascii_uppercase + string.digits
+            for row in connection.execute(
+                "SELECT class_id FROM teaching_classes WHERE class_code IS NULL"
+            ).fetchall():
+                while True:
+                    class_code = "".join(secrets.choice(alphabet) for _ in range(8))
+                    if connection.execute(
+                        "SELECT 1 FROM teaching_classes WHERE class_code=?",
+                        (class_code,),
+                    ).fetchone() is None:
+                        break
+                connection.execute(
+                    "UPDATE teaching_classes SET class_code=? WHERE class_id=?",
+                    (class_code, row[0]),
+                )
 
     def audit(
         self,
@@ -224,12 +249,19 @@ class TeachingStore(BaseSQLiteStore):
         class_id = uuid4().hex
         now = _now()
         with closing(self._connect()) as connection, connection:
+            alphabet = string.ascii_uppercase + string.digits
+            while True:
+                class_code = "".join(secrets.choice(alphabet) for _ in range(8))
+                if connection.execute(
+                    "SELECT 1 FROM teaching_classes WHERE class_code=?", (class_code,)
+                ).fetchone() is None:
+                    break
             connection.execute(
                 """INSERT INTO teaching_classes
-                   (class_id, owner_teacher_id, name, canonical_course, term,
+                   (class_id, class_code, owner_teacher_id, name, canonical_course, term,
                     description, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (class_id, owner_id, name, course, term, description, now, now),
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (class_id, class_code, owner_id, name, course, term, description, now, now),
             )
             self.audit(
                 actor_id=owner_id,
@@ -301,6 +333,21 @@ class TeachingStore(BaseSQLiteStore):
                 (student_id,),
             )
         ]
+
+    def join_by_code(self, *, class_code: str, student_id: str) -> dict | None:
+        classroom = self.query_one("SELECT class_id, owner_teacher_id FROM teaching_classes WHERE class_code=? AND status='active'", (class_code.upper(),))
+        if classroom is None:
+            return None
+        existing = self.get_membership_for_student(class_id=classroom["class_id"], student_id=student_id)
+        now = _now()
+        with closing(self._connect()) as connection, connection:
+            if existing is None:
+                membership_id = uuid4().hex
+                connection.execute("INSERT INTO teaching_memberships (membership_id, class_id, student_id, invited_by, status, created_at, responded_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?, ?)", (membership_id, classroom["class_id"], student_id, classroom["owner_teacher_id"], now, now, now))
+            else:
+                membership_id = existing["membership_id"]
+                connection.execute("UPDATE teaching_memberships SET status='active', responded_at=?, updated_at=? WHERE membership_id=?", (now, now, membership_id))
+        return self.get_membership(membership_id)
 
     def invite_student(
         self, *, class_id: str, teacher_id: str, student_id: str

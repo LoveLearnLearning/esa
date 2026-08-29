@@ -1348,8 +1348,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> openLearningAssignmentContext(
-    TeachingAssignment assignment,
-  ) async {
+    TeachingAssignment assignment, {
+    String? initialPrompt,
+  }) async {
     await _discardDraftConversation();
     if (activeWorkspace != WorkspaceType.learning) {
       await switchWorkspace(WorkspaceType.learning);
@@ -1372,7 +1373,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ============ 发送消息 ============
+  // ============ 发送消息 ===========
   Future<void> send(
     String text, {
     String? taskMode,
