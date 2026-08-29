@@ -355,6 +355,49 @@ def test_follow_up_reuses_latest_conversation_attachment_authorization(tmp_path)
     assert follow_up["attachments"] == []
 
 
+def test_new_attachment_turn_does_not_expose_previous_attachment_ids(tmp_path):
+    """连续上传文件时，模型只能看到当前轮的附件 ID。"""
+    state, agent, _chat_store, conversation_id = _state(tmp_path)
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+    session = SessionPrincipal(session_id="s1", user_id="u1")
+
+    first = asyncio.run(
+        state.user_attachment_store.save(
+            user_id="u1",
+            conversation_id=conversation_id,
+            filename="first.docx",
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            read=_reader(b"first-docx"),
+        )
+    )
+    second = asyncio.run(
+        state.user_attachment_store.save(
+            user_id="u1",
+            conversation_id=conversation_id,
+            filename="second.pdf",
+            media_type="application/pdf",
+            read=_reader(b"second-pdf"),
+        )
+    )
+
+    for item in (first, second):
+        asyncio.run(
+            chat.send_message(
+                conversation_id,
+                SendMessageRequest(
+                    content="看看这个附件",
+                    attachment_ids=[item.attachment_id],
+                ),
+                request,
+                session,
+            )
+        )
+
+    prompt = "\n".join(str(message) for message in agent.run_spec.messages)
+    assert second.attachment_id in prompt
+    assert first.attachment_id not in prompt
+
+
 def _reader(payload: bytes):
     """处理 `_reader` 相关逻辑。"""
     sent = False
