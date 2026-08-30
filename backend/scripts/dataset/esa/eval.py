@@ -534,11 +534,27 @@ def unsupported_numbers(answer: str, context: str,
         d = len(text.split(".")[1]) if "." in text else 0
         return any(round(c, d) == v for c in ctx_f)
 
+    # 🔴 负值的**绝对值**也算数（2026-08-30）。观测里是 `mastery_delta: -23.06`，
+    # 而中文里正常的转述是「下降了 **23.06**」—— 符号进了动词，数字只剩量值。
+    # 旧判据按字面比，`"23.06" ∉ {"-23.06"}`，于是把一句完全正确的话判成编造。
+    # 实测：SDFT 放量那 238 段里 26 条 ❌ 有相当一部分是这个（`5.35` / `23.06`
+    # 都恰好等于观测里 `mastery_delta` 的绝对值）。
+    #
+    # ⚠️ 代价说清楚：这会让「下降了 23.06」和「上升了 23.06」**都过**。
+    # 但这个函数管的是「有没有伪造工具返回的数」，方向对不对从来不在它射程内
+    # （和它抓不到「10 次说成 11 次」是同一回事）。本文件抬头那条原则更重要：
+    # **宁可漏报也不要误报 —— 一个会误报的指标没人会信，最后只会被关掉。**
+    neg_abs = [abs(c) for c in ctx_f if c < 0]
+
     def ok(f: float, norm: str, allowed: list[float]) -> bool:
         if norm in ctx or f in allowed:
             return True
+        if f in neg_abs or any(-c == f for c in allowed if c < 0):
+            return True
         d = len(norm.split(".")[1]) if "." in norm else 0
-        return any(round(c, d) == f for c in allowed) or is_rounding_of_context(f, norm)
+        return (any(round(c, d) == f for c in allowed)
+                or any(round(-c, d) == f for c in allowed if c < 0)
+                or is_rounding_of_context(f, norm))
 
     out = set()
     for line in answer.splitlines():

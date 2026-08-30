@@ -26,6 +26,7 @@ IR 是生成器的产物，下一次重生成就抹掉了 —— 而重生成是
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from collections import Counter, defaultdict
@@ -123,6 +124,15 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true", help="真的写盘（默认只看不写）")
     ap.add_argument("--verify", action="store_true",
                     help="查改写过的样本有没有跑进考卷（在 esa.evalset 之后跑）")
+    ap.add_argument("--exclude-id", action="append", default=[],
+                    metavar="样本id=理由",
+                    help="按样本 id 排除，**必须带理由**。典型来源：灌表之后跑 "
+                         "`esa.validate`，它的 grounding 闸门会挑出「改写把工具返回的"
+                         "字面引用丢了」的那些 —— 把它们喂回这里再灌一次")
+    ap.add_argument("--exclude-template", action="append", default=[],
+                    metavar="模板前缀=理由",
+                    help="按 template_id 前缀整组排除，**必须带理由**。"
+                         "机械闸门盖不住的语义错只能这么处理（5.67）")
     args = ap.parse_args()
 
     if args.verify:
@@ -130,17 +140,46 @@ def main() -> int:
     if not args.pilot:
         ap.error("要么 --pilot <产物>，要么 --verify")
 
+    excl, excl_id = {}, {}
+    for flag, spec_list, into in (("--exclude-template", args.exclude_template, excl),
+                                  ("--exclude-id", args.exclude_id, excl_id)):
+        for spec in spec_list:
+            if "=" not in spec:
+                ap.error(f"{flag} 要写成 键=理由，收到 {spec!r} —— "
+                         "静默排除和没排除一样糟，理由必须留下")
+            k, v = spec.split("=", 1)
+            into[k.strip()] = v.strip()
+
     ir, recs = ir_by_id(), load_pilots(args.pilot)
     keep, drop = [], []
     fam_len: dict[str, list[tuple[int, int]]] = defaultdict(list)
     moment, gate_mismatch = [], []
 
     for r in recs:
+        if r["id"] in excl_id:
+            drop.append((r["id"], f"人工排除：{excl_id[r['id']]}"))
+            continue
+        hit = next((k for k in excl if r["template_id"].startswith(k)), None)
+        if hit:
+            drop.append((r["id"], f"人工排除（{hit}）：{excl[hit]}"))
+            continue
         s = ir.get(r["id"])
         if s is None:
             drop.append((r["id"], "这个 id 在当前 IR 里不存在（数据换版了）"))
             continue
-        if s["turns"][-1]["content"] != r["ref"]:
+        cur = s["turns"][-1]["content"]
+        # 回传口径有两种：`ref` 是原文全文，`ref_sha16` 是它的哈希。
+        # 🔴 后者是为了**粘得回来**：238 段的完整产物约 250 KB，而集群
+        # `scp` 不通、同步只能靠粘贴（手册 3350）。哈希把每条省下几十个汉字，
+        # 而它作为「这段改写是对着哪句原文做的」这个守卫**一样硬**。
+        if "ref" in r:
+            stale = cur != r["ref"]
+        elif "ref_sha16" in r:
+            stale = hashlib.sha256(cur.encode("utf-8")).hexdigest()[:16] != r["ref_sha16"]
+        else:
+            drop.append((r["id"], "既没有 ref 也没有 ref_sha16 —— 无法确认它对应哪句原文"))
+            continue
+        if stale:
             drop.append((r["id"], "原文已变 —— 改写对应的是旧那一版（5.59）"))
             continue
         # 🔴 拿本机当前的判据重算，不信产物里存的那份（5.54）
@@ -154,12 +193,25 @@ def main() -> int:
             gate_mismatch.append(r["id"])
         if g["刚才刚刚"] != "—":
             moment.append((r["id"], r["template_id"]))
+        # 表里一律存**全文** `ref` —— 它是 dump_samples 那道钩子的守卫，
+        # 而那里没有 IR 可查（它正在生成 IR）。回传时省的是带宽，不是守卫。
         keep.append({"id": r["id"], "template_id": r["template_id"],
-                     "ref": r["ref"], "rewritten": r["rewritten"],
+                     "ref": cur, "rewritten": r["rewritten"],
                      "source": args.pilot[0].stem})
         fam_len[r["template_id"].split("__")[0]].append(
-            (len(r["ref"]), len(r["rewritten"])))
+            (len(cur), len(r["rewritten"])))
 
+    # 🔴 不幂等：上一次 --apply 之后重跑过生成器的话，IR 里已经是**改写后**的文本，
+    # 于是 ref 守卫会把每一条都判成「原文已变」。守卫没错，错的是顺序。
+    # 与其让人对着 238 条「原文已变」怀疑数据坏了，不如当场说清楚该怎么办。
+    stale_n = sum(1 for _, why in drop if why.startswith("原文已变"))
+    if stale_n > len(recs) * 0.5 and (REWRITES_DIR / "sdft.jsonl").exists():
+        print(f"🔴 {stale_n}/{len(recs)} 段判成「原文已变」，而改写表已经存在 ——\n"
+              "   多半是上一次 --apply 之后重跑过生成器，IR 里已经是改写后的文本了。\n"
+              "   这个工具**不幂等**。要重灌就先让 IR 回到原样：\n"
+              "     rm dataset/data/rewrites/sdft.jsonl\n"
+              "     for g in …; do python3 dataset/generators/gen_$g.py; done\n"
+              "   然后再跑这条命令。\n")
     print(f"读入 {len(recs)} 段　→　可用 {len(keep)}　丢弃 {len(drop)}\n")
     print(f"{'族':<28}{'段数':>5}{'原中位':>8}{'改后中位':>10}")
     for fam, pairs in sorted(fam_len.items()):
