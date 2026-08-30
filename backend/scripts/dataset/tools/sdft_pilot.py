@@ -84,13 +84,19 @@ REWRITE_TMPL = """下面是一段真实对话，以及一个【参考回答】�
 {ref}
 
 [改写要求]
-1. **语义等价**：不得引入参考回答里没有的结论、建议或承诺。
+1. **每一句都要有依据**：结论、建议、评价只能来自「工具返回」或「用户原话」。
+   参考回答没说、而工具返回里有依据的，可以说（例如 `needs_review` 为真时
+   建议复习）；两边都没依据的，一个字都不能加 —— 包括「太棒了」「别担心」
+   这类替用户下的判断。
 2. **不得编造数字**：只能使用「工具返回」和「用户原话」里出现过的数值。
-3. 按 system prompt 的风格要求来：先给结论；复杂问题按需展开，保留必要的
+3. 🔴 **不得使用相对时间**：不许写「今天 / 昨天 / 刚才 / 刚刚 / 本周 / 这周 /
+   上周 / 前几天」。工具返回里的时间戳按**原样**写出来。
+   —— 你不知道现在是什么时候，上下文里没有当前时间。
+4. 按 system prompt 的风格要求来：先给结论；复杂问题按需展开，保留必要的
    步骤、依据和结论；不为凑短而省略关键信息。
-4. 工具返回里有而参考回答没用上的**有效信息**，可以补进去（例如变化量、
-   活动类型、下一步该做什么），但仍受第 2 条约束。
-5. 直接输出改写后的回答本身，不要加标题、不要解释你做了什么。"""
+5. 工具返回里有而参考回答没用上的**有效信息**，可以补进去（例如变化量、
+   累计次数、状态字段），但仍受第 1、2、3 条约束。
+6. 直接输出改写后的回答本身，不要加标题、不要解释你做了什么。"""
 
 
 def load_ir() -> list[dict]:
@@ -176,11 +182,31 @@ def build(sample: dict) -> dict:
     }
 
 
+# 🔴 相对时间词。第一轮试点（90485）产出过「最近一次练习**就在今天**」——
+# 上下文里没有任何东西说明「今天」是哪天（system prompt 里 `现在的时间` 出现 0 次），
+# 那是模型猜的；而 `fixtures.NOW` 是**冻结时钟**，这族样本的 `last_practiced_at`
+# 恒等于它，于是「今天」在训练集里恒真 → 学到的是常量不是判断（5.61 同形）。
+# ⚠️ 忠实度闸门抓不到它：这句话一个新数字都没有。
+_REL_TIME = ("今天", "昨天", "前天", "明天", "刚才", "刚刚", "今早", "今晚",
+             "本周", "这周", "上周", "这个月", "上个月")
+
+
+def relative_time_added(ref: str, text: str) -> list[str]:
+    """改写里出现、而参考回答里没有的相对时间词。
+
+    ⚠️ 只收「相对于**现在**」的词。`最近一次练习` 里的「最近」是对记录取最值，
+    不是相对现在，不算 —— 一个会误报的闸门比没有闸门更糟（5.9）。
+    """
+    return [w for w in _REL_TIME if w in text and w not in ref]
+
+
 def gate(item: dict, text: str) -> dict:
-    """三道闸门。⚠️ 字数**不是**闸门，只是观测量。"""
+    """四道闸门。⚠️ 字数**不是**闸门，只是观测量。"""
     ents = observation_entities(item["observations"])
     bad = unsupported_numbers(text, item["context"], ents) if ents else set()
+    rel = relative_time_added(item["ref"], text)
     return {
+        "相对时间": "✅" if not rel else f"❌ 新增 {rel}",
         "忠实度": ("跳过（观测抽不出实体，如实报无法比对）" if not ents
                 else ("✅" if not bad else f"❌ 编了 {sorted(bad)}")),
         "非空": "✅" if text.strip() else "❌ 空",
@@ -271,6 +297,8 @@ def main() -> int:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
             fh.flush()
         flag = "  ⚠️改写里冒出了工具调用" if pr.tool_calls else ""
+        if not g["相对时间"].startswith("✅"):
+            flag += f"  ⚠️{g['相对时间']}"
         # think 比正文还长得多 = 大概率被 max_tokens 8192 截在思考里，正文是残的。
         if len(pr.reasoning) > 3000 and len(text) < len(pr.reasoning) / 10:
             flag += "  ⚠️think 吃满、正文疑似被截"
@@ -294,6 +322,12 @@ def main() -> int:
     print(f"  忠实度  ✅ {ok}   ❌ {len(results)-ok-skip}   跳过 {skip}")
     print(f"  字数    参考中位 {sorted(r['ref_len'] for r in results)[len(results)//2]}"
           f" → 改写后中位 {lens[len(lens)//2]}（**观测量，不是判据**）")
+    rel = [r for r in results if not r["gate"]["相对时间"].startswith("✅")]
+    print(f"  相对时间  新增了「今天/刚才」这类词的：{len(rel)} 条"
+          f"（必须是 0 —— 上下文里没有当前时间，那是猜的；"
+          f"而 fixtures.NOW 是冻结时钟，写进训练目标就成了常量）")
+    for r in rel[:5]:
+        print(f"            {r['template_id']}　{r['gate']['相对时间']}")
     calls = sum(1 for r in results if r["had_tool_call"])
     print(f"  纯净度  改写里冒出工具调用的：{calls} 条"
           f"（必须是 0 —— 改写只该产出散文，工具调用是固定住的）")
@@ -309,6 +343,9 @@ def main() -> int:
     print("   ① 忠实度还过不过（会不会编数字）")
     print("   ② 结构是不是「机制 → 依据 → 下一步」，而不是把同一句话说三遍")
     print("   ③ 有没有引入参考回答里没有的结论/承诺（语义等价）")
+    print("   ⚠️ ③ **机器只判得了其中一半**：相对时间那道闸门是机械的，"
+          "但「太棒了」这类替用户下的判断只能人看原文（5.67 / 5.57）。"
+          "上面那 5 条一定要过眼。")
 
     if failed:
         # 退出码 2 = 「有产物但不完整」，沿用本项目 0/1/2 的约定（5.33）。
