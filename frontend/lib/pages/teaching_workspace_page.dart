@@ -1266,6 +1266,11 @@ class _ClassRow extends StatelessWidget {
                     '${classroom.course}${classroom.term.isEmpty ? '' : ' · ${classroom.term}'}',
                     style: context.texts.bodySmall,
                   ),
+                  if (classroom.classCode != null)
+                    Text(
+                      '班级号：${classroom.classCode}',
+                      style: context.texts.bodySmall,
+                    ),
                 ],
               ),
             ),
@@ -1324,6 +1329,11 @@ class _ClassHeader extends StatelessWidget {
                     '${classroom.course}${classroom.term.isEmpty ? '' : ' · ${classroom.term}'}',
                     style: context.texts.bodySmall,
                   ),
+                  if (classroom.classCode != null)
+                    Text(
+                      '班级号：${classroom.classCode}',
+                      style: context.texts.bodySmall,
+                    ),
                 ],
               ),
             ),

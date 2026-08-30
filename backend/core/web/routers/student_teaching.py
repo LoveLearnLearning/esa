@@ -90,6 +90,15 @@ def classes(request: Request, session: CurrentSession) -> list[dict]:
     return store.list_student_classes(user.id)
 
 
+@router.post("/classes/join")
+def join_class(body: JoinClassRequest, request: Request, session: CurrentSession) -> dict:
+    user, store = _context(request, session)
+    result = store.join_by_code(class_code=body.class_code, student_id=user.id)
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "班级号不存在或班级已归档")
+    return result
+
+
 @router.post("/invitations/{membership_id}/respond")
 def respond_invitation(
     membership_id: str,

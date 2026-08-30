@@ -170,8 +170,10 @@ class ContextComposer:
                 "attachment_policy", "Attachment handling policy",
                 (
                     "当前对话中的全部已授权附件都可以在后续轮次继续使用。"
-                    "工具调用只能使用下方清单中的 attachment_id。"
+                    "历史消息中的 attachment_id 只有出现在下方清单中才可调用。"
                     "如果用户要求比较多个文件，应分别解析相关文件后再回答。"
+                    "清单中有附件且用户要求阅读、总结、解释、翻译、提取或检索时，"
+                    "必须在回复前调用对应解析 Tool 获取内容后再回答。"
                     "不追问 Tool 已有标识，不猜内容或路径。"
                 ),
                 "trusted_system", 125,

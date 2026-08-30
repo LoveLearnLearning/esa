@@ -7,13 +7,23 @@ import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 
 class StudentAssignmentsPage extends StatefulWidget {
-  const StudentAssignmentsPage({super.key, required this.onOpenChat});
+  const StudentAssignmentsPage({
+    super.key,
+    required this.onOpenChat,
+    this.onOpenChatWithPrompt,
+    this.onHome,
+  });
 
   final Future<void> Function(TeachingAssignment assignment) onOpenChat;
+  final Future<void> Function(
+    TeachingAssignment assignment, {
+    String? initialPrompt,
+  })?
+  onOpenChatWithPrompt;
+  final VoidCallback? onHome;
 
   @override
-  State<StudentAssignmentsPage> createState() =>
-      _StudentAssignmentsPageState();
+  State<StudentAssignmentsPage> createState() => _StudentAssignmentsPageState();
 }
 
 class _StudentAssignmentsPageState extends State<StudentAssignmentsPage> {
@@ -70,6 +80,42 @@ class _StudentAssignmentsPageState extends State<StudentAssignmentsPage> {
     context,
   ).showSnackBar(SnackBar(content: Text(message)));
 
+  Future<void> _joinClass() async {
+    final classCode = TextEditingController();
+    final joined = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('加入班级'),
+        content: TextField(
+          controller: classCode,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          maxLength: 8,
+          decoration: const InputDecoration(labelText: '8 位班级号'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('加入'),
+          ),
+        ],
+      ),
+    );
+    if (joined == true && mounted) {
+      try {
+        await AppScope.of(context).api.joinTeachingClass(classCode.text);
+        await _load();
+      } on ApiException catch (error) {
+        if (mounted) _showError(error.detail);
+      }
+    }
+    classCode.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final invitations = _classes
@@ -100,6 +146,11 @@ class _StudentAssignmentsPageState extends State<StudentAssignmentsPage> {
                           ),
                         ],
                       ),
+                    ),
+                    IconButton(
+                      tooltip: '加入班级',
+                      onPressed: _joinClass,
+                      icon: const Icon(LucideIcons.userPlus),
                     ),
                     IconButton(
                       tooltip: '刷新',
@@ -146,8 +197,15 @@ class _StudentAssignmentsPageState extends State<StudentAssignmentsPage> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(item.name, style: context.texts.titleMedium),
-                                    Text('${item.course} · 教师 ${item.teacherUsername ?? ''}'),
+                                    Text(
+                                      item.name,
+                                      style: context.texts.titleMedium,
+                                    ),
+                                    Text(
+                                      '${item.course} · 教师 ${item.teacherUsername ?? ''}',
+                                    ),
+                                    if (item.classCode != null)
+                                      Text('班级号：${item.classCode}'),
                                   ],
                                 ),
                               ),
@@ -199,6 +257,9 @@ class _StudentAssignmentsPageState extends State<StudentAssignmentsPage> {
                                 child: StudentAssignmentPage(
                                   assignment: item,
                                   onOpenChat: widget.onOpenChat,
+                                  onOpenChatWithPrompt:
+                                      widget.onOpenChatWithPrompt,
+                                  onHome: widget.onHome,
                                 ),
                               ),
                             ),
@@ -276,9 +337,17 @@ class StudentAssignmentPage extends StatefulWidget {
     super.key,
     required this.assignment,
     required this.onOpenChat,
+    this.onOpenChatWithPrompt,
+    this.onHome,
   });
   final TeachingAssignment assignment;
   final Future<void> Function(TeachingAssignment assignment) onOpenChat;
+  final Future<void> Function(
+    TeachingAssignment assignment, {
+    String? initialPrompt,
+  })?
+  onOpenChatWithPrompt;
+  final VoidCallback? onHome;
 
   @override
   State<StudentAssignmentPage> createState() => _StudentAssignmentPageState();
@@ -328,9 +397,9 @@ class _StudentAssignmentPageState extends State<StudentAssignmentPage> {
     final detail = _detail;
     if (detail == null) return;
     if (_answers.values.any((item) => item.text.trim().isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请完成全部题目后再提交')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请完成全部题目后再提交')));
       return;
     }
     setState(() => _saving = true);
@@ -342,9 +411,9 @@ class _StudentAssignmentPageState extends State<StudentAssignmentPage> {
       if (mounted) setState(() => _submission = submission);
     } on ApiException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.detail)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.detail)));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -428,7 +497,8 @@ class _StudentAssignmentPageState extends State<StudentAssignmentPage> {
                               '${answer.finalScore?.toStringAsFixed(1) ?? '-'} / ${answer.maxPoints.toStringAsFixed(1)} 分',
                               style: context.texts.titleMedium,
                             ),
-                            if (answer.feedback.isNotEmpty) Text(answer.feedback),
+                            if (answer.feedback.isNotEmpty)
+                              Text(answer.feedback),
                             if (answer.kpId != null)
                               Text('关联知识点：${answer.kpId}'),
                           ] else
@@ -445,15 +515,37 @@ class _StudentAssignmentPageState extends State<StudentAssignmentPage> {
                   icon: const Icon(LucideIcons.send, size: 17),
                   label: Text(_saving ? '提交中' : '确认提交'),
                 )
-              else if (_submission!.feedbackStatus == 'published')
+              else if (_submission!.feedbackStatus == 'published') ...[
+                if (widget.onHome != null)
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      widget.onHome!();
+                    },
+                    icon: const Icon(LucideIcons.house, size: 17),
+                    label: const Text('返回首页'),
+                  ),
+                if (widget.onHome != null) const SizedBox(height: 10),
                 FilledButton.icon(
                   onPressed: () async {
+                    final prompt = _submission!.answers
+                        .map(
+                          (answer) =>
+                              '题目：${answer.prompt}\n我的原答案：${answer.answerText}',
+                        )
+                        .join('\n\n');
                     Navigator.pop(context);
-                    await widget.onOpenChat(widget.assignment);
+                    final open = widget.onOpenChatWithPrompt;
+                    if (open != null) {
+                      await open(widget.assignment, initialPrompt: prompt);
+                    } else {
+                      await widget.onOpenChat(widget.assignment);
+                    }
                   },
                   icon: const Icon(LucideIcons.messageCircle, size: 17),
                   label: const Text('开始针对性学习'),
                 ),
+              ],
             ],
           ),
   );
