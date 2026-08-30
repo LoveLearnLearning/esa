@@ -84,19 +84,28 @@ REWRITE_TMPL = """下面是一段真实对话，以及一个【参考回答】�
 {ref}
 
 [改写要求]
-1. **每一句都要有依据**：结论、建议、评价只能来自「工具返回」或「用户原话」。
-   参考回答没说、而工具返回里有依据的，可以说（例如 `needs_review` 为真时
-   建议复习）；两边都没依据的，一个字都不能加 —— 包括「太棒了」「别担心」
-   这类替用户下的判断。
-2. **不得编造数字**：只能使用「工具返回」和「用户原话」里出现过的数值。
-3. 🔴 **不得使用相对时间**：不许写「今天 / 昨天 / 刚才 / 刚刚 / 本周 / 这周 /
-   上周 / 前几天」。工具返回里的时间戳按**原样**写出来。
+
+**你在跟一个学生说话，不是在给开发者看接口返回。**
+
+1. 🔴 **不许出现工具返回的字段名，也不许列字段清单。**
+   ❌「需要复习（needs_review: true）」「证据置信度（evidence_confidence）为 0.634」
+   ❌「`weak_prerequisites` 为空列表，`count` 为 0」
+   ✅「这个点还很薄弱，得排一次复习」「前置知识点没有薄弱项」
+   数值要说清它**意味着什么**，而不是标注它来自哪个字段。
+   —— 一份「结论 + 字段转储」比原来那句短回答更糟。
+2. **结构是：先给结论 → 再给支撑它的依据 → 最后说下一步做什么。**
+   「下一步」不能省：工具返回里有依据就把它说成一句给学生的建议
+   （例如需要复习、还差哪个前置点、可以直接开始练）。
+3. **每一句都要有依据**：结论、建议、评价只能来自「工具返回」或「用户原话」。
+   两边都没依据的一个字不能加 —— 包括「太棒了」「别担心」这类替用户下的判断。
+   ⚠️「有依据」是指**这句话推得出来**，不是指**要把出处写出来**。
+4. **不得编造数字**：只能使用「工具返回」和「用户原话」里出现过的数值。
+5. 🔴 **不得使用相对时间**：不许写「今天 / 昨天 / 刚才 / 刚刚 / 本周 / 这周 /
+   上周 / 前几天」。要提时间就把时间戳按原样写出来。
    —— 你不知道现在是什么时候，上下文里没有当前时间。
-4. 按 system prompt 的风格要求来：先给结论；复杂问题按需展开，保留必要的
-   步骤、依据和结论；不为凑短而省略关键信息。
-5. 工具返回里有而参考回答没用上的**有效信息**，可以补进去（例如变化量、
-   累计次数、状态字段），但仍受第 1、2、3 条约束。
-6. 直接输出改写后的回答本身，不要加标题、不要解释你做了什么。"""
+6. 挑**对学生有用**的信息展开（掌握度怎么变的、练了几次对了几次、
+   薄弱在哪、下一步练什么），**不是把返回值逐字段念一遍**。
+7. 直接输出改写后的回答本身，不要加标题、不要解释你做了什么。"""
 
 
 def load_ir() -> list[dict]:
@@ -200,12 +209,51 @@ def relative_time_added(ref: str, text: str) -> list[str]:
     return [w for w in _REL_TIME if w in text and w not in ref]
 
 
+def _obs_keys(observations: list[str]) -> set[str]:
+    """观测 JSON 里所有的键名（递归）。"""
+    out: set[str] = set()
+
+    def walk(x: object) -> None:
+        if isinstance(x, dict):
+            for k, v in x.items():
+                out.add(k)
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+
+    for o in observations:
+        try:
+            walk(json.loads(o))
+        except json.JSONDecodeError:
+            pass
+    return out
+
+
+def schema_leak(ref: str, observations: list[str], text: str) -> list[str]:
+    """改写里原样出现了工具返回的**字段名** —— 那是甩给学生一份接口文档。
+
+    第二轮试点（90510）就栽在这里：机械闸门全绿，产出却是
+    「需要复习（needs_review: true）」「证据置信度（evidence_confidence）为 0.634」
+    「`weak_prerequisites` 为空列表，`count` 为 0」——
+    结论 + 字段转储，比原来那句短回答更糟（字数还涨了 3.5 倍）。
+
+    ⚠️ 只查**键名**，不查值：`weak` 是 `status` 的值，参考回答里本来就有它。
+    ⚠️ 参考回答自己用过的键名不算（有些短回答确实会提），且键名 <4 字符不算，
+       免得 `id` / `ok` 这种撞上普通英文（会误报的闸门比没有更糟，5.9）。
+    """
+    keys = _obs_keys(observations)
+    return sorted(k for k in keys if len(k) >= 4 and k in text and k not in ref)
+
+
 def gate(item: dict, text: str) -> dict:
-    """四道闸门。⚠️ 字数**不是**闸门，只是观测量。"""
+    """五道闸门。⚠️ 字数**不是**闸门，只是观测量。"""
     ents = observation_entities(item["observations"])
     bad = unsupported_numbers(text, item["context"], ents) if ents else set()
     rel = relative_time_added(item["ref"], text)
+    leak = schema_leak(item["ref"], item["observations"], text)
     return {
+        "字段名": "✅" if not leak else f"❌ 甩了 {leak}",
         "相对时间": "✅" if not rel else f"❌ 新增 {rel}",
         "忠实度": ("跳过（观测抽不出实体，如实报无法比对）" if not ents
                 else ("✅" if not bad else f"❌ 编了 {sorted(bad)}")),
@@ -297,8 +345,9 @@ def main() -> int:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
             fh.flush()
         flag = "  ⚠️改写里冒出了工具调用" if pr.tool_calls else ""
-        if not g["相对时间"].startswith("✅"):
-            flag += f"  ⚠️{g['相对时间']}"
+        for key in ("相对时间", "字段名"):
+            if not g[key].startswith("✅"):
+                flag += f"  ⚠️{g[key]}"
         # think 比正文还长得多 = 大概率被 max_tokens 8192 截在思考里，正文是残的。
         if len(pr.reasoning) > 3000 and len(text) < len(pr.reasoning) / 10:
             flag += "  ⚠️think 吃满、正文疑似被截"
@@ -322,6 +371,11 @@ def main() -> int:
     print(f"  忠实度  ✅ {ok}   ❌ {len(results)-ok-skip}   跳过 {skip}")
     print(f"  字数    参考中位 {sorted(r['ref_len'] for r in results)[len(results)//2]}"
           f" → 改写后中位 {lens[len(lens)//2]}（**观测量，不是判据**）")
+    lk = [r for r in results if not r["gate"]["字段名"].startswith("✅")]
+    print(f"  字段名    把工具返回的键名甩给学生的：{len(lk)} 条"
+          f"（必须是 0 —— 「结论 + 字段转储」比原来那句短回答更糟）")
+    for r in lk[:5]:
+        print(f"            {r['template_id']}　{r['gate']['字段名']}")
     rel = [r for r in results if not r["gate"]["相对时间"].startswith("✅")]
     print(f"  相对时间  新增了「今天/刚才」这类词的：{len(rel)} 条"
           f"（必须是 0 —— 上下文里没有当前时间，那是猜的；"
