@@ -266,33 +266,32 @@ def _conversation_attachment_inventory(
     conversation_id: str,
     attachment_ids: list[str],
 ) -> tuple[tuple[dict, ...], list[dict]]:
-    """Authorize explicit files or restore the latest files used in this chat."""
-    if attachment_ids:
-        return _attachment_inventory(
-            request,
-            user_id,
-            conversation_id,
-            attachment_ids,
-        )
+    """Authorize every stored file in the conversation for the current turn.
 
-    chat_store: ChatStore = request.app.state.chat_store
-    inherited_ids = list(chat_store.get_latest_attachment_ids(conversation_id))
-    if not inherited_ids:
-        return (), []
-    try:
-        authorized, _ = _attachment_inventory(
-            request,
-            user_id,
-            conversation_id,
-            inherited_ids,
-        )
-    except HTTPException as error:
-        # A previously used file may have been removed from durable storage.
-        # That must not make every later text-only message fail with a 404.
-        if error.status_code == status.HTTP_404_NOT_FOUND:
-            return (), []
-        raise
-    return authorized, []
+    ``attachment_ids`` still describes files attached to this user message;
+    the returned authorization inventory is conversation-scoped and therefore
+    includes older files as well.
+    """
+    store = _attachment_store(request)
+    conversation_items = store.list_for_conversation(
+        user_id=user_id,
+        conversation_id=conversation_id,
+    )
+    authorized, _ = _attachment_inventory(
+        request,
+        user_id,
+        conversation_id,
+        [item.attachment_id for item in conversation_items],
+    )
+    if not attachment_ids:
+        return authorized, []
+    _, current_message_attachments = _attachment_inventory(
+        request,
+        user_id,
+        conversation_id,
+        attachment_ids,
+    )
+    return authorized, current_message_attachments
 
 
 def _turn_coordinator(request: Request) -> ConversationTurnCoordinator:

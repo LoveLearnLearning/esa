@@ -226,6 +226,57 @@ def test_bound_executor_rechecks_required_resource_capabilities():
     }
 
 
+def test_bound_executor_returns_terminal_error_for_unknown_attachment_id():
+    """Unknown attachment references must not be retried as transient failures."""
+    register_builtin_tools()
+    definition = WORKSPACE_DEFINITIONS["learning"]
+    compiled = CapabilityRuntime().compile(
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        profile_fingerprint="learning:1",
+        policy_versions=("learning.v1",),
+        resource_capabilities=frozenset({"attachments"}),
+        has_attachments=True,
+    )
+    scope = ResourceScope(
+        attachment_ids=("authorized",),
+        capabilities=frozenset({"attachments"}),
+    )
+    route = WorkspaceRoute(
+        workspace_type="learning",
+        agent_profile_id=definition.profile_id,
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        prompt_key=definition.prompt_key,
+        profile_policy=definition.profile_policy,
+        memory_policy_id=definition.memory_policy_id,
+        resource_scope=scope,
+        action_policy=definition.action_policy,
+    )
+    context = ToolExecutionContext(
+        user_id="u1",
+        conversation_id="c1",
+        workspace_route=route,
+        authorized_resources=scope,
+        conversation_mode="normal",
+        runtime_dependencies=AgentRuntimeDependencies(),
+        request_id="r1",
+    )
+
+    denied = asyncio.run(
+        compiled.bind(context).execute(
+            "parse_pdf_attachment", {"attachment_id": "unknown", "query": "summary"}
+        )
+    )
+    assert denied == {
+        "ok": False,
+        "error": "attachment_not_authorized",
+        "tool": "parse_pdf_attachment",
+        "requested_attachment_id": "unknown",
+        "authorized_attachment_ids": ["authorized"],
+    }
+
+
 def test_run_spec_and_manifest_are_serializable_and_share_the_production_compiler():
     """验证运行清单可序列化且评测复用生产编译路径。"""
     register_builtin_tools()

@@ -355,6 +355,53 @@ def test_follow_up_reuses_latest_conversation_attachment_authorization(tmp_path)
     assert follow_up["attachments"] == []
 
 
+def test_all_conversation_attachments_remain_authorized_across_turns(tmp_path):
+    """Conversation-scoped authorization includes every stored attachment."""
+    state, agent, _chat_store, conversation_id = _state(tmp_path)
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+    session = SessionPrincipal(session_id="s1", user_id="u1")
+    first = asyncio.run(
+        state.user_attachment_store.save(
+            user_id="u1",
+            conversation_id=conversation_id,
+            filename="first.pdf",
+            media_type="application/pdf",
+            read=_reader(b"first"),
+        )
+    )
+    second = asyncio.run(
+        state.user_attachment_store.save(
+            user_id="u1",
+            conversation_id=conversation_id,
+            filename="second.pdf",
+            media_type="application/pdf",
+            read=_reader(b"second"),
+        )
+    )
+
+    asyncio.run(
+        chat.send_message(
+            conversation_id,
+            SendMessageRequest(content="总结第一篇", attachment_ids=[first.attachment_id]),
+            request,
+            session,
+        )
+    )
+    asyncio.run(
+        chat.send_message(
+            conversation_id,
+            SendMessageRequest(content="比较两篇", attachment_ids=[second.attachment_id]),
+            request,
+            session,
+        )
+    )
+
+    assert set(agent.run_spec.execution_context.authorized_resources.attachment_ids) == {
+        first.attachment_id,
+        second.attachment_id,
+    }
+
+
 def _reader(payload: bytes):
     """处理 `_reader` 相关逻辑。"""
     sent = False

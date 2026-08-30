@@ -211,6 +211,32 @@ class UserAttachmentStore:
             items.append(item)
         return tuple(items)
 
+    def list_for_conversation(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str,
+    ) -> tuple[StoredAttachment, ...]:
+        """Return every valid attachment still stored for one conversation."""
+        directory = self._directory(user_id, conversation_id)
+        try:
+            children = sorted(directory.iterdir(), key=lambda item: item.name)
+        except OSError:
+            return ()
+
+        items: list[StoredAttachment] = []
+        for child in children:
+            if not child.is_dir():
+                continue
+            item = self.get(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                attachment_id=child.name,
+            )
+            if item is not None:
+                items.append(item)
+        return tuple(items)
+
     def delete(
         self,
         *,

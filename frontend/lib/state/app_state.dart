@@ -1738,7 +1738,8 @@ class AppState extends ChangeNotifier {
                 if (payload is Map && payload['ok'] == false) {
                   final error = payload['error']?.toString();
                   if (error == 'tool_not_available' ||
-                      error == 'resource_capability_required') {
+                      error == 'resource_capability_required' ||
+                      error == 'attachment_not_authorized') {
                     terminalFailureKey = '$toolName\u0000$error';
                   }
                 }

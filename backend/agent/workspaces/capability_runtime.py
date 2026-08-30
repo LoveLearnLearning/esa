@@ -250,6 +250,20 @@ class BoundToolExecutor:
                     approval_mode=declaration.approval_mode,
                 )
             if name.startswith("parse_") and name.endswith("_attachment"):
+                requested_attachment_id = normalized.get("attachment_id")
+                authorized_attachment_ids = tuple(
+                    self.context.authorized_resources.attachment_ids
+                )
+                if requested_attachment_id not in authorized_attachment_ids:
+                    return {
+                        "ok": False,
+                        "error": "attachment_not_authorized",
+                        "tool": name,
+                        "requested_attachment_id": requested_attachment_id,
+                        "authorized_attachment_ids": list(
+                            authorized_attachment_ids
+                        ),
+                    }
                 from backend.agent.tools.common.attachment_tools import execute_attachment_tool
 
                 return await execute_attachment_tool(self.context, name, normalized)

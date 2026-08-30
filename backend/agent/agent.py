@@ -41,7 +41,11 @@ _EMPTY_VISIBLE_RESPONSE = "模型本轮未返回可展示正文，请重试。"
 _TOOL_SYNTHESIS_FALLBACK = "工具已返回结果，但模型未能形成完整答复，请重试。"
 
 _TERMINAL_TOOL_ERRORS = frozenset(
-    {"tool_not_available", "resource_capability_required"}
+    {
+        "tool_not_available",
+        "resource_capability_required",
+        "attachment_not_authorized",
+    }
 )
 
 def _terminal_tool_error(result: object) -> str | None:
@@ -82,6 +86,8 @@ def _successful_tool_result(result: object) -> bool:
 def _tool_unavailable_message(name: str, error: str) -> str:
     if error == "resource_capability_required":
         return f"当前请求没有使用工具 `{name}` 所需的资源权限，请重新选择相关附件或资源后再试。"
+    if error == "attachment_not_authorized":
+        return f"工具 `{name}` 请求的附件不在当前对话授权清单中，请检查附件是否已删除或是否属于当前对话。"
     return f"当前上下文无法使用工具 `{name}`，请重新选择相关附件或调整问题后再试。"
 
 

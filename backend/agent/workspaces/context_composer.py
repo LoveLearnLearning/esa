@@ -169,8 +169,9 @@ class ContextComposer:
             sections.append(ContextSection(
                 "attachment_policy", "Attachment handling policy",
                 (
-                    "本轮有新附件授权，必须在回复前调用对应解析 Tool 获取内容后再回答。"
-                    "每轮附件独立授权，对话历史中已解析的附件不适用于本轮。"
+                    "当前对话中的全部已授权附件都可以在后续轮次继续使用。"
+                    "工具调用只能使用下方清单中的 attachment_id。"
+                    "如果用户要求比较多个文件，应分别解析相关文件后再回答。"
                     "不追问 Tool 已有标识，不猜内容或路径。"
                 ),
                 "trusted_system", 125,
@@ -178,7 +179,7 @@ class ContextComposer:
             sections.append(ContextSection(
                 "attachments", "Authorized attachments",
                 (
-                    "系统授权且尚未解析：\n"
+                    "当前对话中系统授权且仍存在的附件：\n"
                     + json.dumps(
                         turn.authorized_attachments,
                         ensure_ascii=False,
