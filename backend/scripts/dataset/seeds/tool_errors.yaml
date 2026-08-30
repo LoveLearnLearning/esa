@@ -69,6 +69,113 @@ wrapped:
       或者你先说说你关心知识追踪的哪一面（模型结构？数据集？评测指标？），我先把这块的基础脉络讲清楚，
       等检索通了再补具体文献。
 
+  # ── 统一检索：已选公共库，而公共库未配置（2026-08-26，上游 c80bad7 之后）──
+  # 题面原样搬自旧的 retrieve_federated_knowledge__正例 —— 那 5 条问的都是课程概念，
+  # 在新设计下前端会选公共库。err 是真跑出来的，不是编的：
+  #   backend/agent/rag/unified_retrieval.py:54  public_service is None → raise
+  # ⚠️ 这一族教的是「没拿到证据要说出来，再用通用知识接着答」，
+  #    不是「换个参数重试」—— 服务没配置，重试多少次都一样。
+  - id: unified_public_unconfigured_00
+    tool: retrieve_knowledge
+    args: { query: "最小生成树" }
+    err: "public knowledge service is not configured"
+    src: backend/agent/rag/unified_retrieval.py:54
+    lures: [retrieve_knowledge, get_knowledge_base_stats, web_search, load_skill]
+    q: "帮我讲讲最小生成树是怎么回事"
+    a: |
+      公共知识库这次没接上（[Error]: public knowledge service is not configured），所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
+
+      最小生成树是连通无向图里「把所有点连起来、且边权总和最小」的那棵树。n 个点就用 n-1 条边，多一条必成环。
+
+      两种标准做法：Kruskal 把边按权重从小到大排，用并查集判断加进来会不会成环；Prim 从一个点出发，每次挑「连接已选点集与未选点集」中最轻的那条边。稠密图用 Prim，稀疏图用 Kruskal。
+
+      举个具体的：n 座城市之间铺光缆，每段造价不同，要让所有城市连通且总造价最低——这就是 MST。
+
+      两个常见的坑：一是它只对连通图有定义，图不连通时得到的是最小生成森林；二是边权有相同值时 MST 可能不唯一，但最小总权重是唯一的。
+
+      等库恢复了我再检索一次，把出处补上。
+
+  - id: unified_public_unconfigured_01
+    tool: retrieve_knowledge
+    args: { query: "死锁的必要条件" }
+    err: "public knowledge service is not configured"
+    src: backend/agent/rag/unified_retrieval.py:54
+    lures: [retrieve_knowledge, get_knowledge_base_stats, web_search, load_skill]
+    q: "死锁的四个必要条件是什么"
+    a: |
+      公共知识库这次没接上（[Error]: public knowledge service is not configured），所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
+
+      互斥、占有并等待、不可抢占、循环等待——四个同时成立，才**可能**发生死锁。
+
+      逐条说：互斥是资源同一时刻只能被一个进程占用；占有并等待是进程握着已有资源去申请新的；不可抢占是资源只能由持有者主动释放；循环等待是若干进程首尾相接地互相等对方的资源。
+
+      最小的例子：进程 A 拿着锁 1 去申请锁 2，进程 B 拿着锁 2 去申请锁 1，两个都不放手，就僵住了。
+
+      易错的地方：这四条是**必要**条件不是充分条件——四条都满足也未必真的死锁，得真的形成了那个环才算。预防死锁的思路正是破坏其中任意一条，比如按固定顺序申请资源就破坏了循环等待。
+
+      等库恢复了我再检索一次，把出处补上。
+
+  - id: unified_public_unconfigured_02
+    tool: retrieve_knowledge
+    args: { query: "TCP 拥塞控制" }
+    err: "public knowledge service is not configured"
+    src: backend/agent/rag/unified_retrieval.py:54
+    lures: [retrieve_knowledge, get_knowledge_base_stats, web_search, load_skill]
+    q: "TCP 的拥塞控制是怎么做的"
+    a: |
+      公共知识库这次没接上（[Error]: public knowledge service is not configured），所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
+
+      TCP 的拥塞控制是四个机制配合：慢启动、拥塞避免、快重传、快恢复。核心是维护一个拥塞窗口 cwnd，靠丢包当信号来猜网络还能吃多少。
+
+      慢启动阶段 cwnd 每收到一个 ACK 就加一，实际是每轮翻倍，涨到阈值 ssthresh 后转入拥塞避免，改成每轮只加一个 MSS 的线性增长。收到三个重复 ACK 就快重传——不等超时直接补发那个包，并把 ssthresh 砍半、进入快恢复；真的超时了才认为网络很糟，cwnd 直接回到一。
+
+      你下载文件时速度先猛冲一段再稳住，就是慢启动转拥塞避免那个拐点。
+
+      最常混的一个点：拥塞控制看的是**网络**能承受多少（cwnd），流量控制看的是**接收方**来不来得及收（rwnd）——两件事，实际发送窗口取两者的较小值。
+
+      等库恢复了我再检索一次，把出处补上。
+
+  - id: unified_public_unconfigured_03
+    tool: retrieve_knowledge
+    args: { query: "动态规划 分治法 区别" }
+    err: "public knowledge service is not configured"
+    src: backend/agent/rag/unified_retrieval.py:54
+    lures: [retrieve_knowledge, get_knowledge_base_stats, web_search, load_skill]
+    q: "动态规划和分治法有什么区别"
+    a: |
+      公共知识库这次没接上（[Error]: public knowledge service is not configured），所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
+
+      两者都把大问题拆成子问题，区别只有一个：**子问题会不会重复出现**。
+
+      分治的子问题互相独立，算完就扔，比如归并排序把数组一切两半，左右两半毫无关系。动态规划的子问题会被反复用到，所以必须把结果存下来——这就是记忆化或者填表。
+
+      最直观的对比是斐波那契：递归写法里 f(n-2) 会被算很多遍，指数级；改成 DP 存起来就是线性。而归并排序即使写成递归也不会重复算，因为没有重叠。
+
+      一个容易漏的前提：能用 DP 还要满足**最优子结构**——大问题的最优解由子问题的最优解拼出来。有重叠但没有最优子结构，DP 也不成立。
+
+      等库恢复了我再检索一次，把出处补上。
+
+  - id: unified_public_unconfigured_04
+    tool: retrieve_knowledge
+    args: { query: "虚拟内存" }
+    err: "public knowledge service is not configured"
+    src: backend/agent/rag/unified_retrieval.py:54
+    lures: [retrieve_knowledge, get_knowledge_base_stats, web_search, load_skill]
+    q: "虚拟内存到底解决了什么问题"
+    a: |
+      公共知识库这次没接上（[Error]: public knowledge service is not configured），所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
+
+      虚拟内存给每个进程一套独立的地址空间，通过页表映射到物理页，并且按需调页——用到哪页才装哪页，不够了就把冷页换出到磁盘。
+
+      它一次解决三件事，而不只是「内存不够」：
+      一是让程序能用比物理内存更大的地址空间；二是进程之间地址隔离，A 的 0x1000 和 B 的 0x1000 是不同的物理页，互相踩不到；三是物理页可以不连续，消除了外部碎片，程序也不用管自己被装在哪。
+
+      具体点：物理内存 8GB 却能同时跑十个各自申请了 4GB 地址空间的进程，靠的就是这套映射加按需调页。
+
+      常见的误解是把它等同于「拿硬盘当内存用」——换页只是其中一个手段，地址隔离和重定位这两件事，即使物理内存充足也一样需要它。
+
+      等库恢复了我再检索一次，把出处补上。
+
   - id: arxiv_http_503
     tool: arxiv_search
     args: { query: "retrieval augmented generation", max_results: 3 }

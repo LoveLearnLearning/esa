@@ -392,6 +392,12 @@ def get_mastery_report(course: str = "", user_name: str = "stu_demo") -> dict[st
     stale = sorted([i for i in points if i["needs_review"]], key=lambda i: i["retention"])[:5]
     return {
         "allowed": True, "user_name": user_name, "course": course_arg,
+        # 上游 `637e2c5`（2026-08-28）新增。`mastery_store.py:495` 就是
+        # `bool(points)` —— 它存在的理由写在后端自己的测试名里：
+        # 「用显式状态区分**有效空结果**和**真实的零掌握度**」，
+        # 与 learning_policy 里那条「has_record=false 表示未知，不得推断为薄弱或 50%」
+        # 是同一件事。契约测试（5.16）当场抓到了这个缺口。
+        "has_records": bool(points),
         "total_points": len(points),
         "avg_mastery": round(sum(float(i["mastery_level"]) for i in points) / len(points), 2) if points else 0.0,
         "weak_points": weak, "strong_points": strong, "stale_points": stale,
@@ -1076,15 +1082,6 @@ def get_time() -> str:
     return (NOW - timedelta(hours=8)).strftime("%m/%d/%y-%H:%M:%S")
 
 
-def get_weather(city: str) -> str:
-    """复刻 tools.get_weather —— 后端目前是硬编码桩，恒返回同一句。
-
-    这不是我编的：backend/agent/tools/tools.py 里就是 f"{city}: 26 摄氏度 晴朗"。
-    所以这个工具的样本只能训"何时该调"，训不了"如何消费真实天气"。
-    """
-    return f"{city}: 26 摄氏度 晴朗"
-
-
 # web_search 的真实失败观测。
 #
 # ⚠️ 2026-08-15 重写。后端 `1b64473` 把 web_search 从本地 SearXNG **整个换成了
@@ -1149,6 +1146,60 @@ def retrieve_federated_knowledge(query: str, top_k: int = 5,
             "mode": "personal_and_public",
             "personal_candidates": 0,
             "public_candidates": 0,
+        },
+    }
+
+
+def retrieve_knowledge(query: str, top_k: int = 5,
+                      similarity_threshold: float | None = None) -> dict[str, Any]:
+    """统一检索工具在**已选个人库、而个人库不可用**时的返回。
+
+    2026-08-26 上游 `c80bad7`「统一 retrive 工具，将路由机制硬编码，由用户在
+    对话框选择」之后，模型只看得见 `retrieve_knowledge` 一个检索工具，
+    `knowledge_sources` 由前端放进**可信执行上下文**，不在模型可见的
+    `parameters` 里（已核对）。所以模型不再选库，只管发 query。
+
+    ⚠️ 只能产出这一种状态，理由同 `retrieve_federated_knowledge`：
+    成功返回需要真实 RAG 服务，我们没有，也**不许编**（《02》「不伪造」承诺）。
+
+    结构不是手写的：直接跑上游 `backend/agent/rag/unified_retrieval.py::
+    retrieve_selected_knowledge`（`knowledge_sources=["personal"]`、
+    两个 service 都是 `None`），取 `ToolExecutionResult.model_content`
+    —— **模型看得见的就是这一层**，逐字段抄回来。
+
+    ⚠️ 另一条路是 `knowledge_sources=["public"]`：那一支在 `unified_retrieval.py:54`
+    直接 `raise RuntimeError("public knowledge service is not configured")`，
+    是**报错**不是降级载荷，归 `seeds/tool_errors.yaml` 的 `exec_error` 组。
+
+    Args:
+        query: str => 检索问题。
+        top_k: int => 最多返回多少条（降级时无影响，保留以对齐 schema）。
+        similarity_threshold: float | None => 公共库 Reranker 阈值（降级时无影响）。
+
+    Returns:
+        dict[str, Any] => 与线上逐字段一致的降级载荷。
+    """
+    return {
+        "contract_version": "retrieve_knowledge.unified.v1",
+        "query": query,
+        "selected_sources": ["personal"],
+        "result_count": 0,
+        "results": [],
+        "citation_policy": {
+            "verbatim_requires_quote_eligible": True,
+            "when_ineligible": "paraphrase_and_disclose_unverified_extraction",
+        },
+        "execution": {
+            "selected_sources": ["personal"],
+            "ranking_method": "single_source_rank",
+            "degraded": ["personal_knowledge_base_unavailable"],
+        },
+        "budget": {
+            "limit": 2048,
+            "original_token_count": 140,
+            "returned_token_count": 140,
+            "truncated": False,
+            "counter": "fallback",
         },
     }
 
@@ -1220,11 +1271,13 @@ def sandbox_disabled() -> dict[str, Any]:
 
 FIXTURE_FUNCTIONS = {
     "arxiv_search": arxiv_search,
+    "retrieve_knowledge": retrieve_knowledge,
+    # ⚠️ 下面两个是 c80bad7 之前的旧世界，上游已删。重生成完成后连同
+    #    上面的函数定义一起删；现在留着是为了旧 IR 还能重放。
     "retrieve_federated_knowledge": retrieve_federated_knowledge,
     "retrieve_personal_knowledge": retrieve_personal_knowledge,
     "run_in_sandbox": run_in_sandbox,
     "get_time": get_time,
-    "get_weather": get_weather,
     "recommend_practice": recommend_practice,
     "get_mastery_report": get_mastery_report,
     "get_mastery_level": get_mastery_level,
