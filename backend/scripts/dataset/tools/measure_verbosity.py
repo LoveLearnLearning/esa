@@ -13,8 +13,8 @@
 
     python tools/measure_verbosity.py \\
         --eval data/eval/eval.jsonl \\
-        --pred base=/persist_data/home/chenxuzhao/esa_results/pred_base.jsonl \\
-        --pred 80269=/persist_data/home/chenxuzhao/esa_results/pred_lora_80269.jsonl
+        --pred base=$HOME/esa_results/pred_base.jsonl \\
+        --pred 80269=$HOME/esa_results/pred_lora_80269.jsonl
 
 `--pred` 可给任意多个，标签随意。只给一个也能跑（就只看分布，不做对比）。
 """

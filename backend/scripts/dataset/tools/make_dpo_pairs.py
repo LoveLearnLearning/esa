@@ -3,8 +3,8 @@
     # 只看复核表，不落盘
     python3 dataset/tools/make_dpo_pairs.py \
         --eval data/eval/eval.jsonl \
-        --pred /persist_data/home/chenxuzhao/esa_results/pred_lora_80269.jsonl \
-        --report /persist_data/home/chenxuzhao/esa_results/report_lora_80269.json
+        --pred $HOME/esa_results/pred_lora_80269.jsonl \
+        --report $HOME/esa_results/report_lora_80269.json
 
     # 复核过了再落盘
     ... --out data/out/dpo_pairs.jsonl

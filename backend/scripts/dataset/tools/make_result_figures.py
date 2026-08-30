@@ -85,7 +85,7 @@ def load_report(tag: str) -> dict:
         raise SystemExit(
             f"❌ 报告不在：{f}\n"
             "   判分产物按设计不入库，要从集群拷回本机：\n"
-            f"     scp <集群>:/persist_data/home/chenxuzhao/esa_results/report_{tag}.json {args.reports}/\n"
+            f"     scp <集群>:~/esa_results/report_{tag}.json {args.reports}/\n"
             "   ⚠️ 别退回旧常量画图 —— 一张画错了却看起来正常的图，比没有图糟。"
         )
     return json.loads(f.read_text(encoding="utf-8"))

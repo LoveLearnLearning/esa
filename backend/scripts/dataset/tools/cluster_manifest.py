@@ -33,10 +33,28 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
-HOME = "/persist_data/home/chenxuzhao"
+# 🔴 别把账号名写进这里，也别让它进基线文件。
+# `--scan` 是在集群上跑的，那台机器的 `~` 就是我们要的那个 HOME，
+# 所以从 `Path.home()` 取；本机做 `--check` 时用不到它（比的是贴回来的清单）。
+# 想指到别处就设 `ESA_HOME`。
+CLUSTER_ROOT = "/persist_data" + "/home"        # 挂载点，不含账号名
+HOME = os.environ.get("ESA_HOME") or str(Path.home())
+PLACEHOLDER = "$ESA_HOME"
+# 基线里的路径一律写成 `$ESA_HOME/...`：既不泄露账号名，也让清单跨账号可比。
+_HOME_RE = re.compile(re.escape(CLUSTER_ROOT) + r"/[^/\s]+")
+
+
+def norm(path: str) -> str:
+    """绝对路径 → `$ESA_HOME/...`。旧格式（带账号名）贴回来也能认。"""
+    if path.startswith(HOME):
+        return PLACEHOLDER + path[len(HOME):]
+    return _HOME_RE.sub(PLACEHOLDER, path)
+
+
 DS = f"{HOME}/esa-data/backend/scripts/dataset"
 HASH_MAX = 4 * 1024 * 1024      # 超过这个大小只记 size+mtime
 
@@ -75,21 +93,24 @@ def scan() -> dict[str, str]:
         for f in sorted(glob.glob(pat)):
             p = Path(f)
             if p.is_file():
+                k = norm(f)
                 try:
-                    out[f] = entry(p)
+                    out[k] = entry(p)
                 except OSError as e:
-                    out[f] = f"读不到：{e}"
+                    out[k] = f"读不到：{e}"
     return out
 
 
 def parse_pasted(path: str) -> dict[str, str]:
     out: dict[str, str] = {}
     for line in Path(path).read_text(encoding="utf-8").splitlines():
-        if not line.startswith("/"):
+        # 新格式是 `$ESA_HOME/...`；老格式是绝对路径，一并认下来再归一化，
+        # 免得手头存着的旧清单突然对不上基线（那种"对不上"最会浪费时间）。
+        if not line.startswith(("/", PLACEHOLDER)):
             continue
         parts = line.rstrip("\n").split("\t")
         if len(parts) >= 4:
-            out[parts[0]] = "\t".join(parts[1:4])
+            out[norm(parts[0])] = "\t".join(parts[1:4])
     return out
 
 

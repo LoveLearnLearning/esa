@@ -1,7 +1,7 @@
 """查「这份考卷里有多少题，是这个模型训练时见过的」。
 
     python3 dataset/tools/check_eval_leak.py --eval data/eval/eval.jsonl \\
-        --train-ir /persist_data/home/chenxuzhao/esa_results/era_80269/train_ir.jsonl
+        --train-ir $HOME/esa_results/era_80269/train_ir.jsonl
 
 为什么需要这道闸门
 ------------------

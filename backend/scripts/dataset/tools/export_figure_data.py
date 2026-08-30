@@ -1,9 +1,9 @@
 """🖥️ **集群上跑。** 把两份报告压成一小段 JSON，印出来粘回本机画图。
 
-    cd /persist_data/home/chenxuzhao/esa-data/backend/scripts/dataset
+    cd $HOME/esa-data/backend/scripts/dataset
     PYTHONPATH=. python tools/export_figure_data.py \\
         --base base --lora 80269 \\
-        --exclude-train-ir /persist_data/home/chenxuzhao/esa_results/era_80269/train_ir.jsonl
+        --exclude-train-ir $HOME/esa_results/era_80269/train_ir.jsonl
 
 为什么要有这一步
 ----------------
