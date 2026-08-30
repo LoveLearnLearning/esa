@@ -25,6 +25,7 @@ from typing import Any
 from jsonschema import Draft7Validator
 
 from .ir import (
+    fixtures_sha,
     CATEGORIES,
     ROLE_ASSISTANT,
     ROLE_TOOL_CALL,
@@ -1125,6 +1126,27 @@ def main(argv: list[str] | None = None) -> int:
                          "（理由见 check_shape 的注释），它们只出线索清单")
     ap.add_argument("--no-dup-check", action="store_true")
     args = ap.parse_args(argv)
+
+    # 🔴 IR 是不是用**当前这版 fixtures** 渲染的。
+    # 2026-08-30 踩过：给 fixtures 补了上游新增的 `has_records`，跑完七个自测就
+    # 提交上传，**没重跑生成器** —— 交付的数据和交付的 fixtures 对不上，而
+    # validate 不比这个、契约测试比的是 fixtures 和线上，谁都不管这一段。
+    # 失效方向（5.41）：戳不在 → 只警告（旧数据、或别人手搓的 IR）；
+    # 戳在而对不上 → **当场红**，因为那是明确的「改了没重跑」。
+    stamp = Path(args.files[0]).resolve().parent / "_generated_with.json"
+    if stamp.exists():
+        want = fixtures_sha()
+        got = json.loads(stamp.read_text(encoding="utf-8")).get("fixtures_sha256_16")
+        if got != want:
+            print(f"❌ 这批 IR 是用另一版 esa/fixtures.py 渲染的："
+                  f"戳 {got} ≠ 当前 {want}\n"
+                  f"   改了 fixtures 就必须重跑十个生成器，否则交付的数据和交付的\n"
+                  f"   fixtures 对不上，而三道检查全绿（2026-08-30 就这么传出去过一次）。",
+                  file=sys.stderr)
+            return 1
+    else:
+        print("⚠️ 这批 IR 没有 fixtures 戳（`data/ir/_generated_with.json` 不在）——"
+              "判不了它是用哪版 fixtures 渲染的；重跑一次生成器就有了。", file=sys.stderr)
 
     schemas, version = load_schemas(args.schemas)
     by_name = schemas_by_name(schemas)

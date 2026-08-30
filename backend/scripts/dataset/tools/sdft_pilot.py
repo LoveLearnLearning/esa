@@ -165,6 +165,33 @@ def candidates(n: int) -> list[dict]:
     return picked
 
 
+def _fact_note(obs_texts: list[str]) -> str:
+    """给这条样本补一句**它缺的事实**，不是补风格要求。
+
+    第三轮（90530）唯一的真错出在这里：
+    「基于你刚才做对了一次练习，**加上之前累计的 10 次**」——
+    实测 `saved: true` 且 `practice_count: 10` **已经含本次**
+    （`old_mastery` 81.87 → 85.9），所以那句等于说 11 次。
+    参考回答原本写的「累计练习 10 次」是对的，**被改写成了错的**。
+    🔴 而五道闸门全绿 —— 两个数都在观测里，忠实度查的是来源不是算术。
+
+    观测本身没有任何字段说明「这个计数含不含刚存的这条」，模型只能猜。
+    **缺的是事实，不是约束** —— 所以这里把事实告诉它，措辞里不出现字段名。
+    """
+    for o in obs_texts:
+        try:
+            c = json.loads(o)
+        except json.JSONDecodeError:
+            continue
+        for item in (c if isinstance(c, list) else [c]):
+            body = item.get("content", item) if isinstance(item, dict) else {}
+            if isinstance(body, dict) and body.get("saved") and "state" in body:
+                return ("\n\n[关于这次工具返回的一条事实]\n"
+                        "返回里的「累计练习次数 / 正确次数」**已经把刚记录的这一次算进去了**。"
+                        "不要写成「这次 + 之前累计的 N 次」，那会多算一次。")
+    return ""
+
+
 def build(sample: dict) -> dict:
     turns = sample["turns"]
     user = " / ".join(t["content"] for t in turns if t.get("role") == "user")
@@ -179,6 +206,7 @@ def build(sample: dict) -> dict:
     ref = turns[-1]["content"]
     prompt = REWRITE_TMPL.format(user=user, call=" ; ".join(calls),
                                  observation="\n".join(obs_texts), ref=ref)
+    prompt += _fact_note(obs_texts)
     return {
         "id": sample["id"], "template_id": sample["template_id"],
         "family": sample["template_id"].split("__")[0],
@@ -191,22 +219,30 @@ def build(sample: dict) -> dict:
     }
 
 
-# 🔴 相对时间词。第一轮试点（90485）产出过「最近一次练习**就在今天**」——
-# 上下文里没有任何东西说明「今天」是哪天（system prompt 里 `现在的时间` 出现 0 次），
-# 那是模型猜的；而 `fixtures.NOW` 是**冻结时钟**，这族样本的 `last_practiced_at`
-# 恒等于它，于是「今天」在训练集里恒真 → 学到的是常量不是判断（5.61 同形）。
+# 🔴 **硬拦**：锚在墙上日期上的词。第一轮试点（90485）产出过
+# 「最近一次练习**就在今天**」—— 上下文里没有任何东西说明「今天」是哪天
+# （我们抓的 system prompt 里 `现在的时间` 出现 0 次），那是猜的；
+# 而 `fixtures.NOW` 是**冻结时钟**，这族的 `last_practiced_at` 恒等于它，
+# 于是「今天」在训练集里恒真 → 学到的是常量不是判断（5.61 同形）。
 # ⚠️ 忠实度闸门抓不到它：这句话一个新数字都没有。
-_REL_TIME = ("今天", "昨天", "前天", "明天", "刚才", "刚刚", "今早", "今晚",
+_REL_DATE = ("今天", "昨天", "前天", "明天", "今早", "今晚",
              "本周", "这周", "上周", "这个月", "上个月")
+# ⚠️ **只提示、不硬拦**：「刚才 / 刚刚」指的可能是**这一轮对话里的动作**。
+# 第三轮（90530）5 条全是这个：用户原话就是「堆这题我做对了」，
+# 「刚才做对了一次练习」是有依据的；而第一轮 `get_weak_prerequisites` 那条
+# 用户什么都没做，同一个词就是凭空的。**机械分不开，只能人看**（5.67）。
+# 我第一版把两者混成一条规则，于是第三轮误报 5 条 —— 5.9 说的正是这种闸门。
+_REL_MOMENT = ("刚才", "刚刚")
 
 
 def relative_time_added(ref: str, text: str) -> list[str]:
-    """改写里出现、而参考回答里没有的相对时间词。
+    """改写里出现、而参考回答里没有的**日期锚定**词。硬判据。"""
+    return [w for w in _REL_DATE if w in text and w not in ref]
 
-    ⚠️ 只收「相对于**现在**」的词。`最近一次练习` 里的「最近」是对记录取最值，
-    不是相对现在，不算 —— 一个会误报的闸门比没有闸门更糟（5.9）。
-    """
-    return [w for w in _REL_TIME if w in text and w not in ref]
+
+def moment_words_added(ref: str, text: str) -> list[str]:
+    """「刚才 / 刚刚」—— 线索，不是判据。有依据没依据要看用户原话。"""
+    return [w for w in _REL_MOMENT if w in text and w not in ref]
 
 
 def _obs_keys(observations: list[str]) -> set[str]:
@@ -251,10 +287,12 @@ def gate(item: dict, text: str) -> dict:
     ents = observation_entities(item["observations"])
     bad = unsupported_numbers(text, item["context"], ents) if ents else set()
     rel = relative_time_added(item["ref"], text)
+    mom = moment_words_added(item["ref"], text)
     leak = schema_leak(item["ref"], item["observations"], text)
     return {
         "字段名": "✅" if not leak else f"❌ 甩了 {leak}",
         "相对时间": "✅" if not rel else f"❌ 新增 {rel}",
+        "刚才刚刚": "—" if not mom else f"👀 用了 {mom}，看一眼用户原话有没有依据",
         "忠实度": ("跳过（观测抽不出实体，如实报无法比对）" if not ents
                 else ("✅" if not bad else f"❌ 编了 {sorted(bad)}")),
         "非空": "✅" if text.strip() else "❌ 空",
@@ -266,7 +304,9 @@ def gate(item: dict, text: str) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("-n", type=int, default=30)
+    ap.add_argument("-n", type=int, default=30,
+                    help="取几段；给个大数（如 9999）就是全取")
+    ap.add_argument("--families", help="只跑这几族，逗号分隔；默认全部")
     ap.add_argument("--dry-run", action="store_true", help="只选样本+拼提示词，不连模型")
     ap.add_argument("--endpoint")
     ap.add_argument("--model", default="esa-base")
@@ -281,7 +321,16 @@ def main() -> int:
     ap.add_argument("--show", type=int, default=5, help="打印几条原文供人过眼")
     args = ap.parse_args()
 
-    items = [build(s) for s in candidates(args.n)]
+    picked = candidates(args.n)
+    if args.families:
+        want = {x.strip() for x in args.families.split(",") if x.strip()}
+        unknown = want - set(TARGET_FAMILIES)
+        if unknown:
+            ap.error(f"不认识的族：{sorted(unknown)}；可选 {sorted(TARGET_FAMILIES)}")
+        picked = [s for s in picked if s["template_id"].split("__")[0] in want]
+        if not picked:
+            raise SystemExit(f"❌ {sorted(want)} 一段都没选出来 —— 先验扫描本身（5.22）")
+    items = [build(s) for s in picked]
     fam_n = defaultdict(int)
     for it in items:
         fam_n[it["family"]] += 1
@@ -348,6 +397,8 @@ def main() -> int:
         for key in ("相对时间", "字段名"):
             if not g[key].startswith("✅"):
                 flag += f"  ⚠️{g[key]}"
+        if g["刚才刚刚"] != "—":
+            flag += "  👀刚才/刚刚"
         # think 比正文还长得多 = 大概率被 max_tokens 8192 截在思考里，正文是残的。
         if len(pr.reasoning) > 3000 and len(text) < len(pr.reasoning) / 10:
             flag += "  ⚠️think 吃满、正文疑似被截"
@@ -376,6 +427,12 @@ def main() -> int:
           f"（必须是 0 —— 「结论 + 字段转储」比原来那句短回答更糟）")
     for r in lk[:5]:
         print(f"            {r['template_id']}　{r['gate']['字段名']}")
+    mom = [r for r in results if r["gate"]["刚才刚刚"] != "—"]
+    if mom:
+        print(f"  👀 刚才/刚刚  {len(mom)} 条 —— **线索不是判据**："
+              f"用户原话里报了刚做的动作就有依据，没报就是凭空的，机械分不开")
+        for r in mom[:5]:
+            print(f"            {r['template_id']}")
     rel = [r for r in results if not r["gate"]["相对时间"].startswith("✅")]
     print(f"  相对时间  新增了「今天/刚才」这类词的：{len(rel)} 条"
           f"（必须是 0 —— 上下文里没有当前时间，那是猜的；"
