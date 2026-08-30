@@ -9,7 +9,13 @@ from types import MappingProxyType
 from typing import Mapping
 
 from backend.agent.workspaces.models import LoopPolicy, WorkspaceRuntimeProfile
-from backend.core.utils.config import AGENT_LOOP_TIME, AGENT_TOOL_TIMEOUT_SECONDS
+from backend.core.utils.config import (
+    AGENT_MAX_ITERATIONS,
+    AGENT_MAX_TOOL_CALLS,
+    AGENT_MAX_TOOL_RETRIES,
+    AGENT_MAX_WALL_TIME_SECONDS,
+    AGENT_TOOL_TIMEOUT_SECONDS,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,9 +79,35 @@ class WorkspaceDefinition:
         }
 
 
-_LOOP_POLICY = LoopPolicy(
-    max_iterations=AGENT_LOOP_TIME,
+def _scaled_budget(value: int | float, numerator: int, denominator: int):
+    """Preserve workspace ratios while honoring the global environment knobs."""
+
+    scaled = value * numerator / denominator
+    return max(1, round(scaled)) if isinstance(value, int) else scaled
+
+
+_LEARNING_LOOP_POLICY = LoopPolicy(
+    max_iterations=_scaled_budget(AGENT_MAX_ITERATIONS, 5, 6),
     tool_timeout_seconds=AGENT_TOOL_TIMEOUT_SECONDS,
+    max_tool_calls=_scaled_budget(AGENT_MAX_TOOL_CALLS, 2, 3),
+    max_retries_per_tool=AGENT_MAX_TOOL_RETRIES,
+    max_wall_time_seconds=_scaled_budget(AGENT_MAX_WALL_TIME_SECONDS, 3, 4),
+)
+
+_TEACHING_LOOP_POLICY = LoopPolicy(
+    max_iterations=AGENT_MAX_ITERATIONS,
+    tool_timeout_seconds=AGENT_TOOL_TIMEOUT_SECONDS,
+    max_tool_calls=_scaled_budget(AGENT_MAX_TOOL_CALLS, 5, 6),
+    max_retries_per_tool=AGENT_MAX_TOOL_RETRIES,
+    max_wall_time_seconds=AGENT_MAX_WALL_TIME_SECONDS,
+)
+
+_RESEARCH_LOOP_POLICY = LoopPolicy(
+    max_iterations=_scaled_budget(AGENT_MAX_ITERATIONS, 4, 3),
+    tool_timeout_seconds=AGENT_TOOL_TIMEOUT_SECONDS,
+    max_tool_calls=_scaled_budget(AGENT_MAX_TOOL_CALLS, 4, 3),
+    max_retries_per_tool=AGENT_MAX_TOOL_RETRIES * 2,
+    max_wall_time_seconds=_scaled_budget(AGENT_MAX_WALL_TIME_SECONDS, 5, 4),
 )
 
 _DEFINITIONS = (
@@ -96,7 +128,7 @@ _DEFINITIONS = (
         profile_policy="learning.v1",
         memory_policy_id="learning.v1",
         action_policy="learning.v1",
-        loop_policy=_LOOP_POLICY,
+        loop_policy=_LEARNING_LOOP_POLICY,
         optional_resource_capabilities=frozenset(
             {
                 "attachments",
@@ -125,7 +157,7 @@ _DEFINITIONS = (
         profile_policy="teaching.v1",
         memory_policy_id="teaching.v1",
         action_policy="teaching.v1",
-        loop_policy=_LOOP_POLICY,
+        loop_policy=_TEACHING_LOOP_POLICY,
         optional_resource_capabilities=frozenset(
             {
                 "attachments",
@@ -160,7 +192,7 @@ _DEFINITIONS = (
         profile_policy="research.v1",
         memory_policy_id="research.v1",
         action_policy="research.v1",
-        loop_policy=_LOOP_POLICY,
+        loop_policy=_RESEARCH_LOOP_POLICY,
         optional_resource_capabilities=frozenset(
             {"attachments", "research_project"}
         ),

@@ -13,7 +13,17 @@ from typing import Any, Literal, Mapping
 from backend.agent.tools.tool_register import ToolRegistry
 from backend.core.utils.tool_arguments import normalize_tool_arguments
 
-TOOL_CATALOG_VERSION = 3
+TOOL_CATALOG_VERSION = 4
+
+TRANSIENT_TOOL_ERRORS = frozenset(
+    {
+        "timeout",
+        "rate_limited",
+        "upstream_unavailable",
+        "network_error",
+        "temporary_tool_error",
+    }
+)
 
 MEMORY_READ_TOOLS = frozenset({"search_core_memories", "get_core_memories"})
 MEMORY_WRITE_TOOLS = frozenset(
@@ -130,6 +140,12 @@ class CapabilityDeclaration:
         "automatic", "approval_required", "forbidden"
     ] | None = None
     policy_version: str = "capability.v1"
+    idempotent: bool = False
+    read_only: bool = False
+    retryable_errors: frozenset[str] = TRANSIENT_TOOL_ERRORS
+    default_timeout_seconds: float | None = None
+    max_retries: int | None = None
+    supports_idempotency_key: bool = False
 
 
 CAPABILITY_DECLARATIONS: dict[str, CapabilityDeclaration] = {
@@ -140,10 +156,20 @@ CAPABILITY_DECLARATIONS: dict[str, CapabilityDeclaration] = {
             required_resource_capabilities=TOOL_RESOURCE_REQUIREMENTS.get(
                 name, frozenset()
             ),
+            idempotent=(name not in MEMORY_WRITE_TOOLS | {"run_in_sandbox"}),
+            read_only=(name not in MEMORY_WRITE_TOOLS | {"run_in_sandbox"}),
         )
         for name in COMMON_TOOLS
     },
-    **{name: CapabilityDeclaration(name, "learning") for name in LEARNING_TOOLS},
+    **{
+        name: CapabilityDeclaration(
+            name,
+            "learning",
+            idempotent=name != "record_learning_evidence",
+            read_only=name != "record_learning_evidence",
+        )
+        for name in LEARNING_TOOLS
+    },
     **{
         name: CapabilityDeclaration(
             name,
@@ -154,6 +180,8 @@ CAPABILITY_DECLARATIONS: dict[str, CapabilityDeclaration] = {
             kind="action",
             approval_mode="approval_required",
             policy_version="research.v1",
+            idempotent=False,
+            read_only=False,
         )
         for name in RESEARCH_TOOLS
     },
@@ -165,6 +193,8 @@ CAPABILITY_DECLARATIONS: dict[str, CapabilityDeclaration] = {
                 name, frozenset()
             ),
             policy_version="teaching.v1",
+            idempotent=True,
+            read_only=True,
         )
         for name in TEACHING_TOOLS
     },
@@ -308,4 +338,4 @@ class ScopedToolView:
                 "tool": name,
                 "detail": str(error),
             }
-        return await self.registry.acall(name, normalized)
+        return await self.registry.acall_strict(name, normalized)

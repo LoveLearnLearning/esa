@@ -10,85 +10,39 @@ import json
 import logging
 import re
 import time
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
-from uuid import uuid4
 
 if TYPE_CHECKING:
     from vllm.config.cache import CacheDType
     from vllm.config.model import ModelDType
     from vllm.model_executor.layers.quantization import QuantizationMethods
 
+from backend.agent.loop_runtime import (
+    AgentLoopRuntime,
+    ToolLoopEvent,
+    policy_value,
+    serialize_tool_result as serialize_tool_result,
+    tool_result_channels,
+)
+from backend.agent.runtime_metrics import AGENT_RUNTIME_METRICS
 from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.skills import validate_skill_contracts
-from backend.agent.workspaces.models import ExecutableAgentRun
-from backend.agent.workspaces.history import sanitize_qwen_history as sanitize_qwen_history
-from backend.core.utils.config import AGENT_STREAM_HEARTBEAT_SECONDS, DEBUG_MODE
-from backend.core.utils.models import (
-    AgentStreamEvent,
-    ParsedOutput,
-    ToolCall,
-    ToolExecutionResult,
+from backend.agent.workspaces.history import (
+    sanitize_qwen_history as sanitize_qwen_history,
 )
+from backend.agent.workspaces.models import AgentLoopState, ExecutableAgentRun
+from backend.core.utils.config import AGENT_STREAM_HEARTBEAT_SECONDS, DEBUG_MODE
 from backend.core.utils.errors import ModelContextOverflow
+from backend.core.utils.models import AgentStreamEvent, ParsedOutput
 
 
 logger = logging.getLogger(__name__)
 
 _EMPTY_VISIBLE_RESPONSE = "模型本轮未返回可展示正文，请重试。"
-_TOOL_SYNTHESIS_FALLBACK = "工具已返回结果，但模型未能形成完整答复，请重试。"
-
-_TERMINAL_TOOL_ERRORS = frozenset(
-    {
-        "tool_not_available",
-        "resource_capability_required",
-        "attachment_not_authorized",
-    }
-)
-
-def _terminal_tool_error(result: object) -> str | None:
-    """Return an error that cannot be fixed by retrying tool arguments."""
-    if not isinstance(result, Mapping) or result.get("ok") is not False:
-        return None
-    error = result.get("error")
-    return error if isinstance(error, str) and error in _TERMINAL_TOOL_ERRORS else None
-
-
-def _tool_call_signature(tool_call: ToolCall) -> tuple[str, str]:
-    """Return a stable identity for one tool name and its JSON arguments."""
-
-    arguments = json.dumps(
-        tool_call.arguments,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        default=str,
-    )
-    return tool_call.name, arguments
-
-
-def _successful_tool_result(result: object) -> bool:
-    """Whether an observation is safe to reuse within the current agent turn."""
-
-    if isinstance(result, Mapping):
-        return result.get("ok") is not False and result.get("allowed") is not False
-    if isinstance(result, str):
-        normalized = result.strip().lower()
-        return not (
-            normalized.startswith("[error]")
-            or normalized.endswith("skill not found!")
-        )
-    return True
-
-
-def _tool_unavailable_message(name: str, error: str) -> str:
-    if error == "resource_capability_required":
-        return f"当前请求没有使用工具 `{name}` 所需的资源权限，请重新选择相关附件或资源后再试。"
-    if error == "attachment_not_authorized":
-        return f"工具 `{name}` 请求的附件不在当前对话授权清单中，请检查附件是否已删除或是否属于当前对话。"
-    return f"当前上下文无法使用工具 `{name}`，请重新选择相关附件或调整问题后再试。"
+_tool_result_channels = tool_result_channels
 
 
 def _visible_assistant_content(response: str, parsed: ParsedOutput) -> str:
@@ -138,14 +92,37 @@ def _log_run_finished(
     outcome: str,
     started_at: float,
     messages: list[dict],
+    state: AgentLoopState,
 ) -> None:
     """记录 `run finished` 相关数据。"""
     tool_names, action_ids = _observed_tools_and_actions(messages)
+    visible_assistants = [
+        item
+        for item in messages
+        if item.get("role") == "assistant" and item.get("is_visible", True)
+    ]
+    final_answer_empty = (
+        not visible_assistants
+        or not str(visible_assistants[-1].get("content", "")).strip()
+    )
+    latency_ms = (time.monotonic() - started_at) * 1000
+    AGENT_RUNTIME_METRICS.record(
+        workspace=str(run_spec.run_metadata.get("workspace_type") or "unknown"),
+        state=state,
+        latency_ms=latency_ms,
+        final_answer_empty=final_answer_empty,
+    )
     logger.info(
         "agent run finished run_id=%s request_id=%s conversation_id=%s workspace=%s "
         "definition_version=%s profile=%s profile_fingerprint=%s capability=%s "
         "prompt_version=%s policy_versions=%s resource_revisions=%s "
-        "mode=%s outcome=%s latency_ms=%.2f tools=%s action_request_ids=%s",
+        "mode=%s outcome=%s latency_ms=%.2f tools=%s action_request_ids=%s "
+        "attempted_tools=%s "
+        "max_iterations=%s iterations_used=%s max_tool_calls=%s "
+        "tool_attempts=%s retry_count=%s timeout_count=%s error_count=%s "
+        "retry_success_count=%s successful_tool_attempts=%s "
+        "duplicate_call_count=%s termination_reason=%s "
+        "final_synthesis_used=%s final_answer_empty=%s",
         run_spec.run_metadata.get("run_id"),
         run_spec.run_metadata.get("request_id"),
         run_spec.run_metadata.get("conversation_id"),
@@ -159,31 +136,29 @@ def _log_run_finished(
         run_spec.run_metadata.get("resource_revisions"),
         mode,
         outcome,
-        (time.monotonic() - started_at) * 1000,
+        latency_ms,
         ",".join(tool_names),
         ",".join(action_ids),
+        ",".join(sorted(state.tool_names)),
+        policy_value(run_spec.loop_policy, "max_iterations", 1),
+        state.iteration,
+        policy_value(run_spec.loop_policy, "max_tool_calls", 24),
+        state.tool_attempts,
+        state.retry_count,
+        state.timeout_count,
+        state.error_count,
+        state.retry_success_count,
+        state.successful_tool_attempts,
+        state.duplicate_call_count,
+        state.termination_reason or "completed",
+        state.final_synthesis_used,
+        final_answer_empty,
     )
-
-
-def serialize_tool_result(result: object) -> str:
-    """将 Tool observation 统一序列化为标准 JSON。
-
-    ``default=str`` 仅用于工具偶发返回 datetime/Path 等可展示但
-    不可直接 JSON 化的值，保证传给模型的 observation 始终是合法 JSON。
-    """
-    return json.dumps(result, ensure_ascii=False, default=str)
-
-
-def _tool_result_channels(result: object) -> tuple[object, object, object | None]:
-    """Normalize legacy single-channel results into the three-channel protocol."""
-
-    if isinstance(result, ToolExecutionResult):
-        return result.model_content, result.display_content, result.audit_metadata
-    return result, result, None
 
 
 class Agent:
     """封装 `Agent` 的状态与行为。"""
+
     def __init__(
         self,
         model_path: str | Path,
@@ -333,6 +308,7 @@ class Agent:
     async def run(self, run_spec: ExecutableAgentRun) -> list[dict]:
         """Run one non-streaming turn from an already-authorized specification."""
         started_at = time.monotonic()
+        state = AgentLoopState(started_at=started_at)
         logger.info(
             "agent run started request_id=%s conversation_id=%s workspace=%s profile=%s capability=%s tools=%s",
             run_spec.run_metadata.get("request_id"),
@@ -347,9 +323,13 @@ class Agent:
         new_messages = [{**current, "is_visible": True}]
         outcome = "failed"
         try:
-            result = await self._run_loop(messages, new_messages, run_spec)
+            result = await self._run_loop(messages, new_messages, run_spec, state)
             outcome = "succeeded"
             return result
+        except asyncio.CancelledError:
+            state.termination_reason = "cancelled"
+            outcome = "cancelled"
+            raise
         finally:
             _log_run_finished(
                 run_spec,
@@ -357,36 +337,90 @@ class Agent:
                 outcome=outcome,
                 started_at=started_at,
                 messages=new_messages,
+                state=state,
             )
+
+    @staticmethod
+    def _append_tool_observation(
+        messages: list[dict],
+        new_messages: list[dict],
+        run_spec: ExecutableAgentRun,
+        event: ToolLoopEvent,
+    ) -> None:
+        """Append balanced model/display/audit projections for one tool call."""
+
+        observation = event.observation
+        assert observation is not None
+        assert event.tool_call_id is not None
+        messages.append(
+            {
+                "role": "tool",
+                "name": event.tool_call.name,
+                "content": observation.model_text,
+            }
+        )
+        new_messages.append(
+            {
+                "role": "tool",
+                "name": event.tool_call.name,
+                "content": observation.display_text,
+                "model_content": observation.model_text,
+                "tool_call_id": event.tool_call_id,
+                "audit_metadata": observation.audit_metadata,
+                "request_id": run_spec.run_metadata.get("request_id"),
+                "run_id": run_spec.run_metadata.get("run_id"),
+                "is_visible": True,
+            }
+        )
 
     async def _run_loop(
         self,
         messages: list[dict],
         new_messages: list[dict],
         run_spec: ExecutableAgentRun,
+        state: AgentLoopState,
     ) -> list[dict]:
-        """执行 `loop` 相关数据。"""
+        """Run the bounded non-streaming model/tool loop."""
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
-        terminal_tool_errors: dict[str, str] = {}
-        completed_tool_results: dict[tuple[str, str], str] = {}
-        stop_loop = False
-        needs_final_synthesis = False
-        final_generation_index = run_spec.loop_policy.max_iterations
-        for iteration in range(run_spec.loop_policy.max_iterations):
-            run_spec, messages = await self._fit_context(messages, run_spec)
-            tool_schemas = [dict(item) for item in run_spec.tool_schemas]
-            response = await self._generate(
-                messages,
-                tool_schemas,
-                run_spec,
-                generation_index=iteration,
-            )
+        runtime = AgentLoopRuntime(run_spec.loop_policy, state)
 
-            parsed: ParsedOutput = self.llm_provider.parse_output(
-                response,
-                tool_schemas,
-            )
-            tool_calls: list[ToolCall] = parsed.tool_calls
+        while (generation_index := runtime.begin_iteration()) is not None:
+            remaining = runtime.remaining_time()
+            try:
+                run_spec, messages = await asyncio.wait_for(
+                    self._fit_context(messages, run_spec), timeout=remaining
+                )
+                tool_schemas = [dict(item) for item in run_spec.tool_schemas]
+                remaining = runtime.remaining_time()
+                if remaining <= 0:
+                    runtime.terminate("wall_time_limit")
+                    break
+                response = await asyncio.wait_for(
+                    self._generate(
+                        messages,
+                        tool_schemas,
+                        run_spec,
+                        generation_index=generation_index,
+                    ),
+                    timeout=remaining,
+                )
+                parsed: ParsedOutput = self.llm_provider.parse_output(
+                    response, tool_schemas
+                )
+            except ModelContextOverflow:
+                logger.exception("agent context overflow")
+                runtime.terminate("context_overflow")
+                break
+            except asyncio.TimeoutError:
+                runtime.terminate("wall_time_limit")
+                break
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - model boundary
+                logger.exception("agent model generation failed")
+                runtime.terminate("model_error")
+                break
+            tool_calls = parsed.tool_calls
 
             if DEBUG_MODE:
                 print(f"Thinking: {parsed.reasoning}")
@@ -410,8 +444,10 @@ class Agent:
                         "content": assistant_content,
                         "reasoning": parsed.reasoning or "",
                         "is_visible": True,
+                        "termination_reason": "completed",
                     }
                 )
+                runtime.complete()
                 break
 
             messages.append(
@@ -428,115 +464,68 @@ class Agent:
                 }
             )
 
-            executed_tool_call = False
-            repeated_successful_call = False
-            for tool_call in tool_calls:
-                previous_error = terminal_tool_errors.get(tool_call.name)
-                if previous_error is not None:
-                    assistant_content = _tool_unavailable_message(
-                        tool_call.name,
-                        previous_error,
-                    )
-                    messages.append(
-                        {"role": "assistant", "content": assistant_content}
-                    )
-                    new_messages.append(
-                        {
-                            "role": "assistant",
-                            "content": assistant_content,
-                            "is_visible": True,
-                        }
-                    )
-                    stop_loop = True
-                    break
-                signature = _tool_call_signature(tool_call)
-                cached_model_text = completed_tool_results.get(signature)
-                if cached_model_text is not None:
-                    # Keep the model protocol balanced, but do not execute or
-                    # display an identical successful operation twice.
+            async for event in runtime.process_tool_calls(run_spec, tool_calls):
+                if event.kind == "reuse":
+                    assert event.cached_model_text is not None
                     messages.append(
                         {
                             "role": "tool",
-                            "name": tool_call.name,
-                            "content": cached_model_text,
+                            "name": event.tool_call.name,
+                            "content": event.cached_model_text,
                         }
                     )
-                    repeated_successful_call = True
-                    logger.warning(
-                        "agent skipped repeated successful tool call run_id=%s tool=%s",
-                        run_spec.run_metadata.get("run_id"),
-                        tool_call.name,
-                    )
                     continue
-                tool_call_id = f"tool-{uuid4().hex}"
-                result = await asyncio.wait_for(
-                    run_spec.tool_executor.execute(
-                        tool_call.name,
-                        tool_call.arguments,
-                    ),
-                    timeout=run_spec.loop_policy.tool_timeout_seconds,
-                )
-                model_result, display_result, audit_metadata = (
-                    _tool_result_channels(result)
-                )
-                model_text = serialize_tool_result(model_result)
-                display_text = serialize_tool_result(display_result)
-                executed_tool_call = True
+                if event.kind == "observation":
+                    self._append_tool_observation(
+                        messages,
+                        new_messages,
+                        run_spec,
+                        event,
+                    )
 
-                messages.append(
-                    {
-                        "role": "tool",
-                        "name": tool_call.name,
-                        "content": model_text,
-                    }
-                )
+        if state.termination_reason != "completed":
+            finalization = runtime.finalization_plan()
+            fallback = finalization.fallback
+            if finalization.should_synthesize:
+                try:
+                    final_response = await asyncio.wait_for(
+                        self._generate(
+                            messages,
+                            [],
+                            run_spec,
+                            generation_index=finalization.generation_index,
+                        ),
+                        timeout=finalization.remaining_seconds,
+                    )
+                    final_parsed = self.llm_provider.parse_output(final_response, [])
+                    self._append_final_answer(
+                        messages,
+                        new_messages,
+                        final_response,
+                        final_parsed,
+                        fallback=fallback,
+                    )
+                except asyncio.TimeoutError:
+                    runtime.terminate("wall_time_limit")
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # noqa: BLE001 - best-effort synthesis
+                    logger.exception("agent final synthesis failed")
+            if not any(
+                item.get("role") == "assistant" and item.get("is_visible")
+                for item in new_messages
+            ):
+                fallback = runtime.fallback_message()
+                messages.append({"role": "assistant", "content": fallback})
                 new_messages.append(
                     {
-                        "role": "tool",
-                        "name": tool_call.name,
-                        "content": display_text,
-                        "model_content": model_text,
-                        "tool_call_id": tool_call_id,
-                        "audit_metadata": audit_metadata,
-                        "request_id": run_spec.run_metadata.get("request_id"),
-                        "run_id": run_spec.run_metadata.get("run_id"),
+                        "role": "assistant",
+                        "content": fallback,
+                        "reasoning": "",
                         "is_visible": True,
                     }
                 )
-                terminal_error = _terminal_tool_error(model_result)
-                if terminal_error is not None:
-                    terminal_tool_errors[tool_call.name] = terminal_error
-                elif _successful_tool_result(model_result):
-                    completed_tool_results[signature] = model_text
-
-            if stop_loop:
-                break
-            if repeated_successful_call and not executed_tool_call:
-                needs_final_synthesis = True
-                final_generation_index = iteration + 1
-                break
-
-        else:
-            needs_final_synthesis = True
-
-        if needs_final_synthesis:
-            # A repeated successful call or an exhausted loop must still end in
-            # one useful answer.  Remove tools for the final synthesis so the
-            # model cannot request the same observation again.
-            final_response = await self._generate(
-                messages,
-                [],
-                run_spec,
-                generation_index=final_generation_index,
-            )
-            final_parsed = self.llm_provider.parse_output(final_response, [])
-            self._append_final_answer(
-                messages,
-                new_messages,
-                final_response,
-                final_parsed,
-                fallback=_TOOL_SYNTHESIS_FALLBACK,
-            )
+            new_messages[-1]["termination_reason"] = state.termination_reason
 
         return new_messages
 
@@ -570,13 +559,20 @@ class Agent:
                 )
 
             last_user = max(
-                (index for index, item in enumerate(messages) if item.get("role") == "user"),
+                (
+                    index
+                    for index, item in enumerate(messages)
+                    if item.get("role") == "user"
+                ),
                 default=-1,
             )
             suffix = messages[last_user + 1 :] if last_user >= 0 else []
             refreshed_messages = [dict(item) for item in refreshed.messages]
             refreshed_messages.extend(dict(item) for item in suffix)
-            if refreshed_messages == messages and refreshed.tool_schemas == run_spec.tool_schemas:
+            if (
+                refreshed_messages == messages
+                and refreshed.tool_schemas == run_spec.tool_schemas
+            ):
                 raise ModelContextOverflow(
                     "model context exceeds max_model_len and cannot be compressed"
                 )
@@ -596,6 +592,7 @@ class Agent:
             AsyncIterator[AgentStreamEvent] => 处理结果。
         """
         started_at = time.monotonic()
+        state = AgentLoopState(started_at=started_at)
         logger.info(
             "agent stream started request_id=%s conversation_id=%s workspace=%s profile=%s capability=%s",
             run_spec.run_metadata.get("request_id"),
@@ -609,9 +606,14 @@ class Agent:
         new_messages = [{**current, "is_visible": True}]
         outcome = "cancelled"
         try:
-            async for event in self._run_stream_loop(messages, new_messages, run_spec):
+            async for event in self._run_stream_loop(
+                messages, new_messages, run_spec, state
+            ):
                 yield event
             outcome = "succeeded"
+        except asyncio.CancelledError:
+            state.termination_reason = "cancelled"
+            raise
         except Exception:
             outcome = "failed"
             raise
@@ -622,6 +624,7 @@ class Agent:
                 outcome=outcome,
                 started_at=started_at,
                 messages=new_messages,
+                state=state,
             )
 
     async def _run_stream_loop(
@@ -629,39 +632,63 @@ class Agent:
         messages: list[dict],
         new_messages: list[dict],
         run_spec: ExecutableAgentRun,
+        state: AgentLoopState,
     ) -> AsyncIterator[AgentStreamEvent]:
-        """执行 `stream loop` 相关数据。"""
+        """Run the streaming loop with the same budgets as the sync path."""
         tool_schemas = [dict(item) for item in run_spec.tool_schemas]
-        terminal_tool_errors: dict[str, str] = {}
-        completed_tool_results: dict[tuple[str, str], str] = {}
-        stop_loop = False
-        needs_final_synthesis = False
-        final_generation_index = run_spec.loop_policy.max_iterations
-        for iteration in range(run_spec.loop_policy.max_iterations):
-            run_spec, messages = await self._fit_context(messages, run_spec)
+        runtime = AgentLoopRuntime(run_spec.loop_policy, state)
+        heartbeat_seconds = getattr(
+            self,
+            "stream_heartbeat_seconds",
+            AGENT_STREAM_HEARTBEAT_SECONDS,
+        )
+
+        while (generation_index := runtime.begin_iteration()) is not None:
+            remaining = runtime.remaining_time()
+            try:
+                run_spec, messages = await asyncio.wait_for(
+                    self._fit_context(messages, run_spec), timeout=remaining
+                )
+            except ModelContextOverflow:
+                logger.exception("streaming agent context overflow")
+                runtime.terminate("context_overflow")
+                break
+            except asyncio.TimeoutError:
+                runtime.terminate("wall_time_limit")
+                break
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - context/model boundary
+                logger.exception("streaming agent context preparation failed")
+                runtime.terminate("model_error")
+                break
+
+            tool_schemas = [dict(item) for item in run_spec.tool_schemas]
             stream_parser = self.llm_provider.create_stream_parser()
             generation = self._generate_stream(
                 messages,
                 tool_schemas,
                 run_spec,
-                generation_index=iteration,
+                generation_index=generation_index,
             ).__aiter__()
             pending_chunk: asyncio.Task[str] | None = None
-            heartbeat_seconds = getattr(
-                self,
-                "stream_heartbeat_seconds",
-                AGENT_STREAM_HEARTBEAT_SECONDS,
-            )
             last_event_at = time.monotonic()
 
             try:
                 while True:
+                    remaining = runtime.remaining_time()
+                    if remaining <= 0:
+                        runtime.terminate("wall_time_limit")
+                        break
                     if pending_chunk is None:
                         pending_chunk = asyncio.create_task(anext(generation))
 
-                    wait_seconds = max(
-                        0.0,
-                        heartbeat_seconds - (time.monotonic() - last_event_at),
+                    wait_seconds = min(
+                        remaining,
+                        max(
+                            0.0,
+                            heartbeat_seconds - (time.monotonic() - last_event_at),
+                        ),
                     )
                     done, _ = await asyncio.wait(
                         {pending_chunk},
@@ -678,6 +705,13 @@ class Agent:
                     try:
                         chunk = pending_chunk.result()
                     except StopAsyncIteration:
+                        pending_chunk = None
+                        break
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:  # noqa: BLE001 - provider boundary
+                        logger.exception("streaming model generation failed")
+                        runtime.terminate("model_error")
                         pending_chunk = None
                         break
                     pending_chunk = None
@@ -709,19 +743,23 @@ class Agent:
                         await pending_chunk
                 close_generation = getattr(generation, "aclose", None)
                 if close_generation is not None:
-                    await close_generation()
+                    with suppress(Exception):
+                        await close_generation()
 
-            for event, delta in stream_parser.finish():
-                yield AgentStreamEvent(
-                    event=event,
-                    data={"delta": delta},
-                )
+            if state.termination_reason is not None:
+                break
 
-            response = stream_parser.raw_text
-            parsed = self.llm_provider.parse_output(
-                response,
-                tool_schemas,
-            )
+            try:
+                for event, delta in stream_parser.finish():
+                    yield AgentStreamEvent(event=event, data={"delta": delta})
+                response = stream_parser.raw_text
+                parsed = self.llm_provider.parse_output(response, tool_schemas)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - parser boundary
+                logger.exception("streaming model response parsing failed")
+                runtime.terminate("model_error")
+                break
             tool_calls = parsed.tool_calls
 
             if not tool_calls:
@@ -742,6 +780,7 @@ class Agent:
                     "content": assistant_content,
                     "reasoning": reasoning,
                     "is_visible": True,
+                    "termination_reason": "completed",
                 }
 
                 messages.append(
@@ -751,6 +790,7 @@ class Agent:
                     }
                 )
                 new_messages.append(assistant_message)
+                runtime.complete()
                 break
 
             messages.append(
@@ -767,179 +807,165 @@ class Agent:
                 }
             )
 
-            executed_tool_call = False
-            repeated_successful_call = False
-            for tool_call in tool_calls:
-                previous_error = terminal_tool_errors.get(tool_call.name)
-                if previous_error is not None:
-                    assistant_content = _tool_unavailable_message(
-                        tool_call.name,
-                        previous_error,
-                    )
-                    messages.append(
-                        {"role": "assistant", "content": assistant_content}
-                    )
-                    new_messages.append(
-                        {
-                            "role": "assistant",
-                            "content": assistant_content,
-                            "is_visible": True,
-                        }
-                    )
-                    yield AgentStreamEvent(
-                        event="content",
-                        data={"delta": assistant_content},
-                    )
-                    stop_loop = True
-                    break
-                signature = _tool_call_signature(tool_call)
-                cached_model_text = completed_tool_results.get(signature)
-                if cached_model_text is not None:
+            async for event in runtime.process_tool_calls(
+                run_spec,
+                tool_calls,
+                progress_interval=heartbeat_seconds,
+            ):
+                if event.kind == "reuse":
+                    assert event.cached_model_text is not None
                     messages.append(
                         {
                             "role": "tool",
-                            "name": tool_call.name,
-                            "content": cached_model_text,
+                            "name": event.tool_call.name,
+                            "content": event.cached_model_text,
                         }
                     )
-                    repeated_successful_call = True
-                    logger.warning(
-                        "agent skipped repeated successful tool call run_id=%s tool=%s",
-                        run_spec.run_metadata.get("run_id"),
-                        tool_call.name,
+                    continue
+                assert event.tool_call_id is not None
+                if event.kind == "start":
+                    yield AgentStreamEvent(
+                        event="tool_start",
+                        data={
+                            "id": event.tool_call_id,
+                            "name": event.tool_call.name,
+                        },
                     )
                     continue
-                tool_call_id = f"tool-{uuid4().hex}"
-                yield AgentStreamEvent(
-                    event="tool_start",
-                    data={
-                        "id": tool_call_id,
-                        "name": tool_call.name,
-                    },
-                )
-                tool_task = asyncio.create_task(
-                    run_spec.tool_executor.execute(
-                        tool_call.name,
-                        tool_call.arguments,
+                if event.kind == "progress":
+                    yield AgentStreamEvent(
+                        event="tool_progress",
+                        data={
+                            "id": event.tool_call_id,
+                            "name": event.tool_call.name,
+                        },
                     )
+                    continue
+                observation = event.observation
+                assert observation is not None
+                self._append_tool_observation(
+                    messages,
+                    new_messages,
+                    run_spec,
+                    event,
                 )
-                while True:
-                    try:
-                        result = await asyncio.wait_for(
-                            asyncio.shield(tool_task),
-                            timeout=run_spec.loop_policy.tool_timeout_seconds,
-                        )
-                        break
-                    except asyncio.TimeoutError:
-                        yield AgentStreamEvent(
-                            event="tool_progress",
-                            data={
-                                "id": tool_call_id,
-                                "name": tool_call.name,
-                            },
-                        )
-                model_result, display_result, audit_metadata = (
-                    _tool_result_channels(result)
-                )
-                model_text = serialize_tool_result(model_result)
-                display_text = serialize_tool_result(display_result)
-                executed_tool_call = True
-
-                tool_message = {
-                    "role": "tool",
-                    "name": tool_call.name,
-                    "content": display_text,
-                    "model_content": model_text,
-                    "tool_call_id": tool_call_id,
-                    "audit_metadata": audit_metadata,
-                    "request_id": run_spec.run_metadata.get("request_id"),
-                    "run_id": run_spec.run_metadata.get("run_id"),
-                    "is_visible": True,
-                }
-
-                messages.append(
-                    {
-                        "role": "tool",
-                        "name": tool_call.name,
-                        "content": model_text,
-                    }
-                )
-                new_messages.append(tool_message)
-
+                if observation.is_error:
+                    yield AgentStreamEvent(
+                        event="tool_error",
+                        data={
+                            "id": event.tool_call_id,
+                            "name": event.tool_call.name,
+                            "content": observation.display_text,
+                        },
+                    )
                 yield AgentStreamEvent(
                     event="tool",
                     data={
-                        "id": tool_call_id,
-                        "name": tool_call.name,
-                        "content": display_text,
+                        "id": event.tool_call_id,
+                        "name": event.tool_call.name,
+                        "content": observation.display_text,
                     },
                 )
-                terminal_error = _terminal_tool_error(model_result)
-                if terminal_error is not None:
-                    terminal_tool_errors[tool_call.name] = terminal_error
-                elif _successful_tool_result(model_result):
-                    completed_tool_results[signature] = model_text
 
-            if stop_loop:
-                break
-            if repeated_successful_call and not executed_tool_call:
-                needs_final_synthesis = True
-                final_generation_index = iteration + 1
-                break
-
-        else:
-            needs_final_synthesis = True
-
-        if needs_final_synthesis:
-            # See the non-streaming loop: force one text-only synthesis after
-            # repeated tool calls, and never complete with an empty assistant
-            # message.  The forced pass is streamed normally so the Flutter UI
-            # receives the same content events as a regular answer.
-            stream_parser = self.llm_provider.create_stream_parser()
-            generation = self._generate_stream(
-                messages,
-                [],
-                run_spec,
-                generation_index=final_generation_index,
-            ).__aiter__()
+        if state.termination_reason != "completed":
+            finalization = runtime.finalization_plan()
+            fallback = finalization.fallback
+            final_content: str | None = None
+            final_reasoning = ""
             emitted_content = False
-            try:
-                async for chunk in generation:
-                    for event, delta in stream_parser.feed(chunk):
-                        yield AgentStreamEvent(event=event, data={"delta": delta})
-                        emitted_content = emitted_content or event == "content"
-            finally:
-                close_generation = getattr(generation, "aclose", None)
-                if close_generation is not None:
-                    await close_generation()
-            for event, delta in stream_parser.finish():
-                yield AgentStreamEvent(event=event, data={"delta": delta})
-                emitted_content = emitted_content or event == "content"
+            if finalization.should_synthesize:
+                stream_parser = self.llm_provider.create_stream_parser()
+                generation = self._generate_stream(
+                    messages,
+                    [],
+                    run_spec,
+                    generation_index=finalization.generation_index,
+                ).__aiter__()
+                pending_chunk: asyncio.Task[str] | None = None
+                synthesis_failed = False
+                try:
+                    while True:
+                        remaining = runtime.remaining_time()
+                        if remaining <= 0:
+                            runtime.terminate("wall_time_limit")
+                            synthesis_failed = True
+                            break
+                        if pending_chunk is None:
+                            pending_chunk = asyncio.create_task(anext(generation))
+                        done, _ = await asyncio.wait(
+                            {pending_chunk},
+                            timeout=min(heartbeat_seconds, remaining),
+                        )
+                        if not done:
+                            yield AgentStreamEvent(
+                                event="heartbeat", data={"stage": "synthesis"}
+                            )
+                            continue
+                        try:
+                            chunk = pending_chunk.result()
+                        except StopAsyncIteration:
+                            pending_chunk = None
+                            break
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception:  # noqa: BLE001 - provider boundary
+                            logger.exception("streaming final synthesis failed")
+                            pending_chunk = None
+                            synthesis_failed = True
+                            break
+                        pending_chunk = None
+                        for event, delta in stream_parser.feed(chunk):
+                            yield AgentStreamEvent(event=event, data={"delta": delta})
+                            emitted_content = emitted_content or event == "content"
+                finally:
+                    if pending_chunk is not None and not pending_chunk.done():
+                        pending_chunk.cancel()
+                        with suppress(asyncio.CancelledError, StopAsyncIteration):
+                            await pending_chunk
+                    close_generation = getattr(generation, "aclose", None)
+                    if close_generation is not None:
+                        with suppress(Exception):
+                            await close_generation()
 
-            final_response = stream_parser.raw_text
-            final_parsed = self.llm_provider.parse_output(final_response, [])
-            final_content = _visible_assistant_content(
-                final_response,
-                final_parsed,
-            )
+                if not synthesis_failed:
+                    try:
+                        for event, delta in stream_parser.finish():
+                            yield AgentStreamEvent(event=event, data={"delta": delta})
+                            emitted_content = emitted_content or event == "content"
+                        final_response = stream_parser.raw_text
+                        final_parsed = self.llm_provider.parse_output(
+                            final_response, []
+                        )
+                        final_content = _visible_assistant_content(
+                            final_response, final_parsed
+                        )
+                        final_reasoning = final_parsed.reasoning or ""
+                        if final_parsed.tool_calls:
+                            final_content = None
+                    except Exception:  # noqa: BLE001 - best-effort synthesis
+                        logger.exception("streaming final synthesis parsing failed")
+
             if not final_content:
-                final_content = _TOOL_SYNTHESIS_FALLBACK
-            if not emitted_content:
-                yield AgentStreamEvent(
-                    event="content",
-                    data={"delta": final_content},
-                )
+                final_content = runtime.fallback_message()
+            if not emitted_content or final_content == fallback:
+                yield AgentStreamEvent(event="content", data={"delta": final_content})
             messages.append({"role": "assistant", "content": final_content})
             new_messages.append(
                 {
                     "role": "assistant",
                     "content": final_content,
-                    "reasoning": final_parsed.reasoning or "",
+                    "reasoning": final_reasoning,
                     "is_visible": True,
+                    "termination_reason": state.termination_reason,
                 }
             )
 
+        metadata = runtime.metadata()
         yield AgentStreamEvent(
             event="complete",
-            data={"messages": new_messages},
+            data={
+                "messages": new_messages,
+                "termination_reason": state.termination_reason,
+                "run_metadata": {**dict(run_spec.run_metadata), **metadata},
+            },
         )

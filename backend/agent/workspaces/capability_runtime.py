@@ -4,8 +4,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -20,6 +22,11 @@ from backend.agent.tools.catalog import (
     capability_declaration,
 )
 from backend.agent.tools.context import ToolExecutionContext
+from backend.agent.tools.execution_errors import (
+    classify_tool_exception,
+    normalize_tool_error_result,
+    structured_tool_error,
+)
 from backend.agent.workspaces.models import ResolvedCapabilities
 
 
@@ -60,7 +67,47 @@ class BoundToolExecutor:
         """处理 `names` 相关逻辑。"""
         return self._view.names
 
+    def policy_for(self, name: str):
+        """Return retry/timeout metadata for a catalogued tool."""
+
+        return capability_declaration(name)
+
     async def execute(self, name: str, arguments: Mapping[str, Any]) -> Any:
+        """Execute and project every failure through the safe error protocol."""
+
+        started_at = time.monotonic()
+        try:
+            result = await self._execute_impl(name, arguments)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 - executor safety boundary
+            error_code, retryable, retry_after_ms = classify_tool_exception(error)
+            logger.exception(
+                "bound tool execution failed request_id=%s run_id=%s tool=%s",
+                self.context.request_id,
+                self.context.run_id,
+                name,
+            )
+            return structured_tool_error(
+                error_code,
+                tool=name,
+                retryable=retryable,
+                retry_after_ms=retry_after_ms,
+                request_id=self.context.request_id,
+                run_id=self.context.run_id,
+                elapsed_ms=(time.monotonic() - started_at) * 1000,
+                exception=error,
+            )
+        return normalize_tool_error_result(
+            result,
+            tool=name,
+            attempt=1,
+            request_id=self.context.request_id,
+            run_id=self.context.run_id,
+            elapsed_ms=(time.monotonic() - started_at) * 1000,
+        )
+
+    async def _execute_impl(self, name: str, arguments: Mapping[str, Any]) -> Any:
         """执行 `execute` 相关数据。
 
         Args:
@@ -78,7 +125,7 @@ class BoundToolExecutor:
             }
         try:
             normalized = self._view.normalize_arguments(name, arguments)
-        except (KeyError, ValueError) as error:
+        except (KeyError, TypeError, ValueError) as error:
             return {
                 "ok": False,
                 "error": "invalid_tool_arguments",
@@ -290,10 +337,17 @@ class BoundToolExecutor:
                 "tool": name,
                 "detail": str(error),
             }
-        except (ValueError, RuntimeError) as error:
+        except ValueError as error:
             return {
                 "ok": False,
-                "error": "tool_execution_error",
+                "error": "invalid_tool_arguments",
+                "tool": name,
+                "detail": str(error),
+            }
+        except RuntimeError as error:
+            return {
+                "ok": False,
+                "error": "temporary_tool_error",
                 "tool": name,
                 "detail": str(error),
             }

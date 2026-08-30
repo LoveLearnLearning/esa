@@ -181,7 +181,7 @@ class ContextComposer:
             sections.append(ContextSection(
                 "attachments", "Authorized attachments",
                 (
-                    "当前对话中系统授权且仍存在的附件：\n"
+                    "当前对话中系统授权、仍存在且尚未解析的附件：\n"
                     + json.dumps(
                         turn.authorized_attachments,
                         ensure_ascii=False,

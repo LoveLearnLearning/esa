@@ -52,6 +52,30 @@ def _positive_int_from_env(name: str, default: int) -> int:
     return value
 
 
+def _non_negative_int_from_env(name: str, default: int) -> int:
+    """Read an integer that may be zero."""
+
+    try:
+        value = int(os.environ.get(name, default))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if value < 0:
+        raise ValueError(f"{name} must be zero or greater")
+    return value
+
+
+def _positive_float_from_env(name: str, default: float) -> float:
+    """Read a strictly positive floating-point value."""
+
+    try:
+        value = float(os.environ.get(name, default))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be greater than zero")
+    return value
+
+
 DEBUG_MODE: bool = _bool_from_env("ESA_DEBUG", False)
 LOG_PROMPTS: bool = _bool_from_env("ESA_LOG_PROMPTS", False)
 
@@ -129,10 +153,26 @@ AUXILIARY_MODEL_MAX_NUM_SEQS: int = 8
 AUXILIARY_MODEL_MAX_IMAGES_PER_PROMPT: int = 4
 AUXILIARY_MODEL_REQUEST_TIMEOUT: float = 180.0
 
-# agent runtime
-AGENT_LOOP_TIME: int = 10
-AGENT_TOOL_TIMEOUT_SECONDS: float = 30.0
-AGENT_STREAM_HEARTBEAT_SECONDS: float = 15.0
+# Agent runtime. AGENT_LOOP_TIME remains a source-compatible alias only.
+AGENT_MAX_ITERATIONS: int = _positive_int_from_env(
+    "ESA_AGENT_MAX_ITERATIONS", 12
+)
+AGENT_MAX_TOOL_CALLS: int = _positive_int_from_env(
+    "ESA_AGENT_MAX_TOOL_CALLS", 24
+)
+AGENT_MAX_TOOL_RETRIES: int = _non_negative_int_from_env(
+    "ESA_AGENT_MAX_TOOL_RETRIES", 1
+)
+AGENT_MAX_WALL_TIME_SECONDS: float = _positive_float_from_env(
+    "ESA_AGENT_MAX_WALL_TIME_SECONDS", 240.0
+)
+AGENT_TOOL_TIMEOUT_SECONDS: float = _positive_float_from_env(
+    "ESA_AGENT_TOOL_TIMEOUT_SECONDS", 30.0
+)
+AGENT_STREAM_HEARTBEAT_SECONDS: float = _positive_float_from_env(
+    "ESA_AGENT_STREAM_HEARTBEAT_SECONDS", 15.0
+)
+AGENT_LOOP_TIME: int = AGENT_MAX_ITERATIONS
 
 # Offline conversation context compression. Original messages are retained;
 # the summary only replaces old messages in the next model prompt.

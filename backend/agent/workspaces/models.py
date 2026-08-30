@@ -40,8 +40,12 @@ class LoopPolicy:
     """封装 `LoopPolicy` 的状态与行为。"""
     max_iterations: int
     tool_timeout_seconds: float
+    max_tool_calls: int = 24
+    max_retries_per_tool: int = 1
+    max_wall_time_seconds: float = 240
+    max_same_call_repeats: int = 2
     parallel_tools: bool = False
-    tool_error_policy: str = "return_structured_error"
+    tool_error_policy: str = "structured_retry"
 
     def __post_init__(self) -> None:
         """完成实例初始化后的校验与派生字段构建。"""
@@ -49,6 +53,38 @@ class LoopPolicy:
             raise ValueError("max_iterations must be positive")
         if self.tool_timeout_seconds <= 0:
             raise ValueError("tool_timeout_seconds must be positive")
+        if self.max_tool_calls < 1:
+            raise ValueError("max_tool_calls must be positive")
+        if self.max_retries_per_tool < 0:
+            raise ValueError("max_retries_per_tool must be zero or greater")
+        if self.max_wall_time_seconds <= 0:
+            raise ValueError("max_wall_time_seconds must be positive")
+        if self.max_same_call_repeats < 1:
+            raise ValueError("max_same_call_repeats must be positive")
+
+
+@dataclass(slots=True)
+class AgentLoopState:
+    """Mutable counters and termination metadata for one Agent turn."""
+
+    started_at: float
+    iteration: int = 0
+    tool_attempts: int = 0
+    retry_counts: dict[str, int] = field(default_factory=dict)
+    repeated_calls: dict[str, int] = field(default_factory=dict)
+    termination_reason: str | None = None
+    tool_names: set[str] = field(default_factory=set)
+    failed_tool_names: set[str] = field(default_factory=set)
+    timeout_count: int = 0
+    error_count: int = 0
+    successful_tool_attempts: int = 0
+    retry_success_count: int = 0
+    duplicate_call_count: int = 0
+    final_synthesis_used: bool = False
+
+    @property
+    def retry_count(self) -> int:
+        return sum(self.retry_counts.values())
 
 
 @dataclass(frozen=True, slots=True)

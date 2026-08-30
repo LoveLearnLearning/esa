@@ -272,7 +272,11 @@ def _conversation_attachment_inventory(
     the returned authorization inventory is conversation-scoped and therefore
     includes older files as well.
     """
-    store = _attachment_store(request)
+    store = getattr(request.app.state, "user_attachment_store", None)
+    if not isinstance(store, UserAttachmentStore):
+        if attachment_ids:
+            _attachment_store(request)
+        return (), []
     conversation_items = store.list_for_conversation(
         user_id=user_id,
         conversation_id=conversation_id,
@@ -1653,6 +1657,9 @@ async def stream_message(
                         "done",
                         {
                             "conversation_id": conversation_id,
+                            "termination_reason": agent_event.data.get(
+                                "termination_reason", "completed"
+                            ),
                         },
                     )
                     break
