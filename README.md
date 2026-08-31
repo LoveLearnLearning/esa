@@ -63,8 +63,9 @@ REQUEST.md                项目需求和阶段状态
 
 ## 启动后端
 
-先在 `backend/core/utils/config.py` 配置主模型、辅助模型和推理参数。超算环境必须先通过
-Slurm 获得 5 张 GPU（主模型 TP=4，辅助模型 TP=1），再从仓库根目录运行；不要在登录节点直接加载模型：
+先在 `backend/core/utils/config.py` 配置主模型、辅助模型和推理参数。默认超算部署必须先通过
+Slurm 获得 8 张 GPU（122B 主模型 TP=2、PP=3，共 6 张；辅助模型 1 张；RAG/MinerU 1 张），
+再从仓库根目录运行；不要在登录节点直接加载模型：
 
 ```bash
 ./run.sh

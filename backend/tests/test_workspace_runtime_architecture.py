@@ -14,7 +14,7 @@ from backend.agent.tools.context import AgentRuntimeDependencies, ToolExecutionC
 from backend.agent.tools.tool_register import ToolRegistry
 from backend.agent.tools.tools import tr
 from backend.agent.workspaces.capability_runtime import CapabilityRuntime
-from backend.agent.workspaces.context_composer import ContextComposer, _clip, _tokens
+from backend.agent.workspaces.context_composer import ContextComposer
 from backend.agent.workspaces.models import (
     AgentTurnInput,
     LearningTurnContext,
@@ -32,7 +32,8 @@ from backend.core.router.errors import (
     WorkspaceAccessDenied,
 )
 from backend.core.router.models import ResourceScope, TrustedIdentity, WorkspaceRoute
-from backend.core.utils.config import AGENT_LOOP_TIME, AGENT_TOOL_TIMEOUT_SECONDS
+from backend.core.utils.config import AGENT_TOOL_TIMEOUT_SECONDS
+from backend.core.utils.models import ToolExecutionResult
 
 
 def _identity(role: str = "student", user_id: str = "u1") -> TrustedIdentity:
@@ -75,10 +76,28 @@ def _turn(route: WorkspaceRoute, **values) -> AgentTurnInput:
     return AgentTurnInput(**defaults)
 
 
-def test_workspace_profiles_use_central_agent_runtime_config():
-    """验证 `workspace_profiles_use_central_agent_runtime_config` 场景。"""
+def test_workspace_profiles_use_differentiated_agent_runtime_budgets():
+    """Each workspace has a latency/complexity-appropriate loop policy."""
+
+    assert (
+        LEARNING_PROFILE.loop_policy.max_iterations,
+        LEARNING_PROFILE.loop_policy.max_tool_calls,
+        LEARNING_PROFILE.loop_policy.max_retries_per_tool,
+        LEARNING_PROFILE.loop_policy.max_wall_time_seconds,
+    ) == (10, 16, 1, 180)
+    assert (
+        TEACHING_PROFILE.loop_policy.max_iterations,
+        TEACHING_PROFILE.loop_policy.max_tool_calls,
+        TEACHING_PROFILE.loop_policy.max_retries_per_tool,
+        TEACHING_PROFILE.loop_policy.max_wall_time_seconds,
+    ) == (12, 20, 1, 240)
+    assert (
+        RESEARCH_PROFILE.loop_policy.max_iterations,
+        RESEARCH_PROFILE.loop_policy.max_tool_calls,
+        RESEARCH_PROFILE.loop_policy.max_retries_per_tool,
+        RESEARCH_PROFILE.loop_policy.max_wall_time_seconds,
+    ) == (16, 32, 2, 300)
     for profile in (LEARNING_PROFILE, RESEARCH_PROFILE, TEACHING_PROFILE):
-        assert profile.loop_policy.max_iterations == AGENT_LOOP_TIME
         assert profile.loop_policy.tool_timeout_seconds == AGENT_TOOL_TIMEOUT_SECONDS
 
 
@@ -239,12 +258,10 @@ def test_bound_view_caches_one_primary_skill_and_rejects_a_second():
     )
 
     assert repeated == first
-    assert second == {
-        "ok": False,
-        "error": "primary_skill_already_loaded",
-        "loaded_skill": "progressive_hint",
-        "requested_skill": "study_plan",
-    }
+    assert isinstance(second, ToolExecutionResult)
+    assert second.model_content["error_code"] == "primary_skill_already_loaded"
+    assert second.audit_metadata["legacy_loaded_skill"] == "progressive_hint"
+    assert second.audit_metadata["legacy_requested_skill"] == "study_plan"
 
 
 def test_bound_executor_rejects_cross_scope_and_forged_arguments():
@@ -276,7 +293,7 @@ def test_bound_executor_rejects_cross_scope_and_forged_arguments():
         )
     )
     assert forged["error"] == "invalid_tool_arguments"
-    assert "user_id" in forged["detail"]
+    assert "user_id" in forged.audit_metadata["legacy_detail"]
 
 
 def test_capability_schema_is_narrowed_for_turn_resources_and_memory_mode():
@@ -374,7 +391,7 @@ class _ProfileSnapshot:
         return '{"explicit_context":[{"field":"major","value":"cs"}]}'
 
 
-def test_context_composer_order_trust_and_deterministic_clipping():
+def test_context_composer_order_trust_and_preserves_context():
     """验证 `context_composer_order_trust_and_deterministic_clipping` 场景。"""
     route = _route()
     capabilities = ResolvedCapabilities(
@@ -395,9 +412,7 @@ def test_context_composer_order_trust_and_deterministic_clipping():
         conversation_summary="S" * 1000,
         authorized_attachments=({"attachment_id": "a1", "status": "stored"},),
     )
-    # Keep enough budget for the profile/group ordering assertions while still
-    # forcing the long summary to be clipped deterministically.
-    composer = ContextComposer(max_tokens=2200)
+    composer = ContextComposer()
     first = composer.compose(turn, LEARNING_PROFILE, capabilities)
     second = composer.compose(turn, LEARNING_PROFILE, capabilities)
     assert first == second
@@ -413,7 +428,7 @@ def test_context_composer_order_trust_and_deterministic_clipping():
     assert first.rendered.index("# User profile data") < first.rendered.index(
         "# Group instructions"
     )
-    assert first.estimated_tokens <= 2200
+    assert "S" * 1000 in first.rendered
 
 
 def test_context_composer_requires_parsing_referenced_attachments():
@@ -440,19 +455,9 @@ def test_context_composer_requires_parsing_referenced_attachments():
         fingerprint="f",
     )
     composed = ContextComposer().compose(turn, LEARNING_PROFILE, capabilities)
-    assert "先调用对应解析 Tool" in composed.rendered
+    assert "必须在回复前调用对应解析 Tool" in composed.rendered
     assert "不追问 Tool 已有标识" in composed.rendered
     assert "概括全文的主要内容" in composed.rendered
-
-
-def test_context_composer_uses_cjk_aware_token_budget():
-    """Chinese content must not be estimated with the ASCII chars/4 rule."""
-    text = "你" * 10_000
-    assert _tokens(text) >= 10_000
-
-    clipped = _clip(text, 100)
-    assert clipped.endswith("...")
-    assert _tokens(clipped) <= 100
 
 
 def test_task_mode_is_server_compiled_as_trusted_context():
@@ -464,7 +469,7 @@ def test_task_mode_is_server_compiled_as_trusted_context():
         tool_names=frozenset(),
         fingerprint="f",
     )
-    composed = ContextComposer(max_tokens=2000).compose(
+    composed = ContextComposer().compose(
         _turn(_route(), task_mode="study_plan"),
         LEARNING_PROFILE,
         capabilities,
@@ -576,6 +581,17 @@ def test_bound_rag_tool_uses_the_turn_runtime_dependencies(monkeypatch):
     assert captured["public_service"] is sentinel
     assert captured["top_k"] == 3
 
+    captured.clear()
+    result = asyncio.run(
+        compiled.bind(context).execute(
+            "retrieve_knowledge", {"query": "binary search"}
+        )
+    )
+
+    assert result == {"query": "binary search", "result_count": 0}
+    assert captured["top_k"] == 5
+    assert captured["similarity_threshold"] is None
+
 
 def test_unified_knowledge_tool_uses_context_identity_not_model_argument():
     register_builtin_tools()
@@ -627,7 +643,7 @@ def test_unified_knowledge_tool_uses_context_identity_not_model_argument():
     )
 
     assert rejected["error"] == "invalid_tool_arguments"
-    assert "user_id" in rejected["detail"]
+    assert "user_id" in rejected.audit_metadata["legacy_detail"]
     assert result.model_content["query"] == "my notes"
     assert result.model_content["result_count"] == 0
     assert result.model_content["selected_sources"] == ["personal"]

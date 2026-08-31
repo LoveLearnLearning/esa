@@ -492,6 +492,7 @@ class MasteryStore:
         return {
             "user_name": user_name.strip(),
             "course": course,
+            "has_records": bool(points),
             "total_points": len(points),
             "avg_mastery": (
                 round(

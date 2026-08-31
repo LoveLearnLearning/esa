@@ -12,6 +12,10 @@
 
 三种长得完全不同，恢复动作却是同一个：如实说明，绝不编结果。
 
+2026-08-30 起，Agent 运行时会把这些底层形态统一投影成
+ok/error_code/retryable/tool/attempt/message 协议。`structured_runtime` 组专门
+覆盖模型现在实际看到的安全 observation，包括预算和重复调用阻断。
+
 观测值的来源，一条都不是写死的：
   ① 报错文案逐字取自后端源码，种子库里每条带 src 行号
   ② 由 data/cache/math_real.json 提供 —— 那是跑后端真实函数抓的
@@ -264,6 +268,39 @@ def gen_exec_error(cfg, version, rng, all_names, out) -> None:
             item["lures"], turns, version, rng, all_names))
 
 
+def gen_structured_runtime(cfg, version, rng, all_names, out) -> None:
+    """Generate model-facing failures from the unified Agent error protocol."""
+
+    for item in cfg.get("structured_runtime", []):
+        tool = item["tool"]
+        result = {
+            "ok": False,
+            "error_code": item["error_code"],
+            "error": item["error_code"],
+            "retryable": bool(item["retryable"]),
+            "tool": tool,
+            "attempt": int(item.get("attempt", 1)),
+            "message": item["message"],
+        }
+        if item.get("retry_after_ms") is not None:
+            result["retry_after_ms"] = int(item["retry_after_ms"])
+        out.append(mk(
+            f"toolerr_structured_{item['id']}",
+            f"toolerr__structured__{item['error_code']}__{item['id']}",
+            item["lures"],
+            [
+                Turn(role="user", content=item["q"]),
+                Turn(role="tool_call", calls=[ToolCall(tool, item["args"])]),
+                Turn(
+                    role="tool_result",
+                    results=[ToolResult(tool, result, is_error=True)],
+                ),
+                Turn(role="assistant", content=item["a"].strip()),
+            ],
+            version, rng, all_names,
+        ))
+
+
 def _retry_fields(tool: str, result: dict) -> dict:
     """重试成功之后，回答正文能引用哪些**真实**返回值。
 
@@ -297,6 +334,7 @@ def main() -> int:
     gen_blocked(cfg, version, rng, all_names, out)
     gen_denied(cfg, version, rng, all_names, out)
     gen_exec_error(cfg, version, rng, all_names, out)
+    gen_structured_runtime(cfg, version, rng, all_names, out)
 
     dump_samples(out, OUT)
     from collections import Counter
@@ -307,6 +345,8 @@ def main() -> int:
         r = [x for t in s.turns for x in t.results if x.is_error][0].content
         if isinstance(r, str):
             shapes["① [Error]: 字符串"] += 1
+        elif r.get("ok") is False and "error_code" in r:
+            shapes["⑥ 统一结构化运行时错误"] += 1
         elif r.get("ok") is False:
             shapes["④ 执行器包的 ok/error/detail"] += 1
         elif "error" in r:

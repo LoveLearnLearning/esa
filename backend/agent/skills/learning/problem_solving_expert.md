@@ -10,7 +10,6 @@ triggers:
   - verify_solution
   - exam_answer
   - continue_problem_session
-  - student_stuck
   - problem_solving_request
 requires_tools:
   - bitwise_calculator

@@ -52,6 +52,107 @@
 # 跑后端真实函数抓进 data/cache/math_real.json。本文件只登记「调什么、说什么」。
 
 # ---------------------------------------------------------------------------
+# ⑥ Agent 统一结构化错误协议
+#
+# 这里的 message 逐字来自 backend/agent/tools/execution_errors.py。真实异常类型、
+# 堆栈和第三方详情只进 audit，不允许出现在这些模型 observation 或回答里。
+# ---------------------------------------------------------------------------
+structured_runtime:
+  - id: web_search_timeout_after_retry
+    tool: web_search
+    args: { query: "2026 年知识追踪最新进展" }
+    error_code: timeout
+    retryable: true
+    attempt: 2
+    retry_after_ms: 1000
+    message: "工具执行超时"
+    lures: [web_search, arxiv_search, retrieve_knowledge]
+    q: "帮我查一下 2026 年知识追踪最新进展"
+    a: |
+      网络检索在有限重试后仍然超时，本轮没有拿到可核验的新资料。我不会据此编造 2026 年的进展；
+      可以稍后重试，或把范围缩小到具体模型、数据集或评测指标后再查。
+
+  - id: arxiv_rate_limited
+    tool: arxiv_search
+    args: { query: "retrieval augmented generation", max_results: 5 }
+    error_code: rate_limited
+    retryable: true
+    attempt: 2
+    retry_after_ms: 1000
+    message: "工具服务请求过于频繁，请稍后重试"
+    lures: [arxiv_search, web_search]
+    q: "查五篇最近的 RAG 论文给我"
+    a: |
+      arXiv 检索被限流，有限重试后仍未恢复，所以这次没有可靠的论文列表。请稍后再试；
+      在检索恢复前，我可以先按你关心的方向整理检索关键词，但不会编论文标题或编号。
+
+  - id: knowledge_network_error
+    tool: retrieve_knowledge
+    args: { query: "红黑树删除", top_k: 5 }
+    error_code: network_error
+    retryable: true
+    attempt: 2
+    retry_after_ms: 1000
+    message: "工具网络连接暂时不可用"
+    lures: [retrieve_knowledge, web_search]
+    q: "从课程资料里查红黑树删除的步骤"
+    a: |
+      课程资料检索的网络连接暂时不可用，重试后仍没拿到原文。我可以明确标注地讲通用算法，
+      但不能冒充课程资料中的版本；也可以等连接恢复后再按课件回答。
+
+  - id: memory_permission_denied
+    tool: save_core_memory
+    args: { memory_key: "classmate", content: "记住别人的私人联系方式", category: "general" }
+    error_code: permission_denied
+    retryable: false
+    attempt: 1
+    message: "当前请求无权执行该工具"
+    lures: [save_core_memory, propose_core_memory]
+    q: "把我同学的私人联系方式存进长期记忆"
+    a: |
+      这个请求没有写入权限，我不会重试或绕过限制。涉及他人的私人联系方式也不适合进入长期记忆；
+      如果只是要记一项不含隐私的协作偏好，可以改写成不包含联系方式的内容。
+
+  - id: sandbox_internal_error
+    tool: run_in_sandbox
+    args: { command: "python analysis.py" }
+    error_code: tool_internal_error
+    retryable: false
+    attempt: 1
+    message: "工具暂时无法完成请求，请稍后重试"
+    lures: [run_in_sandbox, calculator]
+    q: "在沙箱里跑一下 analysis.py，把结果告诉我"
+    a: |
+      沙箱工具暂时无法完成请求，而且没有返回可用结果。我不会把内部异常细节或猜测的运行结果展示出来；
+      请稍后重试，或者贴出关键代码和输入，我先做静态检查。
+
+  - id: mastery_tool_budget_exhausted
+    tool: get_mastery_report
+    args: { course: "数据结构" }
+    error_code: tool_budget_exhausted
+    retryable: false
+    attempt: 1
+    message: "本轮工具调用预算已用完"
+    lures: [get_mastery_report, get_mastery_level, recommend_practice]
+    q: "把我的数据结构学情、薄弱点和复习计划全部查清楚"
+    a: |
+      本轮工具调用预算已经用完；我会基于前面已经取得的结果给出阶段性结论，不再继续调用工具。
+      若要继续查证，请把范围缩小到一门课或一个知识点后重试。
+
+  - id: review_duplicate_call_blocked
+    tool: get_review_timing
+    args: { kp_id: "Cache" }
+    error_code: duplicate_call_blocked
+    retryable: false
+    attempt: 1
+    message: "相同的失败工具调用已达到重复上限"
+    lures: [get_review_timing, get_mastery_level]
+    q: "继续查 Cache 的复习时间"
+    a: |
+      相同参数的调用已经连续失败并达到重复上限，继续原样调用不会带来新信息。
+      可以检查知识点名称是否正确，或换一个更具体的问题后再试。
+
+# ---------------------------------------------------------------------------
 # ① [Error]: 包装类 —— 外部服务失败，模型无过错
 # ---------------------------------------------------------------------------
 wrapped:

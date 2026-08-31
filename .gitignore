@@ -159,6 +159,7 @@ temp/
 *.rej
 design_handoff_esa_chat/
 frontend-web.tar.gz
+report.md
 
 # Cluster-local launch and tunnel helpers
 /run.sh

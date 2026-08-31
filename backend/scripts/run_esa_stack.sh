@@ -85,7 +85,7 @@ if (( shared_compute_node == 1 )) && {
 fi
 
 read -r \
-    main_model main_tp main_lora main_lora_name main_enforce_eager \
+    main_model main_tp main_pp main_lora main_lora_name main_enforce_eager \
     main_performance_mode main_lora_fully_sharded main_lora_specialize_active \
     auxiliary_model auxiliary_name auxiliary_port auxiliary_dtype \
     auxiliary_gpu_memory auxiliary_max_length auxiliary_max_num_seqs \
@@ -103,6 +103,7 @@ from backend.core.utils.config import (
     AUXILIARY_MODEL_PATH,
     AUXILIARY_MODEL_PORT,
     MODEL_PATH,
+    MODEL_PIPELINE_PARALLEL_SIZE,
     MODEL_ENFORCE_EAGER,
     MODEL_LORA_FULLY_SHARDED,
     MODEL_LORA_NAME,
@@ -122,6 +123,7 @@ from backend.core.utils.config import (
 print(
     MODEL_PATH,
     MODEL_TENSOR_PARALLEL_SIZE,
+    MODEL_PIPELINE_PARALLEL_SIZE,
     MODEL_LORA_PATH or "disabled",
     MODEL_LORA_NAME,
     "1" if MODEL_ENFORCE_EAGER else "0",
@@ -191,21 +193,22 @@ if [[ "$retrieval_enabled" == "1" && "$rag_embedding_backend" == "transformers" 
     rag_gpu_count=1
 fi
 
-required_gpu_count=$((main_tp + 1 + rag_gpu_count))
+main_model_gpu_count=$((main_tp * main_pp))
+required_gpu_count=$((main_model_gpu_count + 1 + rag_gpu_count))
 if (( ${#allocated_gpus[@]} < required_gpu_count )); then
-    echo "ERROR: 当前配置需要 ${required_gpu_count} 张 GPU（主模型 TP=${main_tp}、辅助模型 1、RAG Embedding ${rag_gpu_count}），当前只有 ${#allocated_gpus[@]} 张。" >&2
+    echo "ERROR: 当前配置需要 ${required_gpu_count} 张 GPU（主模型 TP=${main_tp} x PP=${main_pp}，辅助模型 1、RAG Embedding ${rag_gpu_count}），当前只有 ${#allocated_gpus[@]} 张。" >&2
     exit 1
 fi
 
-main_devices="$(IFS=,; echo "${allocated_gpus[*]:0:main_tp}")"
-auxiliary_device="${allocated_gpus[main_tp]}"
+main_devices="$(IFS=,; echo "${allocated_gpus[*]:0:main_model_gpu_count}")"
+auxiliary_device="${allocated_gpus[main_model_gpu_count]}"
 backend_devices="$main_devices"
 rag_device=''
 if (( rag_gpu_count == 1 )); then
-    rag_device="${allocated_gpus[main_tp + 1]}"
+    rag_device="${allocated_gpus[main_model_gpu_count + 1]}"
     backend_devices="${main_devices},${rag_device}"
-    export RAG_EMBEDDING_RUNTIME_DEVICE="${RAG_EMBEDDING_RUNTIME_DEVICE:-cuda:${main_tp}}"
-    export RAG_RERANKER_RUNTIME_DEVICE="${RAG_RERANKER_RUNTIME_DEVICE:-cuda:${main_tp}}"
+    export RAG_EMBEDDING_RUNTIME_DEVICE="${RAG_EMBEDDING_RUNTIME_DEVICE:-cuda:${main_model_gpu_count}}"
+    export RAG_RERANKER_RUNTIME_DEVICE="${RAG_RERANKER_RUNTIME_DEVICE:-cuda:${main_model_gpu_count}}"
 fi
 runtime_root="${SLURM_TMPDIR:-/tmp}/esa-${SLURM_JOB_ID:-$$}"
 auxiliary_cache="$runtime_root/triton-auxiliary"
@@ -260,7 +263,7 @@ trap cleanup EXIT INT TERM
 
 echo "Node=$(hostname)"
 echo "AllocatedGPUs=${CUDA_VISIBLE_DEVICES:-all}"
-echo "MainModel=$main_model MainGPUs=$main_devices TP=$main_tp"
+echo "MainModel=$main_model MainGPUs=$main_devices TP=$main_tp PP=$main_pp"
 echo "MainLoRA=$main_lora LoRAName=$main_lora_name"
 echo "MainOptimization=Eager:$main_enforce_eager Mode:$main_performance_mode FullyShardedLoRA:$main_lora_fully_sharded SpecializeActiveLoRA:$main_lora_specialize_active"
 echo "AuxiliaryModel=$auxiliary_model AuxiliaryGPU=$auxiliary_device"

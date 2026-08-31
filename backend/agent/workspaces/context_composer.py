@@ -1,11 +1,10 @@
 # backend/agent/workspaces/context_composer.py
 
-"""Pure context composition with deterministic section and token limits."""
+"""Pure deterministic context composition."""
 
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 
 from backend.agent.workspaces.models import (
@@ -19,7 +18,6 @@ from backend.core.message.prompts import WORKSPACE_PROMPTS
 from backend.core.message.renderer import render_sections
 from backend.core.message.style_tone import resolve_style_tone
 from backend.core.message.system import SYSTEM_PROMPT
-from backend.core.message.budget import DEFAULT_PROMPT_BUDGET
 from backend.core.utils.token_estimation import estimate_tokens
 
 
@@ -44,97 +42,6 @@ def _tokens(text: str) -> int:
     return estimate_tokens(text)
 
 
-def _clip(text: str, token_limit: int) -> str:
-    """处理 `_clip` 相关逻辑。"""
-    if token_limit <= 0:
-        return ""
-    if _tokens(text) <= token_limit:
-        return text
-
-    suffix = "..."
-    suffix_tokens = _tokens(suffix)
-    available = max(0, token_limit - suffix_tokens)
-    low, high = 0, len(text)
-    while low < high:
-        middle = (low + high + 1) // 2
-        if _tokens(text[:middle]) <= available:
-            low = middle
-        else:
-            high = middle - 1
-    prefix = text[:low].rstrip()
-    return (prefix + suffix) if prefix else suffix
-
-
-def _with_content(section: ContextSection, content: str) -> ContextSection:
-    """Return the same section metadata with replacement content."""
-    return ContextSection(
-        section.key,
-        section.title,
-        content,
-        section.trust,
-        section.order,
-        section.stable,
-    )
-
-
-def _fit_section(
-    kept: list[ContextSection],
-    section: ContextSection,
-    max_tokens: int,
-) -> ContextSection | None:
-    """Fit a non-stable section against the fully rendered prompt budget."""
-    if _tokens(render_sections((*kept, section))) <= max_tokens:
-        return section
-
-    # Structured and executable content must remain whole. Its producer owns
-    # field-level projection; dropping the section is safer than invalid JSON or
-    # a partially rendered Skill instruction.
-    if section.key in {
-        "profile",
-        "attachments",
-        "learning_context",
-        "strategy",
-    }:
-        return None
-
-    suffix = "..."
-    minimal = _with_content(section, suffix)
-    if _tokens(render_sections((*kept, minimal))) > max_tokens:
-        return None
-
-    low, high = 0, len(section.content)
-    while low < high:
-        middle = (low + high + 1) // 2
-        prefix = section.content[:middle].rstrip()
-        candidate = _with_content(section, (prefix + suffix) if prefix else suffix)
-        if _tokens(render_sections((*kept, candidate))) <= max_tokens:
-            low = middle
-        else:
-            high = middle - 1
-
-    prefix = section.content[:low].rstrip()
-    return _with_content(section, (prefix + suffix) if prefix else suffix)
-
-
-def _project_summary(text: str, token_limit: int = 768) -> str:
-    """Bound free-text summaries at sentence/paragraph boundaries."""
-    normalized = text.strip()
-    if not normalized or _tokens(normalized) <= token_limit:
-        return normalized
-    pieces = [
-        item.strip()
-        for item in re.split(r"(?<=[。！？.!?])|\n+", normalized)
-        if item.strip()
-    ]
-    kept: list[str] = []
-    for piece in pieces:
-        candidate = "\n".join((*kept, piece))
-        if _tokens(candidate) > token_limit:
-            break
-        kept.append(piece)
-    return "\n".join(kept)
-
-
 @dataclass(frozen=True, slots=True)
 class StrategyAugmentation:
     """封装 `StrategyAugmentation` 的状态与行为。"""
@@ -143,10 +50,6 @@ class StrategyAugmentation:
 
 class ContextComposer:
     """封装 `ContextComposer` 的状态与行为。"""
-    def __init__(self, *, max_tokens: int = 16_000) -> None:
-        """初始化 `ContextComposer` 实例。"""
-        self.max_tokens = max_tokens
-
     def compose(
         self,
         turn: AgentTurnInput,
@@ -222,7 +125,6 @@ class ContextComposer:
             if callable(to_prompt_json):
                 try:
                     profile_content = to_prompt_json(
-                        max_tokens=DEFAULT_PROMPT_BUDGET.profile_max_tokens,
                         current_message=turn.current_message,
                         task_mode=turn.task_mode,
                         resolved_kp_ids=turn.learning_context.resolved_kp_ids,
@@ -259,7 +161,7 @@ class ContextComposer:
             sections.append(ContextSection(
                 "summary",
                 "Earlier conversation summary",
-                _project_summary(turn.conversation_summary),
+                turn.conversation_summary,
                 "untrusted_data",
                 120,
             ))
@@ -267,8 +169,11 @@ class ContextComposer:
             sections.append(ContextSection(
                 "attachment_policy", "Attachment handling policy",
                 (
-                    "本轮有新附件授权，必须在回复前调用对应解析 Tool 获取内容后再回答。"
-                    "每轮附件独立授权，对话历史中已解析的附件不适用于本轮。"
+                    "当前对话中的全部已授权附件都可以在后续轮次继续使用。"
+                    "历史消息中的 attachment_id 只有出现在下方清单中才可调用。"
+                    "如果用户要求比较多个文件，应分别解析相关文件后再回答。"
+                    "清单中有附件且用户要求阅读、总结、解释、翻译、提取或检索时，"
+                    "必须在回复前调用对应解析 Tool 获取内容后再回答。"
                     "不追问 Tool 已有标识，不猜内容或路径。"
                 ),
                 "trusted_system", 125,
@@ -276,7 +181,7 @@ class ContextComposer:
             sections.append(ContextSection(
                 "attachments", "Authorized attachments",
                 (
-                    "系统授权且尚未解析：\n"
+                    "当前对话中系统授权、仍存在且尚未解析的附件：\n"
                     + json.dumps(
                         turn.authorized_attachments,
                         ensure_ascii=False,
@@ -305,15 +210,10 @@ class ContextComposer:
         if strategy.content and "strategy" in profile.context_policy:
             sections.append(ContextSection("strategy", "Learning strategy", strategy.content, "trusted_system", 140))
 
-        kept: list[ContextSection] = []
-        for section in sorted(sections, key=lambda item: (item.order, item.key)):
-            selected = (
-                section
-                if section.stable
-                else _fit_section(kept, section, self.max_tokens)
-            )
-            if selected is None or not selected.content:
-                continue
-            kept.append(selected)
+        kept = [
+            section
+            for section in sorted(sections, key=lambda item: (item.order, item.key))
+            if section.content
+        ]
         rendered = render_sections(kept)
         return ComposedContext(tuple(kept), rendered, _tokens(rendered))

@@ -8,12 +8,6 @@ import json
 from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime
 from enum import Enum
-from backend.core.utils.token_estimation import TOKEN_ENCODING, estimate_tokens
-
-_TIKTOKEN_ENCODING = TOKEN_ENCODING
-_estimate_tokens = estimate_tokens
-
-
 class ProfileOrigin(str, Enum):
     """封装 `ProfileOrigin` 的状态与行为。"""
     EXPLICIT_SETTING = "explicit_setting"
@@ -94,7 +88,6 @@ class ProfileSnapshot:
 
     def to_prompt_json(
         self,
-        max_tokens: int = 300,
         *,
         current_message: str = "",
         task_mode: str | None = None,
@@ -199,15 +192,7 @@ class ProfileSnapshot:
 
         payload: dict[str, list[dict]] = {}
         for section_name, candidate in candidates:
-            trial = {key: list(value) for key, value in payload.items()}
-            trial.setdefault(section_name, []).append(candidate)
-            serialized = json.dumps(
-                trial,
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
-            if _estimate_tokens(serialized) <= max_tokens:
-                payload = trial
+            payload.setdefault(section_name, []).append(candidate)
 
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 

@@ -28,6 +28,20 @@ class ToolExecutionResult:
     display_content: Any
     audit_metadata: Any | None = None
 
+    def __getitem__(self, key: str) -> Any:
+        """Keep mapping-style reads compatible for structured model payloads."""
+
+        if not isinstance(self.model_content, dict):
+            raise TypeError("model_content is not a mapping")
+        return self.model_content[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Return one model-content field for legacy direct executor callers."""
+
+        if not isinstance(self.model_content, dict):
+            return default
+        return self.model_content.get(key, default)
+
 
 @dataclass
 class ParsedOutput:

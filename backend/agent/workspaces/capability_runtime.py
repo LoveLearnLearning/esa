@@ -4,8 +4,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -20,6 +22,11 @@ from backend.agent.tools.catalog import (
     capability_declaration,
 )
 from backend.agent.tools.context import ToolExecutionContext
+from backend.agent.tools.execution_errors import (
+    classify_tool_exception,
+    normalize_tool_error_result,
+    structured_tool_error,
+)
 from backend.agent.workspaces.models import ResolvedCapabilities
 
 
@@ -60,7 +67,47 @@ class BoundToolExecutor:
         """处理 `names` 相关逻辑。"""
         return self._view.names
 
+    def policy_for(self, name: str):
+        """Return retry/timeout metadata for a catalogued tool."""
+
+        return capability_declaration(name)
+
     async def execute(self, name: str, arguments: Mapping[str, Any]) -> Any:
+        """Execute and project every failure through the safe error protocol."""
+
+        started_at = time.monotonic()
+        try:
+            result = await self._execute_impl(name, arguments)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 - executor safety boundary
+            error_code, retryable, retry_after_ms = classify_tool_exception(error)
+            logger.exception(
+                "bound tool execution failed request_id=%s run_id=%s tool=%s",
+                self.context.request_id,
+                self.context.run_id,
+                name,
+            )
+            return structured_tool_error(
+                error_code,
+                tool=name,
+                retryable=retryable,
+                retry_after_ms=retry_after_ms,
+                request_id=self.context.request_id,
+                run_id=self.context.run_id,
+                elapsed_ms=(time.monotonic() - started_at) * 1000,
+                exception=error,
+            )
+        return normalize_tool_error_result(
+            result,
+            tool=name,
+            attempt=1,
+            request_id=self.context.request_id,
+            run_id=self.context.run_id,
+            elapsed_ms=(time.monotonic() - started_at) * 1000,
+        )
+
+    async def _execute_impl(self, name: str, arguments: Mapping[str, Any]) -> Any:
         """执行 `execute` 相关数据。
 
         Args:
@@ -78,7 +125,7 @@ class BoundToolExecutor:
             }
         try:
             normalized = self._view.normalize_arguments(name, arguments)
-        except (KeyError, ValueError) as error:
+        except (KeyError, TypeError, ValueError) as error:
             return {
                 "ok": False,
                 "error": "invalid_tool_arguments",
@@ -148,6 +195,9 @@ class BoundToolExecutor:
                 provider = self.context.runtime_dependencies.token_counter
                 counter = getattr(provider, "count_tokens", None)
                 result = await retrieve_selected_knowledge(
+                    query=normalized["query"],
+                    top_k=normalized.get("top_k", 5),
+                    similarity_threshold=normalized.get("similarity_threshold"),
                     knowledge_sources=self.context.knowledge_sources,
                     user_id=self.context.user_id,
                     knowledge_base_id=self.context.personal_knowledge_base_id,
@@ -157,7 +207,6 @@ class BoundToolExecutor:
                         .personal_knowledge_retrieval_service
                     ),
                     token_counter=counter if callable(counter) else None,
-                    **normalized,
                 )
                 projection_context = self.context.retrieval_projection_context
                 if projection_context is None:
@@ -248,6 +297,20 @@ class BoundToolExecutor:
                     approval_mode=declaration.approval_mode,
                 )
             if name.startswith("parse_") and name.endswith("_attachment"):
+                requested_attachment_id = normalized.get("attachment_id")
+                authorized_attachment_ids = tuple(
+                    self.context.authorized_resources.attachment_ids
+                )
+                if requested_attachment_id not in authorized_attachment_ids:
+                    return {
+                        "ok": False,
+                        "error": "attachment_not_authorized",
+                        "tool": name,
+                        "requested_attachment_id": requested_attachment_id,
+                        "authorized_attachment_ids": list(
+                            authorized_attachment_ids
+                        ),
+                    }
                 from backend.agent.tools.common.attachment_tools import execute_attachment_tool
 
                 return await execute_attachment_tool(self.context, name, normalized)
@@ -274,10 +337,17 @@ class BoundToolExecutor:
                 "tool": name,
                 "detail": str(error),
             }
-        except (ValueError, RuntimeError) as error:
+        except ValueError as error:
             return {
                 "ok": False,
-                "error": "tool_execution_error",
+                "error": "invalid_tool_arguments",
+                "tool": name,
+                "detail": str(error),
+            }
+        except RuntimeError as error:
+            return {
+                "ok": False,
+                "error": "temporary_tool_error",
                 "tool": name,
                 "detail": str(error),
             }

@@ -1533,6 +1533,7 @@ class TeachingClass {
     this.membershipStatus,
     this.membershipId,
     this.teacherUsername,
+    this.classCode,
   });
 
   final String id;
@@ -1546,6 +1547,7 @@ class TeachingClass {
   final String? membershipStatus;
   final String? membershipId;
   final String? teacherUsername;
+  final String? classCode;
 
   factory TeachingClass.fromJson(Map<String, dynamic> json) => TeachingClass(
     id: (json['class_id'] ?? json['id'])?.toString() ?? '',
@@ -1559,6 +1561,7 @@ class TeachingClass {
     membershipStatus: json['membership_status']?.toString(),
     membershipId: json['membership_id']?.toString(),
     teacherUsername: json['teacher_username']?.toString(),
+    classCode: json['class_code']?.toString(),
   );
 }
 

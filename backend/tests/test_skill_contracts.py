@@ -67,7 +67,7 @@ def test_tool_schema_snapshots_match_their_runtime_views():
     )
     assert dataset_schemas == list(learning_view.schemas)
     assert any(
-        schema["function"]["name"] == "retrieve_personal_knowledge"
+        schema["function"]["name"] == "retrieve_knowledge"
         for schema in dataset_schemas
     )
     assert all(

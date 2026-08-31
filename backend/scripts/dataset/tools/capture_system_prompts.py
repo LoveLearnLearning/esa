@@ -110,6 +110,15 @@ def collect_keys() -> list[tuple[str, str, str]]:
         return keys
 
 
+def load_keys(path: Path) -> list[tuple[str, str, str]]:
+    """Load either a collected key list or an existing prompt cache index."""
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict) and isinstance(payload.get("index"), dict):
+        return [tuple(json.loads(key)) for key in payload["index"]]
+    return [tuple(key) for key in payload]
+
+
 def load_backend(repo: Path):
     """import 后端，返回渲染一条 system prompt 所需的全部零件。"""
     sys.path.insert(0, str(repo))
@@ -197,12 +206,22 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="抓取线上真实 system prompt")
     ap.add_argument("--repo", help="本地后端仓库副本；默认 ~/esa")
     ap.add_argument("--download", action="store_true", help="强制下载快照（抓不到本地改动，慎用）")
-    ap.add_argument("--keys", help="现成的键文件，给了就跳过空跑")
+    ap.add_argument(
+        "--keys",
+        action="append",
+        help="现成的键文件；可重复传入并合并，给了就跳过空跑",
+    )
     ap.add_argument("--out", default=str(OUT))
     args = ap.parse_args()
 
     if args.keys:
-        keys = [tuple(k) for k in json.loads(Path(args.keys).read_text(encoding="utf-8"))]
+        keys = sorted(
+            {
+                key
+                for key_path in args.keys
+                for key in load_keys(Path(key_path))
+            }
+        )
         print(f"用现成键文件：{len(keys)} 组")
     else:
         keys = collect_keys()

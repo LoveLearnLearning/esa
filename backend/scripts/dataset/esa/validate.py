@@ -505,7 +505,7 @@ def _failure_text(content: Any) -> str | None:
     if isinstance(content, str):
         return content
     if isinstance(content, dict):
-        for key in ("detail", "error", "reason", "note"):
+        for key in ("message", "detail", "error", "reason", "note"):
             if content.get(key):
                 return str(content[key])
     return None
@@ -530,6 +530,10 @@ def load_error_registry(seeds_path: Path, math_cache_path: Path) -> tuple[set[st
         literals |= {str(i["text"]) for i in reg.get("literal") or []}
         patterns += [re.compile(str(i["re"])) for i in reg.get("patterns") or []]
         literals |= {f"[Error]: {i['err']}" for i in cfg.get("wrapped") or []}
+        literals |= {
+            str(i["message"])
+            for i in cfg.get("structured_runtime") or []
+        }
 
     if math_cache_path.exists():
         entries = json.loads(math_cache_path.read_text(encoding="utf-8")).get("entries", {})

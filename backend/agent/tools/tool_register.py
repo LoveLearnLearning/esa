@@ -106,6 +106,17 @@ class ToolRegistry:
         except (ValueError, TypeError, RuntimeError, KeyError) as error:
             return f"[Error]: {error}"
 
+    async def acall_strict(self, name: str, arguments: dict[str, Any]) -> Any:
+        """Execute without stringifying failures at the BoundToolExecutor boundary."""
+
+        if name not in self.registered_tools:
+            raise KeyError(name)
+        schema, fn = self.registered_tools[name]
+        normalized = self._normalize_arguments(schema, arguments)
+        if inspect.iscoroutinefunction(fn):
+            return await fn(**normalized)
+        return await asyncio.to_thread(fn, **normalized)
+
     @staticmethod
     def _normalize_arguments(
         schema: dict[str, Any], arguments: dict[str, Any]

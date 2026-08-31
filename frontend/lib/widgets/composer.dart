@@ -124,6 +124,15 @@ class ComposerState extends State<Composer> {
     );
   }
 
+  void setText(String text) {
+    _controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    _saveCurrentDraft();
+    setState(() {});
+  }
+
   void replaceCodeBlock(String blockId, String code, {String? language}) {
     final index = int.tryParse(blockId.split(':').last);
     final blocks = _codeBlocks;

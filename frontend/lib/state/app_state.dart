@@ -1348,8 +1348,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> openLearningAssignmentContext(
-    TeachingAssignment assignment,
-  ) async {
+    TeachingAssignment assignment, {
+    String? initialPrompt,
+  }) async {
     await _discardDraftConversation();
     if (activeWorkspace != WorkspaceType.learning) {
       await switchWorkspace(WorkspaceType.learning);
@@ -1372,7 +1373,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ============ 发送消息 ============
+  // ============ 发送消息 ===========
   Future<void> send(
     String text, {
     String? taskMode,
@@ -1738,7 +1739,8 @@ class AppState extends ChangeNotifier {
                 if (payload is Map && payload['ok'] == false) {
                   final error = payload['error']?.toString();
                   if (error == 'tool_not_available' ||
-                      error == 'resource_capability_required') {
+                      error == 'resource_capability_required' ||
+                      error == 'attachment_not_authorized') {
                     terminalFailureKey = '$toolName\u0000$error';
                   }
                 }

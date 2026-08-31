@@ -73,7 +73,7 @@ from backend.core.utils.models import (
     UserRecord,
 )
 from backend.core.utils import config as app_config
-from backend.core.message.budget import PromptBudgetExceeded
+from backend.core.utils.errors import ModelContextOverflow
 from backend.core.web.concurrency import (
     ConversationTurnCoordinator,
     ConversationTurnLease,
@@ -266,33 +266,36 @@ def _conversation_attachment_inventory(
     conversation_id: str,
     attachment_ids: list[str],
 ) -> tuple[tuple[dict, ...], list[dict]]:
-    """Authorize explicit files or restore the latest files used in this chat."""
-    if attachment_ids:
-        return _attachment_inventory(
-            request,
-            user_id,
-            conversation_id,
-            attachment_ids,
-        )
+    """Authorize every stored file in the conversation for the current turn.
 
-    chat_store: ChatStore = request.app.state.chat_store
-    inherited_ids = list(chat_store.get_latest_attachment_ids(conversation_id))
-    if not inherited_ids:
+    ``attachment_ids`` still describes files attached to this user message;
+    the returned authorization inventory is conversation-scoped and therefore
+    includes older files as well.
+    """
+    store = getattr(request.app.state, "user_attachment_store", None)
+    if not isinstance(store, UserAttachmentStore):
+        if attachment_ids:
+            _attachment_store(request)
         return (), []
-    try:
-        authorized, _ = _attachment_inventory(
-            request,
-            user_id,
-            conversation_id,
-            inherited_ids,
-        )
-    except HTTPException as error:
-        # A previously used file may have been removed from durable storage.
-        # That must not make every later text-only message fail with a 404.
-        if error.status_code == status.HTTP_404_NOT_FOUND:
-            return (), []
-        raise
-    return authorized, []
+    conversation_items = store.list_for_conversation(
+        user_id=user_id,
+        conversation_id=conversation_id,
+    )
+    authorized, _ = _attachment_inventory(
+        request,
+        user_id,
+        conversation_id,
+        [item.attachment_id for item in conversation_items],
+    )
+    if not attachment_ids:
+        return authorized, []
+    _, current_message_attachments = _attachment_inventory(
+        request,
+        user_id,
+        conversation_id,
+        attachment_ids,
+    )
+    return authorized, current_message_attachments
 
 
 def _turn_coordinator(request: Request) -> ConversationTurnCoordinator:
@@ -538,22 +541,15 @@ def _prepare_message(
         session_store.revoke(session.session_id)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在！")
 
-    # 读取模型历史 + 落库用户消息 同一事务原子完成 避免并发读-写竞态
-    # 当有附件时，在模型可见的消息中追加附件标记，确保 LLM 感知到新附件的存在
+    # 读取模型历史 + 落库用户消息 同一事务原子完成 避免并发读-写竞态。
+    # 附件清单由当前运行的受信任 system context 提供；不要把内部 ID 写入
+    # 用户正文的 model_content，否则后续轮次会把旧 ID 当成当前附件候选。
     user_message_payload: dict = {
         "role": "user",
         "content": body.content,
         "attachments": attachments or [],
         "is_visible": True,
     }
-    if attachments:
-        attachment_markers = " ".join(
-            f"[附件已上传: {a['filename']} (ID: {a['id']})]"
-            for a in attachments
-        )
-        user_message_payload["model_content"] = (
-            f"{body.content}\n\n{attachment_markers}"
-        )
     if body.replace_message_id is None:
         conversation_summary, history = (
             chat_store.get_compressed_model_history_and_append(
@@ -684,8 +680,53 @@ async def _preflight_with_active_compression(
     authorized_attachments: tuple[dict, ...],
     lease: ConversationTurnLease,
 ):
-    """Measure, compress prior history once if useful, rebuild, and remeasure."""
+    """Compress old history until the real model context can fit."""
     agent: Agent = request.app.state.agent
+    state = {"ctx": ctx, "run_spec": None}
+
+    async def compact_for_generation():
+        """Compress and rebuild the run after a later tool observation grows it."""
+        current_ctx = state["ctx"]
+        if current_ctx.user_message_id is None:
+            return None
+        compression_service = getattr(
+            request.app.state,
+            "conversation_compression_service",
+            None,
+        )
+        if not isinstance(compression_service, ConversationCompressionService):
+            return None
+        try:
+            changed = await compression_service.compress_active_turn(
+                conversation_id=conversation_id,
+                owner_token=lease.claim.owner_token,
+                before_message_id=current_ctx.user_message_id,
+            )
+        except AuxiliaryLLMUnavailable as error:
+            logger.warning(
+                "同步对话压缩不可用 conversation_id=%s error=%s",
+                conversation_id,
+                error,
+            )
+            return None
+        if not changed:
+            return None
+        refreshed_ctx = _reload_context_after_compression(
+            request, conversation_id, body, current_ctx
+        )
+        refreshed_spec = _build_run_spec(
+            request,
+            session,
+            conversation_id,
+            body,
+            refreshed_ctx,
+            authorized_attachments,
+            context_compactor=compact_for_generation,
+        )
+        state["ctx"] = refreshed_ctx
+        state["run_spec"] = refreshed_spec
+        return refreshed_spec
+
     run_spec = _build_run_spec(
         request,
         session,
@@ -693,54 +734,22 @@ async def _preflight_with_active_compression(
         body,
         ctx,
         authorized_attachments,
+        context_compactor=compact_for_generation,
     )
+    state["run_spec"] = run_spec
     inspect_prompt = getattr(agent, "inspect_prompt", None)
     if not callable(inspect_prompt):
         # Lightweight test/alternate agents do not own a tokenizer. Production
         # Agent always provides this interface and every provider call rechecks.
         return ctx, run_spec
-    measurement = inspect_prompt(run_spec).measurement
-    compression_service = getattr(
-        request.app.state,
-        "conversation_compression_service",
-        None,
-    )
-    if (
-        measurement.target_exceeded
-        and ctx.user_message_id is not None
-        and isinstance(compression_service, ConversationCompressionService)
-    ):
-        try:
-            changed = await compression_service.compress_active_turn(
-                conversation_id=conversation_id,
-                owner_token=lease.claim.owner_token,
-                before_message_id=ctx.user_message_id,
-            )
-        except AuxiliaryLLMUnavailable as error:
-            changed = False
-            logger.warning(
-                "同步对话压缩不可用 conversation_id=%s error=%s",
-                conversation_id,
-                error,
-            )
-        if changed:
-            ctx = _reload_context_after_compression(
-                request,
-                conversation_id,
-                body,
-                ctx,
-            )
-            run_spec = _build_run_spec(
-                request,
-                session,
-                conversation_id,
-                body,
-                ctx,
-                authorized_attachments,
-            )
-            measurement = inspect_prompt(run_spec).measurement
-    if measurement.hard_exceeded:
-        raise PromptBudgetExceeded(measurement)
+    _prompt, input_tokens, input_limit = inspect_prompt(run_spec)
+    while input_tokens > input_limit:
+        refreshed_spec = await compact_for_generation()
+        if refreshed_spec is None:
+            raise ModelContextOverflow("model context exceeds max_model_len and cannot be compressed")
+        ctx = state["ctx"]
+        run_spec = refreshed_spec
+        _prompt, input_tokens, input_limit = inspect_prompt(run_spec)
     return ctx, run_spec
 
 
@@ -853,6 +862,7 @@ def _build_run_spec(
     body: SendMessageRequest,
     ctx: MessageContext,
     authorized_attachments: tuple[dict, ...],
+    context_compactor=None,
 ):
     """构建 `run spec` 相关数据。"""
     conversation = _load_owned(request, conversation_id, session)
@@ -947,6 +957,7 @@ def _build_run_spec(
         request_metadata={
             "request_id": uuid4().hex,
             "total_weeks": ctx.user.total_weeks,
+            "context_compactor": context_compactor,
         },
     )
     runtime = WorkspaceRuntime(_runtime_dependencies(request, ctx))
@@ -1512,7 +1523,7 @@ async def send_message(
                 authorized_attachments,
                 lease,
             )
-        except PromptBudgetExceeded as error:
+        except ModelContextOverflow as error:
             raise HTTPException(
                 status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 "对话上下文过长且无法安全压缩",
@@ -1595,7 +1606,7 @@ async def stream_message(
                 authorized_attachments,
                 lease,
             )
-        except PromptBudgetExceeded as error:
+        except ModelContextOverflow as error:
             raise HTTPException(
                 status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 "对话上下文过长且无法安全压缩",
@@ -1646,6 +1657,9 @@ async def stream_message(
                         "done",
                         {
                             "conversation_id": conversation_id,
+                            "termination_reason": agent_event.data.get(
+                                "termination_reason", "completed"
+                            ),
                         },
                     )
                     break
@@ -1657,8 +1671,8 @@ async def stream_message(
         except asyncio.CancelledError:
             raise
 
-        except PromptBudgetExceeded as error:
-            logger.exception("工具循环后的 Prompt 超过物理预算")
+        except ModelContextOverflow as error:
+            logger.exception("工具循环后的 Prompt 超过物理上下文容量")
             yield encode_sse(
                 "error",
                 {

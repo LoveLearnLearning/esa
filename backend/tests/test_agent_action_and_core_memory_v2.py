@@ -38,7 +38,7 @@ from backend.core.stores.research_project_profile_store import (
 )
 from backend.core.stores.research_project_store import ResearchProjectStore
 from backend.core.stores.user_store import UserStore
-from backend.core.utils.models import UserRecord
+from backend.core.utils.models import ToolExecutionResult, UserRecord
 from backend.core.workflows.research import (
     ResearchWorkflowFacade,
     execute_research_action,
@@ -134,12 +134,10 @@ def test_memory_policy_denial_is_returned_to_the_agent_as_a_tool_error(tmp_path)
         executor.execute("search_core_memories", {"query": "learning goal"})
     )
 
-    assert result == {
-        "ok": False,
-        "error": "memory_policy_denied",
-        "tool": "search_core_memories",
-        "detail": "saved memory is disabled",
-    }
+    assert isinstance(result, ToolExecutionResult)
+    assert result.model_content["error_code"] == "memory_policy_denied"
+    assert "saved memory" not in result.model_content["message"]
+    assert result.audit_metadata["legacy_detail"] == "saved memory is disabled"
 
 
 def test_agent_action_create_is_atomic_and_approval_executes_once(tmp_path):
@@ -394,12 +392,12 @@ def test_delete_memory_tool_uses_memory_id_and_enforces_workspace_scope(tmp_path
     denied = asyncio.run(
         learning.execute("delete_core_memory", {"memory_id": memory_id})
     )
-    assert denied == {
-        "ok": False,
-        "error": "permission_denied",
-        "tool": "delete_core_memory",
-        "detail": "memory is outside the current workspace scope",
-    }
+    assert isinstance(denied, ToolExecutionResult)
+    assert denied.model_content["error_code"] == "permission_denied"
+    assert "outside" not in denied.model_content["message"]
+    assert denied.audit_metadata["legacy_detail"] == (
+        "memory is outside the current workspace scope"
+    )
     assert store.get(memory_id, "u1") is not None
 
     deleted = asyncio.run(

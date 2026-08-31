@@ -19,8 +19,11 @@ from backend.agent.workspaces.profile_registry import DEFAULT_PROFILE_REGISTRY
 from backend.agent.tools.bootstrap import register_builtin_tools
 from backend.agent.tools.catalog import CAPABILITY_DECLARATIONS, ScopedToolView
 from backend.agent.tools.tools import tr
-from backend.agent.workspaces.capability_runtime import CapabilityRuntime
-from backend.agent.workspaces.models import AgentTurnInput
+from backend.agent.workspaces.capability_runtime import (
+    BoundToolExecutor,
+    CapabilityRuntime,
+)
+from backend.agent.workspaces.models import AgentTurnInput, LoopPolicy
 from backend.agent.workspaces.runtime import WorkspaceRuntime
 from backend.core.router.models import ResourceScope, TrustedIdentity, WorkspaceRoute
 from backend.core.router.basic_router import route_workspace
@@ -218,12 +221,62 @@ def test_bound_executor_rechecks_required_resource_capabilities():
             "parse_pdf_attachment", {"attachment_id": "a1", "query": "summary"}
         )
     )
-    assert denied == {
-        "ok": False,
-        "error": "resource_capability_required",
-        "tool": "parse_pdf_attachment",
-        "required": ["attachments"],
-    }
+    assert isinstance(denied, ToolExecutionResult)
+    assert denied.model_content["error_code"] == "resource_capability_required"
+    assert denied.model_content["retryable"] is False
+    assert denied.audit_metadata["legacy_required"] == ["attachments"]
+
+
+def test_bound_executor_returns_terminal_error_for_unknown_attachment_id():
+    """Unknown attachment references must not be retried as transient failures."""
+    register_builtin_tools()
+    definition = WORKSPACE_DEFINITIONS["learning"]
+    compiled = CapabilityRuntime().compile(
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        profile_fingerprint="learning:1",
+        policy_versions=("learning.v1",),
+        resource_capabilities=frozenset({"attachments"}),
+        has_attachments=True,
+    )
+    scope = ResourceScope(
+        attachment_ids=("authorized",),
+        capabilities=frozenset({"attachments"}),
+    )
+    route = WorkspaceRoute(
+        workspace_type="learning",
+        agent_profile_id=definition.profile_id,
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        prompt_key=definition.prompt_key,
+        profile_policy=definition.profile_policy,
+        memory_policy_id=definition.memory_policy_id,
+        resource_scope=scope,
+        action_policy=definition.action_policy,
+    )
+    context = ToolExecutionContext(
+        user_id="u1",
+        conversation_id="c1",
+        workspace_route=route,
+        authorized_resources=scope,
+        conversation_mode="normal",
+        runtime_dependencies=AgentRuntimeDependencies(),
+        request_id="r1",
+    )
+
+    denied = asyncio.run(
+        compiled.bind(context).execute(
+            "parse_pdf_attachment", {"attachment_id": "unknown", "query": "summary"}
+        )
+    )
+    assert isinstance(denied, ToolExecutionResult)
+    assert denied.model_content["error_code"] == "attachment_not_authorized"
+    assert denied.model_content["retryable"] is False
+    assert "unknown" not in denied.model_content["message"]
+    assert denied.audit_metadata["legacy_requested_attachment_id"] == "unknown"
+    assert denied.audit_metadata["legacy_authorized_attachment_ids"] == [
+        "authorized"
+    ]
 
 
 def test_run_spec_and_manifest_are_serializable_and_share_the_production_compiler():
@@ -492,12 +545,12 @@ def test_bound_teaching_context_errors_are_returned_as_tool_results():
         compiled.bind(context).execute("get_teaching_context", {})
     )
 
-    assert result == {
-        "ok": False,
-        "error": "tool_execution_error",
-        "tool": "get_teaching_context",
-        "detail": "teaching classroom is no longer authorized",
-    }
+    assert isinstance(result, ToolExecutionResult)
+    assert result.model_content["error_code"] == "invalid_tool_arguments"
+    assert "no longer authorized" not in result.model_content["message"]
+    assert result.audit_metadata["legacy_detail"] == (
+        "teaching classroom is no longer authorized"
+    )
 
 
 def test_workspace_compiler_rejects_undeclared_resource_capabilities():
@@ -812,11 +865,157 @@ def test_stream_stops_repeating_a_tool_that_is_not_available():
     assert events[-1].event == "complete"
 
 
+def test_agent_executes_an_identical_successful_tool_call_only_once():
+    """成功的同名同参只读查询不应一直执行到循环上限。"""
+
+    class Executor:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _name, _arguments):
+            self.calls += 1
+            return {
+                "allowed": True,
+                "course": "数据结构",
+                "has_records": False,
+                "total_points": 0,
+                "avg_mastery": 0.0,
+                "weak_points": [],
+                "strong_points": [],
+                "stale_points": [],
+            }
+
+    class Provider:
+        async def generate(self, _messages, schemas):
+            if schemas:
+                return (
+                    '<tool_call>{"name":"get_mastery_report",'
+                    '"arguments":{"course":"数据结构"}}</tool_call>'
+                )
+            return "暂无掌握记录，我会按零基础安排三天复习计划。"
+
+        def parse_output(self, response, _schemas):
+            if response.startswith("<tool_call>"):
+                return ParsedOutput(
+                    tool_calls=[
+                        ToolCall("get_mastery_report", {"course": "数据结构"})
+                    ]
+                )
+            return ParsedOutput(content=response)
+
+    executor = Executor()
+    run_spec = SimpleNamespace(
+        messages=({"role": "user", "content": "每天 5 小时，制定复习计划"},),
+        tool_schemas=({"function": {"name": "get_mastery_report"}},),
+        loop_policy=SimpleNamespace(max_iterations=4, tool_timeout_seconds=1),
+        tool_executor=executor,
+        run_metadata={
+            "request_id": "request-repeated-success",
+            "run_id": "run-repeated-success",
+            "conversation_id": "conversation-test",
+            "workspace_type": "learning",
+        },
+        capability_fingerprint="capability-test",
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = Provider()
+
+    messages = asyncio.run(agent.run(run_spec))
+
+    assert executor.calls == 1
+    assert sum(message.get("role") == "tool" for message in messages) == 1
+    assert messages[-1]["content"] == "暂无掌握记录，我会按零基础安排三天复习计划。"
+
+
+def test_stream_executes_an_identical_successful_tool_call_only_once():
+    """流式路径与同步路径使用相同的成功调用去重语义。"""
+
+    class Executor:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _name, _arguments):
+            self.calls += 1
+            return {
+                "allowed": True,
+                "course": "数据结构",
+                "has_records": False,
+                "total_points": 0,
+            }
+
+    class StreamParser:
+        def __init__(self):
+            self.raw_text = ""
+
+        def feed(self, chunk):
+            self.raw_text += chunk
+            if chunk.startswith("<tool_call>"):
+                return []
+            return [("content", chunk)]
+
+        def finish(self):
+            return []
+
+    class Provider:
+        async def generate_stream(self, _messages, schemas):
+            if schemas:
+                yield (
+                    '<tool_call>{"name":"get_mastery_report",'
+                    '"arguments":{"course":"数据结构"}}</tool_call>'
+                )
+                return
+            yield "暂无掌握记录，我会按零基础安排三天复习计划。"
+
+        def create_stream_parser(self):
+            return StreamParser()
+
+        def parse_output(self, response, _schemas):
+            if response.startswith("<tool_call>"):
+                return ParsedOutput(
+                    tool_calls=[
+                        ToolCall("get_mastery_report", {"course": "数据结构"})
+                    ]
+                )
+            return ParsedOutput(content=response)
+
+    executor = Executor()
+    run_spec = SimpleNamespace(
+        messages=({"role": "user", "content": "每天 5 小时，制定复习计划"},),
+        tool_schemas=({"function": {"name": "get_mastery_report"}},),
+        loop_policy=SimpleNamespace(max_iterations=4, tool_timeout_seconds=1),
+        tool_executor=executor,
+        run_metadata={
+            "request_id": "request-stream-repeated-success",
+            "run_id": "run-stream-repeated-success",
+            "conversation_id": "conversation-test",
+            "workspace_type": "learning",
+        },
+        capability_fingerprint="capability-test",
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = Provider()
+
+    async def collect_stream():
+        return [event async for event in agent.run_stream(run_spec)]
+
+    events = asyncio.run(collect_stream())
+
+    assert executor.calls == 1
+    assert [event.event for event in events].count("tool") == 1
+    assert events[-1].data["messages"][-1]["content"] == (
+        "暂无掌握记录，我会按零基础安排三天复习计划。"
+    )
+
+
 def test_agent_forces_visible_final_answer_after_tool_loop_limit():
     """工具循环耗尽后不能以空助手消息成功结束。"""
 
     class Executor:
+        def __init__(self):
+            self.calls = 0
+
         async def execute(self, _name, _arguments):
+            self.calls += 1
             return {"ok": True, "result": "evidence"}
 
     class Provider:
@@ -826,19 +1025,29 @@ def test_agent_forces_visible_final_answer_after_tool_loop_limit():
         async def generate(self, messages, schemas):
             self.calls.append((list(messages), list(schemas)))
             if schemas:
-                return "<tool_call>{\"name\":\"fake_tool\",\"arguments\":{}}</tool_call>"
+                attempt = len(self.calls)
+                return (
+                    '<tool_call>{"name":"fake_tool","arguments":'
+                    f'{{"attempt":{attempt}}}}}</tool_call>'
+                )
             return "最终基于工具结果给出总结。"
 
         def parse_output(self, response, _schemas):
             if response.startswith("<tool_call>"):
-                return ParsedOutput(tool_calls=[ToolCall("fake_tool", {})])
+                payload = json.loads(
+                    response.removeprefix("<tool_call>").removesuffix("</tool_call>")
+                )
+                return ParsedOutput(
+                    tool_calls=[ToolCall(payload["name"], payload["arguments"])]
+                )
             return ParsedOutput(content=response)
 
+    executor = Executor()
     run_spec = SimpleNamespace(
         messages=({"role": "user", "content": "question"},),
         tool_schemas=({"function": {"name": "fake_tool"}},),
         loop_policy=SimpleNamespace(max_iterations=2, tool_timeout_seconds=1),
-        tool_executor=Executor(),
+        tool_executor=executor,
         run_metadata={
             "request_id": "request-loop-limit",
             "run_id": "run-loop-limit",
@@ -855,6 +1064,7 @@ def test_agent_forces_visible_final_answer_after_tool_loop_limit():
 
     assert messages[-1]["role"] == "assistant"
     assert messages[-1]["content"] == "最终基于工具结果给出总结。"
+    assert executor.calls == 2
     assert provider.calls[-1][1] == []
 
 
@@ -862,7 +1072,11 @@ def test_stream_forces_visible_final_answer_after_tool_loop_limit():
     """流式工具循环耗尽后也必须继续发送纯文本总结。"""
 
     class Executor:
+        def __init__(self):
+            self.calls = 0
+
         async def execute(self, _name, _arguments):
+            self.calls += 1
             return {"ok": True, "result": "evidence"}
 
     class StreamParser:
@@ -887,7 +1101,11 @@ def test_stream_forces_visible_final_answer_after_tool_loop_limit():
         async def generate_stream(self, messages, schemas):
             self.calls.append((list(messages), list(schemas)))
             if schemas:
-                yield "<tool_call>{\"name\":\"fake_tool\",\"arguments\":{}}</tool_call>"
+                attempt = len(self.calls)
+                yield (
+                    '<tool_call>{"name":"fake_tool","arguments":'
+                    f'{{"attempt":{attempt}}}}}</tool_call>'
+                )
                 return
             yield "最终基于工具结果给出总结。"
 
@@ -896,14 +1114,20 @@ def test_stream_forces_visible_final_answer_after_tool_loop_limit():
 
         def parse_output(self, response, _schemas):
             if response.startswith("<tool_call>"):
-                return ParsedOutput(tool_calls=[ToolCall("fake_tool", {})])
+                payload = json.loads(
+                    response.removeprefix("<tool_call>").removesuffix("</tool_call>")
+                )
+                return ParsedOutput(
+                    tool_calls=[ToolCall(payload["name"], payload["arguments"])]
+                )
             return ParsedOutput(content=response)
 
+    executor = Executor()
     run_spec = SimpleNamespace(
         messages=({"role": "user", "content": "question"},),
         tool_schemas=({"function": {"name": "fake_tool"}},),
         loop_policy=SimpleNamespace(max_iterations=2, tool_timeout_seconds=1),
-        tool_executor=Executor(),
+        tool_executor=executor,
         run_metadata={
             "request_id": "request-stream-loop-limit",
             "run_id": "run-stream-loop-limit",
@@ -921,6 +1145,7 @@ def test_stream_forces_visible_final_answer_after_tool_loop_limit():
 
     events = asyncio.run(collect_stream())
 
+    assert executor.calls == 2
     assert provider.calls[-1][1] == []
     assert events[-1].event == "complete"
     assert events[-1].data["messages"][-1]["content"] == (
@@ -1039,3 +1264,446 @@ def test_empty_visible_response_keeps_stream_and_sync_messages_consistent():
     assert reasoning == "仅有推理"
     assert content == stream_message["content"]
     assert content
+
+
+class _BudgetStreamParser:
+    def __init__(self):
+        self.raw_text = ""
+
+    def feed(self, chunk):
+        self.raw_text += chunk
+        if chunk.startswith("__tools__"):
+            return []
+        return [("content", chunk)]
+
+    def finish(self):
+        return []
+
+
+class _BudgetProvider:
+    def __init__(self, tool_generations, final="阶段性总结"):
+        self.tool_generations = list(tool_generations)
+        self.final = final
+        self.generation_count = 0
+
+    def _next(self, schemas):
+        self.generation_count += 1
+        if schemas and self.tool_generations:
+            calls = self.tool_generations.pop(0)
+            payload = [
+                {"name": call.name, "arguments": call.arguments} for call in calls
+            ]
+            return "__tools__" + json.dumps(payload, ensure_ascii=False)
+        return self.final
+
+    async def generate(self, _messages, schemas):
+        return self._next(schemas)
+
+    async def generate_stream(self, _messages, schemas):
+        yield self._next(schemas)
+
+    def create_stream_parser(self):
+        return _BudgetStreamParser()
+
+    def parse_output(self, response, _schemas):
+        if response.startswith("__tools__"):
+            payload = json.loads(response.removeprefix("__tools__"))
+            return ParsedOutput(
+                tool_calls=[ToolCall(item["name"], item["arguments"]) for item in payload]
+            )
+        return ParsedOutput(content=response)
+
+
+def _budget_run_spec(executor, policy, tool_names=("fake_tool",)):
+    return SimpleNamespace(
+        messages=({"role": "user", "content": "question"},),
+        tool_schemas=tuple(
+            {"function": {"name": name}} for name in tool_names
+        ),
+        loop_policy=policy,
+        tool_executor=executor,
+        run_metadata={
+            "request_id": "request-budget",
+            "run_id": "run-budget",
+            "conversation_id": "conversation-budget",
+            "workspace_type": "learning",
+        },
+        capability_fingerprint="capability-budget",
+    )
+
+
+def test_loop_policy_validates_every_budget_dimension():
+    with pytest.raises(ValueError, match="max_tool_calls"):
+        LoopPolicy(1, 1, max_tool_calls=0)
+    with pytest.raises(ValueError, match="max_retries_per_tool"):
+        LoopPolicy(1, 1, max_retries_per_tool=-1)
+    with pytest.raises(ValueError, match="max_wall_time_seconds"):
+        LoopPolicy(1, 1, max_wall_time_seconds=0)
+    with pytest.raises(ValueError, match="max_same_call_repeats"):
+        LoopPolicy(1, 1, max_same_call_repeats=0)
+
+
+def test_multiple_calls_in_one_generation_respect_total_tool_budget():
+    class Executor:
+        def __init__(self):
+            self.calls = []
+
+        async def execute(self, name, _arguments):
+            self.calls.append(name)
+            return {"ok": True, "name": name}
+
+    executor = Executor()
+    provider = _BudgetProvider(
+        [[ToolCall("a", {}), ToolCall("b", {}), ToolCall("c", {})]]
+    )
+    run_spec = _budget_run_spec(
+        executor,
+        LoopPolicy(3, 1, max_tool_calls=2),
+        tool_names=("a", "b", "c"),
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+
+    messages = asyncio.run(agent.run(run_spec))
+
+    assert executor.calls == ["a", "b"]
+    observations = [
+        json.loads(item["model_content"])
+        for item in messages
+        if item.get("role") == "tool"
+    ]
+    assert observations[-1]["error_code"] == "tool_budget_exhausted"
+    assert messages[-1]["termination_reason"] == "tool_call_limit"
+
+
+def test_sync_tool_timeout_becomes_a_structured_observation():
+    class Executor:
+        def __init__(self):
+            self.cancelled = False
+
+        async def execute(self, _name, _arguments):
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                self.cancelled = True
+                raise
+
+    executor = Executor()
+    provider = _BudgetProvider([[ToolCall("fake_tool", {})]], final="超时后回答")
+    run_spec = _budget_run_spec(
+        executor,
+        LoopPolicy(3, 0.01, max_retries_per_tool=0),
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+
+    messages = asyncio.run(agent.run(run_spec))
+
+    tool_message = next(item for item in messages if item.get("role") == "tool")
+    payload = json.loads(tool_message["model_content"])
+    assert payload["error_code"] == "timeout"
+    assert payload["retryable"] is True
+    assert executor.cancelled is True
+    assert messages[-1]["content"] == "超时后回答"
+
+
+def test_stream_timeout_cancels_tool_task_and_completes_without_hanging():
+    class Executor:
+        def __init__(self):
+            self.cancelled = False
+
+        async def execute(self, _name, _arguments):
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                self.cancelled = True
+                raise
+
+    executor = Executor()
+    provider = _BudgetProvider([[ToolCall("fake_tool", {})]], final="流式降级回答")
+    run_spec = _budget_run_spec(
+        executor,
+        LoopPolicy(3, 0.01, max_retries_per_tool=0),
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+    agent.stream_heartbeat_seconds = 0.005
+
+    async def collect():
+        async def events():
+            return [event async for event in agent.run_stream(run_spec)]
+
+        return await asyncio.wait_for(events(), timeout=0.5)
+
+    events = asyncio.run(collect())
+
+    assert executor.cancelled is True
+    assert "tool_error" in [event.event for event in events]
+    assert events[-1].event == "complete"
+    assert events[-1].data["termination_reason"] == "completed"
+    assert events[-1].data["run_metadata"]["timeout_count"] == 1
+
+
+def test_stream_disconnect_cancels_in_flight_tool_task():
+    class Executor:
+        def __init__(self):
+            self.started = asyncio.Event()
+            self.cancelled = False
+
+        async def execute(self, _name, _arguments):
+            self.started.set()
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                self.cancelled = True
+                raise
+
+    async def scenario():
+        executor = Executor()
+        provider = _BudgetProvider([[ToolCall("fake_tool", {})]])
+        run_spec = _budget_run_spec(executor, LoopPolicy(3, 5))
+        agent = object.__new__(Agent)
+        agent.llm_provider = provider
+        agent.stream_heartbeat_seconds = 1
+        stream = agent.run_stream(run_spec).__aiter__()
+
+        while True:
+            event = await anext(stream)
+            if event.event == "tool_start":
+                break
+        pending = asyncio.create_task(anext(stream))
+        await asyncio.wait_for(executor.started.wait(), timeout=0.2)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+        await stream.aclose()
+        return executor
+
+    executor = asyncio.run(scenario())
+
+    assert executor.cancelled is True
+
+
+def test_transient_read_only_failure_retries_only_to_configured_limit(monkeypatch):
+    class Executor:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _name, _arguments):
+            self.calls += 1
+            return {
+                "ok": False,
+                "error_code": "upstream_unavailable",
+                "retryable": True,
+                "message": "暂时不可用",
+            }
+
+    monkeypatch.setattr("backend.agent.loop_runtime.retry_delay", lambda _count: 0)
+    executor = Executor()
+    provider = _BudgetProvider([[ToolCall("web_search", {"query": "ESA"})]])
+    run_spec = _budget_run_spec(
+        executor,
+        LoopPolicy(3, 1, max_retries_per_tool=1),
+        tool_names=("web_search",),
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+
+    messages = asyncio.run(agent.run(run_spec))
+
+    assert executor.calls == 2
+    assert messages[-1]["termination_reason"] == "retry_limit"
+
+
+def test_transient_read_only_retry_can_recover(monkeypatch):
+    class Executor:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _name, _arguments):
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "ok": False,
+                    "error_code": "network_error",
+                    "retryable": True,
+                }
+            return {"ok": True, "results": ["verified"]}
+
+    monkeypatch.setattr("backend.agent.loop_runtime.retry_delay", lambda _count: 0)
+    executor = Executor()
+    provider = _BudgetProvider([[ToolCall("web_search", {"query": "ESA"})]])
+    run_spec = _budget_run_spec(
+        executor,
+        LoopPolicy(3, 1, max_retries_per_tool=1),
+        tool_names=("web_search",),
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+
+    messages = asyncio.run(agent.run(run_spec))
+
+    assert executor.calls == 2
+    assert messages[-1]["termination_reason"] == "completed"
+    assert messages[-1]["content"] == "阶段性总结"
+
+
+@pytest.mark.parametrize("error_code", ["permission_denied", "tool_not_available"])
+def test_non_retryable_tool_errors_are_never_retried(error_code):
+    class Executor:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _name, _arguments):
+            self.calls += 1
+            return {"ok": False, "error_code": error_code, "retryable": False}
+
+    executor = Executor()
+    provider = _BudgetProvider([[ToolCall("web_search", {"query": "ESA"})]])
+    run_spec = _budget_run_spec(
+        executor,
+        LoopPolicy(3, 1, max_retries_per_tool=3),
+        tool_names=("web_search",),
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+
+    messages = asyncio.run(agent.run(run_spec))
+
+    assert executor.calls == 1
+    assert messages[-1]["termination_reason"] == "terminal_tool_error"
+
+
+def test_repeated_failed_call_is_blocked_after_configured_limit():
+    class Executor:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _name, _arguments):
+            self.calls += 1
+            return {
+                "ok": False,
+                "error_code": "temporary_tool_error",
+                "retryable": True,
+            }
+
+    repeated = [ToolCall("uncatalogued_write", {"value": 1})]
+    executor = Executor()
+    provider = _BudgetProvider([repeated, repeated, repeated])
+    run_spec = _budget_run_spec(
+        executor,
+        LoopPolicy(5, 1, max_same_call_repeats=2),
+        tool_names=("uncatalogued_write",),
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+
+    messages = asyncio.run(agent.run(run_spec))
+
+    assert executor.calls == 2
+    blocked = [
+        json.loads(item["model_content"])
+        for item in messages
+        if item.get("role") == "tool"
+    ][-1]
+    assert blocked["error_code"] == "duplicate_call_blocked"
+    assert messages[-1]["termination_reason"] == "duplicate_call_limit"
+
+
+def test_wall_time_prevents_new_tools_and_final_model_generation():
+    class Executor:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _name, _arguments):
+            self.calls += 1
+
+    class SlowProvider(_BudgetProvider):
+        def __init__(self, tool_generations):
+            super().__init__(tool_generations)
+            self.calls = 0
+
+        async def generate(self, _messages, _schemas):
+            self.calls += 1
+            await asyncio.sleep(10)
+
+    executor = Executor()
+    provider = SlowProvider([[ToolCall("fake_tool", {})]])
+    run_spec = _budget_run_spec(
+        executor,
+        LoopPolicy(3, 1, max_wall_time_seconds=0.01),
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+
+    messages = asyncio.run(agent.run(run_spec))
+
+    assert executor.calls == 0
+    assert provider.calls == 1
+    assert messages[-1]["termination_reason"] == "wall_time_limit"
+    assert messages[-1]["content"]
+
+
+def test_complete_sse_event_exposes_termination_metadata():
+    provider = _BudgetProvider([])
+    run_spec = _budget_run_spec(
+        SimpleNamespace(), LoopPolicy(1, 1), tool_names=()
+    )
+    agent = object.__new__(Agent)
+    agent.llm_provider = provider
+
+    async def collect():
+        return [event async for event in agent.run_stream(run_spec)]
+
+    events = asyncio.run(collect())
+
+    assert events[-1].data["termination_reason"] == "completed"
+    assert events[-1].data["run_metadata"]["iterations_used"] == 1
+    assert events[-1].data["run_metadata"]["tool_attempts"] == 0
+
+
+def test_bound_executor_converts_unknown_exception_without_exposing_details():
+    class View:
+        names = frozenset({"get_time"})
+
+        def contains(self, _name):
+            return True
+
+        def normalize_arguments(self, _name, arguments):
+            return dict(arguments)
+
+        async def execute(self, _name, _arguments):
+            raise LookupError("secret upstream diagnostic")
+
+    definition = WORKSPACE_DEFINITIONS["learning"]
+    route = WorkspaceRoute(
+        workspace_type="learning",
+        agent_profile_id=definition.profile_id,
+        skill_scopes=definition.skill_scopes,
+        tool_scopes=definition.tool_scopes,
+        prompt_key=definition.prompt_key,
+        profile_policy=definition.profile_policy,
+        memory_policy_id=definition.memory_policy_id,
+        resource_scope=ResourceScope(),
+        action_policy=definition.action_policy,
+    )
+    context = ToolExecutionContext(
+        user_id="u1",
+        conversation_id="c1",
+        workspace_route=route,
+        authorized_resources=route.resource_scope,
+        conversation_mode="normal",
+        runtime_dependencies=AgentRuntimeDependencies(),
+        request_id="request-error",
+        run_id="run-error",
+    )
+    executor = BoundToolExecutor(View(), SimpleNamespace(), context)
+
+    result = asyncio.run(executor.execute("get_time", {}))
+
+    assert isinstance(result, ToolExecutionResult)
+    assert result.model_content["error_code"] == "tool_internal_error"
+    assert result.model_content["retryable"] is False
+    assert "secret" not in json.dumps(result.model_content, ensure_ascii=False)
+    assert result.audit_metadata["exception_type"] == "LookupError"
+    assert "secret upstream diagnostic" in result.audit_metadata["traceback"]

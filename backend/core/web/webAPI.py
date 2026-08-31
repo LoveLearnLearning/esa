@@ -163,6 +163,7 @@ from backend.core.utils.config import (
     MODEL_MAX_NUM_SEQS,
     MODEL_MAX_OUTPUT_TOKENS,
     MODEL_PATH,
+    MODEL_PIPELINE_PARALLEL_SIZE,
     MODEL_PERFORMANCE_MODE,
     MODEL_QUANTIZATION,
     MODEL_TENSOR_PARALLEL_SIZE,
@@ -505,6 +506,7 @@ async def lifespan(app: FastAPI):
         max_num_seqs=MODEL_MAX_NUM_SEQS,
         quantization=MODEL_QUANTIZATION,
         tensor_parallel_size=MODEL_TENSOR_PARALLEL_SIZE,
+        pipeline_parallel_size=MODEL_PIPELINE_PARALLEL_SIZE,
         lora_path=MODEL_LORA_PATH,
         lora_name=MODEL_LORA_NAME,
         lora_max_rank=MODEL_LORA_MAX_RANK,
@@ -844,12 +846,17 @@ def health() -> dict[str, str]:
 
 @api_router.get("/internal/metrics", tags=["operations"])
 def get_internal_metrics(request: Request):
-    """Expose the in-process profile metrics snapshot for operations."""
+    """Expose in-process profile and Agent runtime metrics."""
 
     profile_builder = getattr(request.app.state, "profile_builder", None)
     if profile_builder is None:
         return {"error": "profile_builder not initialized"}
-    return profile_builder.get_metrics_snapshot()
+    from backend.agent.runtime_metrics import AGENT_RUNTIME_METRICS
+
+    return {
+        **profile_builder.get_metrics_snapshot(),
+        "agent": AGENT_RUNTIME_METRICS.snapshot(),
+    }
 
 
 @api_router.get("/internal/metrics/personal-knowledge-base", tags=["operations"])
@@ -871,12 +878,17 @@ def get_personal_knowledge_base_metrics(request: Request):
     tags=["operations"],
 )
 def get_metrics_prometheus(request: Request):
-    """Expose profile metrics using the Prometheus text format."""
+    """Expose profile and Agent metrics using the Prometheus text format."""
 
     profile_builder = getattr(request.app.state, "profile_builder", None)
     if profile_builder is None:
         return "profile_builder not initialized\n"
-    return profile_builder.get_metrics_prometheus()
+    from backend.agent.runtime_metrics import AGENT_RUNTIME_METRICS
+
+    return (
+        profile_builder.get_metrics_prometheus()
+        + AGENT_RUNTIME_METRICS.to_prometheus()
+    )
 
 
 def create_app(

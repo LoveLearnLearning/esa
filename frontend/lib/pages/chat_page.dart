@@ -15,6 +15,7 @@ import '../models/task_mode.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import '../utils/keyboard_dismiss_guard.dart';
 import '../widgets/assistant_message.dart';
 import '../widgets/agent_action_sheet.dart';
 import '../widgets/attachment_preview/attachment_preview.dart';
@@ -149,6 +150,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _pendingSend = false;
   bool _chatTransitionScheduled = false;
   bool _keyboardWasOpen = false;
+  final _keyboardDismissGuard = KeyboardDismissGuard();
   Set<KnowledgeSource> _knowledgeSources = const {
     KnowledgeSource.personal,
     KnowledgeSource.public,
@@ -165,6 +167,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _keyboardDismissGuard.install(_handleKeyboardDismissed);
+  }
+
+  /// 软键盘被直接收起（不点发送）时释放输入框焦点，
+  /// 让外层布局随 viewInsets 恢复，避免底部残留键盘高度的黑屏。
+  void _handleKeyboardDismissed() {
+    if (!mounted) return;
+    if (FocusManager.instance.primaryFocus?.hasFocus ?? false) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
   }
 
   @override
@@ -246,6 +258,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _keyboardDismissGuard.dispose();
     _streamRenderingPaused.dispose();
     _scrollController.dispose();
     super.dispose();
