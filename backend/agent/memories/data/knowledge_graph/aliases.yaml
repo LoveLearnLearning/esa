@@ -47,3 +47,5 @@ aliases:
     - stack
   队列:
     - queue
+  概率论基础:
+    - 概率论

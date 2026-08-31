@@ -69,7 +69,7 @@ def test_system_prompt_defines_a_unified_search_result_synthesis_contract():
     assert "最终回答必须" in prompt
     assert "直接完成用户任务" in prompt
     assert "不得按 Tool 结果逐条复述" in prompt
-    assert "稳定的通用知识" in prompt
+    assert "模型自身已有的稳定通用知识" in prompt
     assert "实时或外部事实不得猜测" in prompt
 
 

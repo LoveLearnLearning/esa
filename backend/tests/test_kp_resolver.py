@@ -49,6 +49,14 @@ def test_resolves_hash_table_name(resolver):
     assert matches[0].kp_id == "哈希表"
 
 
+def test_resolves_probability_theory_alias(resolver):
+    """课程简称“概率论”应解析到知识图谱中的 canonical 知识点。"""
+    matches = resolver.resolve("给我讲一下概率论")
+
+    assert matches[0].kp_id == "概率论基础"
+    assert matches[0].matched_by == "alias"
+
+
 def test_ascii_acronym_requires_word_boundaries(resolver):
     """验证 `ascii_acronym_requires_word_boundaries` 场景。"""
     matches = resolver.resolve("endpoint configuration")
