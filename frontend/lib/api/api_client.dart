@@ -11,7 +11,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 import '../config.dart';
 import '../models/hust_import_models.dart';
@@ -2221,9 +2221,57 @@ class ApiClient {
   }
 
   Future<AttachmentContent> fetchSourcePreview(String url) async {
-    final parsed = Uri.tryParse(url);
-    if (parsed == null) throw ApiException(400, '来源地址无效');
-    final target = parsed.hasScheme ? parsed : _uri(url);
+    final target = resolveSourcePreviewUri(url);
+    final response = await http.get(target, headers: _headers(auth: true));
+    if (response.statusCode != 200) _fail(response);
+    return AttachmentContent(
+      bytes: response.bodyBytes,
+      mediaType: response.headers['content-type'] ?? 'application/octet-stream',
+      filename: target.pathSegments.isEmpty ? '来源文件' : target.pathSegments.last,
+    );
+  }
+
+  @visibleForTesting
+  Uri resolveSourcePreviewUri(String url, {Uri? pageUri}) {
+    final value = url.trim();
+    final parsed = Uri.tryParse(value);
+    if (parsed == null ||
+        value.isEmpty ||
+        parsed.hasAuthority && !parsed.hasScheme) {
+      throw ApiException(400, '来源地址无效');
+    }
+
+    final configuredBase = Uri.tryParse(baseUrl);
+    if (configuredBase == null) throw ApiException(400, '来源地址无效');
+    final apiBase = configuredBase.hasScheme
+        ? configuredBase
+        : (pageUri ?? (kIsWeb ? Uri.base : null))?.resolveUri(configuredBase);
+    if (apiBase == null || !apiBase.hasScheme || apiBase.host.isEmpty) {
+      throw ApiException(400, '来源地址无效');
+    }
+
+    late final Uri target;
+    if (parsed.hasScheme) {
+      target = parsed;
+    } else {
+      final apiPath = apiBase.path.endsWith('/')
+          ? apiBase.path.substring(0, apiBase.path.length - 1)
+          : apiBase.path;
+      final sourcePath = parsed.path.startsWith('/')
+          ? parsed.path
+          : '/${parsed.path}';
+      final targetPath =
+          apiPath.isNotEmpty &&
+              (sourcePath == apiPath || sourcePath.startsWith('$apiPath/'))
+          ? sourcePath
+          : '$apiPath$sourcePath';
+      target = apiBase.replace(
+        path: targetPath,
+        query: parsed.hasQuery ? parsed.query : null,
+        fragment: null,
+      );
+    }
+
     final localHost = const {
       'localhost',
       '127.0.0.1',
@@ -2232,13 +2280,12 @@ class ApiClient {
     if (target.scheme != 'https' && !(target.scheme == 'http' && localHost)) {
       throw ApiException(400, '来源地址必须使用 HTTPS');
     }
-    final response = await http.get(target, headers: _headers(auth: true));
-    if (response.statusCode != 200) _fail(response);
-    return AttachmentContent(
-      bytes: response.bodyBytes,
-      mediaType: response.headers['content-type'] ?? 'application/octet-stream',
-      filename: target.pathSegments.isEmpty ? '来源文件' : target.pathSegments.last,
-    );
+    if (target.scheme != apiBase.scheme ||
+        target.host != apiBase.host ||
+        target.port != apiBase.port) {
+      throw ApiException(400, '来源地址不受信任');
+    }
+    return target;
   }
 
   Future<AttachmentTransfer> _openPersonalKnowledgeBaseTransfer(

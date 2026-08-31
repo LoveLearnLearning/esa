@@ -22,6 +22,55 @@ void main() {
     );
   });
 
+  test('public source preview resolves a web-relative URL through /api', () {
+    final api = ApiClient(baseUrl: '/api');
+
+    final target = api.resolveSourcePreviewUri(
+      '/knowledge-base/public/documents/doc-1/content',
+      pageUri: Uri.parse('https://www.lovelearnlearning.cn/esa/'),
+    );
+
+    expect(
+      target,
+      Uri.parse(
+        'https://www.lovelearnlearning.cn/api/'
+        'knowledge-base/public/documents/doc-1/content',
+      ),
+    );
+  });
+
+  test('public source preview does not duplicate an existing /api prefix', () {
+    final api = ApiClient(baseUrl: '/api');
+
+    final target = api.resolveSourcePreviewUri(
+      '/api/knowledge-base/public/documents/doc-1/content',
+      pageUri: Uri.parse('https://www.lovelearnlearning.cn/esa/'),
+    );
+
+    expect(
+      target,
+      Uri.parse(
+        'https://www.lovelearnlearning.cn/api/'
+        'knowledge-base/public/documents/doc-1/content',
+      ),
+    );
+  });
+
+  test('public source preview rejects a cross-origin URL', () {
+    final api = ApiClient(baseUrl: 'https://www.lovelearnlearning.cn/api');
+
+    expect(
+      () => api.resolveSourcePreviewUri('https://example.com/source.pdf'),
+      throwsA(
+        isA<ApiException>().having(
+          (error) => error.detail,
+          'detail',
+          '来源地址不受信任',
+        ),
+      ),
+    );
+  });
+
   test('message request sends the selected knowledge sources', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(server.close);
