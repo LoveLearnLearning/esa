@@ -67,16 +67,18 @@ class _HomeShellState extends State<HomeShell> {
     final target = section == StudentSection.research
         ? WorkspaceType.research
         : WorkspaceType.learning;
-    if (app.activeWorkspace != target) await app.switchWorkspace(target);
-    if (section == StudentSection.home && app.activeId != null) {
-      await app.newConversation();
-    }
-    if (!mounted) return;
+    // 先切换 section，避免 switchWorkspace 触发 rebuild 时仍停留在旧 section，
+    // 导致研究空间短暂闪现“学习助手”对话界面。
     setState(() {
       _section = section;
       _learningChatOpen = false;
       if (section != StudentSection.research) _researchProjectChatOpen = false;
     });
+    if (app.activeWorkspace != target) await app.switchWorkspace(target);
+    if (section == StudentSection.home && app.activeId != null) {
+      await app.newConversation();
+    }
+    if (!mounted) return;
   }
 
   void _showHome() {

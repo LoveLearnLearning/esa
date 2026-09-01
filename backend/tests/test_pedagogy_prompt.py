@@ -58,6 +58,21 @@ def test_system_prompt_defines_when_tools_must_be_used():
     assert "默认直接回答" in prompt
 
 
+def test_system_prompt_defines_a_unified_search_result_synthesis_contract():
+    """RAG、Web Search 和 arXiv 结果都必须先筛选，再完成原始任务。"""
+    prompt = build_system_prompt(prompt_ctx=PromptContext())
+
+    assert "搜索和检索结果是候选证据，不是最终答案" in prompt
+    assert "相关性、可信度" in prompt
+    assert "时效性和覆盖度" in prompt
+    assert "舍弃偏题、重复" in prompt
+    assert "最终回答必须" in prompt
+    assert "直接完成用户任务" in prompt
+    assert "不得按 Tool 结果逐条复述" in prompt
+    assert "模型自身已有的稳定通用知识" in prompt
+    assert "实时或外部事实不得猜测" in prompt
+
+
 def test_build_prompt_has_no_duplicate_prompt_or_style_rule_tables():
     """验证 `build_prompt_has_no_duplicate_prompt_or_style_rule_tables` 场景。"""
     import backend.core.message.build_prompt as build_prompt_module

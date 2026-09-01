@@ -38,6 +38,17 @@ def test_concept_question_routes_to_grounded_explanation():
     assert decision.skill_name == "grounded_explanation"
 
 
+def test_plain_teaching_phrases_route_to_grounded_explanation():
+    """口语化的讲解请求也应进入有依据的讲解流程。"""
+    decision = PedagogyRouter.route(
+        "给我讲一下二叉树的基础知识",
+        resolved_kp_ids=("二叉树",),
+    )
+
+    assert decision.skill_name == "grounded_explanation"
+    assert decision.task_type == "learning"
+
+
 def test_ambiguous_engineering_term_can_still_be_a_learning_concept():
     """接口、依赖、异常等歧义词不应压过明确的概念提问。"""
     decision = PedagogyRouter.route(
