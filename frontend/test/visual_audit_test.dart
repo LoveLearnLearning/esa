@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/api/api_client.dart';
 import 'package:frontend/models/models.dart';
@@ -19,11 +20,42 @@ class _VisualApi extends ApiClient {
     description: '整合神经影像、认知量表与生物标志物数据，构建可解释的 MCI 识别模型',
     status: 'active',
     updatedAt: DateTime(2026),
+    documentCount: 12,
   );
 
   @override
-  Future<ScheduleSnapshot> getSchedule() async =>
-      const ScheduleSnapshot(courses: [], settings: ScheduleSettings());
+  Future<PlannerSnapshot> getPlanner() async => const PlannerSnapshot();
+
+  @override
+  Future<ScheduleSnapshot> getSchedule() async => const ScheduleSnapshot(
+    courses: [
+      ScheduleCourse(
+        id: 'schedule-algorithms',
+        name: '数据结构与算法',
+        weekday: 3,
+        startPeriod: 1,
+        endPeriod: 2,
+        startWeek: 1,
+        endWeek: 18,
+        colorValue: 0xFF4F7FF7,
+        teacher: '陈老师',
+        location: '东九楼 D202',
+      ),
+      ScheduleCourse(
+        id: 'schedule-os',
+        name: '操作系统原理与实践',
+        weekday: 4,
+        startPeriod: 3,
+        endPeriod: 4,
+        startWeek: 1,
+        endWeek: 18,
+        colorValue: 0xFF5E8B75,
+        teacher: '李老师',
+        location: '南一楼 307',
+      ),
+    ],
+    settings: ScheduleSettings(),
+  );
 
   @override
   Future<List<ChatConversation>> listWorkspaceConversations(
@@ -218,6 +250,18 @@ class _VisualApi extends ApiClient {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    final textLoader = FontLoader('NotoSansSC')
+      ..addFont(rootBundle.load('assets/fonts/NotoSansSC-Variable.ttf'));
+    final iconLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
+      ..addFont(
+        rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+      );
+    await Future.wait([textLoader.load(), iconLoader.load()]);
+  });
+
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   Future<AppState> pumpShell(
@@ -238,6 +282,38 @@ void main() {
     if (conversation) {
       await state.loadConversations();
       await state.setActive('chat');
+    } else {
+      state
+        ..learningCourses = const [
+          LearningCourseSummary(
+            name: '数据结构与算法',
+            totalPoints: 12,
+            evaluatedPoints: 8,
+            weakPoints: 2,
+            reviewPoints: 1,
+            averageMastery: 51,
+          ),
+        ]
+        ..masteryReport = const MasteryReport(
+          totalPoints: 12,
+          averageMastery: 51,
+          weakPoints: [MasteryPoint(name: 'Dijkstra', masteryLevel: 42)],
+          strongPoints: [],
+          stalePoints: [],
+        )
+        ..userStats = const UserStats(learningStreakDays: 6)
+        ..conversations.addAll([
+          ChatConversation(
+            id: 'recent-1',
+            title: '最短路径算法对比（Dijkstra vs Bellman-Ford）',
+            updatedAt: DateTime(2026, 9, 2, 14, 20),
+          ),
+          ChatConversation(
+            id: 'recent-2',
+            title: '图的存储结构（邻接表 vs 邻接矩阵）',
+            updatedAt: DateTime(2026, 9, 1, 21, 15),
+          ),
+        ]);
     }
     await tester.pumpWidget(
       RepaintBoundary(
@@ -271,6 +347,11 @@ void main() {
     await capture(tester, '.audit-landing-mobile.png');
   });
 
+  testWidgets('large mobile landing', (tester) async {
+    await pumpShell(tester, size: const Size(430, 932));
+    await capture(tester, '.audit-landing-mobile-large.png');
+  });
+
   testWidgets('desktop conversation', (tester) async {
     await pumpShell(tester, size: const Size(1440, 900), conversation: true);
     await capture(tester, '.audit-conversation-desktop.png');
@@ -293,6 +374,22 @@ void main() {
     await tester.tap(find.text('知识'));
     await tester.pumpAndSettle();
     await capture(tester, '.audit-knowledge-mobile.png');
+  });
+
+  testWidgets('mobile schedule workspace', (tester) async {
+    await pumpShell(tester, size: const Size(390, 844));
+    await tester.tap(find.text('日程'));
+    await tester.pumpAndSettle();
+    await capture(tester, '.audit-schedule-mobile.png');
+  });
+
+  testWidgets('mobile research workspace', (tester) async {
+    await pumpShell(tester, size: const Size(390, 844));
+    await tester.tap(
+      find.byKey(const ValueKey('student-research-destination')),
+    );
+    await tester.pumpAndSettle();
+    await capture(tester, '.audit-research-workspace-mobile.png');
   });
 
   testWidgets('desktop research project', (tester) async {

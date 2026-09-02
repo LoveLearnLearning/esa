@@ -199,10 +199,9 @@ class _PlannerPageState extends State<PlannerPage> {
     titleController.dispose();
     if (draft == null || !mounted) return;
     try {
-      final created = await AppScope.of(context).api.createPlannerTodo(
-        draft.title,
-        dueAt: draft.dueAt,
-      );
+      final created = await AppScope.of(
+        context,
+      ).api.createPlannerTodo(draft.title, dueAt: draft.dueAt);
       if (mounted) setState(() => _todos = [created, ..._todos]);
     } on ApiException catch (error) {
       if (mounted) _showError(error.detail);
@@ -211,10 +210,9 @@ class _PlannerPageState extends State<PlannerPage> {
 
   Future<void> _toggleTodo(String id, bool done) async {
     try {
-      final updated = await AppScope.of(context).api.updatePlannerTodo(
-        id,
-        done: done,
-      );
+      final updated = await AppScope.of(
+        context,
+      ).api.updatePlannerTodo(id, done: done);
       if (!mounted) return;
       setState(() {
         _todos = [for (final todo in _todos) todo.id == id ? updated : todo];
@@ -347,10 +345,9 @@ class _PlannerPageState extends State<PlannerPage> {
 
   Future<void> _updateGoalProgress(String id, int progress) async {
     try {
-      final updated = await AppScope.of(context).api.updatePlannerGoal(
-        id,
-        progress: progress.clamp(0, 100),
-      );
+      final updated = await AppScope.of(
+        context,
+      ).api.updatePlannerGoal(id, progress: progress.clamp(0, 100));
       if (!mounted) return;
       setState(() {
         _goals = [for (final goal in _goals) goal.id == id ? updated : goal];
@@ -372,7 +369,9 @@ class _PlannerPageState extends State<PlannerPage> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -419,6 +418,9 @@ class _PlannerPageState extends State<PlannerPage> {
       ),
       PlannerTab.schedule => const SizedBox.shrink(),
     };
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return _mobileHeader(context, action);
+    }
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       decoration: BoxDecoration(
@@ -472,6 +474,73 @@ class _PlannerPageState extends State<PlannerPage> {
             ],
             onChanged: _selectTab,
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mobileHeader(BuildContext context, Widget action) {
+    const entries = <(PlannerTab, String)>[
+      (PlannerTab.schedule, '课表'),
+      (PlannerTab.todo, 'Todo'),
+      (PlannerTab.deadline, 'Deadline'),
+      (PlannerTab.goal, 'Goal'),
+    ];
+    final showAction = _tab != PlannerTab.schedule;
+    return Container(
+      key: const ValueKey('mobile-planner-tabs'),
+      height: 44,
+      decoration: BoxDecoration(
+        color: context.scheme.surface,
+        border: Border(bottom: BorderSide(color: context.n.divider)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(left: 8),
+              child: Row(
+                children: [
+                  for (final entry in entries)
+                    InkWell(
+                      onTap: () => _selectTab(entry.$1),
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 70,
+                          minHeight: 44,
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: _tab == entry.$1
+                                  ? context.scheme.primary
+                                  : Colors.transparent,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          entry.$2,
+                          style: context.texts.bodySmall?.copyWith(
+                            fontSize: 13,
+                            color: _tab == entry.$1
+                                ? context.scheme.onSurface
+                                : context.n.n600,
+                            fontWeight: _tab == entry.$1
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (showAction) SizedBox(width: 52, child: Center(child: action)),
         ],
       ),
     );

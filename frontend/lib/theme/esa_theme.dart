@@ -5,16 +5,16 @@ import 'package:flutter/material.dart';
 
 class EsaColors {
   // dark (default)
-  static const dBg = Color(0xFF020913);
-  static const dSurface = Color(0xFF08121E);
-  static const dText = Color(0xFFF3F6FC);
-  static const dDivider = Color(0xFF203044);
-  static const dN100 = Color(0xFF0D1826);
-  static const dN200 = Color(0xFF122033);
-  static const dN300 = Color(0xFF1B2B40);
-  static const dN500 = Color(0xFF5F6D82);
-  static const dN600 = Color(0xFF95A2B6);
-  static const dN700 = Color(0xFFCAD3E0);
+  static const dBg = Color(0xFF080D14);
+  static const dSurface = Color(0xFF0D1520);
+  static const dText = Color(0xFFF2F5F9);
+  static const dDivider = Color(0xFF26364A);
+  static const dN100 = Color(0xFF121C29);
+  static const dN200 = Color(0xFF18253A);
+  static const dN300 = Color(0xFF223149);
+  static const dN500 = Color(0xFF66758A);
+  static const dN600 = Color(0xFF9AA8BA);
+  static const dN700 = Color(0xFFD3DAE5);
 
   // light
   static const lBg = Color(0xFFF3F2F2);
@@ -29,7 +29,7 @@ class EsaColors {
   static const lN700 = Color.fromARGB(255, 0, 0, 0);
 
   // shared —— 蓝色主色调
-  static const accent = Color(0xFF3478F6); // blue-600 主按钮 海报 强调
+  static const accent = Color(0xFF4F7FF7); // 品牌蓝
   static const accent100 = Color(0xFFEAF1FF); // 浅蓝 提示条底色
   static const accent600 = Color(0xFF1F63EA);
   static const accent700 = Color.fromARGB(255, 135, 175, 250); // 深蓝 提示条文字
@@ -78,14 +78,14 @@ class EsaNeutrals extends ThemeExtension<EsaNeutrals> {
 
 class EsaRadii {
   static const bubble = 18.0; // user message
-  static const composer = 18.0; // input container
+  static const composer = 8.0; // input container
   static const sheet = 18.0; // profile dialog, big avatar
   static const button = 10.0; // buttons, small avatar, drawer new-chat
   static const buttonLg = 10.0; // auth submit
-  static const field = 10.0; // inputs, list rows, segmented control
+  static const field = 8.0; // inputs, list rows, segmented control
   static const iconButton = 9.0; // 30px icon buttons
-  static const toolCard = 12.0;
-  static const card = 12.0; // suggestion cards
+  static const toolCard = 8.0;
+  static const card = 8.0; // suggestion cards
   static const pill = 999.0; // send button, attachment chip, switches
 }
 
@@ -211,7 +211,11 @@ ThemeData esaTheme({required Brightness brightness}) {
       style: FilledButton.styleFrom(
         backgroundColor: EsaColors.accent,
         foregroundColor: EsaColors.onAccent,
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+        textStyle: const TextStyle(
+          fontFamily: 'NotoSansSC',
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(EsaRadii.buttonLg),
@@ -223,7 +227,11 @@ ThemeData esaTheme({required Brightness brightness}) {
       style: OutlinedButton.styleFrom(
         foregroundColor: text,
         side: BorderSide(color: n.divider),
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+        textStyle: const TextStyle(
+          fontFamily: 'NotoSansSC',
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(EsaRadii.button),
         ),

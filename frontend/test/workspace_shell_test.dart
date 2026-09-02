@@ -183,4 +183,66 @@ void main() {
 
     expect(find.text('桌面科研'), findsWidgets);
   });
+
+  testWidgets('mobile research workspace uses a compact searchable list', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = _WorkspaceApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'student'
+      ..projects.add(
+        ResearchProject(
+          id: 'mobile-project',
+          name: '多模态学习分析',
+          description: '整理课程文献并跟踪实验进度',
+          status: 'active',
+          updatedAt: DateTime(2026, 9, 1),
+        ),
+      );
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+    await tester.pumpWidget(
+      AppScope(
+        state: state,
+        child: MaterialApp(
+          theme: esaTheme(brightness: Brightness.dark),
+          home: const HomeShell(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('student-research-destination')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('科研工作空间'), findsNothing);
+    expect(find.text('研究空间'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('mobile-research-project-list')),
+      findsOneWidget,
+    );
+    expect(find.text('多模态学习分析'), findsOneWidget);
+    expect(find.text('进入项目'), findsNothing);
+    expect(find.text('全部'), findsOneWidget);
+    expect(find.text('进行中'), findsWidgets);
+    expect(find.text('已归档'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('research-search-toggle')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('research-search-field')),
+      '不存在',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('没有匹配的项目'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

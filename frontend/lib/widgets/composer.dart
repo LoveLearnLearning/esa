@@ -41,6 +41,8 @@ class Composer extends StatefulWidget {
     this.personalKnowledgeBaseId,
     this.onPersonalKnowledgeBaseChanged,
     this.onStop,
+    this.mobileHome = false,
+    this.onVoice,
   });
 
   final bool busy;
@@ -76,6 +78,8 @@ class Composer extends StatefulWidget {
   final List<PersonalKnowledgeBaseSummary> personalKnowledgeBases;
   final String? personalKnowledgeBaseId;
   final ValueChanged<String?>? onPersonalKnowledgeBaseChanged;
+  final bool mobileHome;
+  final VoidCallback? onVoice;
 
   /// 模型正在输出时，发送按钮切换为终止按钮，点击后调用该回调。
   final VoidCallback? onStop;
@@ -290,6 +294,9 @@ class ComposerState extends State<Composer> {
     final codeBlocks = _codeBlocks;
     final showMarkdownPreview =
         _controller.text.isNotEmpty && (_markdownMode || codeBlocks.isNotEmpty);
+    if (widget.mobileHome && narrow) {
+      return _buildMobileHomeComposer(context, inputStyle);
+    }
     return Container(
       padding: EdgeInsets.fromLTRB(narrow ? 0 : 18, 12, narrow ? 0 : 18, 14),
       child: Center(
@@ -412,6 +419,152 @@ class ComposerState extends State<Composer> {
                       },
                     ),
                   ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileHomeComposer(BuildContext context, TextStyle inputStyle) {
+    const suggestions = <String>['解释一个概念', '帮我规划今天', '继续上次学习'];
+    return ColoredBox(
+      key: const ValueKey('mobile-home-composer'),
+      color: context.scheme.surface,
+      child: SafeArea(
+        top: false,
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: 34,
+                child: ListView.separated(
+                  key: const ValueKey('mobile-home-suggestions'),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: suggestions.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) => ActionChip(
+                    label: Text(suggestions[index]),
+                    onPressed: () {
+                      setText(suggestions[index]);
+                      _focus.requestFocus();
+                    },
+                    side: BorderSide(color: context.n.divider),
+                    backgroundColor: context.n.n100,
+                    labelStyle: context.texts.bodySmall?.copyWith(
+                      color: context.n.n700,
+                      fontSize: 13,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+              if (widget.taskMode != null ||
+                  _attachment != null ||
+                  _uploadingAttachment) ...[
+                const SizedBox(height: 8),
+                if (widget.taskMode != null)
+                  _taskModeCard(context, widget.taskMode!),
+                if (widget.taskMode != null &&
+                    (_attachment != null || _uploadingAttachment))
+                  const SizedBox(height: 8),
+                if (_attachment != null || _uploadingAttachment)
+                  _attachmentChip(context),
+              ],
+              const SizedBox(height: 8),
+              ListenableBuilder(
+                listenable: _focus,
+                builder: (context, _) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 140),
+                  constraints: const BoxConstraints(minHeight: 56),
+                  decoration: BoxDecoration(
+                    color: context.n.n100,
+                    border: Border.all(
+                      color: _focus.hasFocus
+                          ? context.scheme.primary
+                          : context.n.divider,
+                      width: _focus.hasFocus ? 1.5 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(4, 5, 5, 5),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Tooltip(
+                        message: '添加附件',
+                        child: IconButton(
+                          key: const ValueKey('mobile-home-attachment'),
+                          onPressed: widget.busy || _uploadingAttachment
+                              ? null
+                              : _pickAttachment,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 44,
+                            height: 44,
+                          ),
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(LucideIcons.plus, size: 21),
+                        ),
+                      ),
+                      Expanded(
+                        child: Focus(
+                          onKeyEvent: _onKey,
+                          child: TextField(
+                            key: const ValueKey('composer-input'),
+                            controller: _controller,
+                            focusNode: _focus,
+                            minLines: 1,
+                            maxLines: 4,
+                            onChanged: _handleTextChanged,
+                            style: inputStyle.copyWith(
+                              fontSize: 15,
+                              height: 1.4,
+                            ),
+                            textAlignVertical: TextAlignVertical.center,
+                            decoration: InputDecoration(
+                              isCollapsed: true,
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 10,
+                              ),
+                              hintText: _focus.hasFocus ? null : '问我任何学习问题…',
+                              hintStyle: inputStyle.copyWith(
+                                color: context.n.n600,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Tooltip(
+                        message: '语音输入',
+                        child: IconButton(
+                          key: const ValueKey('mobile-home-voice'),
+                          onPressed: widget.onVoice,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 44,
+                            height: 44,
+                          ),
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(LucideIcons.mic, size: 20),
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      _sendButton(context),
+                    ],
+                  ),
                 ),
               ),
             ],

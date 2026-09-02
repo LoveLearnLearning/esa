@@ -21,6 +21,8 @@ const _courseColors = <int>[
   0xFFDB2777,
 ];
 
+enum _MobileScheduleView { today, threeDay, week }
+
 class SchedulePage extends StatefulWidget {
   const SchedulePage({super.key});
 
@@ -35,6 +37,7 @@ class _SchedulePageState extends State<SchedulePage> {
   int _weekSlideDirection = 1;
   bool _importing = false;
   int _week = 1;
+  _MobileScheduleView _mobileView = _MobileScheduleView.today;
 
   @override
   void didChangeDependencies() {
@@ -67,6 +70,21 @@ class _SchedulePageState extends State<SchedulePage> {
     }
     if (_week > totalWeeks) _week = totalWeeks;
     final narrow = MediaQuery.sizeOf(context).width < 760;
+
+    if (narrow) {
+      return Scaffold(
+        body: Column(
+          children: [
+            _mobileToolbar(context, app, totalWeeks),
+            Expanded(
+              child: !app.scheduleLoaded
+                  ? const Center(child: CircularProgressIndicator())
+                  : _mobileSchedule(context, app),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Scaffold(
       body: SafeArea(
@@ -124,15 +142,319 @@ class _SchedulePageState extends State<SchedulePage> {
           ],
         ),
       ),
-      floatingActionButton: narrow
-          ? FloatingActionButton(
-              tooltip: '添加课程',
-              onPressed: () => _openEditor(app, totalWeeks),
-              child: const Icon(LucideIcons.plus),
-            )
-          : null,
     );
   }
+
+  Widget _mobileToolbar(
+    BuildContext context,
+    AppState app,
+    int totalWeeks,
+  ) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: context.scheme.surface,
+      border: Border(bottom: BorderSide(color: context.n.divider)),
+    ),
+    child: Column(
+      children: [
+        SizedBox(
+          height: 44,
+          child: Row(
+            children: [
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '${app.activeScheduleTable?.name ?? '课表'} · 第 $_week 周',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.texts.titleMedium?.copyWith(fontSize: 15),
+                ),
+              ),
+              IconButton(
+                tooltip: '上一周',
+                onPressed: _week <= 1
+                    ? null
+                    : () => _changeWeek(_week - 1, totalWeeks),
+                constraints: const BoxConstraints(minWidth: 180, maxWidth: 260),
+                icon: const Icon(LucideIcons.chevronLeft, size: 18),
+              ),
+              IconButton(
+                tooltip: '下一周',
+                onPressed: _week >= totalWeeks
+                    ? null
+                    : () => _changeWeek(_week + 1, totalWeeks),
+                constraints: const BoxConstraints.tightFor(
+                  width: 44,
+                  height: 44,
+                ),
+                icon: const Icon(LucideIcons.chevronRight, size: 18),
+              ),
+              IconButton(
+                key: const ValueKey('mobile-schedule-add-course'),
+                tooltip: '添加课程',
+                onPressed: () => _openEditor(app, totalWeeks),
+                constraints: const BoxConstraints.tightFor(
+                  width: 44,
+                  height: 44,
+                ),
+                icon: const Icon(LucideIcons.plus, size: 20),
+              ),
+              PopupMenuButton<String>(
+                tooltip: '课表更多操作',
+                constraints: const BoxConstraints.tightFor(
+                  width: 44,
+                  height: 44,
+                ),
+                padding: EdgeInsets.zero,
+                icon: const Icon(LucideIcons.ellipsis, size: 20),
+                onSelected: (value) {
+                  if (value == '__import__') {
+                    _importSchedule(app);
+                  } else if (value == '__settings__') {
+                    _openScheduleSettings(app);
+                  } else {
+                    _onTableMenuSelected(app, value);
+                  }
+                },
+                itemBuilder: (_) => [
+                  for (final table in app.scheduleTables)
+                    PopupMenuItem(
+                      value: table.id,
+                      child: Text(
+                        table.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
+                    value: '__create__',
+                    child: Text('新建课程表'),
+                  ),
+                  const PopupMenuItem(
+                    value: '__import__',
+                    child: Text('从文件导入'),
+                  ),
+                  const PopupMenuItem(
+                    value: '__settings__',
+                    child: Text('课表设置'),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 4),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 40,
+          child: Row(
+            children: [
+              const SizedBox(width: 12),
+              _MobileScheduleViewButton(
+                key: const ValueKey('mobile-schedule-view-today'),
+                label: '今日',
+                selected: _mobileView == _MobileScheduleView.today,
+                onTap: () =>
+                    setState(() => _mobileView = _MobileScheduleView.today),
+              ),
+              _MobileScheduleViewButton(
+                key: const ValueKey('mobile-schedule-view-three-day'),
+                label: '3 日',
+                selected: _mobileView == _MobileScheduleView.threeDay,
+                onTap: () =>
+                    setState(() => _mobileView = _MobileScheduleView.threeDay),
+              ),
+              _MobileScheduleViewButton(
+                key: const ValueKey('mobile-schedule-view-week'),
+                label: '周',
+                selected: _mobileView == _MobileScheduleView.week,
+                onTap: () =>
+                    setState(() => _mobileView = _MobileScheduleView.week),
+              ),
+              const Spacer(),
+              Text('左右切换教学周', style: context.texts.labelSmall),
+              const SizedBox(width: 16),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _mobileSchedule(BuildContext context, AppState app) {
+    final today = DateTime.now().weekday;
+    return switch (_mobileView) {
+      _MobileScheduleView.today => _mobileDayList(context, app, [today]),
+      _MobileScheduleView.threeDay => _mobileDayList(context, app, [
+        for (var offset = 0; offset < 3; offset++) (today + offset - 1) % 7 + 1,
+      ]),
+      _MobileScheduleView.week => _mobileWeek(context, app),
+    };
+  }
+
+  List<ScheduleCourse> _coursesForDay(AppState app, int weekday) {
+    final courses = app.scheduleCourses
+        .where(
+          (course) => course.weekday == weekday && course.occursInWeek(_week),
+        )
+        .toList();
+    courses.sort(
+      (left, right) => left.startPeriod.compareTo(right.startPeriod),
+    );
+    return courses;
+  }
+
+  Widget _mobileDayList(
+    BuildContext context,
+    AppState app,
+    List<int> weekdays,
+  ) => ListView(
+    key: const ValueKey('mobile-schedule-list'),
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+    children: [
+      for (final weekday in weekdays) ...[
+        _MobileDayHeading(
+          label: weekday == DateTime.now().weekday
+              ? '今天 · ${_weekdays[weekday - 1]}'
+              : _weekdays[weekday - 1],
+          count: _coursesForDay(app, weekday).length,
+        ),
+        if (_coursesForDay(app, weekday).isEmpty)
+          const _MobileScheduleEmpty()
+        else
+          for (final course in _coursesForDay(app, weekday))
+            _mobileCourseRow(context, app, course),
+        const SizedBox(height: 12),
+      ],
+    ],
+  );
+
+  Widget _mobileCourseRow(
+    BuildContext context,
+    AppState app,
+    ScheduleCourse course,
+  ) {
+    final color = Color(course.colorValue);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: context.n.n100,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          key: ValueKey('mobile-schedule-course-${course.id}'),
+          onTap: () => _openEditor(app, app.userProfile.totalWeeks, course),
+          borderRadius: BorderRadius.circular(8),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 76),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 52,
+                  margin: const EdgeInsets.only(left: 8),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                SizedBox(
+                  width: 76,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Text(
+                      '${app.scheduleSettings.periodStartLabel(course.startPeriod)}\n'
+                      '${app.scheduleSettings.periodEndLabel(course.endPeriod)}',
+                      style: context.texts.bodySmall?.copyWith(
+                        color: context.n.n700,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(0, 10, 12, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          course.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.texts.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            height: 1.3,
+                          ),
+                        ),
+                        if (course.location.isNotEmpty ||
+                            course.teacher.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            [
+                              course.location,
+                              course.teacher,
+                            ].where((value) => value.isNotEmpty).join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.texts.bodySmall,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _mobileWeek(BuildContext context, AppState app) => LayoutBuilder(
+    builder: (context, constraints) => SingleChildScrollView(
+      key: const ValueKey('mobile-schedule-week-scroll'),
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+      child: SizedBox(
+        width: 7 * 184,
+        height: constraints.maxHeight - 28,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var weekday = 1; weekday <= 7; weekday++)
+              SizedBox(
+                width: 184,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _MobileDayHeading(
+                        label: _weekdays[weekday - 1],
+                        count: _coursesForDay(app, weekday).length,
+                      ),
+                      Expanded(
+                        child: ListView(
+                          padding: EdgeInsets.zero,
+                          children: [
+                            if (_coursesForDay(app, weekday).isEmpty)
+                              const _MobileScheduleEmpty()
+                            else
+                              for (final course in _coursesForDay(app, weekday))
+                                _mobileCourseRow(context, app, course),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
 
   Widget _header(
     BuildContext context,
@@ -2162,6 +2484,86 @@ class _OwnScrollbarScrollViewState extends State<_OwnScrollbarScrollView> {
 
   @override
   Widget build(BuildContext context) => widget.builder(context, _controller);
+}
+
+class _MobileScheduleViewButton extends StatelessWidget {
+  const _MobileScheduleViewButton({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Container(
+      constraints: const BoxConstraints(minWidth: 62, minHeight: 40),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: selected ? context.scheme.primary : Colors.transparent,
+            width: 2,
+          ),
+        ),
+      ),
+      child: Text(
+        label,
+        style: context.texts.bodySmall?.copyWith(
+          fontSize: 13,
+          color: selected ? context.scheme.onSurface : context.n.n600,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+        ),
+      ),
+    ),
+  );
+}
+
+class _MobileDayHeading extends StatelessWidget {
+  const _MobileDayHeading({required this.label, required this.count});
+
+  final String label;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 40,
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.texts.titleMedium?.copyWith(fontSize: 15),
+          ),
+        ),
+        Text('$count 节课', style: context.texts.bodySmall),
+      ],
+    ),
+  );
+}
+
+class _MobileScheduleEmpty extends StatelessWidget {
+  const _MobileScheduleEmpty();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    constraints: const BoxConstraints(minHeight: 52),
+    alignment: Alignment.centerLeft,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    decoration: BoxDecoration(
+      color: context.n.n100,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text('没有课程安排', style: context.texts.bodySmall),
+  );
 }
 
 /// 课程表名称输入对话框。控制器由本组件持有，随组件生命周期在

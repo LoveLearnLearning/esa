@@ -134,6 +134,10 @@ class _HomeShellState extends State<HomeShell> {
       onViewAssignments: _learningChatOpen
           ? null
           : () => unawaited(_select(StudentSection.assignments)),
+      onViewRecent:
+          _learningChatOpen || MediaQuery.sizeOf(context).width >= 1040
+          ? null
+          : () => _mobileScaffoldKey.currentState?.openDrawer(),
       onContinueLearning: _learningChatOpen
           ? null
           : () => unawaited(_continueLearning()),
@@ -376,7 +380,7 @@ class _HomeShellState extends State<HomeShell> {
                     : () => _showHome(),
                 onHistory: () => _mobileScaffoldKey.currentState?.openDrawer(),
               )
-            else if (!researchProjectActive)
+            else if (!researchProjectActive && !_inResearch)
               _MobileHeader(
                 section: _section,
                 onSelect: (section) => unawaited(_select(section)),
@@ -1627,45 +1631,112 @@ class _MobileHeader extends StatelessWidget {
   final VoidCallback? onHistory;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 14, 14, 10),
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('mobile-app-bar'),
+    height: 52,
+    padding: const EdgeInsets.only(left: 16, right: 6),
+    decoration: BoxDecoration(
+      color: context.scheme.surface,
+      border: Border(bottom: BorderSide(color: context.n.divider)),
+    ),
     child: Row(
       children: [
-        const _EsaWordmark(),
-        const SizedBox(width: 14),
+        const _EsaWordmark(compact: true),
+        Container(
+          width: 1,
+          height: 16,
+          margin: const EdgeInsets.symmetric(horizontal: 10),
+          color: context.n.divider,
+        ),
         Expanded(
-          child: Text(switch (section) {
-            StudentSection.home => '首页',
-            StudentSection.research => '研究空间',
-            StudentSection.knowledge => '知识地图',
-            StudentSection.knowledgeBase => '个人知识库',
-            StudentSection.assignments => '作业',
-            StudentSection.schedule => '日程',
-          }, style: context.texts.headlineSmall),
-        ),
-        IconButton(
-          tooltip: '长期记忆',
-          onPressed: onMemory,
-          icon: const Icon(LucideIcons.brain),
-        ),
-        IconButton(
-          tooltip: '待确认动作',
-          onPressed: onActions,
-          icon: const Icon(LucideIcons.shieldCheck),
-        ),
-        if (onHistory != null)
-          IconButton(
-            tooltip: '历史对话',
-            onPressed: onHistory,
-            icon: const Icon(LucideIcons.panelLeftOpen),
+          child: Text(
+            switch (section) {
+              StudentSection.home => '首页',
+              StudentSection.research => '研究空间',
+              StudentSection.knowledge => '知识地图',
+              StudentSection.knowledgeBase => '个人知识库',
+              StudentSection.assignments => '作业',
+              StudentSection.schedule => '日程',
+            },
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.texts.titleMedium?.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        IconButton(
-          tooltip: '设置',
-          onPressed: onProfile,
-          icon: const Icon(LucideIcons.settings),
+        ),
+        PopupMenuButton<_MobileHeaderMenuAction>(
+          key: const ValueKey('mobile-header-more'),
+          tooltip: '更多',
+          icon: const Icon(LucideIcons.ellipsis, size: 20),
+          iconSize: 20,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 180, maxWidth: 240),
+          onSelected: (action) {
+            switch (action) {
+              case _MobileHeaderMenuAction.history:
+                onHistory?.call();
+              case _MobileHeaderMenuAction.memory:
+                onMemory();
+              case _MobileHeaderMenuAction.actions:
+                onActions();
+              case _MobileHeaderMenuAction.settings:
+                onProfile();
+            }
+          },
+          itemBuilder: (context) => [
+            if (onHistory != null)
+              const PopupMenuItem(
+                value: _MobileHeaderMenuAction.history,
+                child: _MobileHeaderMenuItem(
+                  icon: LucideIcons.panelLeftOpen,
+                  label: '历史对话',
+                ),
+              ),
+            const PopupMenuItem(
+              value: _MobileHeaderMenuAction.memory,
+              child: _MobileHeaderMenuItem(
+                icon: LucideIcons.brain,
+                label: '长期记忆',
+              ),
+            ),
+            PopupMenuItem(
+              value: _MobileHeaderMenuAction.actions,
+              child: _MobileHeaderMenuItem(
+                icon: LucideIcons.shieldCheck,
+                label: '待确认动作',
+              ),
+            ),
+            PopupMenuItem(
+              value: _MobileHeaderMenuAction.settings,
+              child: _MobileHeaderMenuItem(
+                icon: LucideIcons.settings,
+                label: '设置与账户',
+              ),
+            ),
+          ],
         ),
       ],
     ),
+  );
+}
+
+enum _MobileHeaderMenuAction { history, memory, actions, settings }
+
+class _MobileHeaderMenuItem extends StatelessWidget {
+  const _MobileHeaderMenuItem({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Icon(icon, size: 18, color: context.n.n600),
+      const SizedBox(width: 12),
+      Text(label),
+    ],
   );
 }
 
@@ -1726,43 +1797,82 @@ class _MobileLearningTabs extends StatelessWidget {
       (StudentSection.knowledge, '知识'),
       (StudentSection.knowledgeBase, '资料库'),
     ];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
-      child: SizedBox(
-        height: 40,
+    return Container(
+      key: const ValueKey('mobile-primary-navigation'),
+      height: 44,
+      decoration: BoxDecoration(
+        color: context.scheme.surface,
+        border: Border(bottom: BorderSide(color: context.n.divider)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Row(
           children: [
-            for (var index = 0; index < entries.length; index++) ...[
-              if (index > 0) const SizedBox(width: 4),
-              Expanded(
-                child: Builder(
-                  builder: (context) {
-                    final entry = entries[index];
-                    final active = section == entry.$1;
-                    return TextButton(
-                      onPressed: () => onSelect(entry.$1),
-                      style: TextButton.styleFrom(
-                        backgroundColor: active
-                            ? EsaColors.accent.withValues(alpha: 0.16)
-                            : Colors.transparent,
-                        foregroundColor: active
-                            ? const Color(0xFF70A3FF)
-                            : context.n.n600,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: Text(entry.$2),
-                    );
-                  },
-                ),
+            for (final entry in entries)
+              _MobileLearningTab(
+                label: entry.$2,
+                active: section == entry.$1,
+                onTap: () => onSelect(entry.$1),
               ),
-            ],
           ],
         ),
       ),
     );
   }
+}
+
+class _MobileLearningTab extends StatelessWidget {
+  const _MobileLearningTab({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    selected: active,
+    label: label,
+    child: InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 70, minHeight: 44),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                label,
+                style: context.texts.bodySmall?.copyWith(
+                  color: active ? context.scheme.onSurface : context.n.n600,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ),
+            if (active)
+              Positioned(
+                left: 14,
+                right: 14,
+                bottom: 0,
+                child: Container(
+                  height: 2,
+                  decoration: BoxDecoration(
+                    color: context.scheme.primary,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _MobileBottomBar extends StatelessWidget {
@@ -1831,20 +1941,23 @@ class _BottomDestination extends StatelessWidget {
   Widget build(BuildContext context) => Expanded(
     child: InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 52),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
+              size: 20,
               color: active ? const Color(0xFF4B8CFF) : context.n.n600,
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11.5,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                 color: active ? const Color(0xFF4B8CFF) : context.n.n600,
               ),
             ),
