@@ -392,6 +392,12 @@ def get_mastery_report(course: str = "", user_name: str = "stu_demo") -> dict[st
     stale = sorted([i for i in points if i["needs_review"]], key=lambda i: i["retention"])[:5]
     return {
         "allowed": True, "user_name": user_name, "course": course_arg,
+        # 上游 `637e2c5`（2026-08-28）新增。`mastery_store.py:495` 就是
+        # `bool(points)` —— 它存在的理由写在后端自己的测试名里：
+        # 「用显式状态区分**有效空结果**和**真实的零掌握度**」，
+        # 与 learning_policy 里那条「has_record=false 表示未知，不得推断为薄弱或 50%」
+        # 是同一件事。契约测试（5.16）当场抓到了这个缺口。
+        "has_records": bool(points),
         "total_points": len(points),
         "avg_mastery": round(sum(float(i["mastery_level"]) for i in points) / len(points), 2) if points else 0.0,
         "weak_points": weak, "strong_points": strong, "stale_points": stale,
@@ -687,9 +693,9 @@ def get_learning_evidence_summary(kp_id: str = "", limit: int = 50,
 #
 # 抓取脚本：tools/capture_memory_tools.py（跑真实 BoundToolExecutor）。
 # ⚠️ 返回的是**执行器那一层**的值，也就是模型真正看得见的东西：
-# 成功时就是工具返回值原样，失败时是 execute() 包出来的
-# `{"ok": false, "error": ..., "tool": ..., "detail": ...}`
-# （capability_runtime.py:179-199）。
+# 成功时就是工具返回值原样，失败时是统一结构化错误协议
+# `{ok, error_code, error, retryable, tool, attempt, message}`
+# （2026-09-02 起，backend/agent/tools/execution_errors.py）。
 # ==========================================================================
 
 MEMORY_CACHE = ROOT / "dataset/data/cache/memory_real.json"
@@ -775,17 +781,66 @@ _BY_KEY = {m["memory_key"]: m for m in CORE_MEMORIES}
 _BY_ID = {m["memory_id"]: m for m in CORE_MEMORIES}
 
 
-def _denied(tool: str, detail: str) -> dict[str, Any]:
-    """MemoryPolicyDenied 被 BoundToolExecutor 接住后的样子（capability_runtime.py:179-185）。
+# 2026-09-02：上游 `d29d3e4` 把所有工具失败统一成一个协议
+# （`backend/agent/tools/execution_errors.py`）。模型看见的不再是
+# `{ok,error,tool,detail}`，而是下面这七个键 —— **`detail` 那句英文说明没有了**，
+# 换成一句固定中文 `message`。这是信息量的净减少，但我们的职责是与线上一致。
+#
+# 🔴 这里的文案不许手写：`tests/test_runtime_error_contract.py` 每次拿
+#    `ERROR_MESSAGES` 逐字核，改一个字就红。
+_ERROR_MESSAGES = {
+    "invalid_tool_arguments": "工具参数无效",
+    "memory_policy_denied": "当前记忆策略不允许执行该工具",
+    "tool_internal_error": "工具暂时无法完成请求，请稍后重试",
+    "tool_not_available": "当前上下文无法使用该工具",
+    "permission_denied": "当前请求无权执行该工具",
+    "tool_budget_exhausted": "本轮工具调用预算已用完",
+    "duplicate_call_blocked": "相同的失败工具调用已达到重复上限",
+}
+_RETRYABLE = frozenset(
+    {"timeout", "rate_limited", "upstream_unavailable", "network_error",
+     "temporary_tool_error"}
+)
 
-    ⚠️ 线上**不会**把这个异常抛给 agent loop，模型看到的就是这个 dict。
+
+def _structured_error(tool: str, error_code: str, attempt: int = 1) -> dict[str, Any]:
+    """统一结构化错误协议 —— 模型看得见的那一层。
+
+    链路核过（2026-09-02）：`ToolExecutionResult.model_content`
+    → `loop_runtime.tool_result_channels()` → `serialize_tool_result()`
+    → `agent.py:361` 的 `{"role":"tool","content":…}`。
+    `display_content` 走界面、`audit_metadata` 是独立字段，两者模型都看不到。
     """
-    return {"ok": False, "error": "memory_policy_denied", "tool": tool, "detail": detail}
+    if error_code not in _ERROR_MESSAGES:
+        raise ToolError(f"未知 error_code {error_code!r} —— 先去 execution_errors.py 对一遍")
+    return {
+        "ok": False,
+        "error_code": error_code,
+        "error": error_code,
+        "retryable": error_code in _RETRYABLE,
+        "tool": tool,
+        "attempt": attempt,
+        "message": _ERROR_MESSAGES[error_code],
+    }
 
 
-def _exec_error(tool: str, detail: str) -> dict[str, Any]:
-    """ValueError / RuntimeError 被接住后的样子（capability_runtime.py:193-199）。"""
-    return {"ok": False, "error": "tool_execution_error", "tool": tool, "detail": detail}
+def _denied(tool: str, detail: str) -> dict[str, Any]:
+    """记忆策略拒绝。
+
+    ⚠️ `detail` 现在**只是给读种子的人看的**，不进载荷 —— 线上没有这个字段了。
+    保留形参是为了让种子里那句英文说明留在原地（它解释了这条分支为什么存在）。
+    """
+    return _structured_error(tool, "memory_policy_denied")
+
+
+def _exec_error(tool: str, detail: str, error_code: str = "invalid_tool_arguments") -> dict[str, Any]:
+    """参数校验类失败。同上，`detail` 不进载荷。
+
+    实测线上：`get_mastery_level` 空/未知 kp、`recommend_practice` 负周数、
+    `save_core_memory` 空内容 —— 三者都是 `invalid_tool_arguments`。
+    内部错误（如删不存在的记忆）传 `error_code="tool_internal_error"`。
+    """
+    return _structured_error(tool, error_code)
 
 
 def tool_not_available(tool: str) -> dict[str, Any]:
@@ -795,7 +850,7 @@ def tool_not_available(tool: str) -> dict[str, Any]:
     isolated 去掉全部 5 个记忆工具、no_write 去掉 3 个写工具
     （capability_runtime.py:245-250），模型的工具表里根本没有它们。
     """
-    return {"ok": False, "error": "tool_not_available", "tool": tool}
+    return _structured_error(tool, "tool_not_available")
 
 
 def memory_tools_available(mode: str = "normal") -> list[str]:
@@ -1076,15 +1131,6 @@ def get_time() -> str:
     return (NOW - timedelta(hours=8)).strftime("%m/%d/%y-%H:%M:%S")
 
 
-def get_weather(city: str) -> str:
-    """复刻 tools.get_weather —— 后端目前是硬编码桩，恒返回同一句。
-
-    这不是我编的：backend/agent/tools/tools.py 里就是 f"{city}: 26 摄氏度 晴朗"。
-    所以这个工具的样本只能训"何时该调"，训不了"如何消费真实天气"。
-    """
-    return f"{city}: 26 摄氏度 晴朗"
-
-
 # web_search 的真实失败观测。
 #
 # ⚠️ 2026-08-15 重写。后端 `1b64473` 把 web_search 从本地 SearXNG **整个换成了
@@ -1149,6 +1195,60 @@ def retrieve_federated_knowledge(query: str, top_k: int = 5,
             "mode": "personal_and_public",
             "personal_candidates": 0,
             "public_candidates": 0,
+        },
+    }
+
+
+def retrieve_knowledge(query: str, top_k: int = 5,
+                      similarity_threshold: float | None = None) -> dict[str, Any]:
+    """统一检索工具在**已选个人库、而个人库不可用**时的返回。
+
+    2026-08-26 上游 `c80bad7`「统一 retrive 工具，将路由机制硬编码，由用户在
+    对话框选择」之后，模型只看得见 `retrieve_knowledge` 一个检索工具，
+    `knowledge_sources` 由前端放进**可信执行上下文**，不在模型可见的
+    `parameters` 里（已核对）。所以模型不再选库，只管发 query。
+
+    ⚠️ 只能产出这一种状态，理由同 `retrieve_federated_knowledge`：
+    成功返回需要真实 RAG 服务，我们没有，也**不许编**（《02》「不伪造」承诺）。
+
+    结构不是手写的：直接跑上游 `backend/agent/rag/unified_retrieval.py::
+    retrieve_selected_knowledge`（`knowledge_sources=["personal"]`、
+    两个 service 都是 `None`），取 `ToolExecutionResult.model_content`
+    —— **模型看得见的就是这一层**，逐字段抄回来。
+
+    ⚠️ 另一条路是 `knowledge_sources=["public"]`：那一支在 `unified_retrieval.py:54`
+    直接 `raise RuntimeError("public knowledge service is not configured")`，
+    是**报错**不是降级载荷，归 `seeds/tool_errors.yaml` 的 `exec_error` 组。
+
+    Args:
+        query: str => 检索问题。
+        top_k: int => 最多返回多少条（降级时无影响，保留以对齐 schema）。
+        similarity_threshold: float | None => 公共库 Reranker 阈值（降级时无影响）。
+
+    Returns:
+        dict[str, Any] => 与线上逐字段一致的降级载荷。
+    """
+    return {
+        "contract_version": "retrieve_knowledge.unified.v1",
+        "query": query,
+        "selected_sources": ["personal"],
+        "result_count": 0,
+        "results": [],
+        "citation_policy": {
+            "verbatim_requires_quote_eligible": True,
+            "when_ineligible": "paraphrase_and_disclose_unverified_extraction",
+        },
+        "execution": {
+            "selected_sources": ["personal"],
+            "ranking_method": "single_source_rank",
+            "degraded": ["personal_knowledge_base_unavailable"],
+        },
+        "budget": {
+            "limit": 2048,
+            "original_token_count": 140,
+            "returned_token_count": 140,
+            "truncated": False,
+            "counter": "fallback",
         },
     }
 
@@ -1220,11 +1320,13 @@ def sandbox_disabled() -> dict[str, Any]:
 
 FIXTURE_FUNCTIONS = {
     "arxiv_search": arxiv_search,
+    "retrieve_knowledge": retrieve_knowledge,
+    # ⚠️ 下面两个是 c80bad7 之前的旧世界，上游已删。重生成完成后连同
+    #    上面的函数定义一起删；现在留着是为了旧 IR 还能重放。
     "retrieve_federated_knowledge": retrieve_federated_knowledge,
     "retrieve_personal_knowledge": retrieve_personal_knowledge,
     "run_in_sandbox": run_in_sandbox,
     "get_time": get_time,
-    "get_weather": get_weather,
     "recommend_practice": recommend_practice,
     "get_mastery_report": get_mastery_report,
     "get_mastery_level": get_mastery_level,

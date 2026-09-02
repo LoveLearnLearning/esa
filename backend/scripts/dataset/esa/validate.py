@@ -25,6 +25,7 @@ from typing import Any
 from jsonschema import Draft7Validator
 
 from .ir import (
+    fixtures_sha,
     CATEGORIES,
     ROLE_ASSISTANT,
     ROLE_TOOL_CALL,
@@ -920,6 +921,137 @@ def check_revision_uses_latest(samples: list[Sample]) -> list[Finding]:
 # --------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# L2 形状闸门（2026-08-26 加，手册 4.3n 的 L2 / 4.3r 的试跑结论）
+#
+# 🔴 **判据是结构，不是字数。**《Following Length Constraints in Instructions》
+# （arXiv 2406.17744）指出评测存在长度偏置、而训练会去利用它 —— 拿字数当验收
+# 等于在造一个「靠长度骗分」的模型。所以下面三条一条都不数字数：
+#
+# 🔴 **三条全是线索，一条都做不成硬判据。** 这不是没做好，是试过之后的结论：
+#
+#   A 同一段回答出现在多个模板下   —— 线索
+#   B 同模板内长度是常量           —— 线索
+#   C 讲解类有没有例子             —— 只能给下界
+#
+# A 试了两版：排除「工具返回相同」后仍有「结果是 $1024$」（`2^10` 与 `2^20/1024`
+#   算式不同、结果相同，两边都答得对）。
+# B 更彻底：`template_id` 的定义就是「**同一事实组合**的所有话术」
+#   （见 gen_scenarios 里 fact_sig 那段注释），同模板内工具返回必然相同，
+#   **长度恒定是设计如此**。`S002__参数齐全__操作系统_0` 那 16 条是同一个问题的
+#   16 种说法，同一份练习清单，长度当然一样 —— 报它是误报。
+#   而 `S003__不指定课程__nofacts` 那 65 条工具返回也相同，却是**真缺陷**
+#   （问「进步了吗」「多久没练」「哪块最弱」，回答一概只念总览）。
+#   两者的区别只有一个：**问的是不是一回事** —— 又回到语义判断。
+#
+# 📌 结论：形状类判据最终都退化成语义判断，做不成硬闸门。**它们的价值是
+#    生成线索清单让人逐条过眼** —— 2026-08-26 就是这么用的，两轮翻出四个
+#    真缺陷（答非所问、答不全、拿快照编趋势、凭空假设题目），而且**没有一个
+#    是长度问题**。硬要把它们做成 strict，只会因为误报被关掉。
+#
+# 🔜 唯一能做精确的路子：**让语义来自种子的显式声明，而不是猜。**
+#    `S003__不指定课程` 现在按「问的是什么」分了组（总览/薄弱/陈旧/变化），
+#    那么「同一模板下声明了 N 个组，就必须渲染出 N 段不同回答」是精确可判的。
+#    要做这条得先把 facet 存进 IR —— 留给下一轮。
+#
+# 🔴 A 为什么只能当线索：真正的缺陷是「用户问的不是一回事，却给了同一段回答」，
+#    而「问的是不是一回事」本身需要语义判断。2026-08-26 试了两版都做不精确：
+#      第一版报 45 段 —— 其中「记下了。「并查集」掌握度更新为 38.41」跨 2 个模板，
+#        是因为**工具返回完全一样**，同一份事实说同一句话天经地义；
+#      第二版排除「工具返回相同」后剩 21 段 —— 里面还有「结果是 $1024$」，
+#        它跨 `2^10` 和 `2^20/1024` 两个模板，算式不同但结果相同，两边都答得对。
+#    再收窄下去就要开始猜语义了。**所以 A 只出清单给人看，不进 strict** ——
+#    与其做一个会误报的硬闸门（误报的闸门会被无视，比没有更糟），
+#    不如老实说它是线索生成器。
+#
+# ⚠️ **默认只报不拦。** 320 段旧文本还没改完，硬拦会让每次提交都红，
+# 而一个天天挡路的闸门最后一定会被关掉。改完之后用 `--strict-shape` 打开。
+# ---------------------------------------------------------------------------
+
+# 「这段里有没有举例子」的下界判据。
+# 🔴 只用来算**下界**，绝不用来判单条不合格 —— 5.57 那天在关键词判据上栽了四次：
+#    词表是照 gold 措辞收的，文本一变就说反话。有标记基本说明有例子；
+#    没标记不代表没有（「以 [5,3,8] 取首元素为基准」就没有任何标记词）。
+_EXAMPLE_MARKERS = ("比如", "例如", "举个", "举例", "为例", "譬如", "像是")
+
+
+def _final_assistant(s: Sample) -> str:
+    for t in reversed(s.turns):
+        if getattr(t, "role", None) == "assistant":
+            return (getattr(t, "content", "") or "")
+    return ""
+
+
+def check_shape(samples: list[Sample], strict: bool = False) -> list[Finding]:
+    """L2 三条形状**线索**。只打报告，任何情况下都不产生 Finding —— 理由见上面那段。
+
+    `strict` 参数保留是为了不改调用方；它现在不改变行为。
+    """
+    out: list[Finding] = []
+
+    # ── A 同一段回答出现在两个不同模板下 ──
+    # 🔴 2026-08-26 收窄：第一版把 45 段全报出来，逐条看下来**大部分不是缺陷** ——
+    #    「记下了。「并查集」的掌握度更新为 38.41」出现在两个模板，是因为
+    #    **工具返回完全一样**；同一份事实说出同一句话，天经地义。
+    #    误报的闸门会被无视，比没有闸门更糟。所以只报「工具返回不同（或压根没调工具）
+    #    却给了同一段回答」的那些 —— 那才是「答案与问题无关」。
+    def _tool_sig(s: Sample) -> str:
+        sig = []
+        for t in s.turns:
+            if getattr(t, "role", None) == "tool_result":
+                sig.append(json.dumps([r.__dict__ if hasattr(r, "__dict__") else r
+                                       for r in (getattr(t, "results", None) or [])],
+                                      ensure_ascii=False, sort_keys=True, default=str))
+        return "|".join(sig)
+
+    by_text: dict[str, set[str]] = {}
+    sigs: dict[str, set[str]] = {}
+    text_owner: dict[str, str] = {}
+    for s in samples:
+        a = _final_assistant(s).strip()
+        if not a:
+            continue
+        by_text.setdefault(a, set()).add(s.template_id)
+        sigs.setdefault(a, set()).add(_tool_sig(s))
+        text_owner.setdefault(a, s.id)
+    # 同一段回答 + 工具返回也完全相同 → 不算缺陷，跳过
+    cross = {a: t for a, t in by_text.items() if len(t) > 1 and len(sigs[a]) > 1}
+    same_facts = sum(1 for a, t in by_text.items() if len(t) > 1 and len(sigs[a]) == 1)
+    print(f"  形状 A（线索，不判不合格）：跨模板重复的回答 {len(cross)} 段"
+          + ("" if not cross else f"（涉及 {sum(len(v) for v in cross.values())} 个模板）")
+          + f"；另有 {same_facts} 段是**工具返回相同**，不算缺陷，已排除")
+    for a, tpls in sorted(cross.items(), key=lambda kv: -len(kv[1]))[:8]:
+        print(f"    · {len(tpls)} 个模板共用同一段（{len(a)} 字）：{a[:44]}…")
+    # ⚠️ A 不产生 Finding，strict 也不产生 —— 理由见本节开头。
+
+    # ── B 同模板内长度是常量 ──
+    lens: dict[str, list[int]] = {}
+    owner: dict[str, str] = {}
+    for s in samples:
+        lens.setdefault(s.template_id, []).append(len(_final_assistant(s)))
+        owner.setdefault(s.template_id, s.id)
+    flat = [(t, v) for t, v in lens.items() if len(v) >= 8 and max(v) - min(v) <= 15]
+    big = [t for t, v in lens.items() if len(v) >= 8]
+    if big:
+        print(f"  形状 B：样本≥8 的模板 {len(big)} 个，长度极差 ≤15 字的 "
+              f"{len(flat)} 个（{len(flat) / len(big) * 100:.0f}%）"
+              " —— ⚠️ **线索不是判据**：同模板 = 同一事实组合，长度恒定往往是对的；"
+              "要看的是这些话术问的是不是同一件事")
+        for t, v in sorted(flat, key=lambda kv: len(kv[1]), reverse=True)[:8]:
+            print(f"    · {t}  n={len(v)}  长度恒在 [{min(v)},{max(v)}]")
+        # ⚠️ B 同样不产生 Finding —— 理由见本节开头。
+
+    # ── C 例子出现率（下界） ──
+    longish = [s for s in samples if len(_final_assistant(s)) >= 150]
+    if longish:
+        withex = sum(1 for s in longish
+                     if any(m in _final_assistant(s) for m in _EXAMPLE_MARKERS))
+        print(f"  形状 C：≥150 字的回答 {len(longish)} 条，含举例标记的 {withex} 条"
+              f"（{withex / len(longish) * 100:.0f}%）"
+              " —— ⚠️ 这是**下界**，没标记不等于没例子，不作为不合格判据（5.57）")
+    return out
+
+
 def check_lengths(samples, by_name, cutoff_len: int, tokenizer_path: str | None) -> list[Finding]:
     """长度必须按 token 数算，不是字符数。
 
@@ -927,6 +1059,7 @@ def check_lengths(samples, by_name, cutoff_len: int, tokenizer_path: str | None)
     必须在有权重的机器上用真 tokenizer 跑一遍（P0-3）。
     """
     out = []
+    lengths: list[tuple[int, str]] = []
     tok = None
     if tokenizer_path:
         try:
@@ -946,8 +1079,18 @@ def check_lengths(samples, by_name, cutoff_len: int, tokenizer_path: str | None)
             cjk = len(re.findall(r"[一-鿿]", blob))
             n = int(cjk + (len(blob) - cjk) / 3.5)
             label = "token(估算)"
+        lengths.append((n, s.id))
         if n > cutoff_len:
             out.append(Finding(s.id, "length", f"{label} {n} > cutoff_len {cutoff_len}，会被截断"))
+
+    # 🔴 只报违规是不够的：「没超 8192」和「最长 8100」是两回事，
+    # 后者离截断只差一颗种子。2026-08-26 用真 tokenizer 复核 cutoff_len 时
+    # 发现这个缺口 —— 报表全绿，但余量多少一个字都没说。
+    if lengths:
+        lengths.sort(reverse=True)
+        top = "，".join(f"{n}（{sid}）" for n, sid in lengths[:3])
+        print(f"  最长三条：{top}  ← 按 {label} 算，cutoff_len={cutoff_len}，"
+              f"余量 {cutoff_len - lengths[0][0]}")
     return out
 
 
@@ -982,8 +1125,32 @@ def main(argv: list[str] | None = None) -> int:
     #    历史参照：22 个工具时真 tokenizer 实测最长 **6917** token，粗估一贯偏高。
     ap.add_argument("--cutoff-len", type=int, default=9216)
     ap.add_argument("--tokenizer", default=None, help="Qwen3.5 权重路径，给了就用真 tokenizer 数 token")
+    ap.add_argument("--strict-shape", action="store_true",
+                    help="⚠️ 已无作用，保留只为不破坏既有命令行。形状三条都做不成硬判据"
+                         "（理由见 check_shape 的注释），它们只出线索清单")
     ap.add_argument("--no-dup-check", action="store_true")
     args = ap.parse_args(argv)
+
+    # 🔴 IR 是不是用**当前这版 fixtures** 渲染的。
+    # 2026-08-30 踩过：给 fixtures 补了上游新增的 `has_records`，跑完七个自测就
+    # 提交上传，**没重跑生成器** —— 交付的数据和交付的 fixtures 对不上，而
+    # validate 不比这个、契约测试比的是 fixtures 和线上，谁都不管这一段。
+    # 失效方向（5.41）：戳不在 → 只警告（旧数据、或别人手搓的 IR）；
+    # 戳在而对不上 → **当场红**，因为那是明确的「改了没重跑」。
+    stamp = Path(args.files[0]).resolve().parent / "_generated_with.json"
+    if stamp.exists():
+        want = fixtures_sha()
+        got = json.loads(stamp.read_text(encoding="utf-8")).get("fixtures_sha256_16")
+        if got != want:
+            print(f"❌ 这批 IR 是用另一版 esa/fixtures.py 渲染的："
+                  f"戳 {got} ≠ 当前 {want}\n"
+                  f"   改了 fixtures 就必须重跑十个生成器，否则交付的数据和交付的\n"
+                  f"   fixtures 对不上，而三道检查全绿（2026-08-30 就这么传出去过一次）。",
+                  file=sys.stderr)
+            return 1
+    else:
+        print("⚠️ 这批 IR 没有 fixtures 戳（`data/ir/_generated_with.json` 不在）——"
+              "判不了它是用哪版 fixtures 渲染的；重跑一次生成器就有了。", file=sys.stderr)
 
     schemas, version = load_schemas(args.schemas)
     by_name = schemas_by_name(schemas)
@@ -1002,6 +1169,7 @@ def main(argv: list[str] | None = None) -> int:
     for s in samples:
         findings += validate_sample(s, by_name, version)
     findings += check_exact_duplicates(samples)
+    findings += check_shape(samples, strict=args.strict_shape)
     findings += check_unmarked_failures(samples)
     findings += check_no_collect_placeholder(samples)
     findings += check_clarify_contract(samples, by_name)

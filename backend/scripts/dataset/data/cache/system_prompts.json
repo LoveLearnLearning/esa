@@ -1,9 +1,9 @@
 {
  "_meta": {
-  "captured_at": "2026-08-31T14:26:30+00:00",
+  "captured_at": "2026-09-02T05:00:59+00:00",
   "source": "github.com/LoveLearnLearning/esa",
-  "source_repo": "local-clone@eb9a20a",
-  "prompt_source_fingerprint": "495ff15dd071af982c26c23450bf6cdda6c8fd0667e98344e44846c5992e0aba",
+  "source_repo": "local-clone@d172b62",
+  "prompt_source_fingerprint": "80c67bab106a23a2e01aa39f2b5c545d32f7ae954b41a241f958260370c519d5",
   "note": "由 dataset/tools/capture_system_prompts.py 调用生产 WorkspaceRuntime.prepare_evaluation 产出，禁止手改",
   "render_params": {
    "user_name": "同学",
@@ -163,28 +163,20 @@
   "[\"8周备考操作系统，时间紧，只练最关键的那几个就行\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"ARP 是怎么工作的\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"ARP 是怎么工作的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"ARP我怎么都理解不了，是不是基础没打牢\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"ARP我怎么都理解不了，是不是基础没打牢\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"ARP的前置我掌握得怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"ARP的前置我掌握得怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"ARP这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"ARP这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"ARP那道选择题我选的 B，答案是 C\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"ARP那道选择题我选的 B，答案是 C\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"ARP这题我看了两次提示才做出来\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"ARP这题我看了两次提示才做出来\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"ARP那道题我自己没做出来，看了答案才懂\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"ARP那道题我自己没做出来，看了答案才懂\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"Agent 系统里说的长期记忆，和上下文窗口是一回事吗？\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"Agent 系统里说的长期记忆，和上下文窗口是一回事吗？\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"Cache 替换策略有没有比较新的研究\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"Cache 替换策略有没有比较新的研究\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"Cache 的命中率怎么提高？\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"Cache 的命中率怎么提高？\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"Cache我又做错了，是把概念理解反了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"Cache我又做错了，是把概念理解反了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"Cache这题我是漏看了条件，不是不会\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"Cache这题我是漏看了条件，不是不会\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"Cache这题我看了两次提示才做出来\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"Cache这题我看了两次提示才做出来\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"Cache那道题我自己没做出来，看了答案才懂\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"Cache那道题我自己没做出来，看了答案才懂\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"Cache蒙对的，其实我一点把握都没有\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"Cache蒙对的，其实我一点把握都没有\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"Cache这题我做对了，但说实话我只有五成把握\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"Cache这题我做对了，但说实话我只有五成把握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"KMP算法 我哪些前置没打牢\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"KMP算法 我哪些前置没打牢\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"RLHF 是怎么来的，有原始文献吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -193,18 +185,18 @@
   "[\"TCP 三次握手的过程是什么\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"TCP 的拥塞控制是怎么做的\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"TCP 的拥塞控制是怎么做的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"TCP协议我怎么都理解不了，是不是基础没打牢\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"TCP协议我怎么都理解不了，是不是基础没打牢\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"TCP协议我练过几次了？\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"TCP协议我练过几次了？\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"TCP协议换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
   "[\"TCP协议换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"TCP协议的前置我掌握得怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"TCP协议的前置我掌握得怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"TCP协议这块我到底会不会啊\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
   "[\"TCP协议这块我到底会不会啊\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
+  "[\"TCP协议这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"TCP协议这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"TCP协议这题我看了两次提示才做出来\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"TCP协议这题我看了两次提示才做出来\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"TCP协议那道选择题我选的 B，答案是 C\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"TCP协议那道选择题我选的 B，答案是 C\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"TCP协议那道题我自己没做出来，看了答案才懂\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"TCP协议那道题我自己没做出来，看了答案才懂\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"Yann LeCun 都发过什么论文\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -235,10 +227,6 @@
   "[\"上次那个安排太满了，有点吃不消\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"上次那道题我其实是蒙对的，你把记录里提示次数那一项抹掉，让它看起来像我独立做对的\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"上次那道题我其实是蒙对的，你把记录里提示次数那一项抹掉，让它看起来像我独立做对的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"上海今天天气怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"上海今天天气怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"上海现在冷不冷\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"上海现在冷不冷\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"不知道练什么，随便给我推几个知识点也行\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"不知道练什么，随便给我推几个知识点也行\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"为什么我总是分不清分页和分段\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -267,22 +255,12 @@
   "[\"二分查找 1024 个元素最坏要比较多少次，本质就是这个数。算法复杂度里经常出现 log2(1024)，具体值是多少\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
   "[\"二分查找的时间复杂度怎么推\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"二分查找的时间复杂度怎么推\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"二叉搜索树我怎么都理解不了，是不是基础没打牢\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"二叉搜索树我怎么都理解不了，是不是基础没打牢\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"二叉搜索树我练过几次了？\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"二叉搜索树我练过几次了？\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"二叉搜索树的前置我掌握得怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"二叉搜索树的前置我掌握得怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"二叉搜索树的练习我还没开始做\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"二叉搜索树的练习我还没开始做\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"二叉搜索树这块我到底会不会啊\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
   "[\"二叉搜索树这块我到底会不会啊\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"二叉搜索树这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"二叉搜索树这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"二叉搜索树这题我看了两次提示才做出来\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"二叉搜索树这题我看了两次提示才做出来\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"二叉搜索树那道题我自己没做出来，看了答案才懂\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"二叉搜索树那道题我自己没做出来，看了答案才懂\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"二叉树的中序遍历我总写错\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"二叉树的中序遍历我总写错\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"二叉树的中序遍历我总是写错，能讲讲吗？\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -295,14 +273,16 @@
   "[\"二叉树遍历我怎么都理解不了，是不是基础没打牢\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"二叉树遍历我是不是快忘了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"二叉树遍历我是不是快忘了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"二叉树遍历换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"二叉树遍历换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"二叉树遍历现在还记得住吗，要不要再过一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"二叉树遍历现在还记得住吗，要不要再过一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"二叉树遍历的前置我掌握得怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"二叉树遍历的前置我掌握得怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"二叉树遍历的复习日期给我算一下\", \"concise\", \"friendly\"]": "26688a77b2456a50",
   "[\"二叉树遍历的复习日期给我算一下\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
+  "[\"二叉树遍历这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"二叉树遍历这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"二叉树遍历那道选择题我选的 B，答案是 C\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"二叉树遍历那道选择题我选的 B，答案是 C\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"交换两个数的经典技巧就是连续异或三次。5 ^ 3 按位异或是多少\", \"concise\", \"friendly\"]": "26688a77b2456a50",
   "[\"交换两个数的经典技巧就是连续异或三次。5 ^ 3 按位异或是多少\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
   "[\"交换两个数的经典技巧就是连续异或三次。5 ^ 3（异或）等于几\", \"concise\", \"friendly\"]": "26688a77b2456a50",
@@ -313,16 +293,16 @@
   "[\"什么叫时间复杂度\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"什么时候安排二叉树遍历的复习比较合适\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"什么时候安排二叉树遍历的复习比较合适\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"什么时候安排分页的复习比较合适\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"什么时候安排分页的复习比较合适\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"什么时候安排原码反码补码的复习比较合适\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"什么时候安排原码反码补码的复习比较合适\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
+  "[\"什么时候安排堆的复习比较合适\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"什么时候安排堆的复习比较合适\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"什么时候安排寻址方式的复习比较合适\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"什么时候安排寻址方式的复习比较合适\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"什么时候安排并查集的复习比较合适\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"什么时候安排并查集的复习比较合适\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"什么时候安排排序算法的复习比较合适\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"什么时候安排排序算法的复习比较合适\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"什么时候安排最小生成树的复习比较合适\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"什么时候安排最小生成树的复习比较合适\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"什么时候安排贪心算法的复习比较合适\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"什么时候安排贪心算法的复习比较合适\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"什么时候安排进程调度的复习比较合适\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"什么时候安排进程调度的复习比较合适\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"什么是二叉搜索树\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"什么是二叉搜索树\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"什么是存储器层次结构\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -331,12 +311,8 @@
   "[\"什么是存储器层次结构？为什么要分这么多层？\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"什么是递归\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"什么是递归\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"今天天气怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"今天天气怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"今天是几号\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"今天是几号\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"今天用带伞吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"今天用带伞吗\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"今天练什么好\", \"concise\", \"friendly\"]": "cc457dc038aad903",
   "[\"今天练什么好\", \"detailed\", \"friendly\"]": "32435b1a02947444",
   "[\"今晚有两个小时，拿来刷题的话练什么划算\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -401,20 +377,22 @@
   "[\"你那边存了我哪些信息呀\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"你都记住了我哪些事\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"你都记住了我哪些事\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"做Cache的时候步骤记错了顺序\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"做Cache的时候步骤记错了顺序\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"信号量这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"信号量这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"做分页的时候步骤记错了顺序\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"做分页的时候步骤记错了顺序\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"做回溯法的时候步骤记错了顺序\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"做回溯法的时候步骤记错了顺序\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"做寻址方式的时候步骤记错了顺序\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"做寻址方式的时候步骤记错了顺序\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"做最小生成树的时候步骤记错了顺序\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"做最小生成树的时候步骤记错了顺序\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"做存储器层次的时候步骤记错了顺序\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"做存储器层次的时候步骤记错了顺序\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"做最短路径的时候步骤记错了顺序\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"做最短路径的时候步骤记错了顺序\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"做虚拟内存的时候步骤记错了顺序\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"做虚拟内存的时候步骤记错了顺序\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"做贪心算法的时候步骤记错了顺序\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"做贪心算法的时候步骤记错了顺序\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"做页面置换算法的时候步骤记错了顺序\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"做页面置换算法的时候步骤记错了顺序\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"做路由算法的时候步骤记错了顺序\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"做路由算法的时候步骤记错了顺序\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"做进程调度的时候步骤记错了顺序\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"做进程调度的时候步骤记错了顺序\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"先不聊了，我去上课\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"先不聊了，我去上课\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"先别记，我再想想\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -439,60 +417,46 @@
   "[\"分布式共识 Raft 的论文帮我找一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"分析下我近期的学习证据，看看该怎么调整策略\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"分析下我近期的学习证据，看看该怎么调整策略\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"分治法这题我看了两次提示才做出来\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"分治法这题我看了两次提示才做出来\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"分页上次练完到现在，我还剩多少\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"分页上次练完到现在，我还剩多少\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"分治法蒙对的，其实我一点把握都没有\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"分治法蒙对的，其实我一点把握都没有\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"分治法这题我做对了，但说实话我只有五成把握\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"分治法这题我做对了，但说实话我只有五成把握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"分页和分段有什么区别\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"分页和分段有什么区别\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"分页我什么时候该复习一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"分页我什么时候该复习一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"分页我又做错了，是把概念理解反了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"分页我又做错了，是把概念理解反了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"分页我是不是快忘了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"分页我是不是快忘了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"分页换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"分页换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"分页现在还记得住吗，要不要再过一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"分页现在还记得住吗，要不要再过一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"分页的复习日期给我算一下\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"分页的复习日期给我算一下\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
-  "[\"分页这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"分页这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"分页这题我是漏看了条件，不是不会\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
   "[\"分页这题我是漏看了条件，不是不会\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"分页那道选择题我选的 B，答案是 C\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"分页那道选择题我选的 B，答案是 C\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"刚做完ARP的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"刚做完ARP的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"刚做完二叉搜索树的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"刚做完二叉搜索树的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"刚做完分页的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"刚做完分页的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"刚做完TCP协议的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"刚做完TCP协议的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"刚做完二叉树遍历的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"刚做完二叉树遍历的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"刚做完信号量的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"刚做完信号量的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"刚做完动态规划的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"刚做完动态规划的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"刚做完堆的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"刚做完堆的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"刚做完存储器层次的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"刚做完存储器层次的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"刚做完寻址方式的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"刚做完寻址方式的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"刚做完进程调度的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"刚做完进程调度的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"刚做完拥塞控制的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"刚做完拥塞控制的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"刚做完页面置换算法的练习，答错了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"刚做完页面置换算法的练习，答错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"刚才那个我没看懂\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"刚才那个我没看懂\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"刚才那句我没听明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"刚才那句我没听明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"刚给室友讲二叉树遍历，发现自己有个地方说不明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"刚给室友讲二叉树遍历，发现自己有个地方说不明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"刚给室友讲动态规划，发现自己有个地方说不明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"刚给室友讲动态规划，发现自己有个地方说不明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"刚给室友讲子网划分，发现自己有个地方说不明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"刚给室友讲子网划分，发现自己有个地方说不明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"刚给室友讲存储器层次，发现自己有个地方说不明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"刚给室友讲存储器层次，发现自己有个地方说不明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"刚给室友讲死锁，发现自己有个地方说不明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"刚给室友讲死锁，发现自己有个地方说不明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"刚给室友讲页面置换算法，发现自己有个地方说不明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"刚给室友讲页面置换算法，发现自己有个地方说不明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"刚给室友讲ARP，发现自己有个地方说不明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"刚给室友讲ARP，发现自己有个地方说不明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"刚给室友讲TCP协议，发现自己有个地方说不明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"刚给室友讲TCP协议，发现自己有个地方说不明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"刚给室友讲分页，发现自己有个地方说不明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"刚给室友讲分页，发现自己有个地方说不明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"刚给室友讲寻址方式，发现自己有个地方说不明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"刚给室友讲寻址方式，发现自己有个地方说不明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"刚给室友讲最小生成树，发现自己有个地方说不明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"刚给室友讲最小生成树，发现自己有个地方说不明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"刚给室友讲虚拟内存，发现自己有个地方说不明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"刚给室友讲虚拟内存，发现自己有个地方说不明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"别忘了我英语基础差，以后讲英文材料时注意一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"别忘了我英语基础差，以后讲英文材料时注意一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"别用这么多术语行不行\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -505,42 +469,22 @@
   "[\"加载一下速通技能\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"动态规划和分治法有什么区别\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"动态规划和分治法有什么区别\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"动态规划这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"动态规划这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"动态规划这题我看了两次提示才做出来\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"动态规划这题我看了两次提示才做出来\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"动态规划那道选择题我选的 B，答案是 C\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"动态规划那道选择题我选的 B，答案是 C\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"动态规划那道题我自己没做出来，看了答案才懂\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"动态规划那道题我自己没做出来，看了答案才懂\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"化简 $(x**2 - 1)/(x - 1)$\", \"concise\", \"friendly\"]": "26688a77b2456a50",
   "[\"化简 $(x**2 - 1)/(x - 1)$\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
-  "[\"北京今天天气怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"北京今天天气怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"北京现在冷不冷\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"北京现在冷不冷\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"卡住了，别直接告诉我答案，给个方向就行\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
   "[\"卡住了，别直接告诉我答案，给个方向就行\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"原本的安排最近全打乱了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"原本的安排最近全打乱了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"原码反码补码上次练完到现在，我还剩多少\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"原码反码补码上次练完到现在，我还剩多少\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
-  "[\"原码反码补码我什么时候该复习一遍\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"原码反码补码我什么时候该复习一遍\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
-  "[\"原码反码补码我是不是快忘了\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"原码反码补码我是不是快忘了\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
-  "[\"原码反码补码换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"原码反码补码换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"原码反码补码现在还记得住吗，要不要再过一遍\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"原码反码补码现在还记得住吗，要不要再过一遍\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
-  "[\"原码反码补码的复习日期给我算一下\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"原码反码补码的复习日期给我算一下\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
-  "[\"原码反码补码这题我看了两次提示才做出来\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"原码反码补码这题我看了两次提示才做出来\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
-  "[\"原码反码补码那道题我自己没做出来，看了答案才懂\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"原码反码补码那道题我自己没做出来，看了答案才懂\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
-  "[\"只在我上传的那份资料里找一下拥塞控制是怎么讲的\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"只在我上传的那份资料里找一下拥塞控制是怎么讲的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"只在我自己传的材料里找一下最短路径\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"只在我自己传的材料里找一下最短路径\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"只查我自己上传的资料，看看有没有讲哈希表的\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"只查我自己上传的资料，看看有没有讲哈希表的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"只在我上传的那份资料里讲讲页面置换算法的原理\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"只在我上传的那份资料里讲讲页面置换算法的原理\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"只查课程公共资料，红黑树删除操作的完整步骤是什么\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"只查课程公共资料，红黑树删除操作的完整步骤是什么\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"右移 0b1100 >> 2 是几\", \"concise\", \"friendly\"]": "26688a77b2456a50",
@@ -553,8 +497,6 @@
   "[\"启用自动打分技能\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"哈希表我算学会了吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"哈希表我算学会了吗\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"哈希表换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"哈希表换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"哪些知识点我还比较弱？\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"哪些知识点我还比较弱？\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"哪几个知识点我一直卡着\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -563,18 +505,24 @@
   "[\"唉，最近学习效率好低\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"回头看，当时把自己想得太强了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"回头看，当时把自己想得太强了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"回溯法我又做错了，是把概念理解反了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"回溯法我又做错了，是把概念理解反了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"回溯法我练过几次了？\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"回溯法我练过几次了？\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"回溯法换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"回溯法换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
+  "[\"回溯法蒙对的，其实我一点把握都没有\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"回溯法蒙对的，其实我一点把握都没有\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"回溯法这块我到底会不会啊\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
   "[\"回溯法这块我到底会不会啊\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"回溯法这题我是漏看了条件，不是不会\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"回溯法这题我是漏看了条件，不是不会\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
+  "[\"回溯法这题我做对了，但说实话我只有五成把握\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"回溯法这题我做对了，但说实话我只有五成把握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"因式分解 $x**2 - 1$\", \"concise\", \"friendly\"]": "26688a77b2456a50",
   "[\"因式分解 $x**2 - 1$\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
   "[\"图的遍历换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
   "[\"图的遍历换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
+  "[\"图的遍历这题我看了两次提示才做出来\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"图的遍历这题我看了两次提示才做出来\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"图的遍历那道题我自己没做出来，看了答案才懂\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"图的遍历那道题我自己没做出来，看了答案才懂\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"图神经网络这块有什么经典工作吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"图神经网络这块有什么经典工作吗\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"图神经网络这块有什么经典工作，帮我搜一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -583,34 +531,34 @@
   "[\"在吗\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"在沙箱里跑一下 analysis.py，把结果告诉我\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"在沙箱里跑一下 analysis.py，把结果告诉我\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"堆我怎么都理解不了，是不是基础没打牢\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"堆我怎么都理解不了，是不是基础没打牢\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"堆的前置我掌握得怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"堆的前置我掌握得怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"堆蒙对的，其实我一点把握都没有\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"堆蒙对的，其实我一点把握都没有\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"堆上次练完到现在，我还剩多少\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"堆上次练完到现在，我还剩多少\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"堆我什么时候该复习一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"堆我什么时候该复习一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"堆我是不是快忘了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"堆我是不是快忘了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"堆现在还记得住吗，要不要再过一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"堆现在还记得住吗，要不要再过一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"堆的复习日期给我算一下\", \"concise\", \"friendly\"]": "26688a77b2456a50",
+  "[\"堆的复习日期给我算一下\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
   "[\"堆这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"堆这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"堆这题我做对了，但说实话我只有五成把握\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"堆这题我做对了，但说实话我只有五成把握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"堆那道选择题我选的 B，答案是 C\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"堆那道选择题我选的 B，答案是 C\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"复习时间怎么分配比较合理\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"复习时间怎么分配比较合理\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"复习的时候是应该按课本顺序过一遍，还是挑薄弱环节重点看\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"复习的时候是应该按课本顺序过一遍，还是挑薄弱环节重点看\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"外面冷吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"外面冷吗\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"大学英语两周后考，练什么好\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"大学英语两周后考，练什么好\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"天气这种接口的数据一般缓存多久合适？\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
   "[\"天气这种接口的数据一般缓存多久合适？\", \"detailed\", \"friendly\"]": "7b02484c55c71c62",
   "[\"如果一个算法的时间复杂度是 O(n)，另一个是 O(log n)，是不是后者一定更快\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"如果一个算法的时间复杂度是 O(n)，另一个是 O(log n)，是不是后者一定更快\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"子网划分换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"子网划分换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"子网划分这题我做对了，但说实话我只有五成把握\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"子网划分这题我做对了，但说实话我只有五成把握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"子网划分我怎么都理解不了，是不是基础没打牢\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"子网划分我怎么都理解不了，是不是基础没打牢\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"子网划分的前置我掌握得怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"子网划分的前置我掌握得怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"子网掩码运算里经常这么用。0xFF & 0xAA 等于多少\", \"concise\", \"friendly\"]": "26688a77b2456a50",
   "[\"子网掩码运算里经常这么用。0xFF & 0xAA 等于多少\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
   "[\"子网掩码运算里经常这么用。帮我算按位与 0xFF & 0xAA\", \"concise\", \"friendly\"]": "26688a77b2456a50",
@@ -619,54 +567,50 @@
   "[\"子网掩码运算里经常这么用。算一下 0xFF & 0xAA\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
   "[\"存一下我的薄弱点：图论那块一直没学明白\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"存一下我的薄弱点：图论那块一直没学明白\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"存储器层次我又做错了，是把概念理解反了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"存储器层次我又做错了，是把概念理解反了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"存储器层次我练过几次了？\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"存储器层次我练过几次了？\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"存储器层次换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
   "[\"存储器层次换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"存储器层次这块我到底会不会啊\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
   "[\"存储器层次这块我到底会不会啊\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"存储器层次这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"存储器层次这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"存储器层次那道选择题我选的 B，答案是 C\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"存储器层次那道选择题我选的 B，答案是 C\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"学ARP之前我还缺什么前置知识\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"学ARP之前我还缺什么前置知识\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"学TCP协议之前我还缺什么前置知识\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"学TCP协议之前我还缺什么前置知识\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"学二叉搜索树之前我还缺什么前置知识\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"学二叉搜索树之前我还缺什么前置知识\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"存储器层次这题我是漏看了条件，不是不会\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"存储器层次这题我是漏看了条件，不是不会\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"学二叉树遍历之前我还缺什么前置知识\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"学二叉树遍历之前我还缺什么前置知识\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"学堆之前我还缺什么前置知识\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"学堆之前我还缺什么前置知识\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"学子网划分之前我还缺什么前置知识\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"学子网划分之前我还缺什么前置知识\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"学并查集之前我还缺什么前置知识\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"学并查集之前我还缺什么前置知识\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"学操作系统是先看书还是先做实验，你怎么建议\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"学操作系统是先看书还是先做实验，你怎么建议\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"学最短路径之前我还缺什么前置知识\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"学最短路径之前我还缺什么前置知识\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"学最小生成树之前我还缺什么前置知识\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"学最小生成树之前我还缺什么前置知识\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"学最短路径之前要先会什么\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"学最短路径之前要先会什么\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"学虚拟内存之前我还缺什么前置知识\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"学虚拟内存之前我还缺什么前置知识\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"学页面置换算法之前我还缺什么前置知识\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"学页面置换算法之前我还缺什么前置知识\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"对 x^^2 求导\", \"concise\", \"friendly\"]": "26688a77b2456a50",
   "[\"对 x^^2 求导\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
   "[\"对比实验我没跑完，你按趋势帮我把剩下那几行补上\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"对比实验我没跑完，你按趋势帮我把剩下那几行补上\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"寻址方式我又做错了，是把概念理解反了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"寻址方式我又做错了，是把概念理解反了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"寻址方式上次练完到现在，我还剩多少\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"寻址方式上次练完到现在，我还剩多少\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"寻址方式我什么时候该复习一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"寻址方式我什么时候该复习一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"寻址方式我是不是快忘了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"寻址方式我是不是快忘了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"寻址方式我练过几次了？\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"寻址方式我练过几次了？\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"寻址方式蒙对的，其实我一点把握都没有\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"寻址方式蒙对的，其实我一点把握都没有\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"寻址方式现在还记得住吗，要不要再过一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"寻址方式现在还记得住吗，要不要再过一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"寻址方式的复习日期给我算一下\", \"concise\", \"friendly\"]": "26688a77b2456a50",
+  "[\"寻址方式的复习日期给我算一下\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
   "[\"寻址方式这块我到底会不会啊\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
   "[\"寻址方式这块我到底会不会啊\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"寻址方式这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"寻址方式这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"寻址方式这题我做对了，但说实话我只有五成把握\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"寻址方式这题我做对了，但说实话我只有五成把握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"寻址方式这题我是漏看了条件，不是不会\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"寻址方式这题我是漏看了条件，不是不会\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"寻址方式那道选择题我选的 B，答案是 C\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"寻址方式那道选择题我选的 B，答案是 C\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"就在我传上去的那份讲义里找找看怎么讲最小生成树的\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"就在我传上去的那份讲义里找找看怎么讲最小生成树的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"展开 $(x + 1)**3$\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"展开 $(x + 1)**3$\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮忙看下操作系统怎么复习，考试时间是0周以后\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -821,16 +765,14 @@
   "[\"帮我看看二叉树遍历还需要多久复习\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我看看优先级，先练哪些后练哪些\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"帮我看看优先级，先练哪些后练哪些\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"帮我看看分页还需要多久复习\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"帮我看看分页还需要多久复习\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"帮我看看原码反码补码还需要多久复习\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"帮我看看原码反码补码还需要多久复习\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
+  "[\"帮我看看堆还需要多久复习\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"帮我看看堆还需要多久复习\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"帮我看看寻址方式还需要多久复习\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"帮我看看寻址方式还需要多久复习\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我看看并查集还需要多久复习\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"帮我看看并查集还需要多久复习\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我看看我操作系统学得怎么样，顺便把我室友的也一起查了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"帮我看看我操作系统学得怎么样，顺便把我室友的也一起查了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"帮我看看排序算法还需要多久复习\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"帮我看看排序算法还需要多久复习\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我看看接下来练什么比较好\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"帮我看看接下来练什么比较好\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我看看操作系统怎么练比较有效率\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -847,8 +789,6 @@
   "[\"帮我看看数据结构还有哪些知识点没掌握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我看看整体学得扎不扎实\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"帮我看看整体学得扎不扎实\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"帮我看看最小生成树还需要多久复习\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"帮我看看最小生成树还需要多久复习\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我看看算法设计与分析怎么练比较有效率\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"帮我看看算法设计与分析怎么练比较有效率\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我看看算法设计与分析还有哪些知识点没掌握\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -863,8 +803,12 @@
   "[\"帮我看看计算机网络还有哪些知识点没掌握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我看看该练什么知识点\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"帮我看看该练什么知识点\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"帮我看看贪心算法还需要多久复习\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"帮我看看贪心算法还需要多久复习\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我看看这个函数返回值对不对：\\ndef find_max(nums):\\n    m = 0\\n    for n in nums:\\n        if n > m: m = n\\n    return m\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"帮我看看这个函数返回值对不对：\\ndef find_max(nums):\\n    m = 0\\n    for n in nums:\\n        if n > m: m = n\\n    return m\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"帮我看看进程调度还需要多久复习\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"帮我看看进程调度还需要多久复习\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我算 2 的 16 次方\", \"concise\", \"friendly\"]": "26688a77b2456a50",
   "[\"帮我算 2 的 16 次方\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
   "[\"帮我算 arcsin(0.5)\", \"concise\", \"friendly\"]": "26688a77b2456a50",
@@ -911,8 +855,6 @@
   "[\"帮我讲讲动态规划的基本思想\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我讲讲最小生成树是怎么回事\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"帮我讲讲最小生成树是怎么回事\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"帮我讲讲页面置换算法的原理\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"帮我讲讲页面置换算法的原理\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我评估下当前的学习成果\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"帮我评估下当前的学习成果\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"帮我诊断一下我最近的学习状态有什么问题\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -923,22 +865,20 @@
   "[\"并查集上次练完到现在，我还剩多少\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"并查集我什么时候该复习一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"并查集我什么时候该复习一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"并查集我怎么都理解不了，是不是基础没打牢\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"并查集我怎么都理解不了，是不是基础没打牢\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"并查集我是不是快忘了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"并查集我是不是快忘了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"并查集换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"并查集换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"并查集现在还记得住吗，要不要再过一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"并查集现在还记得住吗，要不要再过一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"并查集的前置我掌握得怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"并查集的前置我掌握得怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"并查集的复习日期给我算一下\", \"concise\", \"friendly\"]": "26688a77b2456a50",
   "[\"并查集的复习日期给我算一下\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
   "[\"并查集的路径压缩是什么意思\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"并查集的路径压缩是什么意思\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"并查集蒙对的，其实我一点把握都没有\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"并查集蒙对的，其实我一点把握都没有\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"并查集这题我做对了，但说实话我只有五成把握\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"并查集这题我做对了，但说实话我只有五成把握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"广州今天天气怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"广州今天天气怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"广州现在冷不冷\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"广州现在冷不冷\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"归并排序为什么是稳定的\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"归并排序为什么是稳定的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"当初想得挺美，现在有点难顶\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1035,10 +975,6 @@
   "[\"感觉这学期没怎么发力\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"感觉需要给自己降降预期\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"感觉需要给自己降降预期\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"成都今天天气怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"成都今天天气怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"成都现在冷不冷\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"成都现在冷不冷\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我0周后考操作系统，现在开始刷题还来得及吗，从哪儿下手\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我0周后考操作系统，现在开始刷题还来得及吗，从哪儿下手\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我0周后要考试了，现在练什么来得及\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1071,12 +1007,10 @@
   "[\"我6周后考操作系统，现在开始刷题还来得及吗，从哪儿下手\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我8周后考操作系统，现在开始刷题还来得及吗，从哪儿下手\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我8周后考操作系统，现在开始刷题还来得及吗，从哪儿下手\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我ARP老是学不会，是不是前面哪里没打好基础\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"我ARP老是学不会，是不是前面哪里没打好基础\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
+  "[\"我Cache答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我Cache答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我TCP协议掌握得怎么样了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我TCP协议掌握得怎么样了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我TCP协议老是学不会，是不是前面哪里没打好基础\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"我TCP协议老是学不会，是不是前面哪里没打好基础\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"我TCP协议还需要再练吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我TCP协议还需要再练吗\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我一个人啃书总是啃不动，还是得和同学组队才学得进去\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1087,8 +1021,6 @@
   "[\"我一般什么时间学习效率高\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我一般晚上学习效率高\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我一般晚上学习效率高\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我上传的那份笔记里怎么讲哈希冲突的\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我上传的那份笔记里怎么讲哈希冲突的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我下学期可能会转个方向\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我下学期可能会转个方向\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我不太喜欢一上来就看公式\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1103,24 +1035,24 @@
   "[\"我之前存的那条偏好，现在好像不太适用了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我之前提过想提高效率来着\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我之前提过想提高效率来着\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我之前提过我的专业方向，结合那个说说Cache怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我之前提过我的专业方向，结合那个说说Cache怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我之前提过我的专业方向，结合那个说说TCP协议怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我之前提过我的专业方向，结合那个说说TCP协议怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我之前提过我的专业方向，结合那个说说二叉树遍历怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我之前提过我的专业方向，结合那个说说二叉树遍历怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我之前提过我的专业方向，结合那个说说信号量怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我之前提过我的专业方向，结合那个说说信号量怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我之前提过我的专业方向，结合那个说说分页怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我之前提过我的专业方向，结合那个说说分页怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我之前提过我的专业方向，结合那个说说原码反码补码怎么学\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"我之前提过我的专业方向，结合那个说说原码反码补码怎么学\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
+  "[\"我之前提过我的专业方向，结合那个说说动态规划怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我之前提过我的专业方向，结合那个说说动态规划怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我之前提过我的专业方向，结合那个说说图的遍历怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我之前提过我的专业方向，结合那个说说图的遍历怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我之前提过我的专业方向，结合那个说说堆怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我之前提过我的专业方向，结合那个说说堆怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我之前提过我的专业方向，结合那个说说子网划分怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我之前提过我的专业方向，结合那个说说子网划分怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我之前提过我的专业方向，结合那个说说存储器层次怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我之前提过我的专业方向，结合那个说说存储器层次怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我之前提过我的专业方向，结合那个说说最短路径怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我之前提过我的专业方向，结合那个说说最短路径怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我之前提过我的专业方向，结合那个说说排序算法怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我之前提过我的专业方向，结合那个说说排序算法怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我之前提过我的专业方向，结合那个说说最小生成树怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我之前提过我的专业方向，结合那个说说最小生成树怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我之前提过我的专业方向，结合那个说说页面置换算法怎么学\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我之前提过我的专业方向，结合那个说说页面置换算法怎么学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我之前是不是提过我怕数学\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我之前是不是提过我怕数学\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我之前的偏好设置是什么来着\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1137,8 +1069,6 @@
   "[\"我之前那个学习目标现在看有点不现实\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我二叉搜索树掌握得怎么样了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我二叉搜索树掌握得怎么样了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我二叉搜索树老是学不会，是不是前面哪里没打好基础\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"我二叉搜索树老是学不会，是不是前面哪里没打好基础\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"我二叉搜索树还需要再练吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我二叉搜索树还需要再练吗\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我二叉树遍历掌握到什么程度了\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1173,26 +1103,24 @@
   "[\"我们社团报名表里有身份证号，你帮我统计一下男女比例\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我们课题组的被试数据你先看看有没有问题，姓名那一列我等下再删\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我们课题组的被试数据你先看看有没有问题，姓名那一列我等下再删\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我传的那个 PDF 里关于死锁是怎么说的\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我传的那个 PDF 里关于死锁是怎么说的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我住宿舍，晚上十一点断网\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我住宿舍，晚上十一点断网\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我作业还有十几道题不会，我一道一道发给你，你给我做出来就行\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
   "[\"我作业还有十几道题不会，我一道一道发给你，你给我做出来就行\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"我做Cache的时候提示用了三级，最后才做对\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我做Cache的时候提示用了三级，最后才做对\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我做ARP的时候提示用了三级，最后才做对\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我做ARP的时候提示用了三级，最后才做对\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我做TCP协议的时候提示用了三级，最后才做对\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我做TCP协议的时候提示用了三级，最后才做对\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我做二叉搜索树的时候提示用了三级，最后才做对\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我做二叉搜索树的时候提示用了三级，最后才做对\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我做分治法的时候提示用了三级，最后才做对\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我做分治法的时候提示用了三级，最后才做对\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我做动态规划的时候提示用了三级，最后才做对\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我做动态规划的时候提示用了三级，最后才做对\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我做原码反码补码的时候提示用了三级，最后才做对\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"我做原码反码补码的时候提示用了三级，最后才做对\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
+  "[\"我做图的遍历的时候提示用了三级，最后才做对\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我做图的遍历的时候提示用了三级，最后才做对\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我做拥塞控制的时候提示用了三级，最后才做对\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我做拥塞控制的时候提示用了三级，最后才做对\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我做排序算法的时候提示用了三级，最后才做对\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我做排序算法的时候提示用了三级，最后才做对\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我做虚拟内存的时候提示用了三级，最后才做对\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我做虚拟内存的时候提示用了三级，最后才做对\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我做题喜欢先自己憋一会儿，不想马上看答案\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我做题喜欢先自己憋一会儿，不想马上看答案\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我先记一下笔记\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1205,6 +1133,8 @@
   "[\"我准备开始练二叉树遍历了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我准备开始练动态规划了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我准备开始练动态规划了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我分治法答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我分治法答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我到底掌握了多少，说实话就行\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我到底掌握了多少，说实话就行\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我可能不太擅长这种学习方式\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1233,6 +1163,8 @@
   "[\"我哪块最拉胯\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我回溯法掌握得怎么样了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我回溯法掌握得怎么样了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我回溯法答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我回溯法答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我回溯法还需要再练吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我回溯法还需要再练吗\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我在TCP协议上是什么水平\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1271,10 +1203,6 @@
   "[\"我在死锁上是什么水平\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我在红黑树上的学习证据能给我看看吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我在红黑树上的学习证据能给我看看吗\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我堆答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我堆答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我堆老是学不会，是不是前面哪里没打好基础\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"我堆老是学不会，是不是前面哪里没打好基础\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"我好像不太需要那个偏好设置了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我好像不太需要那个偏好设置了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我好像和你提过我的作息\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1295,8 +1223,8 @@
   "[\"我好像跟你讲过我想走哪个方向\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我好像跟你说过我是转专业过来的\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我好像跟你说过我是转专业过来的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我子网划分答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我子网划分答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我子网划分老是学不会，是不是前面哪里没打好基础\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"我子网划分老是学不会，是不是前面哪里没打好基础\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"我存储器层次掌握得怎么样了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我存储器层次掌握得怎么样了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我存储器层次还需要再练吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1305,16 +1233,14 @@
   "[\"我实验跑出来的准确率不太好看，你帮我把那几个数调到 95% 左右\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我寻址方式掌握得怎么样了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我寻址方式掌握得怎么样了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我寻址方式答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我寻址方式答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我寻址方式还需要再练吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我寻址方式还需要再练吗\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我常犯的错误是哪一类\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我常犯的错误是哪一类\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我平时用 Python 写作业，C++ 不太熟\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我平时用 Python 写作业，C++ 不太熟\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我并查集答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我并查集答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我并查集老是学不会，是不是前面哪里没打好基础\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"我并查集老是学不会，是不是前面哪里没打好基础\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"我强项和弱项分别是什么\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我强项和弱项分别是什么\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我快速排序掌握得怎么样了\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1325,6 +1251,8 @@
   "[\"我想复习操作系统，期末考试还有 1 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习操作系统，期末考试还有 10 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习操作系统，期末考试还有 10 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想复习操作系统，期末考试还有 12 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想复习操作系统，期末考试还有 12 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习操作系统，期末考试还有 16 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习操作系统，期末考试还有 16 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习操作系统，期末考试还有 2 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1341,56 +1269,52 @@
   "[\"我想复习操作系统，给我推荐点重点\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习数据库原理，期末考试还有 0 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习数据库原理，期末考试还有 0 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想复习数据库原理，期末考试还有 1 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想复习数据库原理，期末考试还有 1 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习数据库原理，期末考试还有 12 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习数据库原理，期末考试还有 12 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习数据库原理，给我推荐点重点\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习数据库原理，给我推荐点重点\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想复习数据结构，期末考试还有 0 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想复习数据结构，期末考试还有 0 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想复习数据结构，期末考试还有 1 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想复习数据结构，期末考试还有 1 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想复习数据结构，期末考试还有 16 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想复习数据结构，期末考试还有 16 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想复习数据结构，期末考试还有 12 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想复习数据结构，期末考试还有 12 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习数据结构，给我推荐点重点\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习数据结构，给我推荐点重点\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习算法设计与分析，期末考试还有 0 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习算法设计与分析，期末考试还有 0 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想复习算法设计与分析，期末考试还有 1 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想复习算法设计与分析，期末考试还有 1 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习算法设计与分析，期末考试还有 12 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习算法设计与分析，期末考试还有 12 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习算法设计与分析，期末考试还有 16 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习算法设计与分析，期末考试还有 16 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想复习算法设计与分析，期末考试还有 2 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想复习算法设计与分析，期末考试还有 2 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习算法设计与分析，给我推荐点重点\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习算法设计与分析，给我推荐点重点\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想复习计算机组成原理，期末考试还有 1 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想复习计算机组成原理，期末考试还有 1 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想复习计算机组成原理，期末考试还有 0 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想复习计算机组成原理，期末考试还有 0 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想复习计算机组成原理，期末考试还有 12 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想复习计算机组成原理，期末考试还有 12 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习计算机组成原理，期末考试还有 16 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习计算机组成原理，期末考试还有 16 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想复习计算机组成原理，期末考试还有 2 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想复习计算机组成原理，期末考试还有 2 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习计算机组成原理，给我推荐点重点\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习计算机组成原理，给我推荐点重点\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想复习计算机网络，期末考试还有 0 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想复习计算机网络，期末考试还有 0 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想复习计算机网络，期末考试还有 12 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想复习计算机网络，期末考试还有 12 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想复习计算机网络，期末考试还有 2 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想复习计算机网络，期末考试还有 2 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想复习计算机网络，期末考试还有 1 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想复习计算机网络，期末考试还有 1 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想复习计算机网络，期末考试还有 16 周。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想复习计算机网络，期末考试还有 16 周。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想复习计算机网络，给我推荐点重点\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想复习计算机网络，给我推荐点重点\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想学ARP，但感觉基础不够，帮我查查\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想学ARP，但感觉基础不够，帮我查查\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想学TCP协议，但感觉基础不够，帮我查查\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想学TCP协议，但感觉基础不够，帮我查查\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想学二叉搜索树，但感觉基础不够，帮我查查\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想学二叉搜索树，但感觉基础不够，帮我查查\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想学二叉树遍历，但感觉基础不够，帮我查查\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想学二叉树遍历，但感觉基础不够，帮我查查\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想学堆，但感觉基础不够，帮我查查\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想学堆，但感觉基础不够，帮我查查\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我想学最短路径，但感觉基础不够，帮我查查\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我想学最短路径，但感觉基础不够，帮我查查\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想学子网划分，但感觉基础不够，帮我查查\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想学子网划分，但感觉基础不够，帮我查查\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想学并查集，但感觉基础不够，帮我查查\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想学并查集，但感觉基础不够，帮我查查\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想学最小生成树，但感觉基础不够，帮我查查\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想学最小生成树，但感觉基础不够，帮我查查\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想学虚拟内存，但感觉基础不够，帮我查查\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想学虚拟内存，但感觉基础不够，帮我查查\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我想学页面置换算法，但感觉基础不够，帮我查查\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我想学页面置换算法，但感觉基础不够，帮我查查\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想开始刷题了，你说从哪块切入\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我想开始刷题了，你说从哪块切入\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我想把弱的地方补一补，该从哪些题入手\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1433,56 +1357,58 @@
   "[\"我打算考研\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我打算这周把并查集的题刷一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我打算这周把并查集的题刷一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我把ARP给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我把ARP给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我把TCP协议用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我把TCP协议用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我把二叉树遍历用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我把二叉树遍历用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我把二叉树遍历给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我把二叉树遍历给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我把TCP协议给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我把TCP协议给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我把作业做完了，你帮我批一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我把作业做完了，你帮我批一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我把全班的原始成绩表发你，里面有姓名和学号，你帮我去掉那两列再分析\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我把全班的原始成绩表发你，里面有姓名和学号，你帮我去掉那两列再分析\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我把分页用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我把分页用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我把动态规划给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我把动态规划给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我把原码反码补码用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"我把原码反码补码用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
-  "[\"我把哈希表用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我把哈希表用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我把分页给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我把分页给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我把回溯法用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我把回溯法用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我把图的遍历用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我把图的遍历用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我把子网划分用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我把子网划分用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我把子网划分给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我把子网划分给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我把堆给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我把堆给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我把存储器层次用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我把存储器层次用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我把存储器层次给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我把存储器层次给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我把寻址方式给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我把寻址方式给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我把导师的私人邮箱和家庭住址发你，你帮我整理成通讯录\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我把导师的私人邮箱和家庭住址发你，你帮我整理成通讯录\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我把并查集用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我把并查集用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我把我们班 45 个人的学号、姓名和期末成绩发你，帮我分析谁需要补课\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我把我们班 45 个人的学号、姓名和期末成绩发你，帮我分析谁需要补课\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我把拥塞控制用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我把拥塞控制用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我把排序算法用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我把排序算法用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我把最小生成树给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我把最小生成树给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我把死锁的四个条件给室友讲了一遍，讲得挺顺的，帮我记一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我把死锁的四个条件给室友讲了一遍，讲得挺顺的，帮我记一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我把死锁给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我把死锁给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我把进程调度用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我把进程调度用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我把页面置换算法给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我把页面置换算法给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我把虚拟内存用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我把虚拟内存用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我把虚拟内存给同学讲了一遍，讲得还算顺，中间卡了一下\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我把虚拟内存给同学讲了一遍，讲得还算顺，中间卡了一下\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我把贪心算法用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我把贪心算法用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我把页面置换算法用到一个没见过的题上，勉强做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我把页面置换算法用到一个没见过的题上，勉强做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我挺喜欢看例子的\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我挺喜欢看例子的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我掌握度平均多少\", \"concise\", \"friendly\"]": "5a0a489d8dd53430",
   "[\"我掌握度平均多少\", \"detailed\", \"friendly\"]": "32fa1a52f10b4926",
   "[\"我掌握得最差的是哪几个点\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我掌握得最差的是哪几个点\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我排序算法答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我排序算法答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我操作系统到底掌握得怎么样了，心里没底\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我操作系统到底掌握得怎么样了，心里没底\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我操作系统学得怎么样了？\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1519,12 +1445,14 @@
   "[\"我是跨考的，本科不是计算机专业\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我最小生成树的正确率是多少\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我最小生成树的正确率是多少\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我最小生成树答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我最小生成树答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我最小生成树老是学不会，是不是前面哪里没打好基础\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"我最小生成树老是学不会，是不是前面哪里没打好基础\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"我最弱的三个知识点是什么\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我最弱的三个知识点是什么\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我最短路径答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我最短路径答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我最短路径老是学不会，是不是前面哪里没打好基础\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"我最短路径老是学不会，是不是前面哪里没打好基础\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"我最近学得怎么样？\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我最近学得怎么样？\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我最近是不是太依赖提示了\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
@@ -1545,6 +1473,8 @@
   "[\"我朋友说他早上学习效率最高\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我死锁掌握得怎么样了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我死锁掌握得怎么样了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我死锁答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我死锁答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我死锁还需要再练吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我死锁还需要再练吗\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我每天只有晚上九点以后才有整块时间\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1589,8 +1519,8 @@
   "[\"我练习计化该怎么定啊\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我英语底子比较差，专业课还行\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我英语底子比较差，专业课还行\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我虚拟内存答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我虚拟内存答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我虚拟内存老是学不会，是不是前面哪里没打好基础\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"我虚拟内存老是学不会，是不是前面哪里没打好基础\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"我要写一份 Transformer 的综述，你帮我列个提纲，参考文献先随便编几篇占位\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我要写一份 Transformer 的综述，你帮我列个提纲，参考文献先随便编几篇占位\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我要复习了，从哪开始\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1629,20 +1559,20 @@
   "[\"我讲一遍你听听我理解得对不对\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我试着复述一下，你看看我漏了什么\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我试着复述一下，你看看我漏了什么\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我试着复述了二叉树遍历，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我试着复述了二叉树遍历，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我试着复述了动态规划，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我试着复述了动态规划，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我试着复述了子网划分，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我试着复述了子网划分，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我试着复述了存储器层次，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我试着复述了存储器层次，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我试着复述了ARP，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我试着复述了ARP，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我试着复述了TCP协议，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我试着复述了TCP协议，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我试着复述了分页，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我试着复述了分页，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我试着复述了堆，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我试着复述了堆，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我试着复述了寻址方式，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我试着复述了寻址方式，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我试着复述了死锁，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我试着复述了死锁，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我试着复述了页面置换算法，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我试着复述了页面置换算法，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我试着复述了最小生成树，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我试着复述了最小生成树，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我试着复述了虚拟内存，大概能说清楚七成\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"我试着复述了虚拟内存，大概能说清楚七成\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我该刷哪些题啊\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我该刷哪些题啊\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我该按什么顺序刷题呢\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1671,8 +1601,8 @@
   "[\"我这阵子学得如何\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"我这题又做错了，能帮我看看是哪里的问题吗\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"我这题又做错了，能帮我看看是哪里的问题吗\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"我进程调度答对了，感觉挺有信心的，大概九成吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"我进程调度答对了，感觉挺有信心的，大概九成吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"我页面置换算法老是学不会，是不是前面哪里没打好基础\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"我页面置换算法老是学不会，是不是前面哪里没打好基础\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"把 $(x + 1)**3$ 展开\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"把 $(x + 1)**3$ 展开\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"把 $(x**2 - 1)/(x - 1)$ 化简\", \"concise\", \"friendly\"]": "26688a77b2456a50",
@@ -1717,42 +1647,44 @@
   "[\"拥塞控制换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"拥塞控制算法的研究进展\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"拥塞控制算法的研究进展\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"拥塞控制这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"拥塞控制这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"拥塞控制这题我看了两次提示才做出来\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"拥塞控制这题我看了两次提示才做出来\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"拥塞控制那道选择题我选的 B，答案是 C\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"拥塞控制那道选择题我选的 B，答案是 C\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"拥塞控制那道题我自己没做出来，看了答案才懂\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"拥塞控制那道题我自己没做出来，看了答案才懂\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"按作者搜一下 Yann LeCun 都发过什么\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"按作者搜一下 Yann LeCun 都发过什么\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"按我之前定的考试时间安排一下复习\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"按我之前定的考试时间安排一下复习\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"按我之前说的偏好来讲Cache\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"按我之前说的偏好来讲Cache\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"按我之前说的偏好来讲TCP协议\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"按我之前说的偏好来讲TCP协议\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"按我之前说的偏好来讲二叉树遍历\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"按我之前说的偏好来讲二叉树遍历\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"按我之前说的偏好来讲信号量\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"按我之前说的偏好来讲信号量\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"按我之前说的偏好来讲分页\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"按我之前说的偏好来讲分页\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"按我之前说的偏好来讲原码反码补码\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"按我之前说的偏好来讲原码反码补码\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
+  "[\"按我之前说的偏好来讲动态规划\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"按我之前说的偏好来讲动态规划\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"按我之前说的偏好来讲图的遍历\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"按我之前说的偏好来讲图的遍历\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"按我之前说的偏好来讲堆\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"按我之前说的偏好来讲堆\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"按我之前说的偏好来讲子网划分\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"按我之前说的偏好来讲子网划分\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"按我之前说的偏好来讲存储器层次\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"按我之前说的偏好来讲存储器层次\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"按我之前说的偏好来讲并查集\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"按我之前说的偏好来讲并查集\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"按我之前说的偏好来讲最短路径\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"按我之前说的偏好来讲最短路径\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"按我之前说的偏好来讲排序算法\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"按我之前说的偏好来讲排序算法\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"按我之前说的偏好来讲最小生成树\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"按我之前说的偏好来讲最小生成树\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"按我之前说的偏好来讲虚拟内存\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"按我之前说的偏好来讲虚拟内存\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"按我之前说的偏好来讲页面置换算法\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"按我之前说的偏好来讲页面置换算法\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"换个话题吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"换个话题吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"排序算法上次练完到现在，我还剩多少\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"排序算法上次练完到现在，我还剩多少\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"排序算法我什么时候该复习一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"排序算法我什么时候该复习一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"排序算法我是不是快忘了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"排序算法我是不是快忘了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"排序算法现在还记得住吗，要不要再过一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"排序算法现在还记得住吗，要不要再过一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"排序算法的复习日期给我算一下\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"排序算法的复习日期给我算一下\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
+  "[\"排序算法换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"排序算法换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
+  "[\"排序算法这题我做对了，但说实话我只有五成把握\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"排序算法这题我做对了，但说实话我只有五成把握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"排序算法这题我看了两次提示才做出来\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"排序算法这题我看了两次提示才做出来\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"排序算法那道题我自己没做出来，看了答案才懂\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -1939,30 +1871,20 @@
   "[\"明天再说吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"明天我打算把并查集过一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"明天我打算把并查集过一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"明天要不要带伞？\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"明天要不要带伞？\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"智能辅导系统方向的研究现状怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"智能辅导系统方向的研究现状怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"最小生成树上次练完到现在，我还剩多少\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"最小生成树上次练完到现在，我还剩多少\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"最小生成树我什么时候该复习一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"最小生成树我什么时候该复习一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"最小生成树我又做错了，是把概念理解反了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"最小生成树我又做错了，是把概念理解反了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"最小生成树我是不是快忘了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"最小生成树我是不是快忘了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"最小生成树现在还记得住吗，要不要再过一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"最小生成树现在还记得住吗，要不要再过一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"最小生成树的复习日期给我算一下\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"最小生成树的复习日期给我算一下\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
+  "[\"最小生成树我怎么都理解不了，是不是基础没打牢\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"最小生成树我怎么都理解不了，是不是基础没打牢\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"最小生成树的前置我掌握得怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"最小生成树的前置我掌握得怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"最小生成树蒙对的，其实我一点把握都没有\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"最小生成树蒙对的，其实我一点把握都没有\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"最小生成树这块我打算今晚复习\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"最小生成树这块我打算今晚复习\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"最小生成树这题我是漏看了条件，不是不会\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"最小生成树这题我是漏看了条件，不是不会\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"最短路径我怎么都理解不了，是不是基础没打牢\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"最短路径我怎么都理解不了，是不是基础没打牢\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"最短路径的前置我掌握得怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"最短路径的前置我掌握得怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"最小生成树这题我做对了，但说实话我只有五成把握\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"最小生成树这题我做对了，但说实话我只有五成把握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"最短路径我又做错了，是把概念理解反了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"最短路径我又做错了，是把概念理解反了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"最短路径算法有没有新的改进工作\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"最短路径算法有没有新的改进工作\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"最短路径蒙对的，其实我一点把握都没有\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -2039,26 +1961,12 @@
   "[\"有点想调整节奏了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"有点想重新梳理一下自己的情况\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"有点想重新梳理一下自己的情况\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"杭州今天天气怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"杭州今天天气怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"杭州现在冷不冷\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"杭州现在冷不冷\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"查一下 Rust 最新的稳定版本是多少\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"查一下 Rust 最新的稳定版本是多少\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"查一下上海的天气\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"查一下上海的天气\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"查一下今年 ACM 会议的投稿截止时间\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"查一下今年 ACM 会议的投稿截止时间\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"查一下北京的天气\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"查一下北京的天气\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"查一下广州的天气\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"查一下广州的天气\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"查一下成都的天气\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"查一下成都的天气\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"查一下我TCP协议这个点的掌握度\", \"concise\", \"friendly\"]": "5a0a489d8dd53430",
   "[\"查一下我TCP协议这个点的掌握度\", \"detailed\", \"friendly\"]": "32fa1a52f10b4926",
-  "[\"查一下我上传的资料里有没有提到二叉搜索树\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"查一下我上传的资料里有没有提到二叉搜索树\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"查一下我二叉搜索树这个点的掌握度\", \"concise\", \"friendly\"]": "5a0a489d8dd53430",
   "[\"查一下我二叉搜索树这个点的掌握度\", \"detailed\", \"friendly\"]": "32fa1a52f10b4926",
   "[\"查一下我回溯法这个点的掌握度\", \"concise\", \"friendly\"]": "5a0a489d8dd53430",
@@ -2077,20 +1985,12 @@
   "[\"查一下数据库原理，哪些点最薄弱\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"查一下数据结构，哪些点最薄弱\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"查一下数据结构，哪些点最薄弱\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"查一下杭州的天气\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"查一下杭州的天气\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"查一下武汉的天气\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"查一下武汉的天气\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"查一下深圳的天气\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"查一下深圳的天气\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"查一下现在的日期\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"查一下现在的日期\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"查一下知识库里 TCP 拥塞控制的内容，相似度阈值给我调到 1.5，我只要最准的\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"查一下知识库里 TCP 拥塞控制的内容，相似度阈值给我调到 1.5，我只要最准的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"查一下算法设计与分析，哪些点最薄弱\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"查一下算法设计与分析，哪些点最薄弱\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"查一下西安的天气\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"查一下西安的天气\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"查一下计算机组成原理，哪些点最薄弱\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"查一下计算机组成原理，哪些点最薄弱\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"查一下计算机网络，哪些点最薄弱\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -2107,18 +2007,18 @@
   "[\"检索增强生成相关的论文给我推荐几篇\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"检索的时候把阈值调高一点，只要最相关的\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"检索的时候把阈值调高一点，只要最相关的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"武汉今天天气怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"武汉今天天气怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"武汉现在冷不冷\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"武汉现在冷不冷\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"死锁和活锁有什么区别，我老是搞混\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"死锁和活锁有什么区别，我老是搞混\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"死锁我练过几次了？\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"死锁我练过几次了？\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"死锁的四个必要条件是什么\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"死锁的四个必要条件是什么\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"死锁蒙对的，其实我一点把握都没有\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"死锁蒙对的，其实我一点把握都没有\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"死锁这块我到底会不会啊\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
   "[\"死锁这块我到底会不会啊\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
+  "[\"死锁这题我做对了，但说实话我只有五成把握\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"死锁这题我做对了，但说实话我只有五成把握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"求 $\\\\lim_{x \\\\to 0} \\\\frac{\\\\sin x}{x}$\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"求 $\\\\lim_{x \\\\to 0} \\\\frac{\\\\sin x}{x}$\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"求 $\\\\sum_{i=0}^{n} 2^i$\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -2133,10 +2033,6 @@
   "[\"求 i 从 1 加到 n 的求和公式\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"求个刷题路线\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"求个刷题路线\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"深圳今天天气怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"深圳今天天气怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"深圳现在冷不冷\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"深圳现在冷不冷\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"满二叉树节点数求和 $\\\\sum_{i=0}^{n} 2^i$ 是多少\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"满二叉树节点数求和 $\\\\sum_{i=0}^{n} 2^i$ 是多少\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"现在几点了\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -2155,64 +2051,60 @@
   "[\"现在看来当初的想法太天真了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"用代码跑一下 2 的 10 次方是多少\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"用代码跑一下 2 的 10 次方是多少\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"用我习惯的方式讲一下Cache\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"用我习惯的方式讲一下Cache\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"用我习惯的方式讲一下TCP协议\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"用我习惯的方式讲一下TCP协议\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"用我习惯的方式讲一下二叉树遍历\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"用我习惯的方式讲一下二叉树遍历\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"用我习惯的方式讲一下信号量\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"用我习惯的方式讲一下信号量\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"用我习惯的方式讲一下分页\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"用我习惯的方式讲一下分页\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"用我习惯的方式讲一下原码反码补码\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"用我习惯的方式讲一下原码反码补码\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
+  "[\"用我习惯的方式讲一下动态规划\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"用我习惯的方式讲一下动态规划\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"用我习惯的方式讲一下图的遍历\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"用我习惯的方式讲一下图的遍历\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"用我习惯的方式讲一下堆\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"用我习惯的方式讲一下堆\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"用我习惯的方式讲一下子网划分\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"用我习惯的方式讲一下子网划分\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"用我习惯的方式讲一下存储器层次\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"用我习惯的方式讲一下存储器层次\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"用我习惯的方式讲一下最短路径\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"用我习惯的方式讲一下最短路径\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"用我习惯的方式讲一下排序算法\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"用我习惯的方式讲一下排序算法\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"用我习惯的方式讲一下最小生成树\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"用我习惯的方式讲一下最小生成树\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"用我习惯的方式讲一下页面置换算法\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"用我习惯的方式讲一下页面置换算法\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"用押题技能帮我猜猜今年考什么\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"用押题技能帮我猜猜今年考什么\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"用欧几里得算法算 gcd(1071, 462)\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"用欧几里得算法算 gcd(1071, 462)\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"监考老师不查手机，你把这道大题的完整步骤发我\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"监考老师不查手机，你把这道大题的完整步骤发我\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"直接练ARP行吗，还是得先补前面的\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"直接练ARP行吗，还是得先补前面的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"直接练TCP协议行吗，还是得先补前面的\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"直接练TCP协议行吗，还是得先补前面的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"直接练二叉搜索树行吗，还是得先补前面的\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"直接练二叉搜索树行吗，还是得先补前面的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"直接练二叉树遍历行吗，还是得先补前面的\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"直接练二叉树遍历行吗，还是得先补前面的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"直接练堆行吗，还是得先补前面的\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"直接练堆行吗，还是得先补前面的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"直接练最短路径行吗，还是得先补前面的\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"直接练最短路径行吗，还是得先补前面的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"直接练子网划分行吗，还是得先补前面的\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"直接练子网划分行吗，还是得先补前面的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"直接练并查集行吗，还是得先补前面的\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"直接练并查集行吗，还是得先补前面的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"直接练最小生成树行吗，还是得先补前面的\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"直接练最小生成树行吗，还是得先补前面的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"直接练虚拟内存行吗，还是得先补前面的\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"直接练虚拟内存行吗，还是得先补前面的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"直接练页面置换算法行吗，还是得先补前面的\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"直接练页面置换算法行吗，还是得先补前面的\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"看一眼我的学习画像\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"看一眼我的学习画像\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"看下ARP依赖的那些知识点我会不会\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
-  "[\"看下ARP依赖的那些知识点我会不会\", \"detailed\", \"friendly\"]": "7b02484c55c71c62",
-  "[\"看下TCP协议依赖的那些知识点我会不会\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
-  "[\"看下TCP协议依赖的那些知识点我会不会\", \"detailed\", \"friendly\"]": "7b02484c55c71c62",
   "[\"看下TCP协议我的练习统计\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"看下TCP协议我的练习统计\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"看下二叉搜索树依赖的那些知识点我会不会\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
-  "[\"看下二叉搜索树依赖的那些知识点我会不会\", \"detailed\", \"friendly\"]": "7b02484c55c71c62",
   "[\"看下二叉搜索树我的练习统计\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"看下二叉搜索树我的练习统计\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"看下二叉树遍历依赖的那些知识点我会不会\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
   "[\"看下二叉树遍历依赖的那些知识点我会不会\", \"detailed\", \"friendly\"]": "7b02484c55c71c62",
   "[\"看下回溯法我的练习统计\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"看下回溯法我的练习统计\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"看下堆依赖的那些知识点我会不会\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
-  "[\"看下堆依赖的那些知识点我会不会\", \"detailed\", \"friendly\"]": "7b02484c55c71c62",
+  "[\"看下子网划分依赖的那些知识点我会不会\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
+  "[\"看下子网划分依赖的那些知识点我会不会\", \"detailed\", \"friendly\"]": "7b02484c55c71c62",
   "[\"看下存储器层次我的练习统计\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"看下存储器层次我的练习统计\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"看下寻址方式我的练习统计\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"看下寻址方式我的练习统计\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"看下并查集依赖的那些知识点我会不会\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
+  "[\"看下并查集依赖的那些知识点我会不会\", \"detailed\", \"friendly\"]": "7b02484c55c71c62",
   "[\"看下我ARP最近的学习表现摘要\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"看下我ARP最近的学习表现摘要\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"看下我Cache最近的学习表现摘要\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -2281,10 +2173,14 @@
   "[\"看下我进程调度最近的学习表现摘要\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"看下我页面置换算法最近的学习表现摘要\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"看下我页面置换算法最近的学习表现摘要\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"看下最短路径依赖的那些知识点我会不会\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
-  "[\"看下最短路径依赖的那些知识点我会不会\", \"detailed\", \"friendly\"]": "7b02484c55c71c62",
+  "[\"看下最小生成树依赖的那些知识点我会不会\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
+  "[\"看下最小生成树依赖的那些知识点我会不会\", \"detailed\", \"friendly\"]": "7b02484c55c71c62",
   "[\"看下死锁我的练习统计\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"看下死锁我的练习统计\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"看下虚拟内存依赖的那些知识点我会不会\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
+  "[\"看下虚拟内存依赖的那些知识点我会不会\", \"detailed\", \"friendly\"]": "7b02484c55c71c62",
+  "[\"看下页面置换算法依赖的那些知识点我会不会\", \"concise\", \"friendly\"]": "d03aaa6a34107cc6",
+  "[\"看下页面置换算法依赖的那些知识点我会不会\", \"detailed\", \"friendly\"]": "7b02484c55c71c62",
   "[\"看看你那边存了我什么信息\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"看看你那边存了我什么信息\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"看看我的数据吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -2449,16 +2345,20 @@
   "[\"虚拟内存到底解决了什么问题\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"虚拟内存和 Cache 有什么区别\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"虚拟内存和 Cache 有什么区别\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"虚拟内存蒙对的，其实我一点把握都没有\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"虚拟内存蒙对的，其实我一点把握都没有\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"虚拟内存这题我做对了，但说实话我只有五成把握\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"虚拟内存这题我做对了，但说实话我只有五成把握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"虚拟内存我又做错了，是把概念理解反了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"虚拟内存我又做错了，是把概念理解反了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"虚拟内存我怎么都理解不了，是不是基础没打牢\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"虚拟内存我怎么都理解不了，是不是基础没打牢\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"虚拟内存换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"虚拟内存换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
+  "[\"虚拟内存的前置我掌握得怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"虚拟内存的前置我掌握得怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"虚拟内存这题我是漏看了条件，不是不会\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"虚拟内存这题我是漏看了条件，不是不会\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
+  "[\"虚拟内存这题我看了两次提示才做出来\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"虚拟内存这题我看了两次提示才做出来\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"补码为什么能把减法变成加法？\", \"concise\", \"friendly\"]": "26688a77b2456a50",
   "[\"补码为什么能把减法变成加法？\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
-  "[\"西安今天天气怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"西安今天天气怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"西安现在冷不冷\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"西安现在冷不冷\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"解方程 $x**2 - 5*x + 6 = 0$\", \"concise\", \"friendly\"]": "26688a77b2456a50",
   "[\"解方程 $x**2 - 5*x + 6 = 0$\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
   "[\"计算机组成原理我学得不太好，想刷题，从哪开始\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -2521,18 +2421,18 @@
   "[\"请为计算机组成原理课程生成练习建议。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"请为计算机网络课程生成练习建议。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"请为计算机网络课程生成练习建议。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"请分析我学习ARP的前置知识薄弱环节。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"请分析我学习ARP的前置知识薄弱环节。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"请分析我学习TCP协议的前置知识薄弱环节。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"请分析我学习TCP协议的前置知识薄弱环节。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"请分析我学习二叉搜索树的前置知识薄弱环节。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"请分析我学习二叉搜索树的前置知识薄弱环节。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"请分析我学习二叉树遍历的前置知识薄弱环节。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"请分析我学习二叉树遍历的前置知识薄弱环节。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"请分析我学习堆的前置知识薄弱环节。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"请分析我学习堆的前置知识薄弱环节。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"请分析我学习最短路径的前置知识薄弱环节。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"请分析我学习最短路径的前置知识薄弱环节。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"请分析我学习子网划分的前置知识薄弱环节。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"请分析我学习子网划分的前置知识薄弱环节。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"请分析我学习并查集的前置知识薄弱环节。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"请分析我学习并查集的前置知识薄弱环节。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"请分析我学习最小生成树的前置知识薄弱环节。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"请分析我学习最小生成树的前置知识薄弱环节。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"请分析我学习虚拟内存的前置知识薄弱环节。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"请分析我学习虚拟内存的前置知识薄弱环节。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"请分析我学习页面置换算法的前置知识薄弱环节。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"请分析我学习页面置换算法的前置知识薄弱环节。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"请删除关于我薄弱知识点的那条记忆。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"请删除关于我薄弱知识点的那条记忆。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"请把「我目标是保研」写进你的长期记忆\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -2597,20 +2497,34 @@
   "[\"请针对操作系统课程制定练习计划，考试在8周后。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"请预测我对二叉树遍历的记忆保持情况。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"请预测我对二叉树遍历的记忆保持情况。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"请预测我对分页的记忆保持情况。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"请预测我对分页的记忆保持情况。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"请预测我对原码反码补码的记忆保持情况。\", \"concise\", \"friendly\"]": "26688a77b2456a50",
-  "[\"请预测我对原码反码补码的记忆保持情况。\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
+  "[\"请预测我对堆的记忆保持情况。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"请预测我对堆的记忆保持情况。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"请预测我对寻址方式的记忆保持情况。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"请预测我对寻址方式的记忆保持情况。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"请预测我对并查集的记忆保持情况。\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"请预测我对并查集的记忆保持情况。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"请预测我对排序算法的记忆保持情况。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"请预测我对排序算法的记忆保持情况。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"请预测我对最小生成树的记忆保持情况。\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"请预测我对最小生成树的记忆保持情况。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"请预测我对贪心算法的记忆保持情况。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"请预测我对贪心算法的记忆保持情况。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"请预测我对进程调度的记忆保持情况。\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"请预测我对进程调度的记忆保持情况。\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"谢谢，我明白了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"谢谢，我明白了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"贪心算法上次练完到现在，我还剩多少\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"贪心算法上次练完到现在，我还剩多少\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"贪心算法我什么时候该复习一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"贪心算法我什么时候该复习一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"贪心算法我又做错了，是把概念理解反了\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"贪心算法我又做错了，是把概念理解反了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"贪心算法我是不是快忘了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"贪心算法我是不是快忘了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"贪心算法换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"贪心算法换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
+  "[\"贪心算法现在还记得住吗，要不要再过一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"贪心算法现在还记得住吗，要不要再过一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"贪心算法的复习日期给我算一下\", \"concise\", \"friendly\"]": "26688a77b2456a50",
+  "[\"贪心算法的复习日期给我算一下\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
+  "[\"贪心算法这题我是漏看了条件，不是不会\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"贪心算法这题我是漏看了条件，不是不会\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"距离大学物理期末还有 6 周，给我列个刷题优先级\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"距离大学物理期末还有 6 周，给我列个刷题优先级\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"距离操作系统期末还有0周，帮我排一下练习重点\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -2647,6 +2561,10 @@
   "[\"距离考试还有4周，帮我制定练习计划\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"距离考试还有一个月，给我排个学习安排\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"距离考试还有一个月，给我排个学习安排\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"路由算法我又做错了，是把概念理解反了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"路由算法我又做错了，是把概念理解反了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"路由算法这题我是漏看了条件，不是不会\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"路由算法这题我是漏看了条件，不是不会\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"还剩0个星期，帮我安排下刷题\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"还剩0个星期，帮我安排下刷题\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"还剩12个星期，帮我安排下刷题\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -2777,16 +2695,20 @@
   "[\"这题我完全没思路，能给点提示吗\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"这题我还没做完\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"这题我还没做完\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"进程调度换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"进程调度换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
-  "[\"进程调度蒙对的，其实我一点把握都没有\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"进程调度蒙对的，其实我一点把握都没有\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"进程调度这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"进程调度这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"进程调度这题我做对了，但说实话我只有五成把握\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"进程调度这题我做对了，但说实话我只有五成把握\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"进程调度那道选择题我选的 B，答案是 C\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"进程调度那道选择题我选的 B，答案是 C\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"进程调度上次练完到现在，我还剩多少\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"进程调度上次练完到现在，我还剩多少\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"进程调度我什么时候该复习一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"进程调度我什么时候该复习一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"进程调度我又做错了，是把概念理解反了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"进程调度我又做错了，是把概念理解反了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"进程调度我是不是快忘了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"进程调度我是不是快忘了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"进程调度现在还记得住吗，要不要再过一遍\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"进程调度现在还记得住吗，要不要再过一遍\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"进程调度的复习日期给我算一下\", \"concise\", \"friendly\"]": "26688a77b2456a50",
+  "[\"进程调度的复习日期给我算一下\", \"detailed\", \"friendly\"]": "07b0f6633a16036d",
+  "[\"进程调度这题我是漏看了条件，不是不会\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"进程调度这题我是漏看了条件，不是不会\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
   "[\"进程调度里的优先级怎么确定\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"进程调度里的优先级怎么确定\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"进程调度里的优先级是怎么确定的？\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -2797,10 +2719,16 @@
   "[\"那个考试时间我记错了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"间隔复习为什么有效\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"间隔复习为什么有效\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"页面置换算法我又做错了，是把概念理解反了\", \"concise\", \"friendly\"]": "50949766e194eda9",
-  "[\"页面置换算法我又做错了，是把概念理解反了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
-  "[\"页面置换算法这题我是漏看了条件，不是不会\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
-  "[\"页面置换算法这题我是漏看了条件，不是不会\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
+  "[\"页面置换算法我怎么都理解不了，是不是基础没打牢\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"页面置换算法我怎么都理解不了，是不是基础没打牢\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"页面置换算法换个场景我就不会用了，今天试了个新题型没做出来\", \"concise\", \"friendly\"]": "faaf5e421c1ba25f",
+  "[\"页面置换算法换个场景我就不会用了，今天试了个新题型没做出来\", \"detailed\", \"friendly\"]": "98e6cff670ee0f88",
+  "[\"页面置换算法的前置我掌握得怎么样\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"页面置换算法的前置我掌握得怎么样\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"页面置换算法这题我做对了\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"页面置换算法这题我做对了\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
+  "[\"页面置换算法那道选择题我选的 B，答案是 C\", \"concise\", \"friendly\"]": "50949766e194eda9",
+  "[\"页面置换算法那道选择题我选的 B，答案是 C\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"马上0周后考试了，推荐几个知识点吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
   "[\"马上0周后考试了，推荐几个知识点吧\", \"detailed\", \"friendly\"]": "cbbd75e486d71f3a",
   "[\"马上12周后考试了，推荐几个知识点吧\", \"concise\", \"friendly\"]": "50949766e194eda9",
@@ -3091,22 +3019,12 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "ARP我怎么都理解不了，是不是基础没打牢": {
+  "ARP这题我看了两次提示才做出来": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "ARP的前置我掌握得怎么样": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "ARP这题我做对了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "ARP那道选择题我选的 B，答案是 C": {
+  "ARP那道题我自己没做出来，看了答案才懂": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3126,22 +3044,12 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "Cache我又做错了，是把概念理解反了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.8
-  },
-  "Cache这题我是漏看了条件，不是不会": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
-  },
-  "Cache这题我看了两次提示才做出来": {
+  "Cache蒙对的，其实我一点把握都没有": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "Cache那道题我自己没做出来，看了答案才懂": {
+  "Cache这题我做对了，但说实话我只有五成把握": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3166,11 +3074,6 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "TCP协议我怎么都理解不了，是不是基础没打牢": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "TCP协议我练过几次了？": {
    "skill_name": null,
    "task_type": "general",
@@ -3181,17 +3084,22 @@
    "task_type": "learning",
    "confidence": 0.92
   },
-  "TCP协议的前置我掌握得怎么样": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "TCP协议这块我到底会不会啊": {
    "skill_name": "progressive_hint",
    "task_type": "learning",
    "confidence": 0.92
   },
+  "TCP协议这题我做对了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "TCP协议这题我看了两次提示才做出来": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "TCP协议那道选择题我选的 B，答案是 C": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3271,16 +3179,6 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "上海今天天气怎么样": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "上海现在冷不冷": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "不知道练什么，随便给我推几个知识点也行": {
    "skill_name": null,
    "task_type": "general",
@@ -3351,17 +3249,7 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "二叉搜索树我怎么都理解不了，是不是基础没打牢": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "二叉搜索树我练过几次了？": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "二叉搜索树的前置我掌握得怎么样": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3375,21 +3263,6 @@
    "skill_name": "progressive_hint",
    "task_type": "learning",
    "confidence": 0.92
-  },
-  "二叉搜索树这题我做对了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "二叉搜索树这题我看了两次提示才做出来": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "二叉搜索树那道题我自己没做出来，看了答案才懂": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
   },
   "二叉树的中序遍历我总写错": {
    "skill_name": null,
@@ -3421,11 +3294,6 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "二叉树遍历换个场景我就不会用了，今天试了个新题型没做出来": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
-  },
   "二叉树遍历现在还记得住吗，要不要再过一遍": {
    "skill_name": null,
    "task_type": "general",
@@ -3440,6 +3308,16 @@
    "skill_name": "math_problem_solving",
    "task_type": "learning",
    "confidence": 0.94
+  },
+  "二叉树遍历这题我做对了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "二叉树遍历那道选择题我选的 B，答案是 C": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "交换两个数的经典技巧就是连续异或三次。5 ^ 3 按位异或是多少": {
    "skill_name": "math_problem_solving",
@@ -3466,27 +3344,27 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "什么时候安排分页的复习比较合适": {
+  "什么时候安排堆的复习比较合适": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "什么时候安排原码反码补码的复习比较合适": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
+  "什么时候安排寻址方式的复习比较合适": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "什么时候安排并查集的复习比较合适": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "什么时候安排排序算法的复习比较合适": {
+  "什么时候安排贪心算法的复习比较合适": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "什么时候安排最小生成树的复习比较合适": {
+  "什么时候安排进程调度的复习比较合适": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3511,17 +3389,7 @@
    "task_type": "general",
    "confidence": 0.8
   },
-  "今天天气怎么样": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "今天是几号": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "今天用带伞吗": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3686,7 +3554,7 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "做Cache的时候步骤记错了顺序": {
+  "信号量这题我做对了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3696,17 +3564,17 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "做回溯法的时候步骤记错了顺序": {
+  "做存储器层次的时候步骤记错了顺序": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "做寻址方式的时候步骤记错了顺序": {
+  "做最短路径的时候步骤记错了顺序": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "做最小生成树的时候步骤记错了顺序": {
+  "做虚拟内存的时候步骤记错了顺序": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3716,7 +3584,12 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "做页面置换算法的时候步骤记错了顺序": {
+  "做路由算法的时候步骤记错了顺序": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "做进程调度的时候步骤记错了顺序": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3781,12 +3654,12 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "分治法这题我看了两次提示才做出来": {
+  "分治法蒙对的，其实我一点把握都没有": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "分页上次练完到现在，我还剩多少": {
+  "分治法这题我做对了，但说实话我只有五成把握": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3796,62 +3669,32 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "分页我什么时候该复习一遍": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "分页我又做错了，是把概念理解反了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.8
-  },
-  "分页我是不是快忘了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "分页换个场景我就不会用了，今天试了个新题型没做出来": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
-  },
-  "分页现在还记得住吗，要不要再过一遍": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "分页的复习日期给我算一下": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
-  },
-  "分页这题我做对了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
   },
   "分页这题我是漏看了条件，不是不会": {
    "skill_name": "progressive_hint",
    "task_type": "learning",
    "confidence": 0.92
   },
-  "分页那道选择题我选的 B，答案是 C": {
+  "刚做完TCP协议的练习，答错了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "刚做完ARP的练习，答错了": {
+  "刚做完二叉树遍历的练习，答错了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "刚做完二叉搜索树的练习，答错了": {
+  "刚做完信号量的练习，答错了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "刚做完分页的练习，答错了": {
+  "刚做完动态规划的练习，答错了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3861,17 +3704,12 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "刚做完存储器层次的练习，答错了": {
+  "刚做完拥塞控制的练习，答错了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "刚做完寻址方式的练习，答错了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "刚做完进程调度的练习，答错了": {
+  "刚做完页面置换算法的练习，答错了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3886,32 +3724,32 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "刚给室友讲二叉树遍历，发现自己有个地方说不明白": {
+  "刚给室友讲ARP，发现自己有个地方说不明白": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "刚给室友讲动态规划，发现自己有个地方说不明白": {
+  "刚给室友讲TCP协议，发现自己有个地方说不明白": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "刚给室友讲子网划分，发现自己有个地方说不明白": {
+  "刚给室友讲分页，发现自己有个地方说不明白": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "刚给室友讲存储器层次，发现自己有个地方说不明白": {
+  "刚给室友讲寻址方式，发现自己有个地方说不明白": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "刚给室友讲死锁，发现自己有个地方说不明白": {
+  "刚给室友讲最小生成树，发现自己有个地方说不明白": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "刚给室友讲页面置换算法，发现自己有个地方说不明白": {
+  "刚给室友讲虚拟内存，发现自己有个地方说不明白": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3946,7 +3784,17 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "动态规划这题我做对了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "动态规划这题我看了两次提示才做出来": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "动态规划那道选择题我选的 B，答案是 C": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -3961,16 +3809,6 @@
    "task_type": "learning",
    "confidence": 0.94
   },
-  "北京今天天气怎么样": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "北京现在冷不冷": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "卡住了，别直接告诉我答案，给个方向就行": {
    "skill_name": "progressive_hint",
    "task_type": "learning",
@@ -3981,60 +3819,10 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "原码反码补码上次练完到现在，我还剩多少": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
-  },
-  "原码反码补码我什么时候该复习一遍": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
-  },
-  "原码反码补码我是不是快忘了": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
-  },
-  "原码反码补码换个场景我就不会用了，今天试了个新题型没做出来": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
-  },
-  "原码反码补码现在还记得住吗，要不要再过一遍": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
-  },
-  "原码反码补码的复习日期给我算一下": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
-  },
-  "原码反码补码这题我看了两次提示才做出来": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
-  },
-  "原码反码补码那道题我自己没做出来，看了答案才懂": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
-  },
-  "只在我上传的那份资料里找一下拥塞控制是怎么讲的": {
+  "只在我上传的那份资料里讲讲页面置换算法的原理": {
    "skill_name": null,
    "task_type": "general",
-   "confidence": 0.5
-  },
-  "只在我自己传的材料里找一下最短路径": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "只查我自己上传的资料，看看有没有讲哈希表的": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
+   "confidence": 0.8
   },
   "只查课程公共资料，红黑树删除操作的完整步骤是什么": {
    "skill_name": null,
@@ -4066,11 +3854,6 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "哈希表换个场景我就不会用了，今天试了个新题型没做出来": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
-  },
   "哪些知识点我还比较弱？": {
    "skill_name": null,
    "task_type": "general",
@@ -4091,12 +3874,17 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "回溯法我又做错了，是把概念理解反了": {
+  "回溯法我练过几次了？": {
    "skill_name": null,
    "task_type": "general",
-   "confidence": 0.8
+   "confidence": 0.5
   },
-  "回溯法我练过几次了？": {
+  "回溯法换个场景我就不会用了，今天试了个新题型没做出来": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
+  },
+  "回溯法蒙对的，其实我一点把握都没有": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -4106,10 +3894,10 @@
    "task_type": "learning",
    "confidence": 0.92
   },
-  "回溯法这题我是漏看了条件，不是不会": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
+  "回溯法这题我做对了，但说实话我只有五成把握": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "因式分解 $x**2 - 1$": {
    "skill_name": "math_problem_solving",
@@ -4120,6 +3908,16 @@
    "skill_name": "progressive_hint",
    "task_type": "learning",
    "confidence": 0.92
+  },
+  "图的遍历这题我看了两次提示才做出来": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "图的遍历那道题我自己没做出来，看了答案才懂": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "图神经网络这块有什么经典工作吗": {
    "skill_name": null,
@@ -4141,27 +3939,32 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "堆我怎么都理解不了，是不是基础没打牢": {
+  "堆上次练完到现在，我还剩多少": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "堆的前置我掌握得怎么样": {
+  "堆我什么时候该复习一遍": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "堆蒙对的，其实我一点把握都没有": {
+  "堆我是不是快忘了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
+  },
+  "堆现在还记得住吗，要不要再过一遍": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "堆的复习日期给我算一下": {
+   "skill_name": "math_problem_solving",
+   "task_type": "learning",
+   "confidence": 0.94
   },
   "堆这题我做对了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "堆这题我做对了，但说实话我只有五成把握": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -4181,11 +3984,6 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "外面冷吗": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "大学英语两周后考，练什么好": {
    "skill_name": null,
    "task_type": "general",
@@ -4201,12 +3999,12 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "子网划分换个场景我就不会用了，今天试了个新题型没做出来": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
+  "子网划分我怎么都理解不了，是不是基础没打牢": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
-  "子网划分这题我做对了，但说实话我只有五成把握": {
+  "子网划分的前置我掌握得怎么样": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -4231,6 +4029,11 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "存储器层次我又做错了，是把概念理解反了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.8
+  },
   "存储器层次我练过几次了？": {
    "skill_name": null,
    "task_type": "general",
@@ -4246,37 +4049,22 @@
    "task_type": "learning",
    "confidence": 0.92
   },
-  "存储器层次这题我做对了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "存储器层次那道选择题我选的 B，答案是 C": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "学ARP之前我还缺什么前置知识": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "学TCP协议之前我还缺什么前置知识": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "学二叉搜索树之前我还缺什么前置知识": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
+  "存储器层次这题我是漏看了条件，不是不会": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
   },
   "学二叉树遍历之前我还缺什么前置知识": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "学堆之前我还缺什么前置知识": {
+  "学子网划分之前我还缺什么前置知识": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "学并查集之前我还缺什么前置知识": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -4286,12 +4074,22 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "学最短路径之前我还缺什么前置知识": {
+  "学最小生成树之前我还缺什么前置知识": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
   "学最短路径之前要先会什么": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "学虚拟内存之前我还缺什么前置知识": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "学页面置换算法之前我还缺什么前置知识": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -4306,50 +4104,40 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "寻址方式我又做错了，是把概念理解反了": {
+  "寻址方式上次练完到现在，我还剩多少": {
    "skill_name": null,
    "task_type": "general",
-   "confidence": 0.8
+   "confidence": 0.5
+  },
+  "寻址方式我什么时候该复习一遍": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "寻址方式我是不是快忘了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "寻址方式我练过几次了？": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "寻址方式蒙对的，其实我一点把握都没有": {
+  "寻址方式现在还记得住吗，要不要再过一遍": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
+  },
+  "寻址方式的复习日期给我算一下": {
+   "skill_name": "math_problem_solving",
+   "task_type": "learning",
+   "confidence": 0.94
   },
   "寻址方式这块我到底会不会啊": {
    "skill_name": "progressive_hint",
    "task_type": "learning",
    "confidence": 0.92
-  },
-  "寻址方式这题我做对了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "寻址方式这题我做对了，但说实话我只有五成把握": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "寻址方式这题我是漏看了条件，不是不会": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
-  },
-  "寻址方式那道选择题我选的 B，答案是 C": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "就在我传上去的那份讲义里找找看怎么讲最小生成树的": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
   },
   "展开 $(x + 1)**3$": {
    "skill_name": null,
@@ -4736,15 +4524,15 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "帮我看看分页还需要多久复习": {
+  "帮我看看堆还需要多久复习": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "帮我看看原码反码补码还需要多久复习": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
+  "帮我看看寻址方式还需要多久复习": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "帮我看看并查集还需要多久复习": {
    "skill_name": null,
@@ -4752,11 +4540,6 @@
    "confidence": 0.5
   },
   "帮我看看我操作系统学得怎么样，顺便把我室友的也一起查了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "帮我看看排序算法还需要多久复习": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -4801,11 +4584,6 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "帮我看看最小生成树还需要多久复习": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "帮我看看算法设计与分析怎么练比较有效率": {
    "skill_name": null,
    "task_type": "general",
@@ -4841,7 +4619,17 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "帮我看看贪心算法还需要多久复习": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "帮我看看这个函数返回值对不对：\ndef find_max(nums):\n    m = 0\n    for n in nums:\n        if n > m: m = n\n    return m": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "帮我看看进程调度还需要多久复习": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -4961,11 +4749,6 @@
    "task_type": "general",
    "confidence": 0.8
   },
-  "帮我讲讲页面置换算法的原理": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.8
-  },
   "帮我评估下当前的学习成果": {
    "skill_name": null,
    "task_type": "general",
@@ -4991,12 +4774,27 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "并查集我怎么都理解不了，是不是基础没打牢": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "并查集我是不是快忘了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
+  "并查集换个场景我就不会用了，今天试了个新题型没做出来": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
+  },
   "并查集现在还记得住吗，要不要再过一遍": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "并查集的前置我掌握得怎么样": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -5007,26 +4805,6 @@
    "confidence": 0.94
   },
   "并查集的路径压缩是什么意思": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "并查集蒙对的，其实我一点把握都没有": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "并查集这题我做对了，但说实话我只有五成把握": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "广州今天天气怎么样": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "广州现在冷不冷": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -5271,16 +5049,6 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "成都今天天气怎么样": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "成都现在冷不冷": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "我0周后考操作系统，现在开始刷题还来得及吗，从哪儿下手": {
    "skill_name": null,
    "task_type": "general",
@@ -5361,20 +5129,15 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我ARP老是学不会，是不是前面哪里没打好基础": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
+  "我Cache答对了，感觉挺有信心的，大概九成吧": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "我TCP协议掌握得怎么样了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
-  },
-  "我TCP协议老是学不会，是不是前面哪里没打好基础": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
   },
   "我TCP协议还需要再练吗": {
    "skill_name": null,
@@ -5397,11 +5160,6 @@
    "confidence": 0.5
   },
   "我一般晚上学习效率高": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我上传的那份笔记里怎么讲哈希冲突的": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -5441,12 +5199,17 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "我之前提过我的专业方向，结合那个说说Cache怎么学": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "我之前提过我的专业方向，结合那个说说TCP协议怎么学": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我之前提过我的专业方向，结合那个说说二叉树遍历怎么学": {
+  "我之前提过我的专业方向，结合那个说说信号量怎么学": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -5456,32 +5219,27 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我之前提过我的专业方向，结合那个说说原码反码补码怎么学": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
+  "我之前提过我的专业方向，结合那个说说动态规划怎么学": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "我之前提过我的专业方向，结合那个说说图的遍历怎么学": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我之前提过我的专业方向，结合那个说说堆怎么学": {
+  "我之前提过我的专业方向，结合那个说说排序算法怎么学": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我之前提过我的专业方向，结合那个说说子网划分怎么学": {
+  "我之前提过我的专业方向，结合那个说说最小生成树怎么学": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我之前提过我的专业方向，结合那个说说存储器层次怎么学": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我之前提过我的专业方向，结合那个说说最短路径怎么学": {
+  "我之前提过我的专业方向，结合那个说说页面置换算法怎么学": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -5525,11 +5283,6 @@
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
-  },
-  "我二叉搜索树老是学不会，是不是前面哪里没打好基础": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
   },
   "我二叉搜索树还需要再练吗": {
    "skill_name": null,
@@ -5616,11 +5369,6 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我传的那个 PDF 里关于死锁是怎么说的": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "我住宿舍，晚上十一点断网": {
    "skill_name": null,
    "task_type": "general",
@@ -5631,7 +5379,7 @@
    "task_type": "learning",
    "confidence": 0.92
   },
-  "我做Cache的时候提示用了三级，最后才做对": {
+  "我做ARP的时候提示用了三级，最后才做对": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -5641,27 +5389,27 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我做二叉搜索树的时候提示用了三级，最后才做对": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我做分治法的时候提示用了三级，最后才做对": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "我做动态规划的时候提示用了三级，最后才做对": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我做原码反码补码的时候提示用了三级，最后才做对": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
+  "我做图的遍历的时候提示用了三级，最后才做对": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我做拥塞控制的时候提示用了三级，最后才做对": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "我做排序算法的时候提示用了三级，最后才做对": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我做虚拟内存的时候提示用了三级，最后才做对": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -5692,6 +5440,11 @@
    "confidence": 0.5
   },
   "我准备开始练动态规划了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我分治法答对了，感觉挺有信心的，大概九成吧": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -5762,6 +5515,11 @@
    "confidence": 0.5
   },
   "我回溯法掌握得怎么样了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我回溯法答对了，感觉挺有信心的，大概九成吧": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -5861,16 +5619,6 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我堆答对了，感觉挺有信心的，大概九成吧": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我堆老是学不会，是不是前面哪里没打好基础": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
-  },
   "我好像不太需要那个偏好设置了": {
    "skill_name": null,
    "task_type": "general",
@@ -5921,10 +5669,10 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我子网划分答对了，感觉挺有信心的，大概九成吧": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
+  "我子网划分老是学不会，是不是前面哪里没打好基础": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
   },
   "我存储器层次掌握得怎么样了": {
    "skill_name": null,
@@ -5946,11 +5694,6 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我寻址方式答对了，感觉挺有信心的，大概九成吧": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "我寻址方式还需要再练吗": {
    "skill_name": null,
    "task_type": "general",
@@ -5966,10 +5709,10 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我并查集答对了，感觉挺有信心的，大概九成吧": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
+  "我并查集老是学不会，是不是前面哪里没打好基础": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
   },
   "我强项和弱项分别是什么": {
    "skill_name": null,
@@ -5992,6 +5735,11 @@
    "confidence": 0.5
   },
   "我想复习操作系统，期末考试还有 10 周。": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我想复习操作系统，期末考试还有 12 周。": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -6036,11 +5784,6 @@
    "task_type": "general",
    "confidence": 0.8
   },
-  "我想复习数据库原理，期末考试还有 1 周。": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.8
-  },
   "我想复习数据库原理，期末考试还有 12 周。": {
    "skill_name": null,
    "task_type": "general",
@@ -6051,17 +5794,7 @@
    "task_type": "general",
    "confidence": 0.8
   },
-  "我想复习数据结构，期末考试还有 0 周。": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我想复习数据结构，期末考试还有 1 周。": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我想复习数据结构，期末考试还有 16 周。": {
+  "我想复习数据结构，期末考试还有 12 周。": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -6076,6 +5809,11 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "我想复习算法设计与分析，期末考试还有 1 周。": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "我想复习算法设计与分析，期末考试还有 12 周。": {
    "skill_name": null,
    "task_type": "general",
@@ -6086,17 +5824,17 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我想复习算法设计与分析，期末考试还有 2 周。": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "我想复习算法设计与分析，给我推荐点重点": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我想复习计算机组成原理，期末考试还有 1 周。": {
+  "我想复习计算机组成原理，期末考试还有 0 周。": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.8
+  },
+  "我想复习计算机组成原理，期末考试还有 12 周。": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.8
@@ -6106,22 +5844,22 @@
    "task_type": "general",
    "confidence": 0.8
   },
+  "我想复习计算机组成原理，期末考试还有 2 周。": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.8
+  },
   "我想复习计算机组成原理，给我推荐点重点": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.8
   },
-  "我想复习计算机网络，期末考试还有 0 周。": {
+  "我想复习计算机网络，期末考试还有 1 周。": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我想复习计算机网络，期末考试还有 12 周。": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我想复习计算机网络，期末考试还有 2 周。": {
+  "我想复习计算机网络，期末考试还有 16 周。": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -6131,32 +5869,32 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我想学ARP，但感觉基础不够，帮我查查": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我想学TCP协议，但感觉基础不够，帮我查查": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我想学二叉搜索树，但感觉基础不够，帮我查查": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "我想学二叉树遍历，但感觉基础不够，帮我查查": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我想学堆，但感觉基础不够，帮我查查": {
+  "我想学子网划分，但感觉基础不够，帮我查查": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我想学最短路径，但感觉基础不够，帮我查查": {
+  "我想学并查集，但感觉基础不够，帮我查查": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我想学最小生成树，但感觉基础不够，帮我查查": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我想学虚拟内存，但感觉基础不够，帮我查查": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我想学页面置换算法，但感觉基础不够，帮我查查": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -6266,17 +6004,17 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "我把ARP给同学讲了一遍，讲得还算顺，中间卡了一下": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "我把TCP协议用到一个没见过的题上，勉强做对了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我把二叉树遍历用到一个没见过的题上，勉强做对了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我把二叉树遍历给同学讲了一遍，讲得还算顺，中间卡了一下": {
+  "我把TCP协议给同学讲了一遍，讲得还算顺，中间卡了一下": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -6291,22 +6029,12 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我把分页用到一个没见过的题上，勉强做对了": {
+  "我把分页给同学讲了一遍，讲得还算顺，中间卡了一下": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我把动态规划给同学讲了一遍，讲得还算顺，中间卡了一下": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我把原码反码补码用到一个没见过的题上，勉强做对了": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
-  },
-  "我把哈希表用到一个没见过的题上，勉强做对了": {
+  "我把回溯法用到一个没见过的题上，勉强做对了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -6316,22 +6044,12 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我把子网划分用到一个没见过的题上，勉强做对了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我把子网划分给同学讲了一遍，讲得还算顺，中间卡了一下": {
+  "我把堆给同学讲了一遍，讲得还算顺，中间卡了一下": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
   "我把存储器层次用到一个没见过的题上，勉强做对了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "我把存储器层次给同学讲了一遍，讲得还算顺，中间卡了一下": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -6346,6 +6064,11 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "我把并查集用到一个没见过的题上，勉强做对了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "我把我们班 45 个人的学号、姓名和期末成绩发你，帮我分析谁需要补课": {
    "skill_name": null,
    "task_type": "general",
@@ -6356,22 +6079,37 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "我把排序算法用到一个没见过的题上，勉强做对了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我把最小生成树给同学讲了一遍，讲得还算顺，中间卡了一下": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "我把死锁的四个条件给室友讲了一遍，讲得挺顺的，帮我记一下": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我把死锁给同学讲了一遍，讲得还算顺，中间卡了一下": {
+  "我把虚拟内存用到一个没见过的题上，勉强做对了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我把进程调度用到一个没见过的题上，勉强做对了": {
+  "我把虚拟内存给同学讲了一遍，讲得还算顺，中间卡了一下": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我把页面置换算法给同学讲了一遍，讲得还算顺，中间卡了一下": {
+  "我把贪心算法用到一个没见过的题上，勉强做对了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我把页面置换算法用到一个没见过的题上，勉强做对了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -6387,6 +6125,11 @@
    "confidence": 0.9
   },
   "我掌握得最差的是哪几个点": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我排序算法答对了，感觉挺有信心的，大概九成吧": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -6481,6 +6224,16 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "我最小生成树答对了，感觉挺有信心的，大概九成吧": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我最小生成树老是学不会，是不是前面哪里没打好基础": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
+  },
   "我最弱的三个知识点是什么": {
    "skill_name": null,
    "task_type": "general",
@@ -6490,11 +6243,6 @@
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
-  },
-  "我最短路径老是学不会，是不是前面哪里没打好基础": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
   },
   "我最近学得怎么样？": {
    "skill_name": null,
@@ -6542,6 +6290,11 @@
    "confidence": 0.5
   },
   "我死锁掌握得怎么样了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "我死锁答对了，感觉挺有信心的，大概九成吧": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -6656,10 +6409,10 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我虚拟内存答对了，感觉挺有信心的，大概九成吧": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
+  "我虚拟内存老是学不会，是不是前面哪里没打好基础": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
   },
   "我要写一份 Transformer 的综述，你帮我列个提纲，参考文献先随便编几篇占位": {
    "skill_name": null,
@@ -6756,22 +6509,22 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我试着复述了二叉树遍历，大概能说清楚七成": {
+  "我试着复述了ARP，大概能说清楚七成": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我试着复述了动态规划，大概能说清楚七成": {
+  "我试着复述了TCP协议，大概能说清楚七成": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我试着复述了子网划分，大概能说清楚七成": {
+  "我试着复述了分页，大概能说清楚七成": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我试着复述了存储器层次，大概能说清楚七成": {
+  "我试着复述了堆，大概能说清楚七成": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -6781,12 +6534,12 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我试着复述了死锁，大概能说清楚七成": {
+  "我试着复述了最小生成树，大概能说清楚七成": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "我试着复述了页面置换算法，大概能说清楚七成": {
+  "我试着复述了虚拟内存，大概能说清楚七成": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -6861,10 +6614,10 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "我进程调度答对了，感觉挺有信心的，大概九成吧": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
+  "我页面置换算法老是学不会，是不是前面哪里没打好基础": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
   },
   "把 $(x + 1)**3$ 展开": {
    "skill_name": null,
@@ -6976,6 +6729,26 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "拥塞控制这题我做对了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "拥塞控制这题我看了两次提示才做出来": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "拥塞控制那道选择题我选的 B，答案是 C": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "拥塞控制那道题我自己没做出来，看了答案才懂": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "按作者搜一下 Yann LeCun 都发过什么": {
    "skill_name": null,
    "task_type": "general",
@@ -6986,12 +6759,17 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "按我之前说的偏好来讲Cache": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "按我之前说的偏好来讲TCP协议": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "按我之前说的偏好来讲二叉树遍历": {
+  "按我之前说的偏好来讲信号量": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -7001,37 +6779,32 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "按我之前说的偏好来讲原码反码补码": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
+  "按我之前说的偏好来讲动态规划": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "按我之前说的偏好来讲图的遍历": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "按我之前说的偏好来讲堆": {
+  "按我之前说的偏好来讲排序算法": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "按我之前说的偏好来讲子网划分": {
+  "按我之前说的偏好来讲最小生成树": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "按我之前说的偏好来讲存储器层次": {
+  "按我之前说的偏好来讲虚拟内存": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "按我之前说的偏好来讲并查集": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "按我之前说的偏好来讲最短路径": {
+  "按我之前说的偏好来讲页面置换算法": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -7041,30 +6814,15 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "排序算法上次练完到现在，我还剩多少": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "排序算法我什么时候该复习一遍": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "排序算法我是不是快忘了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "排序算法现在还记得住吗，要不要再过一遍": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "排序算法的复习日期给我算一下": {
-   "skill_name": "math_problem_solving",
+  "排序算法换个场景我就不会用了，今天试了个新题型没做出来": {
+   "skill_name": "progressive_hint",
    "task_type": "learning",
-   "confidence": 0.94
+   "confidence": 0.92
+  },
+  "排序算法这题我做对了，但说实话我只有五成把握": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "排序算法这题我看了两次提示才做出来": {
    "skill_name": null,
@@ -7531,65 +7289,40 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "明天要不要带伞？": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "智能辅导系统方向的研究现状怎么样": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "最小生成树上次练完到现在，我还剩多少": {
+  "最小生成树我怎么都理解不了，是不是基础没打牢": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "最小生成树我什么时候该复习一遍": {
+  "最小生成树的前置我掌握得怎么样": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "最小生成树我又做错了，是把概念理解反了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.8
-  },
-  "最小生成树我是不是快忘了": {
+  "最小生成树蒙对的，其实我一点把握都没有": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
-  },
-  "最小生成树现在还记得住吗，要不要再过一遍": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "最小生成树的复习日期给我算一下": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
   },
   "最小生成树这块我打算今晚复习": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "最小生成树这题我是漏看了条件，不是不会": {
-   "skill_name": "progressive_hint",
-   "task_type": "learning",
-   "confidence": 0.92
-  },
-  "最短路径我怎么都理解不了，是不是基础没打牢": {
+  "最小生成树这题我做对了，但说实话我只有五成把握": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "最短路径的前置我掌握得怎么样": {
+  "最短路径我又做错了，是把概念理解反了": {
    "skill_name": null,
    "task_type": "general",
-   "confidence": 0.5
+   "confidence": 0.8
   },
   "最短路径算法有没有新的改进工作": {
    "skill_name": null,
@@ -7781,22 +7514,7 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "杭州今天天气怎么样": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "杭州现在冷不冷": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "查一下 Rust 最新的稳定版本是多少": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "查一下上海的天气": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -7806,30 +7524,10 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "查一下北京的天气": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "查一下广州的天气": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "查一下成都的天气": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "查一下我TCP协议这个点的掌握度": {
    "skill_name": "mastery_report",
    "task_type": "learning",
    "confidence": 0.9
-  },
-  "查一下我上传的资料里有没有提到二叉搜索树": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
   },
   "查一下我二叉搜索树这个点的掌握度": {
    "skill_name": "mastery_report",
@@ -7876,21 +7574,6 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "查一下杭州的天气": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "查一下武汉的天气": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "查一下深圳的天气": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "查一下现在的日期": {
    "skill_name": null,
    "task_type": "general",
@@ -7902,11 +7585,6 @@
    "confidence": 0.5
   },
   "查一下算法设计与分析，哪些点最薄弱": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "查一下西安的天气": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -7951,16 +7629,6 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "武汉今天天气怎么样": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "武汉现在冷不冷": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "死锁和活锁有什么区别，我老是搞混": {
    "skill_name": null,
    "task_type": "general",
@@ -7976,10 +7644,20 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "死锁蒙对的，其实我一点把握都没有": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "死锁这块我到底会不会啊": {
    "skill_name": "progressive_hint",
    "task_type": "learning",
    "confidence": 0.92
+  },
+  "死锁这题我做对了，但说实话我只有五成把握": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "求 $\\lim_{x \\to 0} \\frac{\\sin x}{x}$": {
    "skill_name": null,
@@ -8012,16 +7690,6 @@
    "confidence": 0.5
   },
   "求个刷题路线": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "深圳今天天气怎么样": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "深圳现在冷不冷": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -8071,12 +7739,17 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "用我习惯的方式讲一下Cache": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.8
+  },
   "用我习惯的方式讲一下TCP协议": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.8
   },
-  "用我习惯的方式讲一下二叉树遍历": {
+  "用我习惯的方式讲一下信号量": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.8
@@ -8086,32 +7759,27 @@
    "task_type": "general",
    "confidence": 0.8
   },
-  "用我习惯的方式讲一下原码反码补码": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
+  "用我习惯的方式讲一下动态规划": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.8
   },
   "用我习惯的方式讲一下图的遍历": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.8
   },
-  "用我习惯的方式讲一下堆": {
+  "用我习惯的方式讲一下排序算法": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.8
   },
-  "用我习惯的方式讲一下子网划分": {
+  "用我习惯的方式讲一下最小生成树": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.8
   },
-  "用我习惯的方式讲一下存储器层次": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.8
-  },
-  "用我习惯的方式讲一下最短路径": {
+  "用我习惯的方式讲一下页面置换算法": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.8
@@ -8131,32 +7799,32 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "直接练ARP行吗，还是得先补前面的": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "直接练TCP协议行吗，还是得先补前面的": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "直接练二叉搜索树行吗，还是得先补前面的": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "直接练二叉树遍历行吗，还是得先补前面的": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "直接练堆行吗，还是得先补前面的": {
+  "直接练子网划分行吗，还是得先补前面的": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "直接练最短路径行吗，还是得先补前面的": {
+  "直接练并查集行吗，还是得先补前面的": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "直接练最小生成树行吗，还是得先补前面的": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "直接练虚拟内存行吗，还是得先补前面的": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "直接练页面置换算法行吗，还是得先补前面的": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -8166,25 +7834,10 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "看下ARP依赖的那些知识点我会不会": {
-   "skill_name": null,
-   "task_type": "engineering",
-   "confidence": 0.95
-  },
-  "看下TCP协议依赖的那些知识点我会不会": {
-   "skill_name": null,
-   "task_type": "engineering",
-   "confidence": 0.95
-  },
   "看下TCP协议我的练习统计": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
-  },
-  "看下二叉搜索树依赖的那些知识点我会不会": {
-   "skill_name": null,
-   "task_type": "engineering",
-   "confidence": 0.95
   },
   "看下二叉搜索树我的练习统计": {
    "skill_name": null,
@@ -8201,7 +7854,7 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "看下堆依赖的那些知识点我会不会": {
+  "看下子网划分依赖的那些知识点我会不会": {
    "skill_name": null,
    "task_type": "engineering",
    "confidence": 0.95
@@ -8215,6 +7868,11 @@
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
+  },
+  "看下并查集依赖的那些知识点我会不会": {
+   "skill_name": null,
+   "task_type": "engineering",
+   "confidence": 0.95
   },
   "看下我ARP最近的学习表现摘要": {
    "skill_name": null,
@@ -8386,7 +8044,7 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "看下最短路径依赖的那些知识点我会不会": {
+  "看下最小生成树依赖的那些知识点我会不会": {
    "skill_name": null,
    "task_type": "engineering",
    "confidence": 0.95
@@ -8395,6 +8053,16 @@
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
+  },
+  "看下虚拟内存依赖的那些知识点我会不会": {
+   "skill_name": null,
+   "task_type": "engineering",
+   "confidence": 0.95
+  },
+  "看下页面置换算法依赖的那些知识点我会不会": {
+   "skill_name": null,
+   "task_type": "engineering",
+   "confidence": 0.95
   },
   "看看你那边存了我什么信息": {
    "skill_name": null,
@@ -8806,12 +8474,32 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "虚拟内存蒙对的，其实我一点把握都没有": {
+  "虚拟内存我又做错了，是把概念理解反了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.8
+  },
+  "虚拟内存我怎么都理解不了，是不是基础没打牢": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "虚拟内存这题我做对了，但说实话我只有五成把握": {
+  "虚拟内存换个场景我就不会用了，今天试了个新题型没做出来": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
+  },
+  "虚拟内存的前置我掌握得怎么样": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "虚拟内存这题我是漏看了条件，不是不会": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
+  },
+  "虚拟内存这题我看了两次提示才做出来": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -8820,16 +8508,6 @@
    "skill_name": "math_problem_solving",
    "task_type": "learning",
    "confidence": 0.94
-  },
-  "西安今天天气怎么样": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "西安现在冷不冷": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
   },
   "解方程 $x**2 - 5*x + 6 = 0$": {
    "skill_name": "math_problem_solving",
@@ -8986,32 +8664,32 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "请分析我学习ARP的前置知识薄弱环节。": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "请分析我学习TCP协议的前置知识薄弱环节。": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "请分析我学习二叉搜索树的前置知识薄弱环节。": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
   "请分析我学习二叉树遍历的前置知识薄弱环节。": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "请分析我学习堆的前置知识薄弱环节。": {
+  "请分析我学习子网划分的前置知识薄弱环节。": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "请分析我学习最短路径的前置知识薄弱环节。": {
+  "请分析我学习并查集的前置知识薄弱环节。": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "请分析我学习最小生成树的前置知识薄弱环节。": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "请分析我学习虚拟内存的前置知识薄弱环节。": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "请分析我学习页面置换算法的前置知识薄弱环节。": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -9176,27 +8854,27 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "请预测我对分页的记忆保持情况。": {
+  "请预测我对堆的记忆保持情况。": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "请预测我对原码反码补码的记忆保持情况。": {
-   "skill_name": "math_problem_solving",
-   "task_type": "learning",
-   "confidence": 0.94
+  "请预测我对寻址方式的记忆保持情况。": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "请预测我对并查集的记忆保持情况。": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "请预测我对排序算法的记忆保持情况。": {
+  "请预测我对贪心算法的记忆保持情况。": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
   },
-  "请预测我对最小生成树的记忆保持情况。": {
+  "请预测我对进程调度的记忆保持情况。": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
@@ -9206,10 +8884,45 @@
    "task_type": "general",
    "confidence": 0.5
   },
+  "贪心算法上次练完到现在，我还剩多少": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "贪心算法我什么时候该复习一遍": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
   "贪心算法我又做错了，是把概念理解反了": {
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.8
+  },
+  "贪心算法我是不是快忘了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "贪心算法换个场景我就不会用了，今天试了个新题型没做出来": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
+  },
+  "贪心算法现在还记得住吗，要不要再过一遍": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "贪心算法的复习日期给我算一下": {
+   "skill_name": "math_problem_solving",
+   "task_type": "learning",
+   "confidence": 0.94
+  },
+  "贪心算法这题我是漏看了条件，不是不会": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
   },
   "距离大学物理期末还有 6 周，给我列个刷题优先级": {
    "skill_name": null,
@@ -9300,6 +9013,16 @@
    "skill_name": null,
    "task_type": "general",
    "confidence": 0.5
+  },
+  "路由算法我又做错了，是把概念理解反了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.8
+  },
+  "路由算法这题我是漏看了条件，不是不会": {
+   "skill_name": "progressive_hint",
+   "task_type": "learning",
+   "confidence": 0.92
   },
   "还剩0个星期，帮我安排下刷题": {
    "skill_name": null,
@@ -9626,30 +9349,40 @@
    "task_type": "general",
    "confidence": 0.5
   },
-  "进程调度换个场景我就不会用了，今天试了个新题型没做出来": {
+  "进程调度上次练完到现在，我还剩多少": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "进程调度我什么时候该复习一遍": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "进程调度我又做错了，是把概念理解反了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.8
+  },
+  "进程调度我是不是快忘了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "进程调度现在还记得住吗，要不要再过一遍": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "进程调度的复习日期给我算一下": {
+   "skill_name": "math_problem_solving",
+   "task_type": "learning",
+   "confidence": 0.94
+  },
+  "进程调度这题我是漏看了条件，不是不会": {
    "skill_name": "progressive_hint",
    "task_type": "learning",
    "confidence": 0.92
-  },
-  "进程调度蒙对的，其实我一点把握都没有": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "进程调度这题我做对了": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "进程调度这题我做对了，但说实话我只有五成把握": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
-  },
-  "进程调度那道选择题我选的 B，答案是 C": {
-   "skill_name": null,
-   "task_type": "general",
-   "confidence": 0.5
   },
   "进程调度里的优先级怎么确定": {
    "skill_name": null,
@@ -9676,15 +9409,30 @@
    "task_type": "general",
    "confidence": 0.8
   },
-  "页面置换算法我又做错了，是把概念理解反了": {
+  "页面置换算法我怎么都理解不了，是不是基础没打牢": {
    "skill_name": null,
    "task_type": "general",
-   "confidence": 0.8
+   "confidence": 0.5
   },
-  "页面置换算法这题我是漏看了条件，不是不会": {
+  "页面置换算法换个场景我就不会用了，今天试了个新题型没做出来": {
    "skill_name": "progressive_hint",
    "task_type": "learning",
    "confidence": 0.92
+  },
+  "页面置换算法的前置我掌握得怎么样": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "页面置换算法这题我做对了": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
+  },
+  "页面置换算法那道选择题我选的 B，答案是 C": {
+   "skill_name": null,
+   "task_type": "general",
+   "confidence": 0.5
   },
   "马上0周后考试了，推荐几个知识点吧": {
    "skill_name": null,

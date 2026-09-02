@@ -146,22 +146,76 @@ def _fmt_plan_answer(result: dict, weeks_to_exam: int) -> str:
     return "\n".join(lines)
 
 
-def _fmt_report_answer(result: dict) -> str:
-    """处理 `_fmt_report_answer` 相关逻辑。"""
+def _name_of(x: dict) -> str:
+    return x["name"] if "name" in x else x["kp_id"]
+
+
+def _fmt_report_answer(result: dict, facet: str | None = None) -> str:
+    """把 `get_mastery_report` 的返回讲给用户听。
+
+    🔴 2026-08-26 改：原来无论用户问什么，这里都吐同一段 157 字的总览
+    —— 65 个不同问句、同一段回答，是 L2 形状闸门 B 抓到的最大一块。
+    现在按种子里声明的 `facet` 换重点，长度随之不同（不是为了变长，
+    是为了**回答用户真正问的那件事**）。
+
+    ⚠️ `facet="变化"` 那一支尤其重要：用户问的是「进步了吗」，
+    而这个工具返回的是**当前快照**，没有历史对比。硬答「你进步了」
+    就是拿快照编趋势。如实说清楚它答不了，再给能答的那部分。
+    """
     scope = result["course"] or "全部课程"
     weak = result["weak_points"][:3]
-    weakest = "、".join(f"{x['name'] if 'name' in x else x['kp_id']}（{x['mastery_level']}）" for x in weak)
+    weakest = "、".join(f"{_name_of(x)}（{x['mastery_level']}）" for x in weak)
+    stale = result["stale_points"]
+    w0 = weak[0]
+
+    if facet == "薄弱":
+        more = result["weak_points"][:5]
+        lst = "\n".join(f"{i}. {_name_of(x)} —— {x['mastery_level']}"
+                         for i, x in enumerate(more, 1))
+        out = [f"按掌握度从低到高，你在**{scope}**最薄弱的几个是：\n", lst,
+               f"\n参照系是你 {result['total_points']} 个知识点的平均 "
+               f"**{result['avg_mastery']}** —— 上面这些都远在均线以下。"]
+        if stale:
+            out.append(f"注意「{_name_of(w0)}」不只是分低，它还在 {len(stale)} 个"
+                       f"需要复习的知识点之列，再放着会继续掉。")
+        out.append(f"建议从「{_name_of(w0)}」开始，它离均线差得最多，提升空间也最大。")
+        return "\n".join(out)
+
+    if facet == "陈旧":
+        if not stale:
+            return (f"目前没有到复习点的知识点 —— 你 {result['total_points']} 个知识点的"
+                    f"记忆保持率都还在阈值以上，这段时间练得挺勤。")
+        s0 = stale[0]
+        return "\n".join([
+            f"有 **{len(stale)}** 个知识点到复习点了，最久没碰的是"
+            f"「{s0['kp_id']}」，记忆保持率已经掉到 **{s0['retention']}**。\n",
+            "保持率是按遗忘曲线估的：它反映的是「现在还能想起来多少」，"
+            "和当初学得好不好是两件事 —— 掌握度高的知识点放久了照样会掉下来。\n",
+            f"建议先把「{s0['kp_id']}」过一遍，这类复习花的时间远少于重新学。",
+        ])
+
+    if facet == "变化":
+        return "\n".join([
+            "这个我答不了 —— `get_mastery_report` 返回的是**当前快照**，"
+            "不带历史对比，所以我看不出你这段时间是涨了还是掉了。\n",
+            f"能看到的是此刻的状态：{result['total_points']} 个知识点，"
+            f"平均掌握度 **{result['avg_mastery']}**，最薄弱的是 {weakest}。\n",
+            "要判断趋势，可以拿它当基线：过一两周再查一次，"
+            "对比平均掌握度和薄弱清单有没有变。"
+            + (f"另外现在有 {len(stale)} 个知识点到了复习点，"
+               f"这个数持续变大通常就是荒废的信号。" if stale else ""),
+        ])
+
     lines = [
         f"你在**{scope}**上的学习情况：\n",
         f"- 覆盖知识点 {result['total_points']} 个，平均掌握度 **{result['avg_mastery']}**",
         f"- 最薄弱的三个：{weakest}",
     ]
-    stale = result["stale_points"]
     if stale:
-        s = stale[0]
-        lines.append(f"- 需要复习的有 {len(stale)} 个，记忆保持率最低的是「{s['kp_id']}」，已降到 {s['retention']}")
-    w0 = weak[0]
-    lines.append(f"\n建议从「{w0['kp_id']}」入手，目前只有 {w0['mastery_level']}，提升空间最大。")
+        s0 = stale[0]
+        lines.append(f"- 需要复习的有 {len(stale)} 个，记忆保持率最低的是"
+                     f"「{s0['kp_id']}」，已降到 {s0['retention']}")
+    lines.append(f"\n建议从「{_name_of(w0)}」入手，目前只有 {w0['mastery_level']}，提升空间最大。")
     return "\n".join(lines)
 
 
@@ -305,7 +359,7 @@ def _render(cfg, sid, state_key, c, idx, rng, all_names, version):
                 Turn(role="user", content=query),
                 Turn(role="tool_call", calls=[ToolCall("get_mastery_report", args)]),
                 Turn(role="tool_result", results=[ToolResult("get_mastery_report", result)]),
-                Turn(role="assistant", content=_fmt_report_answer(result)),
+                Turn(role="assistant", content=_fmt_report_answer(result, c.get("changes"))),
             ],
             ["get_mastery_report"],
             "single_tool_call",

@@ -140,9 +140,41 @@ def _answer_for(tool: str, result: dict, kp: str) -> str:
         if result["evidence_count"] == 0:
             return "最近还没有积累到学习过程证据，多做几次练习后我再帮你诊断。"
         errs = "、".join(f"{k}×{v}" for k, v in result["error_type_counts"].items()) or "暂无明显集中的错误类型"
-        return (f"最近 {result['evidence_count']} 条学习证据显示：独立完成率 **{result['independent_rate']}**，"
-                f"平均提示等级 {result['avg_hint_level']}，正确率 {result['correct_rate']}。"
-                f"错误类型分布：{errs}。")
+        head = (f"最近 {result['evidence_count']} 条学习证据：独立完成率 **{result['independent_rate']}**，"
+                f"平均提示等级 {result['avg_hint_level']}，正确率 {result['correct_rate']}，"
+                f"错误类型分布 {errs}。")
+        # 🔴 2026-08-26：原来到这里就结束了——用户问的是「诊断我有什么问题」，
+        # 而我们只把三个数字念了一遍，没有诊断（4.3m 机制二的典型形态）。
+        # 现在按数据分支给解读，**长度随内容变**，不再是模板常量。
+        ind, cor = result["independent_rate"], result["correct_rate"]
+        top_err = max(result["error_type_counts"], key=result["error_type_counts"].get) \
+            if result["error_type_counts"] else None
+        err_hint = {
+            "conceptual": "概念本身没通——这类错重复练同类题收效很小，得回去把定义和适用条件重看一遍",
+            "procedural": "步骤记错——概念是懂的，缺的是把流程走顺，适合限时反复做同一类题",
+            "strategic": "方法选错——知识点会，但选不对该用哪个，适合做「给若干题判断该用什么方法」的分类练习",
+            "representation": "表示/建模这一步卡住——题意到数学或数据结构的转换没建立，先练读题画图",
+        }.get(top_err)
+
+        if ind < 0.4 and cor > 0.7:
+            body = (f"这两个数放一起看是有问题的：正确率 {cor} 看着不低，但独立完成率只有 {ind}，"
+                    f"意味着大部分题是**在提示下做对的**。正确率因此是虚高的，"
+                    f"它反映的是「跟着提示能走完」，不是「自己能想出来」。")
+            nxt = "接下来建议把提示关掉做一轮，哪怕正确率掉下来——那个数才是你真实的起点。"
+        elif cor < 0.5:
+            body = (f"正确率 {cor} 偏低，而独立完成率 {ind}，"
+                    f"说明不是「不敢自己做」的问题，是**做了但做不对**。")
+            nxt = "接下来先别加量，挑错得最多的那一类回去把原理过一遍，再做同类题验证。"
+        else:
+            body = (f"独立完成率 {ind}、正确率 {cor}，两个数是匹配的，"
+                    f"说明当前的练习强度和你的水平大致相称。")
+            nxt = "可以适当往上加一点难度，看正确率会不会明显掉——掉了就说明找到边界了。"
+
+        parts = [head, body]
+        if err_hint:
+            parts.append(f"错得最多的是 **{top_err}**：{err_hint}。")
+        parts.append(nxt)
+        return "\n\n".join(parts)
     if tool in ("retrieve_federated_knowledge", "retrieve_personal_knowledge"):
         # 我们只能产出降级/不可用状态（种子里那段能力边界说明写了为什么）。
         # ⚠️ 这一支**刻意不讲知识内容** —— 检索空手而回时顺嘴讲一段通用解释，
@@ -189,11 +221,18 @@ def _answer_for(tool: str, result: dict, kp: str) -> str:
         return (f"记下了。「{st['kp_id']}」的掌握度更新为 **{st['mastery_level']}**，"
                 f"累计练习 {st['practice_count']} 次。")
     if tool == "get_mastery_report":
+        # 🔴 2026-08-26：原来是 weak_points[:2]，而种子里两条问句一条问
+        # 「平均掌握度」、一条问「最弱的**三个**」—— 问三个只给两个，是答不全。
+        # 现在取三个，并且把「平均」和「最弱」两件事都说到，
+        # 这样同一段回答对两条问句都成立（形状闸门 A 会把它列成线索，人看过即可）。
         scope = result["course"] or "全部课程"
-        w = result["weak_points"][:2]
+        w = result["weak_points"][:3]
         names = "、".join(f"{x['kp_id']}（{x['mastery_level']}）" for x in w)
+        gap = round(result["avg_mastery"] - w[0]["mastery_level"], 2)
         return (f"你在**{scope}**共 {result['total_points']} 个知识点，平均掌握度 "
-                f"**{result['avg_mastery']}**。最薄弱的是：{names}。")
+                f"**{result['avg_mastery']}**。最薄弱的三个是：{names}。\n\n"
+                f"最低的「{w[0]['kp_id']}」比平均低 {gap} 分，是拉低整体的主要一项，"
+                f"先补它对平均值的抬升最明显。")
     if tool == "recommend_practice":
         r0 = result["recommendations"][0]
         return (f"建议优先练「{r0['name']}」，掌握度 {r0['mastery_level']}，"

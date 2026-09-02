@@ -1,0 +1,62 @@
+考卷 data/eval/eval.jsonl：440 道题  指纹 4faa6761a7da642e#440
+
+=== base  (pred_base.jsonl, 440 条预测)  指纹 4faa6761a7da642e#440 ===
+类别                  n  think空     调了工具     正文中位     开口中位    开口p90   think中位
+CALL_TOOL         164     91%    77/164      233      472     1486         0
+RESPOND_TOOL_RESULT  163     27%     0/163      403      403     1248       302
+DIRECT_ANSWER      59     44%     0/59      330      330     1424       184
+ASK_USER           30     93%     2/30     1135     1302     2079         0
+RECOVER_TOOL_ERROR   18     33%     5/18      485      676      866       189
+REFUSE              6    100%     1/6       371      371     1395         0
+  「正文中位」的分母含调了工具、正文为空的题；「开口中位」只算没调工具、真开口说话的那些 —— 两者差得越大，说明这一类里越多题是被误触发吃掉的，不是回答变短了。
+
+=== old80269  (pred_old80269.jsonl, 440 条预测)  指纹 4faa6761a7da642e#440 ===
+类别                  n  think空     调了工具     正文中位     开口中位    开口p90   think中位
+CALL_TOOL         164    100%   159/164        0       37       51         0
+RESPOND_TOOL_RESULT  163    100%     1/163       63       65      179         0
+DIRECT_ANSWER      59    100%     4/59       48       49      154         0
+ASK_USER           30    100%     1/30       37       37       71         0
+RECOVER_TOOL_ERROR   18    100%     4/18       63       71      299         0
+REFUSE              6    100%     1/6        71       71       82         0
+  「正文中位」的分母含调了工具、正文为空的题；「开口中位」只算没调工具、真开口说话的那些 —— 两者差得越大，说明这一类里越多题是被误触发吃掉的，不是回答变短了。
+
+=== nothink  (pred_nothink.jsonl, 440 条预测)  指纹 4faa6761a7da642e#440 ===
+类别                  n  think空     调了工具     正文中位     开口中位    开口p90   think中位
+CALL_TOOL         164     98%   161/164        0       45       68         0
+RESPOND_TOOL_RESULT  163      1%     2/163      113      113      281       169
+DIRECT_ANSWER      59     20%    12/59       37       44      137       123
+ASK_USER           30      3%     1/30       35       35       38        71
+RECOVER_TOOL_ERROR   18     17%     3/18       82      101      246        72
+REFUSE              6     17%     1/6       102      102      321       124
+  「正文中位」的分母含调了工具、正文为空的题；「开口中位」只算没调工具、真开口说话的那些 —— 两者差得越大，说明这一类里越多题是被误触发吃掉的，不是回答变短了。
+
+=== think  (pred_think.jsonl, 440 条预测)  指纹 4faa6761a7da642e#440 ===
+类别                  n  think空     调了工具     正文中位     开口中位    开口p90   think中位
+CALL_TOOL         164    100%   159/164        0       33       36         0
+RESPOND_TOOL_RESULT  163    100%     0/163      114      114      282         0
+DIRECT_ANSWER      59    100%    12/59       30       34      137         0
+ASK_USER           30    100%     0/30       37       37       40         0
+RECOVER_TOOL_ERROR   18    100%     0/18       92       92      270         0
+REFUSE              6    100%     0/6        40       40      216         0
+  「正文中位」的分母含调了工具、正文为空的题；「开口中位」只算没调工具、真开口说话的那些 —— 两者差得越大，说明这一类里越多题是被误触发吃掉的，不是回答变短了。
+
+=== 与 base 的落差（开口中位字数：只算没调工具、真说了话的题） ===
+类别                      base    old80269     nothink       think
+ASK_USER                1302  37 (-1265)  35 (-1267)  37 (-1265)
+CALL_TOOL                472   37 (-435)   45 (-427)   33 (-439)
+DIRECT_ANSWER            330   49 (-281)   44 (-286)   34 (-296)
+RECOVER_TOOL_ERROR         676   71 (-605)  101 (-575)   92 (-584)
+REFUSE                   371   71 (-300)  102 (-269)   40 (-331)
+RESPOND_TOOL_RESULT         403   65 (-338)  113 (-290)  114 (-289)
+
+=== 与 base 的落差（think 空的比例） ===
+类别                      base    old80269     nothink       think
+ASK_USER                 93%        100%          3%        100%
+CALL_TOOL                91%        100%         98%        100%
+DIRECT_ANSWER            44%        100%         20%        100%
+RECOVER_TOOL_ERROR         33%        100%         17%        100%
+REFUSE                  100%        100%         17%        100%
+RESPOND_TOOL_RESULT         27%        100%          1%        100%
+
+注：拒绝(REFUSE)、追问(ASK_USER)本来就该短，看它们的绝对值没意义；
+    要看的是 DIRECT_ANSWER / RESPOND 这类「该展开说」的题上，微调后掉了多少。

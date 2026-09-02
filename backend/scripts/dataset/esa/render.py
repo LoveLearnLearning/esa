@@ -145,7 +145,7 @@ def _serialize_result(content) -> str:
 
         json.dumps("北京: 26 摄氏度 晴朗") == '"北京: 26 摄氏度 晴朗"'   ← 带引号
 
-    返回字符串的工具（load_skill / get_time / get_weather，以及全部
+    返回字符串的工具（load_skill / get_time，以及全部
     `[Error]: ...` 失败观测）线上都会带上这对引号。少了引号就是模型没见过的格式。
     这条捷径正是 5.10/5.12 那一类"看起来合理"的假设，所以整句删掉，
     一律走和后端同一个调用。`observation_format` 那组黄金样例把它钉死

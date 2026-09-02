@@ -38,6 +38,45 @@ RETRYABLE_ERROR_CODES = frozenset(
     }
 )
 
+# These tools report user-expression failures as ordinary result mappings instead
+# of raising.  Keep their diagnostic text useful to the model while normalizing
+# the payload to the canonical error-code vocabulary.
+_BUSINESS_ERROR_TOOLS = frozenset(
+    {"calculator", "bitwise_calculator", "math_solver"}
+)
+
+# A few capability-control responses predate the canonical runtime protocol and
+# are intentionally consumed by existing callers (for example, the one-primary-
+# skill guard).  They are not arbitrary tool diagnostics, so retain their code
+# while still sanitizing unknown values below.
+_COMPATIBILITY_ERROR_CODES = frozenset(
+    {
+        "invalid_skill_name",
+        "primary_skill_already_loaded",
+        "knowledge_source_not_selected",
+        "sandbox_not_configured",
+    }
+)
+
+
+def _looks_like_invalid_arguments(detail: str) -> bool:
+    """Recognize validation wording from the legacy string-only registry API."""
+
+    normalized = detail.casefold()
+    return any(
+        marker in normalized
+        for marker in (
+            "must be between",
+            "must be a ",
+            "must not be ",
+            "required",
+            "invalid",
+            "参数",
+            "不能为空",
+            "必须",
+        )
+    )
+
 
 def structured_tool_error(
     error_code: str,
@@ -152,9 +191,11 @@ def normalize_tool_error_result(
         result.strip().lower().startswith("[error]")
         or result.strip().lower().endswith("skill not found!")
     ):
+        detail = result.strip()
         error_code = (
             "invalid_tool_arguments"
-            if result.strip().lower().endswith("skill not found!")
+            if detail.lower().endswith("skill not found!")
+            or _looks_like_invalid_arguments(detail)
             else "tool_internal_error"
         )
         return structured_tool_error(
@@ -167,6 +208,7 @@ def normalize_tool_error_result(
             elapsed_ms=elapsed_ms,
             audit_metadata={"legacy_detail": result},
         )
+    is_legacy_mapping = not isinstance(result, ToolExecutionResult)
     if isinstance(result, ToolExecutionResult):
         model_content = result.model_content
         if not _is_error_mapping(model_content):
@@ -180,22 +222,55 @@ def normalize_tool_error_result(
         return result
 
     assert isinstance(source, Mapping)
-    error_code = str(
-        source.get("error_code") or source.get("error") or "tool_internal_error"
-    )
+    raw_error_code = source.get("error_code")
+    raw_error = source.get("error")
+    candidate_code = raw_error_code or raw_error or "tool_internal_error"
+    if isinstance(candidate_code, str) and (
+        candidate_code in ERROR_MESSAGES or candidate_code in _COMPATIBILITY_ERROR_CODES
+    ):
+        error_code = candidate_code
+    elif (
+        tool in _BUSINESS_ERROR_TOOLS
+        and raw_error_code is None
+        and isinstance(raw_error, str)
+    ):
+        # Calculator-family tools use ``error`` for a domain diagnostic (for
+        # example, ``除零错误``), not for the runtime protocol's error code.
+        error_code = "invalid_tool_arguments"
+    else:
+        # Never expose an arbitrary tool-provided string as a protocol code.
+        error_code = "tool_internal_error"
     retryable = source.get("retryable")
     retry_after_ms = source.get("retry_after_ms")
     audit = dict(existing_audit) if isinstance(existing_audit, Mapping) else {}
-    for key in (
-        "detail",
-        "required",
-        "loaded_skill",
-        "requested_skill",
-        "requested_attachment_id",
-        "authorized_attachment_ids",
-    ):
-        if key in source:
-            audit[f"legacy_{key}"] = source[key]
+    preserve_business_context = (
+        tool in _BUSINESS_ERROR_TOOLS
+        and raw_error_code is None
+        and isinstance(raw_error, str)
+    )
+    if is_legacy_mapping or preserve_business_context:
+        for key in (
+            "detail",
+            "required",
+            "loaded_skill",
+            "requested_skill",
+            "requested_attachment_id",
+            "authorized_attachment_ids",
+            "error",
+            "error_code",
+            "expression",
+            "operation",
+            "result",
+            "formats",
+            "note",
+        ):
+            if key in source:
+                audit[f"legacy_{key}"] = source[key]
+    business_message = (
+        str(raw_error)
+        if error_code == "invalid_tool_arguments" and isinstance(raw_error, str)
+        else None
+    )
     return structured_tool_error(
         error_code,
         tool=tool,
@@ -206,9 +281,12 @@ def normalize_tool_error_result(
             else error_code in RETRYABLE_ERROR_CODES
         ),
         message=(
-            str(source["message"])
-            if isinstance(source.get("message"), str)
-            else None
+            business_message
+            or (
+                str(source["message"])
+                if isinstance(source.get("message"), str)
+                else None
+            )
         ),
         retry_after_ms=(
             int(retry_after_ms)

@@ -1,9 +1,10 @@
 {
   "_meta": {
-    "captured_at": "2026-08-30T13:41:21+00:00",
+    "captured_at": "2026-09-02T04:55:28+00:00",
     "source": "github.com/LoveLearnLearning/esa",
-    "source_repo": "local-clone@a14b086",
+    "source_repo": "local-clone@d172b62",
     "source_sha256": {
+      "SKILLS.md": "d18b1c863e34cbff668bdeb4168593a9377d88e5a1380990cc31b2c5ba23e1bb",
       "common/math_problem_solving.md": "1ee9311519562caae895e59912f0ae965b77d7eb6c0cc5a54532e477215ec8d9",
       "common/parse_image_attachment.md": "9bbe03f120598d2a7ab2dbbaa531a0cd551e820c3a80e0f3f1290a7a87230335",
       "common/parse_pdf_attachment.md": "17b1bb088be5fadcdd1513c3f514303d4c58e002a4cad32b9d2bfc9b63004ecb",
@@ -15,10 +16,10 @@
       "learning/error_diagnosis.md": "9c5081275a5c45b5ac856823cf84bc537c79d895df70f1d6f6bc68d419a2111c",
       "learning/grounded_explanation.md": "92bc16bddbc0ef1e03eaec55d605870eb17150b6f6c6e4958c92f79840ec8803",
       "learning/homework_review.md": "d37403afe8144027f827d08f6ef0a472eadb5f7ad42390fede4c04a35c875819",
-      "learning/learning_policy.md": "9325aa112697ce8927c50b96405c9e0abb3ac887c78435c1ddfddba7c31bf894",
+      "learning/learning_policy.md": "926dcdc6c79f91e4dc7f03e265ceb8d387f988a96d3daded92a79517455968f0",
       "learning/mastery_report.md": "5ae4558a257c0f35de1f722f0c99d0fca52dc1efc21d53e42fdd0276e2ea408d",
       "learning/practice_recommendation.md": "a4dbbc380dc70bcdb01d21cfc87e001c4d52f24b2a9ad0c7ce74d97d9ebf3a9a",
-      "learning/problem_solving_expert.md": "21e12d195a289714208a1d3abd0658cdb592470102440c85dd7e8ef42d479fb0",
+      "learning/problem_solving_expert.md": "03f3ac61b95bd0e0279a6b99d83b201f85bb5baeaa65152e631a5866bc294951",
       "learning/profile_personalization.md": "158105de94de441aa61a62eda42e51b5b7a6ea4e546a953447fc8ac55b196736",
       "learning/progressive_hint.md": "6297a94403c944dc2ee1d61372c56bbc6c7252994c6b5d5686e9f728c71074b8",
       "learning/study_plan.md": "6c099eb7ff2712ec1a68d0917be4ee74ae352e1547711842c4bb0bbba43c7df8",
@@ -27,7 +28,6 @@
       "research/frontier_tracking.md": "ddb8dcf9b62600d21054af66dd9d5ab68836b52ad8b9c0dd981d884bd39c0b4f",
       "research/research_grounding.md": "ad881ccd1b6c30c52607b2bd634756211f0857b5baba96830763b5f36ede0237",
       "research/research_writing.md": "f5c4ff9f0db3c9249d1ed8d360aa6bd1e3bd33b8395fdcced8626789932f0897",
-      "SKILLS.md": "d18b1c863e34cbff668bdeb4168593a9377d88e5a1380990cc31b2c5ba23e1bb",
       "teaching/assignment_design.md": "ed1863f5e1042d9a78a376ce1ae3449de9e20ca1b7cdde53cc7a3c586081948e",
       "teaching/classroom_context_review.md": "64ae9c43a80771c09342320d07719136708613ebed37d77412154b10bada7579",
       "teaching/grading_feedback.md": "b91a6e40ef2186ce8336a4cfb0a127229f0fe573dc7bda4a2b063d5a03e673bf",

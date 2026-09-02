@@ -27,7 +27,7 @@ lora 评测会安安静静地测一遍旧模型，而且十二项指标全都长
 用法
 ----
     python3 tools/check_adapter_fresh.py \\
-        --adapter /persist_data/home/chenxuzhao/esa_lora_out/adapter_model.safetensors \\
+        --adapter $HOME/esa_lora_out/adapter_model.safetensors \\
         --train-job 78907
 
 自测（不碰 Slurm，直接喂一行假的 sacct 输出）：

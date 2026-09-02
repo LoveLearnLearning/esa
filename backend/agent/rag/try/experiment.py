@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
 
 from projector import project_for_model  # noqa: E402
 from router import Profile, RuleBasedRouter  # noqa: E402
-from serializer import json_compact, text_compact, token_count  # noqa: E402
+from serializer import text_compact, token_count  # noqa: E402
 
 
 QUERIES = (

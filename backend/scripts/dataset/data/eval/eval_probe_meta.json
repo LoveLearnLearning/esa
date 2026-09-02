@@ -1,0 +1,22 @@
+{
+  "note": "训练侧探针集，**不是评测集**；数字不得写进任何报告。",
+  "_warning": "本探针集由 train_ir.jsonl + tool_schemas.json（22 个工具）渲染，**只能用于探这一版同期的模型**。换模型必须用那个模型同期的数据重新渲染。",
+  "generated_by": "dataset/tools/make_train_probe.py",
+  "fingerprint": "2fd1e4a9e76c20df#290",
+  "source_train_ir": "train_ir.jsonl",
+  "source_train_ir_sha256_16": "2e2f3e3792ce710a",
+  "source_schemas": "tool_schemas.json",
+  "source_schemas_sha256_16": "878a8241d9413333",
+  "source_schemas_tools": 22,
+  "categories": [
+    "clarify",
+    "hard_negative",
+    "refusal"
+  ],
+  "excluded_needs_review": 29,
+  "questions": 290,
+  "templates": 108,
+  "trained_on": 266,
+  "held_out": 24,
+  "split_seed": 20260804
+}

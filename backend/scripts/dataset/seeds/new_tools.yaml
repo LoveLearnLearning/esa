@@ -334,49 +334,39 @@ search_core_memories:
 #   就可以本机真跑一次。所以 stdout / exit_code **逐条写在种子里，且都是真跑出来的**，
 #   生成器只负责套封装。⚠️ 别往里填没跑过的输出。
 #
-# 三个检索工具的分工（抄自 schema description，不是我们定的）：
-#   retrieve_federated_knowledge  「知识点、概念和原理检索**默认调用**」
-#   retrieve_personal_knowledge   「**仅在用户明确要求只查个人资料时**单独调用」
-#   retrieve_knowledge            「用户**明确指定公共库**，或个人库无结果时调用」
+# 🔴 2026-08-26 上游 c80bad7「统一 retrive 工具，将路由机制硬编码，由用户在
+#   对话框选择」之后，**只剩一个检索工具**：
+#     retrieve_knowledge  「按本轮已选公共/个人知识库范围检索回答证据。」
+#   `knowledge_sources` 由前端放进**可信执行上下文**，不在模型可见 parameters 里
+#   （已核对：模型只看得见 query / top_k / similarity_threshold）。
+#   **所以模型不再选库** —— 「只查我上传的资料」这类话不再对应另一个工具，
+#   照样调 retrieve_knowledge 就是对的。这一族现在教的正是这件事。
+#
+#   两种能真跑出来的形态（都不是编的，见 fixtures.retrieve_knowledge 的 docstring）：
+#     已选个人库 + 服务不可用 → 返回降级载荷        ← 本文件这一族
+#     已选公共库 + 服务未配置 → raise RuntimeError  ← seeds/tool_errors.yaml 的 wrapped 组
 # ---------------------------------------------------------------------------
 
-retrieve_federated_knowledge:
-  # 默认路径：用户问知识点/概念/原理，没有限定范围 → 走联合检索
-  正例:
-    - q: "帮我讲讲最小生成树是怎么回事"
-      query: "最小生成树"
-    - q: "死锁的四个必要条件是什么"
-      query: "死锁的必要条件"
-    - q: "TCP 的拥塞控制是怎么做的"
-      query: "TCP 拥塞控制"
-    - q: "动态规划和分治法有什么区别"
-      query: "动态规划 分治法 区别"
-    - q: "虚拟内存到底解决了什么问题"
-      query: "虚拟内存"
-  # 用户明确说了「我上传的资料」→ 该走个人库，不是联合
+retrieve_knowledge:
+  # 用户把范围说死了（「我传上去的那份」）——**不要去找一个个人库专用工具**，
+  # 范围是前端选的，模型照常发 query 就行。80269 在这里被训成调
+  # retrieve_personal_knowledge，而那个工具已经不存在了。
   # ⚠️ query 逐条显式写出，不拿知识点名顶替（同 search_core_memories 那条规矩）
-  混淆_应调retrieve_personal_knowledge:
+  正例:
     - q: "就在我传上去的那份讲义里找找看怎么讲最小生成树的"
       query: "最小生成树"
     - q: "只查我自己上传的资料，看看有没有讲哈希表的"
       query: "哈希表"
     - q: "我传的那个 PDF 里关于死锁是怎么说的"
       query: "死锁"
-  # ⚠️ 「明确要求只查公共库」这一支**在这里产不出来**：
-  #    retrieve_knowledge 在 tools_exec.BACKEND_REQUIRED 里，我们跑不出它的返回，
-  #    生成器会响亮地跳过（不是静默吞）。
-  #    这一支改由 seeds/tool_errors.yaml 的 `exec_error` 组承担 —— 那边走的是
-  #    「调用 → 后端报错 → 降级」的完整形态，同样能教「什么时候该选公共库」，
-  #    而且报错文案是抄的后端原文。
-
-retrieve_personal_knowledge:
-  正例:
     - q: "我上传的那份笔记里怎么讲哈希冲突的"
       query: "哈希冲突"
-    - q: "只在我自己传的材料里找一下最短路径"
-      query: "最短路径"
     - q: "查一下我上传的资料里有没有提到二叉搜索树"
       query: "二叉搜索树"
+  # ⚠️ 「课程概念 → 已选公共库」这一支**在这里产不出来**：
+  #    unified_retrieval.py:54 对 public 且无服务是 `raise`，不是降级载荷。
+  #    那一支归 seeds/tool_errors.yaml 的 `wrapped` 组（5 条，原
+  #    retrieve_federated_knowledge__正例 的题面原样搬过去）。
 
 run_in_sandbox:
   # ⚠️ stdout / exit_code 都是 2026-08-22 本机真跑出来的，命令刻意选与环境无关的。

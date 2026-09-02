@@ -83,6 +83,23 @@ SEED_PRACTICE = [
 ]
 
 
+
+def _model_projection(result):
+    """取三投影里模型看得见的那一层。
+
+    2026-09-02：上游 `d29d3e4` 把工具返回换成了 `ToolExecutionResult`
+    （`model_content` / `display_content` / `audit_metadata` 三投影）。
+    链路核过：`loop_runtime.tool_result_channels()` 拆包 →
+    `serialize_tool_result()` = `json.dumps(model_content, default=str)` →
+    `ToolObservation.model_text` → `agent.py:361` 的 `{"role":"tool","content":…}`。
+    **模型看见的是 `model_content`**，`display_content` 走界面、
+    `audit_metadata` 是独立字段，两者都不能抓（5.18 / 5.31 / 5.47 同形）。
+
+    旧后端直接返回 dict，那时没有这层包装 —— 所以不认识就原样返回。
+    """
+    mc = getattr(result, "model_content", None)
+    return result if mc is None else mc
+
 def capture(repo: Path) -> dict:
     sys.path.insert(0, str(repo))
     from backend.agent.learning.evidence_store import LearningEvidenceStore  # noqa: PLC0415
@@ -177,7 +194,7 @@ def capture(repo: Path) -> dict:
             # 只比第一个返回值，等于报错分支从来没被校验过。
             entry["branch"] = branch
         try:
-            entry["result"] = asyncio.run(bind(mode).execute(name, args))
+            entry["result"] = _model_projection(asyncio.run(bind(mode).execute(name, args)))
         except Exception as exc:  # noqa: BLE001
             entry["raises"] = {"type": type(exc).__name__, "message": str(exc)}
         calls.append(entry)
