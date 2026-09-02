@@ -36,6 +36,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from esa import fixtures  # noqa: E402
+from esa.validate import _failure_text  # 单一来源，见 gen_external.py 顶上的说明
 from esa.ir import Sample, ToolCall, ToolResult, Turn, dump_samples, load_schemas  # noqa: E402
 from esa.render import pick_tool_names  # noqa: E402
 from esa.system_prompt import system_for  # noqa: E402
@@ -220,7 +221,7 @@ def gen_denied(cfg, version, rng, all_names, out) -> None:
              Turn(role="tool_call", calls=[ToolCall(tool, args)]),
              Turn(role="tool_result", results=[ToolResult(tool, result, is_error=True)]),
              Turn(role="assistant",
-                  content=_fmt(item["a"], reason=result["detail"], err="", value="", latex=""))],
+                  content=_fmt(item["a"], reason=_failure_text(result), err="", value="", latex=""))],
             version, rng, all_names))
 
 
@@ -250,7 +251,7 @@ def gen_exec_error(cfg, version, rng, all_names, out) -> None:
             Turn(role="tool_call", calls=[ToolCall(tool, args)]),
             Turn(role="tool_result", results=[ToolResult(tool, failed, is_error=True)]),
         ]
-        fields = {"detail": failed["detail"]}
+        fields = {"detail": _failure_text(failed)}
         retry = item.get("retry_args")
         if retry:
             fixed = execute(tool, retry)

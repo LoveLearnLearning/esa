@@ -51,6 +51,10 @@ RECOMMEND_ITEM = {
 }
 REPORT_TOP = {
     "allowed", "user_name", "course", "total_points",
+    # `has_records`：上游 `637e2c5`（2026-08-28）新增，`mastery_store.py:495`
+    # 是 `bool(points)`。⚠️ 改这个常量必须是**看过后端源码之后的自觉动作** ——
+    # 它是硬编码快照（5.16 那类），跟着报错随手加一个名字就等于把闸门关了。
+    "has_records",
     "avg_mastery", "weak_points", "strong_points", "stale_points",
 }
 # mastery_store._row_state 的返回字段
@@ -193,7 +197,7 @@ def main() -> int:
     #
     # 探针值和期望输出由 tools/capture_math_outputs.py 跑**后端真实函数**抓来。
     # 最容易漏的是返回字符串的工具：`str("北京: 26 摄氏度 晴朗")` 是裸串，
-    # `json.dumps(...)` 会带一对双引号。load_skill / get_time / get_weather
+    # `json.dumps(...)` 会带一对双引号。load_skill / get_time
     # 和全部 `[Error]: ...` 失败观测都走这条路 —— 少了引号就是模型没见过的格式，
     # 而且没有任何校验拦得住（5.10 / 5.12 就是这么过关的）。
     from esa.render import _serialize_result
@@ -542,10 +546,12 @@ def check_memory_behaviour(root: Path) -> list[bool]:
         # 每条豁免都是「后端已删、我们的快照还没重生成」这个窗口期的临时状态；
         # 重生成之后该工具会从快照里消失，那时这条豁免就是死条目 —— 下面第二道
         # 检查会要求把它删掉，免得豁免表越积越长、再没人敢动。
-        DELETED_UPSTREAM = {
-            "record_answer": "2026-08-24 上游从注册表删除（CI 现在断言它不存在）；"
-                             "我们的快照仍是 c2d1f09 的 26 个，待下一轮重生成一并清掉",
-        }
+        # ✅ 2026-08-26 重生成之后清空：快照已换成 bc572f30 的 23 个工具，
+        #    `record_answer` 从快照里消失，那条豁免变成死条目，按下面第二道
+        #    检查的要求当场删掉。**这道闸门自己走完了一个完整周期** ——
+        #    上游删工具 → 声明豁免带理由 → 重生成 → 豁免过期 → 测试要求删除。
+        #    以后再有工具被上游删掉，照这个流程走，别把豁免留成永久的。
+        DELETED_UPSTREAM: dict[str, str] = {}
         snapshot = json.loads(
             (root / "dataset/schemas/tool_schemas.json").read_text(encoding="utf-8"))
         live_tools = {(s.get("function", s))["name"] for s in snapshot}

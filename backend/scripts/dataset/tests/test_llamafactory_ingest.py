@@ -42,7 +42,33 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = ROOT / "dataset/data/out"
-DEFAULT_LF = Path("~/Downloads/llamafactory-0.9.4").expanduser()
+# 🔴 版本必须和**集群上跑训练的那份**一致。集群是 `0.9.5.dev0`
+# （手册 4.4「LLaMA-Factory ~/LlamaFactory，版本 0.9.5.dev0」），
+# 而这里原来写死的是 `~/Downloads/llamafactory-0.9.4` —— 那个目录早就不在了，
+# 于是这道**开训前闸门**每次都是 FileNotFoundError 直接退出，等于没在守。
+# 更糟的是即便目录还在，0.9.4 也不是集群跑的那一版（5.21 就是这么白卡三天的）。
+# 现在按顺序找，并且**把找到的版本号印出来** —— 不印版本号的「我核过源码」不算核过。
+_LF_CANDIDATES = ("~/LlamaFactory", "~/LLaMA-Factory", "~/Downloads/llamafactory-0.9.4")
+
+
+def _default_lf() -> Path:
+    for c in _LF_CANDIDATES:
+        p = Path(c).expanduser()
+        if (p / "src/llamafactory/data/converter.py").exists():
+            return p
+    return Path(_LF_CANDIDATES[0]).expanduser()
+
+
+DEFAULT_LF = _default_lf()
+
+
+def _lf_version(lf: Path) -> str:
+    env = lf / "src/llamafactory/extras/env.py"
+    if env.exists():
+        m = re.search(r'VERSION = "([^"]+)"', env.read_text(encoding="utf-8"))
+        if m:
+            return m.group(1)
+    return "未知"
 
 # 逐字抄自 data/data_utils.py:38-43；下面 _assert_role_matches_source 会回读校验
 ROLE_VALUES = {
@@ -57,7 +83,10 @@ ROLE_VALUES = {
 def _assert_role_matches_source(lf: Path) -> None:
     """回读 LLaMA-Factory 源码，确认 Role 枚举没变过。"""
     src = (lf / "src/llamafactory/data/data_utils.py").read_text(encoding="utf-8")
-    m = re.search(r"class Role\(str, Enum\):\n((?:\s+\w+ = \"[^\"]+\"\n)+)", src)
+    # 0.9.4 是 `class Role(str, Enum)`，0.9.5.dev0 换成了 `class Role(StrEnum)`。
+    # **枚举的值一个都没变**（逐个核过），变的只是基类 —— 所以这里放宽的是基类，
+    # 不是判据：底下那句 `found != ROLE_VALUES` 仍然逐条比值。
+    m = re.search(r"class Role\((?:str, Enum|StrEnum)\):\n((?:\s+\w+ = \"[^\"]+\"\n)+)", src)
     if not m:
         raise SystemExit("在 data_utils.py 里找不到 Role 枚举 —— LLaMA-Factory 结构变了，先看源码再改这里")
     found = dict(re.findall(r"(\w+) = \"([^\"]+)\"", m.group(1)))
@@ -190,6 +219,14 @@ def main() -> int:
     ap.add_argument("--lf", default=str(DEFAULT_LF), help="LLaMA-Factory 源码根目录")
     args = ap.parse_args()
     lf = Path(args.lf).expanduser()
+    if not (lf / "src/llamafactory/data/converter.py").exists():
+        raise SystemExit(
+            f"❌ 找不到 LLaMA-Factory 源码：{lf}\n"
+            f"   找过：{', '.join(_LF_CANDIDATES)}\n"
+            "   这道闸门**不能跳过** —— 它守的是「训练时被静默吃掉的样本」。\n"
+            "   拿一份与集群同版（0.9.5.dev0）的源码，或 --lf 指过去。")
+    print(f"LLaMA-Factory：{lf}　版本 {_lf_version(lf)}"
+          "（集群跑训练的是 0.9.5.dev0，对不上就别信这次结果）")
 
     _assert_role_matches_source(lf)
     mod, warnings = load_converter(lf)

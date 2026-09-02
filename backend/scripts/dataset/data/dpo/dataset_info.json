@@ -1,0 +1,21 @@
+{
+  "_comment": "DPO 偏好对的数据集声明。单独一个目录，不放 data/out —— 那里的 dataset_info.json 由 esa.split 每次重写，放进去会被冲掉。",
+
+  "esa_dpo": {
+    "file_name": "dpo_84232.jsonl",
+
+    "_ranking": "🔴 必须为 true。它默认 False，不写的话 converter.py 的 pairwise 分支根本不会进，chosen/rejected 被静默丢弃，改拿 conversations 当普通 SFT 训——而我们的 conversations 只留了一条 human，prompt 会是空的。",
+    "ranking": true,
+
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "chosen": "chosen",
+      "rejected": "rejected",
+
+      "_note": "🔴 system 和 tools 官方示例里没有，但必须显式声明——不写的话顶层这两个字段会被静默丢弃（src/llamafactory/data/parser.py:81-84），于是模型在训练时看不到工具表，学到的是「没有工具可用时该怎么答」。SFT 配置里踩过同一个坑。",
+      "system": "system",
+      "tools": "tools"
+    }
+  }
+}

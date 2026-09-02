@@ -65,13 +65,14 @@ TOOLS = ("calculator", "bitwise_calculator", "math_solver")
 # 后端 2026-08-11 把 `str(result)` 换成了 `json.dumps(result, ensure_ascii=False, default=str)`
 # （agent.py:48-54）。这个改动里最容易漏的一处是**返回字符串的工具**：
 # `str("北京: 26 摄氏度 晴朗")` 是裸字符串，`json.dumps(...)` 会带上一对双引号。
-# load_skill / get_time / get_weather 和全部 `[Error]: ...` 失败观测都走这条路。
+# load_skill / get_time 和全部 `[Error]: ...` 失败观测都走这条路。
 #
 # 所以这里拿真实的 serialize_tool_result 跑一遍探针值，把结果存下来，
 # 由 test_fixture_contract.py 逐条比对 render._serialize_result —— 那条捷径
 # 曾经在 `str()` 时代是对的，换格式之后就悄悄错了，而且没有任何校验拦得住。
 OBSERVATION_PROBES: list = [
-    "北京: 26 摄氏度 晴朗",                    # get_weather 硬编码桩
+    "北京: 26 摄氏度 晴朗",                    # 裸中文字符串（出处 get_weather，已随 c18c84e 删除；
+                                               #  探针照留 —— 它考的是序列化，不是那个工具）
     "08/11/26-07:00:00",                       # get_time（%D 格式，见 6.3）
     "exam_prediction skill not found!",        # load_skill 失败文案
     "[Error]: division by zero",               # tool_register 的失败表示

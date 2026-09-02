@@ -223,11 +223,50 @@ def dump_samples(samples: list[Sample], path: str | Path) -> None:
     if os.environ.get("ESA_SYSTEM_PROMPT_MODE") == "collect":
         print(f"[collect 模式] 跳过落盘 {Path(path).name}（{len(samples)} 条，system 是占位符）")
         return
+    # 🔴 落盘前查一次改写表。放在这里是因为**十个生成器共用这一个出口**，
+    # 挂在各自的 mk() 上就等于挂十份，迟早分叉（5.54）。
+    # 原文对不上就跳过并印出来 —— 数据换版之后旧改写自动失效，不静默错配（5.59）。
+    from esa.rewrites import apply_to  # noqa: PLC0415  循环依赖：rewrites 不 import ir
+
+    n = apply_to(samples)
+    if n["applied"] or n["stale"]:
+        print(f"  改写表：{Path(path).name} 应用 {n['applied']} 段"
+              + (f"，🔴 原文已变而跳过 {n['stale']} 段（数据换版了，"
+                 f"这些改写要重跑）" if n["stale"] else ""))
+
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w", encoding="utf-8") as fh:
         for s in samples:
             fh.write(json.dumps(_sample_dict(s), ensure_ascii=False) + "\n")
+    _stamp_fixtures(p.parent)
+
+
+def fixtures_sha() -> str:
+    """`esa/fixtures.py` 的 sha256 前 16 位 —— 观测值就是它产出的。"""
+    return hashlib.sha256(
+        (Path(__file__).with_name("fixtures.py")).read_bytes()).hexdigest()[:16]
+
+
+def _stamp_fixtures(ir_dir: Path) -> None:
+    """盖戳：这批 IR 是用哪一版 `fixtures.py` 渲染的。
+
+    🔴 2026-08-30 补。当天踩的：给 `fixtures.get_mastery_report` 补了上游新增的
+    `has_records`，重跑了七个自测（全绿）就提交并上传了 —— **没有重跑生成器**。
+    于是交付的 `data/ir/` 是用**补丁前**的 fixtures 生成的，142 条样本的观测里
+    没有那个字段，而交付的 `fixtures.py` 会产出它。**两者对不上，三道检查全绿**：
+    `validate` 不拿 IR 和 fixtures 对账，`test_fixture_contract` 比的是
+    fixtures 和线上抓取，**没有任何东西比 IR 和 fixtures**。
+
+    这是 5.24 / 5.31 / 5.47 的同一个形状：改了对齐的那一层，忘了重跑下游。
+    改法照抄本项目已有的 `cache_contract`（提示词缓存过期就当场拒绝使用）：
+    落盘时盖戳，`validate` 每次比一下。
+    """
+    (ir_dir / "_generated_with.json").write_text(
+        json.dumps({"fixtures_sha256_16": fixtures_sha(),
+                    "_note": "由 esa.ir.dump_samples 盖戳；esa.validate 每次比对。"
+                             "对不上说明 fixtures 改过而 IR 没重新生成。"},
+                   ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
 
 def load_samples(path: str | Path) -> list[Sample]:
