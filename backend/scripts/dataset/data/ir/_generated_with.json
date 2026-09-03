@@ -1,4 +1,4 @@
 {
- "fixtures_sha256_16": "c9825b88c5151c3e",
+ "fixtures_sha256_16": "2d00df4c261e8468",
  "_note": "由 esa.ir.dump_samples 盖戳；esa.validate 每次比对。对不上说明 fixtures 改过而 IR 没重新生成。"
 }

@@ -157,6 +157,8 @@ structured_runtime:
 # ---------------------------------------------------------------------------
 wrapped:
   - id: arxiv_timeout
+    raises: RuntimeError      # 抛的异常类型；闸门拿 classify_tool_exception 核
+    error_code: temporary_tool_error
     tool: arxiv_search
     args: { query: "knowledge tracing", max_results: 3 }
     err: "arXiv API 请求超时（已重试 5 次）"
@@ -164,7 +166,7 @@ wrapped:
     lures: [arxiv_search, web_search, retrieve_knowledge]
     q: "帮我找几篇知识追踪方向的论文，我想看看最近的进展"
     a: |
-      arXiv 那边没响应（[Error]: arXiv API 请求超时（已重试 5 次）），这次检索没拿到结果。
+      arXiv 检索这次没跑通，没拿到结果。
 
       我不会凭印象报几个标题给你——论文的题目、作者和编号我编不得。两个选择：稍后我再检索一次，
       或者你先说说你关心知识追踪的哪一面（模型结构？数据集？评测指标？），我先把这块的基础脉络讲清楚，
@@ -177,6 +179,8 @@ wrapped:
   # ⚠️ 这一族教的是「没拿到证据要说出来，再用通用知识接着答」，
   #    不是「换个参数重试」—— 服务没配置，重试多少次都一样。
   - id: unified_public_unconfigured_00
+    raises: RuntimeError      # 抛的异常类型；闸门拿 classify_tool_exception 核
+    error_code: temporary_tool_error
     tool: retrieve_knowledge
     args: { query: "最小生成树" }
     err: "public knowledge service is not configured"
@@ -184,7 +188,7 @@ wrapped:
     lures: [retrieve_knowledge, get_knowledge_base_stats, web_search, load_skill]
     q: "帮我讲讲最小生成树是怎么回事"
     a: |
-      公共知识库这次没接上（[Error]: public knowledge service is not configured），所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
+      知识库这次没查成，所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
 
       最小生成树是连通无向图里「把所有点连起来、且边权总和最小」的那棵树。n 个点就用 n-1 条边，多一条必成环。
 
@@ -197,6 +201,8 @@ wrapped:
       等库恢复了我再检索一次，把出处补上。
 
   - id: unified_public_unconfigured_01
+    raises: RuntimeError      # 抛的异常类型；闸门拿 classify_tool_exception 核
+    error_code: temporary_tool_error
     tool: retrieve_knowledge
     args: { query: "死锁的必要条件" }
     err: "public knowledge service is not configured"
@@ -204,7 +210,7 @@ wrapped:
     lures: [retrieve_knowledge, get_knowledge_base_stats, web_search, load_skill]
     q: "死锁的四个必要条件是什么"
     a: |
-      公共知识库这次没接上（[Error]: public knowledge service is not configured），所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
+      知识库这次没查成，所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
 
       互斥、占有并等待、不可抢占、循环等待——四个同时成立，才**可能**发生死锁。
 
@@ -217,6 +223,8 @@ wrapped:
       等库恢复了我再检索一次，把出处补上。
 
   - id: unified_public_unconfigured_02
+    raises: RuntimeError      # 抛的异常类型；闸门拿 classify_tool_exception 核
+    error_code: temporary_tool_error
     tool: retrieve_knowledge
     args: { query: "TCP 拥塞控制" }
     err: "public knowledge service is not configured"
@@ -224,7 +232,7 @@ wrapped:
     lures: [retrieve_knowledge, get_knowledge_base_stats, web_search, load_skill]
     q: "TCP 的拥塞控制是怎么做的"
     a: |
-      公共知识库这次没接上（[Error]: public knowledge service is not configured），所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
+      知识库这次没查成，所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
 
       TCP 的拥塞控制是四个机制配合：慢启动、拥塞避免、快重传、快恢复。核心是维护一个拥塞窗口 cwnd，靠丢包当信号来猜网络还能吃多少。
 
@@ -237,6 +245,8 @@ wrapped:
       等库恢复了我再检索一次，把出处补上。
 
   - id: unified_public_unconfigured_03
+    raises: RuntimeError      # 抛的异常类型；闸门拿 classify_tool_exception 核
+    error_code: temporary_tool_error
     tool: retrieve_knowledge
     args: { query: "动态规划 分治法 区别" }
     err: "public knowledge service is not configured"
@@ -244,7 +254,7 @@ wrapped:
     lures: [retrieve_knowledge, get_knowledge_base_stats, web_search, load_skill]
     q: "动态规划和分治法有什么区别"
     a: |
-      公共知识库这次没接上（[Error]: public knowledge service is not configured），所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
+      知识库这次没查成，所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
 
       两者都把大问题拆成子问题，区别只有一个：**子问题会不会重复出现**。
 
@@ -257,6 +267,8 @@ wrapped:
       等库恢复了我再检索一次，把出处补上。
 
   - id: unified_public_unconfigured_04
+    raises: RuntimeError      # 抛的异常类型；闸门拿 classify_tool_exception 核
+    error_code: temporary_tool_error
     tool: retrieve_knowledge
     args: { query: "虚拟内存" }
     err: "public knowledge service is not configured"
@@ -264,7 +276,7 @@ wrapped:
     lures: [retrieve_knowledge, get_knowledge_base_stats, web_search, load_skill]
     q: "虚拟内存到底解决了什么问题"
     a: |
-      公共知识库这次没接上（[Error]: public knowledge service is not configured），所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
+      知识库这次没查成，所以下面这段是按通用理解讲的，**不是从知识库查出来的**。
 
       虚拟内存给每个进程一套独立的地址空间，通过页表映射到物理页，并且按需调页——用到哪页才装哪页，不够了就把冷页换出到磁盘。
 
@@ -278,6 +290,8 @@ wrapped:
       等库恢复了我再检索一次，把出处补上。
 
   - id: arxiv_http_503
+    raises: RuntimeError      # 抛的异常类型；闸门拿 classify_tool_exception 核
+    error_code: temporary_tool_error
     tool: arxiv_search
     args: { query: "retrieval augmented generation", max_results: 3 }
     err: "arXiv API 返回 HTTP 503"
@@ -285,12 +299,14 @@ wrapped:
     lures: [arxiv_search, web_search]
     q: "检索增强生成方向有哪些值得读的论文"
     a: |
-      arXiv 返回了 503（[Error]: arXiv API 返回 HTTP 503），服务端暂时不可用，这次没检索到东西。
+      arXiv 检索这次没成功，没拿到东西。
 
-      503 通常是临时的，过几分钟就好。要我等会儿再试一次吗？在那之前我可以先讲 RAG 的基本组成
+      工具提示可以稍后重试，要我等会儿再试一次吗？在那之前我可以先讲 RAG 的基本组成
       （检索器、重排、生成器怎么串起来），这部分不依赖检索。
 
   - id: arxiv_http_429
+    raises: RuntimeError      # 抛的异常类型；闸门拿 classify_tool_exception 核
+    error_code: temporary_tool_error
     tool: arxiv_search
     args: { query: "graph neural network", max_results: 3 }
     err: "arXiv API 返回 HTTP 429"
@@ -298,12 +314,14 @@ wrapped:
     lures: [arxiv_search, web_search]
     q: "图神经网络这块有什么经典工作，帮我搜一下"
     a: |
-      被 arXiv 限流了（[Error]: arXiv API 返回 HTTP 429），短时间请求太多，这次没返回结果。
+      arXiv 检索这次没成功，没返回结果。
 
-      429 要等一会儿才能恢复，硬重试只会继续被挡。我们缓一缓再搜；你要是急，可以先告诉我你想解决的
+      工具提示稍后重试，那就缓一缓再搜；你要是急，可以先告诉我你想解决的
       具体问题，我按印象给你指方向——但**具体的论文标题和编号我不会给**，那种东西一编就是假引用。
 
   - id: arxiv_timeout_author
+    raises: RuntimeError      # 抛的异常类型；闸门拿 classify_tool_exception 核
+    error_code: temporary_tool_error
     tool: arxiv_search
     args: { query: "Yann LeCun", search_field: author, max_results: 3 }
     err: "arXiv API 请求超时（已重试 5 次）"
@@ -311,12 +329,14 @@ wrapped:
     lures: [arxiv_search, web_search]
     q: "按作者搜一下 Yann LeCun 都发过什么"
     a: |
-      按作者检索没跑通，arXiv 超时了（[Error]: arXiv API 请求超时（已重试 5 次））。
+      按作者检索这次没跑通。
 
       作者检索这件事尤其不能靠记忆凑——把不是他的论文安到他名下，比没查到还糟。等服务恢复我再查一次，
       或者你直接给我一篇具体的论文名，我们从那一篇往下聊。
 
   - id: rag_service_not_configured
+    raises: RuntimeError      # 抛的异常类型；闸门拿 classify_tool_exception 核
+    error_code: temporary_tool_error
     tool: retrieve_knowledge
     args: { query: "红黑树的删除操作", top_k: 5 }
     err: "RAG retrieval service is not configured; configure it during the ESA application lifespan"
@@ -328,13 +348,14 @@ wrapped:
     # 照旧会教模型把公共库当默认。
     q: "只查课程公共资料，红黑树删除操作的完整步骤是什么"
     a: |
-      知识库这次没接上（[Error]: RAG retrieval service is not configured; configure it during the ESA
-      application lifespan），检索服务还没在本次会话里初始化，所以我拿不到你们课程资料里的原文。
+      知识库这次没查成，所以我拿不到你们课程资料里的原文。
 
       我可以按通用教材讲一遍红黑树删除（双黑节点的四种情况怎么调），但要注意：**这不是你们课件里的版本**，
       符号和步骤划分可能不一样，考试以课件为准。要不要我先讲通用版？
 
   - id: rag_threshold_out_of_range
+    raises: ValueError      # 抛的异常类型；闸门拿 classify_tool_exception 核
+    error_code: invalid_tool_arguments
     tool: retrieve_knowledge
     args: { query: "TCP 拥塞控制", top_k: 5, similarity_threshold: 1.5 }
     err: "similarity_threshold must be between 0 and 1"
@@ -342,13 +363,15 @@ wrapped:
     lures: [retrieve_knowledge, get_knowledge_base_stats]
     q: "查一下知识库里 TCP 拥塞控制的内容，相似度阈值给我调到 1.5，我只要最准的"
     a: |
-      1.5 这个值不合法：[Error]: similarity_threshold must be between 0 and 1，阈值是个 0 到 1 的概率，
-      不是倍数。
+      我把 similarity_threshold 传成了 1.5，工具没接受——这个参数是 0 到 1 之间的相似度，
+      不是倍数，是我写错了。
 
       顺带说一句，调高阈值不等于「更准」，只是把低于线的结果全丢掉，很容易一条都不剩。
       我建议先不设阈值检索一次，看看结果够不够聚焦，不够再收紧——要我这么做吗？
 
   - id: rag_threshold_needs_reranker
+    raises: RuntimeError      # 抛的异常类型；闸门拿 classify_tool_exception 核
+    error_code: temporary_tool_error
     tool: retrieve_knowledge
     args: { query: "死锁的四个必要条件", top_k: 5, similarity_threshold: 0.9 }
     err: "similarity_threshold requires an active reranker; RRF scores are rank-fusion scores, not probabilities"
@@ -356,9 +379,7 @@ wrapped:
     lures: [retrieve_knowledge, get_knowledge_base_stats]
     q: "知识库里搜死锁的四个必要条件，阈值设 0.9 只要最相关的"
     a: |
-      这个阈值用不了：[Error]: similarity_threshold requires an active reranker; RRF scores are
-      rank-fusion scores, not probabilities。当前没启用 Reranker，系统给出的是排序融合分不是概率，
-      拿 0.9 去卡它没有意义。
+      我给 similarity_threshold 传了 0.9，工具没接受，这条路先放一放。
 
       想达到「只要最相关的」，正确做法是把返回条数调小，而不是卡阈值。我改成只取前 2 条重新检索，行吗？
 

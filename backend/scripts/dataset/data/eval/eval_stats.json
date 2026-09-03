@@ -2,13 +2,13 @@
   "eval_total": 277,
   "eval_questions": 440,
   "respond_questions": 163,
-  "train_total": 1087,
+  "train_total": 1094,
   "train_held_for_review": 1,
   "train_held_by_category": {
     "tool_error": 1
   },
-  "no_call_ratio_before_hold": 0.2932,
-  "no_call_ratio": 0.2935,
+  "no_call_ratio_before_hold": 0.2977,
+  "no_call_ratio": 0.298,
   "eval_by_category": {
     "multi_turn_tool": 23,
     "single_tool_call": 141,

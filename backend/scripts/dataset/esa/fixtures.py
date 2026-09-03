@@ -789,13 +789,22 @@ _BY_ID = {m["memory_id"]: m for m in CORE_MEMORIES}
 # 🔴 这里的文案不许手写：`tests/test_runtime_error_contract.py` 每次拿
 #    `ERROR_MESSAGES` 逐字核，改一个字就红。
 _ERROR_MESSAGES = {
-    "invalid_tool_arguments": "工具参数无效",
-    "memory_policy_denied": "当前记忆策略不允许执行该工具",
-    "tool_internal_error": "工具暂时无法完成请求，请稍后重试",
+    "timeout": "工具执行超时",
+    "rate_limited": "工具服务请求过于频繁，请稍后重试",
+    "upstream_unavailable": "上游工具服务暂时不可用",
+    "network_error": "工具网络连接暂时不可用",
+    "temporary_tool_error": "工具暂时无法完成请求",
     "tool_not_available": "当前上下文无法使用该工具",
+    "invalid_tool_arguments": "工具参数无效",
+    "resource_capability_required": "当前请求缺少工具所需的资源授权",
+    "attachment_not_authorized": "请求的附件不在当前对话授权范围内",
     "permission_denied": "当前请求无权执行该工具",
+    "memory_policy_denied": "当前记忆策略不允许执行该工具",
+    "non_idempotent_action_rejected": "写操作无法安全自动重试",
+    "tool_internal_error": "工具暂时无法完成请求，请稍后重试",
     "tool_budget_exhausted": "本轮工具调用预算已用完",
     "duplicate_call_blocked": "相同的失败工具调用已达到重复上限",
+    "wall_time_exhausted": "本轮 Agent 运行时间已用完",
 }
 _RETRYABLE = frozenset(
     {"timeout", "rate_limited", "upstream_unavailable", "network_error",
@@ -813,7 +822,7 @@ def _structured_error(tool: str, error_code: str, attempt: int = 1) -> dict[str,
     """
     if error_code not in _ERROR_MESSAGES:
         raise ToolError(f"未知 error_code {error_code!r} —— 先去 execution_errors.py 对一遍")
-    return {
+    out = {
         "ok": False,
         "error_code": error_code,
         "error": error_code,
@@ -822,6 +831,11 @@ def _structured_error(tool: str, error_code: str, attempt: int = 1) -> dict[str,
         "attempt": attempt,
         "message": _ERROR_MESSAGES[error_code],
     }
+    if out["retryable"]:
+        # 实测线上：`classify_tool_exception` 第三个返回值，可重试类默认 1000
+        # （异常自带 Retry-After 头时用那个值 —— 我们造不出那种，用默认）。
+        out["retry_after_ms"] = 1000
+    return out
 
 
 def _denied(tool: str, detail: str) -> dict[str, Any]:
@@ -839,6 +853,24 @@ def _exec_error(tool: str, detail: str, error_code: str = "invalid_tool_argument
     实测线上：`get_mastery_level` 空/未知 kp、`recommend_practice` 负周数、
     `save_core_memory` 空内容 —— 三者都是 `invalid_tool_arguments`。
     内部错误（如删不存在的记忆）传 `error_code="tool_internal_error"`。
+    """
+    return _structured_error(tool, error_code)
+
+
+def wrapped_error(tool: str, error_code: str) -> dict[str, Any]:
+    """工具抛异常时，模型看见的那一层。
+
+    2026-09-02：旧的 `[Error]: …` 字符串**不是模型看见的东西**。Agent 走
+    `BoundToolExecutor`，异常被 `capability_runtime.py:91` 接住，经
+    `classify_tool_exception` 定 code、`structured_tool_error` 包成统一协议。
+
+    🔴 **error_code 由种子显式声明，不在这里猜。** 第一版按「`[Error]:` 开头
+    → tool_internal_error」推，错了：那条规则是 `normalize_tool_error_result`
+    给**旧 tool_register 字符串**用的，而 Agent 根本不走那条路。实际映射是
+    按异常类型来的 —— `RuntimeError → temporary_tool_error`（**可重试**）、
+    `ValueError → invalid_tool_arguments`。种子里同时写 `raises` 和
+    `error_code`，由 `tests/test_runtime_error_contract.py` 拿真实的
+    `classify_tool_exception` 核对两者一致。
     """
     return _structured_error(tool, error_code)
 

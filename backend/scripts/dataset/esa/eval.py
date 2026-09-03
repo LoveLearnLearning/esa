@@ -1082,12 +1082,20 @@ def print_report(name: str, r: dict) -> None:
             print(f"    {_pad(k, 26)}{_pct(r[k], v['den'])}   {v['num']}/{v['den']}"
                   f"   CI[{lo:.1f}–{hi:.1f}]")
         adj = r.get("_adjudication") or {}
-        if adj.get("human"):
+        # 🔴 条件是 human **或** fallback，不能只看 human。
+        # 原来写的是 `if adj.get("human")`，于是**一条裁定都没命中时整段不打印** ——
+        # 而那正是最危险的一种：新模型第一次评测，全部退回关键词法，
+        # 报告却对此只字不提（2026-09-03 nothink_93522 上真发生了，22 条全退回）。
+        if adj.get("human") or adj.get("fallback"):
             print(f"    ── 拒绝题判据：人工裁定 {adj['human']} 条、"
                   f"退回关键词 {adj['fallback']} 条")
             if adj.get("fallback_material"):
                 print(f"       ⚠️ 其中 {adj['fallback_material']} 条**没调工具**、"
                       "结果由关键词法决定，而它两个方向都会错（5.51）——这几条要补人工裁定")
+                if not adj.get("human"):
+                    print("       🔴 这一份**一条人工裁定都没命中**（多半是新模型的第一次评测）。"
+                          "拒绝命中率现在完全由关键词法决定，5.77 那次它把「差 1 道」放大成了"
+                          "「差 5 道」——先生成盲判表判完，再拿这个数说话。")
             elif adj.get("fallback"):
                 print("       （退回的都调了工具，拒绝命中率恒为 0，判据不影响结果）")
 

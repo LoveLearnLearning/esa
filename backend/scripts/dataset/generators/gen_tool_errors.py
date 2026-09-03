@@ -81,19 +81,23 @@ def _fmt(text: str, **kw) -> str:
 
 
 def gen_wrapped(cfg, version, rng, all_names, out) -> None:
-    """① 抛异常 → tool_register.call 返回 f"[Error]: {e}"（tool_register.py:79-80）。
+    """① 抛异常 → 旧版 `tool_register.call` 返回 f"[Error]: {e}"。
 
-    观测是**字符串**不是 dict —— 这一点必须和线上一致，否则模型会以为失败也长成 JSON。
+    ⚠️ **那句注释（「观测是字符串不是 dict」）在 2026-09-02 之后是错的。**
+    上游 `d29d3e4` 之后每个工具返回都过 `normalize_tool_error_result`
+    （`capability_runtime.py:101`，在 try 之外的正常返回路径上），
+    `[Error]: …` 被升级成统一协议、原文进 audit —— **模型看见的是 dict**。
+    种子里的 `err` 只留作出处记录，不再进模型可见载荷。
     """
     for item in cfg["wrapped"]:
-        err = f"[Error]: {item['err']}"
+        err = fixtures.wrapped_error(item["tool"], item["error_code"])
         out.append(mk(
             f"toolerr_{item['id']}", f"toolerr__{item['tool']}__{item['id']}",
             item["lures"],
             [Turn(role="user", content=item["q"]),
              Turn(role="tool_call", calls=[ToolCall(item["tool"], item["args"])]),
              Turn(role="tool_result", results=[ToolResult(item["tool"], err, is_error=True)]),
-             Turn(role="assistant", content=_fmt(item["a"], err=err, value="", latex=""))],
+             Turn(role="assistant", content=_fmt(item["a"], err="", value="", latex=""))],
             version, rng, all_names))
 
 

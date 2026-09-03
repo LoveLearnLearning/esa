@@ -39,6 +39,18 @@ def _backend_source() -> pathlib.Path:
              "   这道闸门守的是「种子 ↔ 线上文案」，找不到源码就不能放行（5.72）。")
 
 
+def _classifier():
+    """拿后端真实的 classify_tool_exception，别在这里重写一份映射（5.54）。"""
+    for repo in (pathlib.Path.home() / "esa", HERE.parents[3]):
+        if (repo / "backend" / "agent" / "tools" / "execution_errors.py").is_file():
+            sys.path.insert(0, str(repo))
+            from backend.agent.tools.execution_errors import (  # noqa: PLC0415
+                classify_tool_exception,
+            )
+            return classify_tool_exception
+    sys.exit("❌ 取不到 classify_tool_exception")
+
+
 def _parse(src: str) -> tuple[dict[str, str], set[str]]:
     try:
         body = src.split("ERROR_MESSAGES")[1].split("}")[0]
@@ -78,6 +90,43 @@ def main() -> int:
             print(f"  ❌ {it['id']}：retryable 种子 {it['retryable']}，"
                   f"源码推导 {code in retryable}")
             bad += 1
+
+    # ── wrapped 段：种子声明的 raises → error_code，拿真实 classify 核 ──
+    wrapped = seeds.get("wrapped") or []
+    classify = _classifier()
+    for it in wrapped:
+        raises, code = it.get("raises"), it.get("error_code")
+        if not raises or not code:
+            print(f"  ❌ {it['id']}：wrapped 条目缺 raises / error_code")
+            bad += 1
+            continue
+        exc = {"RuntimeError": RuntimeError, "ValueError": ValueError,
+               "TypeError": TypeError, "TimeoutError": TimeoutError,
+               "ConnectionError": ConnectionError}.get(raises)
+        if exc is None:
+            print(f"  ❌ {it['id']}：不认识的异常类型 {raises!r}")
+            bad += 1
+            continue
+        want, _retryable, _after = classify(exc("x"))
+        if want != code:
+            print(f"  ❌ {it['id']}：声明 {raises} → {code}，"
+                  f"而 classify_tool_exception 给的是 {want}")
+            bad += 1
+    print(f"wrapped 段 {len(wrapped)} 条的 raises→error_code 也核过了")
+
+    # ── fixtures 自己那张 _ERROR_MESSAGES 表也要与源码一致 ──
+    fx = HERE.parent / "esa" / "fixtures.py"
+    txt = fx.read_text(encoding="utf-8")
+    blk = txt.split("_ERROR_MESSAGES = {")[1].split("}")[0]
+    ours = dict(re.findall(r'"([a-z_]+)":\s*"([^"]+)"', blk))
+    if ours != msgs:
+        only_src = sorted(set(msgs) - set(ours))
+        diff = [k for k in ours if k in msgs and ours[k] != msgs[k]]
+        print(f"  ❌ esa/fixtures.py 的 _ERROR_MESSAGES 与源码不一致："
+              f"缺 {only_src or '无'}，文案不同 {diff or '无'}")
+        bad += 1
+    else:
+        print(f"esa/fixtures.py 的 _ERROR_MESSAGES {len(ours)} 条与源码逐字一致")
 
     uncovered = sorted(set(msgs) - {i["error_code"] for i in items})
     print(f"{len(items)} 条种子核完，{bad} 处不一致")

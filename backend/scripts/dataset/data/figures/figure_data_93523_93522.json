@@ -1,0 +1,294 @@
+{
+ "schema": "esa.figure_data.v1",
+ "base_tag": "base_93523",
+ "lora_tag": "nothink_93522",
+ "n_scored": 440,
+ "n_dropped": 0,
+ "drop_reason": "",
+ "composition": {
+  "expected_action": {
+   "CALL_TOOL": 164,
+   "RESPOND_TOOL_RESULT": 163,
+   "ASK_USER": 30,
+   "DIRECT_ANSWER": 59,
+   "RECOVER_TOOL_ERROR": 18,
+   "REFUSE": 6
+  },
+  "layer": {
+   "L1_同分布": 246,
+   "L2_状态外推": 92,
+   "L3_场景外推": 102
+  }
+ },
+ "M": [
+  {
+   "metric": "格式合法率",
+   "base": 100.0,
+   "lora": 99.77272727272727,
+   "base_n": [
+    440,
+    440
+   ],
+   "lora_n": [
+    439,
+    440
+   ],
+   "target": 100.0,
+   "dir": "hi",
+   "p": 1.0,
+   "only_base": 1,
+   "only_lora": 0,
+   "lower_is_better": false
+  },
+  {
+   "metric": "工具选择准确率",
+   "base": 36.68639053254438,
+   "lora": 88.16568047337277,
+   "base_n": [
+    62,
+    169
+   ],
+   "lora_n": [
+    149,
+    169
+   ],
+   "target": 90.0,
+   "dir": "hi",
+   "p": 0.0,
+   "only_base": 1,
+   "only_lora": 88,
+   "lower_is_better": false
+  },
+  {
+   "metric": "工具调用完全正确率",
+   "base": 24.2603550295858,
+   "lora": 74.55621301775149,
+   "base_n": [
+    41,
+    169
+   ],
+   "lora_n": [
+    126,
+    169
+   ],
+   "target": 85.0,
+   "dir": "hi",
+   "p": 0.0,
+   "only_base": 1,
+   "only_lora": 86,
+   "lower_is_better": false
+  },
+  {
+   "metric": "误触发率 FPR",
+   "base": 1.694915254237288,
+   "lora": 30.508474576271187,
+   "base_n": [
+    1,
+    59
+   ],
+   "lora_n": [
+    18,
+    59
+   ],
+   "target": 5.0,
+   "dir": "lo",
+   "p": 0.0001,
+   "only_base": 1,
+   "only_lora": 18,
+   "lower_is_better": true
+  },
+  {
+   "metric": "漏调率 FNR",
+   "base": 53.84615384615385,
+   "lora": 1.183431952662722,
+   "base_n": [
+    91,
+    169
+   ],
+   "lora_n": [
+    2,
+    169
+   ],
+   "target": 10.0,
+   "dir": "lo",
+   "p": 0.0,
+   "only_base": 89,
+   "only_lora": 0,
+   "lower_is_better": true
+  },
+  {
+   "metric": "参数完全匹配率",
+   "base": 66.12903225806451,
+   "lora": 84.56375838926175,
+   "base_n": [
+    41,
+    62
+   ],
+   "lora_n": [
+    126,
+    149
+   ],
+   "target": 85.0,
+   "dir": "hi",
+   "p": 0.0002,
+   "only_base": 0,
+   "only_lora": 13,
+   "lower_is_better": false
+  },
+  {
+   "metric": "参数schema合法率",
+   "base": 98.38709677419355,
+   "lora": 100.0,
+   "base_n": [
+    61,
+    62
+   ],
+   "lora_n": [
+    149,
+    149
+   ],
+   "target": 98.0,
+   "dir": "hi",
+   "p": 1.0,
+   "only_base": 0,
+   "only_lora": 1,
+   "lower_is_better": false
+  },
+  {
+   "metric": "追问命中率",
+   "base": 90.0,
+   "lora": 96.66666666666667,
+   "base_n": [
+    27,
+    30
+   ],
+   "lora_n": [
+    29,
+    30
+   ],
+   "target": 90.0,
+   "dir": "hi",
+   "p": 0.625,
+   "only_base": 1,
+   "only_lora": 3,
+   "lower_is_better": false
+  },
+  {
+   "metric": "工具失败恢复率",
+   "base": 69.23076923076923,
+   "lora": 76.92307692307693,
+   "base_n": [
+    9,
+    13
+   ],
+   "lora_n": [
+    10,
+    13
+   ],
+   "target": 90.0,
+   "dir": "hi",
+   "p": 1.0,
+   "only_base": 1,
+   "only_lora": 2,
+   "lower_is_better": false
+  },
+  {
+   "metric": "结果响应率",
+   "base": 99.38650306748467,
+   "lora": 98.15950920245399,
+   "base_n": [
+    162,
+    163
+   ],
+   "lora_n": [
+    160,
+    163
+   ],
+   "target": 95.0,
+   "dir": "hi",
+   "p": 0.625,
+   "only_base": 3,
+   "only_lora": 1,
+   "lower_is_better": false
+  },
+  {
+   "metric": "结果忠实度",
+   "base": 50.943396226415096,
+   "lora": 95.54140127388536,
+   "base_n": [
+    81,
+    159
+   ],
+   "lora_n": [
+    150,
+    157
+   ],
+   "target": 98.0,
+   "dir": "hi",
+   "p": 0.0,
+   "only_base": 2,
+   "only_lora": 72,
+   "lower_is_better": false
+  },
+  {
+   "metric": "拒绝命中率",
+   "base": 50.0,
+   "lora": 33.33333333333333,
+   "base_n": [
+    3,
+    6
+   ],
+   "lora_n": [
+    2,
+    6
+   ],
+   "target": 100.0,
+   "dir": "hi",
+   "p": 1.0,
+   "only_base": 2,
+   "only_lora": 1,
+   "lower_is_better": false
+  }
+ ],
+ "L": [
+  {
+   "layer": "L1_同分布",
+   "base": 51.11111111111111,
+   "lora": 93.33333333333333,
+   "base_n": [
+    46,
+    90
+   ],
+   "lora_n": [
+    84,
+    90
+   ]
+  },
+  {
+   "layer": "L2_状态外推",
+   "base": 50.0,
+   "lora": 85.71428571428571,
+   "base_n": [
+    14,
+    28
+   ],
+   "lora_n": [
+    24,
+    28
+   ]
+  },
+  {
+   "layer": "L3_场景外推",
+   "base": 3.9215686274509802,
+   "lora": 80.3921568627451,
+   "base_n": [
+    2,
+    51
+   ],
+   "lora_n": [
+    41,
+    51
+   ]
+  }
+ ]
+}
