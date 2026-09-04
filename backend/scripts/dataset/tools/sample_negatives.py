@@ -89,8 +89,10 @@ def main() -> int:
                 if raw in seen:               # 同一条重复采到，只留一份
                     continue
                 seen.add(raw)
+                # ⚠️ `p.tool_calls` 是 `backend_parser.ToolCall` 数据类，不是 dict ——
+                #    第一版写了 `c.get("name")`，跑到第一条真调工具的样本上才炸（94610）。
                 fh.write(json.dumps({"id": rec["gold"]["id"], "raw": raw,
-                                     "called": [c.get("name") for c in p.tool_calls]},
+                                     "called": [c.name for c in p.tool_calls]},
                                     ensure_ascii=False) + "\n")
                 kept += 1
             if i % 25 == 0:
