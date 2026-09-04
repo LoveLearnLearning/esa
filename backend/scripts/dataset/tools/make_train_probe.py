@@ -224,6 +224,10 @@ def main() -> int:
         "trained_on": sum(1 for r in records if r["gold"]["trained_on"]),
         "held_out": sum(1 for r in records if not r["gold"]["trained_on"]),
         "split_seed": args.split_seed,
+        # 2026-09-03 补：这个参数会改变题目集合，而它原本一个字都没进 meta。
+        # 指纹变了能看出「不是同一份」，但看不出「为什么不是」——
+        # 而这份 meta 自称是对账单，那就得能对上账。
+        "max_per_category": args.max_per_category,
     }
     meta_path = out.parent / (out.stem + "_meta.json")
     meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n",

@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import socket
 import os
 import pathlib
 import re
@@ -163,7 +164,8 @@ def _opener_for(endpoint: str) -> urllib.request.OpenerDirector:
 
 
 def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
-                  timeout: int = 600, api_key: str | None = None) -> str:
+                  timeout: int = 1800, api_key: str | None = None,
+                  retries: int = 1, temperature: float = 0.0) -> str:
     """OpenAI 兼容的 chat/completions。返回原始文本，不让服务端替我们解析工具调用
     —— 评测要考的正是模型自己产出的格式对不对。
 
@@ -174,7 +176,11 @@ def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
         "model": model,
         "messages": messages,
         "tools": tools,
-        "temperature": 0.0,     # 评测必须确定性，否则两次跑分不可比
+        # 🔴 默认 0.0：**评测必须确定性**，否则两次跑分不可比。
+        # 2026-09-05 才加了这个参数，唯一的用途是 `tools/sample_negatives.py`
+        # 采 DPO 的 rejected（那种场景要的正是「同一道题它有多容易犯错」）。
+        # 评测这一路一个字都没改 —— 不传就还是 0.0。
+        "temperature": temperature,
         # 与线上一致：`MODEL_MAX_OUTPUT_TOKENS: int = 8192`
         # （backend/core/utils/config.py:35 → webAPI.py:365 → vllm_service.py:148）
         #
@@ -193,8 +199,40 @@ def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
         data=json.dumps(payload).encode("utf-8"),
         headers=headers,
     )
-    with _opener_for(endpoint).open(req, timeout=timeout) as resp:
-        data = json.loads(resp.read())
+    # 🔴 2026-09-04：超时 600 → 1800 秒，并对**超时**重试一次。
+    #
+    # 起因：`s002_修改参数_0005#respond` 这一道在 ep10 模型上**稳定**超过 600 秒
+    # （94424、94512 两次都挂在同一道），于是 383 道里错 1 道，整个两小时的作业作废。
+    # 600 秒本来就偏紧：`max_tokens=8192`，huggingface 后端一路吐满是有可能超的 ——
+    # 这时候「超时」量的是后端速度，不是模型能力，和写死 1024 那次同一类错（见上面的注释）。
+    #
+    # ⚠️ 只对 socket 超时重试，别的异常一律照抛：
+    #    请求失败要么是真失败、要么是服务没了，那两种**必须**让作业红掉。
+    #    重试也只重一次，并且打印出来 —— 悄悄重试等于把不稳定藏起来。
+    last: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            with _opener_for(endpoint).open(req, timeout=timeout) as resp:
+                data = json.loads(resp.read())
+            if attempt:
+                print(f"     （上一次超时，第 {attempt + 1} 次尝试成功）", flush=True)
+            break
+        except (TimeoutError, socket.timeout) as exc:      # noqa: PERF203
+            last = exc
+            if attempt < retries:
+                print(f"     ⏱ 超时 {timeout}s，重试第 {attempt + 1} 次…", flush=True)
+                continue
+            raise
+        except urllib.error.URLError as exc:
+            if not isinstance(getattr(exc, "reason", None), (TimeoutError, socket.timeout)):
+                raise
+            last = exc
+            if attempt < retries:
+                print(f"     ⏱ 超时 {timeout}s，重试第 {attempt + 1} 次…", flush=True)
+                continue
+            raise
+    else:                                                   # pragma: no cover
+        raise last if last else RuntimeError("call_endpoint 没拿到结果")
     msg = data["choices"][0]["message"]
     # 服务端若已把工具调用解析成结构化字段，还原成模型原本的文本形式
     if msg.get("tool_calls"):
