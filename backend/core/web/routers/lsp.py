@@ -19,6 +19,7 @@ from backend.core.services.lsp_service import (
     LspSessionLimitExceeded,
 )
 from backend.core.stores.session_store import SessionStore
+from backend.core.stores.user_store import UserStore
 from backend.core.utils.config import LSP_AUTH_TIMEOUT_SECONDS
 
 router = APIRouter(prefix="/lsp", tags=["lsp"])
@@ -37,7 +38,17 @@ def _authenticate(websocket: WebSocket, token: str):
     """处理 `_authenticate` 相关逻辑。"""
     session_store: SessionStore = websocket.app.state.session_store
     session = session_store.get(token)
-    if session is None or session.expires_at <= datetime.now(timezone.utc):
+    if session is None:
+        return None
+    if session.expires_at <= datetime.now(timezone.utc):
+        session_store.revoke(session.session_id)
+        return None
+    user_store = getattr(websocket.app.state, "user_store", None)
+    if not isinstance(user_store, UserStore):
+        return None
+    user = user_store.get_by_id(session.user_id)
+    if user is None or user.status != "active":
+        session_store.revoke(session.session_id)
         return None
     return session
 

@@ -188,9 +188,13 @@ class KnowledgeBaseUploadFile {
 }
 
 class ApiClient {
-  ApiClient({String? baseUrl, http.Client Function()? clientFactory})
-    : baseUrl = _normalizeBaseUrl(baseUrl ?? _defaultBaseUrl),
-      _clientFactory = clientFactory ?? http.Client.new;
+  ApiClient({
+    String? baseUrl,
+    http.Client Function()? clientFactory,
+    Duration? requestTimeout,
+  }) : baseUrl = _normalizeBaseUrl(baseUrl ?? _defaultBaseUrl),
+       _clientFactory = clientFactory ?? http.Client.new,
+       _requestTimeout = requestTimeout ?? const Duration(seconds: 30);
 
   static const String _configuredBaseUrl = String.fromEnvironment(
     'ESA_API_BASE',
@@ -207,6 +211,8 @@ class ApiClient {
 
   final String baseUrl;
   final http.Client Function() _clientFactory;
+  final Duration _requestTimeout;
+  static const _longRequestTimeout = Duration(minutes: 10);
 
   static const int _personalPreviewMaxBytes = 8 * 1024 * 1024;
   static const int _personalPreviewCacheMaxBytes = 24 * 1024 * 1024;
@@ -260,6 +266,71 @@ class ApiClient {
 
   dynamic _decode(http.Response r) => jsonDecode(utf8.decode(r.bodyBytes));
 
+  Future<http.Response> _request(
+    Future<http.Response> Function(http.Client client) operation, {
+    Duration? timeout,
+  }) async {
+    final client = _clientFactory();
+    try {
+      return await operation(client).timeout(timeout ?? _requestTimeout);
+    } on TimeoutException {
+      throw ApiException(0, '请求超时，请稍后重试');
+    } on http.ClientException {
+      throw ApiException(0, '网络异常，请检查网络后重试');
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<http.Response> _get(
+    Uri uri, {
+    Map<String, String>? headers,
+    Duration? timeout,
+  }) =>
+      _request((client) => client.get(uri, headers: headers), timeout: timeout);
+
+  Future<http.Response> _post(
+    Uri uri, {
+    Map<String, String>? headers,
+    Object? body,
+    Encoding? encoding,
+    Duration? timeout,
+  }) => _request(
+    (client) =>
+        client.post(uri, headers: headers, body: body, encoding: encoding),
+    timeout: timeout,
+  );
+
+  Future<http.Response> _put(
+    Uri uri, {
+    Map<String, String>? headers,
+    Object? body,
+    Encoding? encoding,
+  }) => _request(
+    (client) =>
+        client.put(uri, headers: headers, body: body, encoding: encoding),
+  );
+
+  Future<http.Response> _patch(
+    Uri uri, {
+    Map<String, String>? headers,
+    Object? body,
+    Encoding? encoding,
+  }) => _request(
+    (client) =>
+        client.patch(uri, headers: headers, body: body, encoding: encoding),
+  );
+
+  Future<http.Response> _delete(
+    Uri uri, {
+    Map<String, String>? headers,
+    Object? body,
+    Encoding? encoding,
+  }) => _request(
+    (client) =>
+        client.delete(uri, headers: headers, body: body, encoding: encoding),
+  );
+
   Never _fail(http.Response r) {
     String detail;
     try {
@@ -294,7 +365,7 @@ class ApiClient {
   // ---------- 认证 ----------
   Future<int> sendRegistrationCode(String email) async {
     if (kOfflineMode) return 60;
-    final r = await http.post(
+    final r = await _post(
       _uri('/auth/email/send-code'),
       headers: _headers(),
       body: jsonEncode({'email': email}),
@@ -312,7 +383,7 @@ class ApiClient {
     String accountRole,
   ) async {
     if (kOfflineMode) return; // 离线模式注册直接成功
-    final r = await http.post(
+    final r = await _post(
       _uri('/auth/register'),
       headers: _headers(),
       body: jsonEncode({
@@ -328,7 +399,7 @@ class ApiClient {
 
   Future<int> sendBindEmailCode(String email) async {
     if (kOfflineMode) return 60;
-    final r = await http.post(
+    final r = await _post(
       _uri('/auth/email/bind/send-code'),
       headers: _headers(auth: true),
       body: jsonEncode({'email': email}),
@@ -343,7 +414,7 @@ class ApiClient {
       this.email = email;
       return;
     }
-    final r = await http.post(
+    final r = await _post(
       _uri('/auth/email/bind'),
       headers: _headers(auth: true),
       body: jsonEncode({'email': email, 'verification_code': verificationCode}),
@@ -357,7 +428,7 @@ class ApiClient {
       _offlineLogin(username);
       return;
     }
-    final r = await http.post(
+    final r = await _post(
       _uri('/auth/login'),
       headers: _headers(),
       body: jsonEncode({'username': username, 'password': password}),
@@ -373,6 +444,7 @@ class ApiClient {
   }
 
   Future<void> logout() async {
+    final session = sessionId;
     if (kOfflineMode) {
       sessionId = null;
       userId = null;
@@ -387,22 +459,24 @@ class ApiClient {
       return;
     }
     try {
-      await http.post(_uri('/auth/logout'), headers: _headers(auth: true));
+      await _post(_uri('/auth/logout'), headers: _headers(auth: true));
     } catch (_) {
       // 登出失败也无所谓 本地清理即可
     } finally {
-      sessionId = null;
-      userId = null;
-      username = null;
-      email = null;
-      sessionExpiresAt = null;
-      clearPersonalKnowledgeBasePreviewCache();
+      if (sessionId == session) {
+        sessionId = null;
+        userId = null;
+        username = null;
+        email = null;
+        sessionExpiresAt = null;
+        clearPersonalKnowledgeBasePreviewCache();
+      }
     }
   }
 
   Future<void> changePassword(String oldPassword, String newPassword) async {
     if (kOfflineMode) return;
-    final r = await http.post(
+    final r = await _post(
       _uri('/auth/change-password'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -416,7 +490,7 @@ class ApiClient {
   // ---------- 输出偏好 / 学情档案 ----------
   Future<UserPreferences> getPreferences() async {
     if (kOfflineMode) return const UserPreferences();
-    final r = await http.get(
+    final r = await _get(
       _uri('/me/preferences'),
       headers: _headers(auth: true),
     );
@@ -436,7 +510,7 @@ class ApiClient {
         customInstruction: customInstruction,
       );
     }
-    final r = await http.patch(
+    final r = await _patch(
       _uri('/me/preferences'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -451,10 +525,7 @@ class ApiClient {
 
   Future<UserProfile> getProfile() async {
     if (kOfflineMode) return const UserProfile();
-    final r = await http.get(
-      _uri('/me/profile'),
-      headers: _headers(auth: true),
-    );
+    final r = await _get(_uri('/me/profile'), headers: _headers(auth: true));
     if (r.statusCode != 200) _fail(r);
     return UserProfile.fromJson(_decode(r) as Map<String, dynamic>);
   }
@@ -477,7 +548,7 @@ class ApiClient {
         profileEnabled: profileEnabled,
       );
     }
-    final r = await http.patch(
+    final r = await _patch(
       _uri('/me/profile'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -500,7 +571,7 @@ class ApiClient {
         pinnedCount: _offConvs.where((item) => item.pinned).length,
       );
     }
-    final r = await http.get(
+    final r = await _get(
       _uri('/me/profile/stats'),
       headers: _headers(auth: true),
     );
@@ -509,7 +580,7 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> exportProfileData() async {
-    final r = await http.get(
+    final r = await _get(
       _uri('/me/profile/export'),
       headers: _headers(auth: true),
     );
@@ -518,7 +589,7 @@ class ApiClient {
   }
 
   Future<int> deleteProfileData() async {
-    final r = await http.delete(
+    final r = await _delete(
       _uri('/me/profile?confirm=DELETE'),
       headers: _headers(auth: true),
     );
@@ -533,10 +604,7 @@ class ApiClient {
         goals: List.of(_offPlannerGoals),
       );
     }
-    final r = await http.get(
-      _uri('/me/planner'),
-      headers: _headers(auth: true),
-    );
+    final r = await _get(_uri('/me/planner'), headers: _headers(auth: true));
     if (r.statusCode != 200) _fail(r);
     return PlannerSnapshot.fromJson(_decode(r) as Map<String, dynamic>);
   }
@@ -554,7 +622,7 @@ class ApiClient {
       _offPlannerTodos.insert(0, item);
       return item;
     }
-    final r = await http.post(
+    final r = await _post(
       _uri('/me/planner/todos'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -587,7 +655,7 @@ class ApiClient {
       _offPlannerTodos[index] = updated;
       return updated;
     }
-    final r = await http.patch(
+    final r = await _patch(
       _uri('/me/planner/todos/${Uri.encodeComponent(id)}'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -605,7 +673,7 @@ class ApiClient {
       _offPlannerTodos.removeWhere((item) => item.id == id);
       return;
     }
-    final r = await http.delete(
+    final r = await _delete(
       _uri('/me/planner/todos/${Uri.encodeComponent(id)}'),
       headers: _headers(auth: true),
     );
@@ -632,7 +700,7 @@ class ApiClient {
       _offPlannerGoals.insert(0, item);
       return item;
     }
-    final r = await http.post(
+    final r = await _post(
       _uri('/me/planner/goals'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -663,7 +731,7 @@ class ApiClient {
       _offPlannerGoals[index] = updated;
       return updated;
     }
-    final r = await http.patch(
+    final r = await _patch(
       _uri('/me/planner/goals/${Uri.encodeComponent(id)}'),
       headers: _headers(auth: true),
       body: jsonEncode({'progress': ?progress}),
@@ -677,7 +745,7 @@ class ApiClient {
       _offPlannerGoals.removeWhere((item) => item.id == id);
       return;
     }
-    final r = await http.delete(
+    final r = await _delete(
       _uri('/me/planner/goals/${Uri.encodeComponent(id)}'),
       headers: _headers(auth: true),
     );
@@ -688,7 +756,7 @@ class ApiClient {
     final query = course.trim().isEmpty
         ? ''
         : '?course=${Uri.encodeQueryComponent(course.trim())}';
-    final r = await http.get(
+    final r = await _get(
       _uri('/me/learning/mastery$query'),
       headers: _headers(auth: true),
     );
@@ -697,7 +765,7 @@ class ApiClient {
   }
 
   Future<List<LearningCourseSummary>> getLearningCourses() async {
-    final r = await http.get(
+    final r = await _get(
       _uri('/me/learning/courses'),
       headers: _headers(auth: true),
     );
@@ -719,7 +787,7 @@ class ApiClient {
     final suffix = query.trim().isEmpty
         ? ''
         : '?query=${Uri.encodeQueryComponent(query.trim())}';
-    final r = await http.get(
+    final r = await _get(
       _uri('/me/learning/course-catalog$suffix'),
       headers: _headers(auth: true),
     );
@@ -746,7 +814,7 @@ class ApiClient {
         .map((name) => {'name': name, 'source': source})
         .toList();
     if (courses.isEmpty) return;
-    final r = await http.post(
+    final r = await _post(
       _uri('/me/learning/courses'),
       headers: _headers(auth: true),
       body: jsonEncode({'courses': courses}),
@@ -755,7 +823,7 @@ class ApiClient {
   }
 
   Future<void> removeLearningCourse(String name) async {
-    final r = await http.delete(
+    final r = await _delete(
       _uri('/me/learning/courses/${Uri.encodeComponent(name.trim())}'),
       headers: _headers(auth: true),
     );
@@ -766,7 +834,7 @@ class ApiClient {
     required String name,
     required String canonicalCourse,
   }) async {
-    final r = await http.patch(
+    final r = await _patch(
       _uri('/me/learning/courses/${Uri.encodeComponent(name.trim())}'),
       headers: _headers(auth: true),
       body: jsonEncode({'canonical_course': canonicalCourse.trim()}),
@@ -775,16 +843,13 @@ class ApiClient {
   }
 
   Future<ScheduleSnapshot> getSchedule() async {
-    final r = await http.get(
-      _uri('/me/schedule'),
-      headers: _headers(auth: true),
-    );
+    final r = await _get(_uri('/me/schedule'), headers: _headers(auth: true));
     if (r.statusCode != 200) _fail(r);
     return ScheduleSnapshot.fromJson(_decode(r) as Map<String, dynamic>);
   }
 
   Future<ScheduleCourse> saveScheduleCourse(ScheduleCourse course) async {
-    final r = await http.put(
+    final r = await _put(
       _uri('/me/schedule/courses'),
       headers: _headers(auth: true),
       body: jsonEncode(course.toJson()),
@@ -794,7 +859,7 @@ class ApiClient {
   }
 
   Future<void> deleteScheduleCourse(String courseId) async {
-    final r = await http.delete(
+    final r = await _delete(
       _uri('/me/schedule/courses/${Uri.encodeComponent(courseId)}'),
       headers: _headers(auth: true),
     );
@@ -804,7 +869,7 @@ class ApiClient {
   Future<ScheduleSettings> saveScheduleSettings(
     ScheduleSettings settings,
   ) async {
-    final r = await http.put(
+    final r = await _put(
       _uri('/me/schedule/settings'),
       headers: _headers(auth: true),
       body: jsonEncode(settings.toJson()),
@@ -928,7 +993,7 @@ class ApiClient {
     if (!allowsCredentialSubmission) {
       throw ApiException(400, '当前后端不是 HTTPS，已阻止发送教务密码。请改用 HTTPS 或本机后端。');
     }
-    final r = await http.post(
+    final r = await _post(
       _uri('/me/schedule/import/hust/challenge'),
       headers: _headers(auth: true),
       body: '{}',
@@ -951,7 +1016,7 @@ class ApiClient {
     if (!allowsCredentialSubmission) {
       throw ApiException(400, '当前后端不是 HTTPS，已阻止发送教务密码。请改用 HTTPS 或本机后端。');
     }
-    final r = await http.post(
+    final r = await _post(
       _uri('/me/schedule/import/hust/complete'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -995,7 +1060,7 @@ class ApiClient {
   }
 
   Future<ScheduleTable> createScheduleTable(String name) async {
-    final r = await http.post(
+    final r = await _post(
       _uri('/me/schedule/tables'),
       headers: _headers(auth: true),
       body: jsonEncode({'name': name}),
@@ -1005,7 +1070,7 @@ class ApiClient {
   }
 
   Future<ScheduleTable> renameScheduleTable(String tableId, String name) async {
-    final r = await http.patch(
+    final r = await _patch(
       _uri('/me/schedule/tables/$tableId'),
       headers: _headers(auth: true),
       body: jsonEncode({'name': name}),
@@ -1015,7 +1080,7 @@ class ApiClient {
   }
 
   Future<ScheduleSnapshot> activateScheduleTable(String tableId) async {
-    final r = await http.post(
+    final r = await _post(
       _uri('/me/schedule/tables/$tableId/activate'),
       headers: _headers(auth: true),
     );
@@ -1024,7 +1089,7 @@ class ApiClient {
   }
 
   Future<void> deleteScheduleTable(String tableId) async {
-    final r = await http.delete(
+    final r = await _delete(
       _uri('/me/schedule/tables/$tableId'),
       headers: _headers(auth: true),
     );
@@ -1033,7 +1098,7 @@ class ApiClient {
 
   Future<KnowledgeMapData> getKnowledgeMap(String course) async {
     final query = Uri.encodeQueryComponent(course.trim());
-    final r = await http.get(
+    final r = await _get(
       _uri('/me/learning/knowledge-map?course=$query'),
       headers: _headers(auth: true),
     );
@@ -1042,7 +1107,7 @@ class ApiClient {
   }
 
   Future<KnowledgePointDetail> getKnowledgePointDetail(String kpId) async {
-    final r = await http.get(
+    final r = await _get(
       _uri('/me/learning/knowledge-points/${Uri.encodeComponent(kpId)}'),
       headers: _headers(auth: true),
     );
@@ -1051,7 +1116,7 @@ class ApiClient {
   }
 
   Future<List<CoreMemoryItem>> listCoreMemories() async {
-    final r = await http.get(
+    final r = await _get(
       _uri('/me/core-memories'),
       headers: _headers(auth: true),
     );
@@ -1069,7 +1134,7 @@ class ApiClient {
     String scopeType = 'global',
     WorkspaceType? workspaceType,
   }) async {
-    final r = await http.post(
+    final r = await _post(
       _uri('/me/core-memories'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -1084,7 +1149,7 @@ class ApiClient {
   }
 
   Future<void> deleteCoreMemory(String key) async {
-    final r = await http.delete(
+    final r = await _delete(
       _uri('/me/memories/${Uri.encodeComponent(key)}'),
       headers: _headers(auth: true),
     );
@@ -1092,7 +1157,7 @@ class ApiClient {
   }
 
   Future<void> forgetCoreMemory(String memoryId) async {
-    final r = await http.delete(
+    final r = await _delete(
       _uri('/me/core-memories/${Uri.encodeComponent(memoryId)}'),
       headers: _headers(auth: true),
     );
@@ -1104,7 +1169,7 @@ class ApiClient {
     required bool suppressed,
   }) async {
     final action = suppressed ? 'suppress' : 'restore';
-    final r = await http.post(
+    final r = await _post(
       _uri('/me/core-memories/${Uri.encodeComponent(memoryId)}/$action'),
       headers: _headers(auth: true),
     );
@@ -1115,7 +1180,7 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> listCoreMemoryVersions(
     String memoryId,
   ) async {
-    final r = await http.get(
+    final r = await _get(
       _uri('/me/core-memories/${Uri.encodeComponent(memoryId)}/versions'),
       headers: _headers(auth: true),
     );
@@ -1127,7 +1192,7 @@ class ApiClient {
   }
 
   Future<List<MemoryCandidateItem>> listMemoryCandidates() async {
-    final r = await http.get(
+    final r = await _get(
       _uri('/me/memory-candidates'),
       headers: _headers(auth: true),
     );
@@ -1150,7 +1215,7 @@ class ApiClient {
     WorkspaceType? workspaceType,
   }) async {
     final action = accept ? 'accept' : 'reject';
-    final r = await http.post(
+    final r = await _post(
       _uri('/me/memory-candidates/${Uri.encodeComponent(candidateId)}/$action'),
       headers: _headers(auth: true),
       body: accept
@@ -1168,7 +1233,7 @@ class ApiClient {
   // ---------- 对话分组 ----------
   Future<List<ChatGroup>> listGroups() async {
     if (kOfflineMode) return List.of(_offGroups);
-    final r = await http.get(_uri('/groups'), headers: _headers(auth: true));
+    final r = await _get(_uri('/groups'), headers: _headers(auth: true));
     if (r.statusCode != 200) _fail(r);
     final list = _decode(r) as List;
     return list
@@ -1202,7 +1267,7 @@ class ApiClient {
       _offGroups.insert(0, group);
       return group;
     }
-    final r = await http.post(
+    final r = await _post(
       _uri('/groups'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -1265,7 +1330,7 @@ class ApiClient {
         'project_id': projectId as String?,
       'pinned': ?pinned,
     };
-    final r = await http.patch(
+    final r = await _patch(
       _uri('/groups/${Uri.encodeComponent(groupId)}'),
       headers: _headers(auth: true),
       body: jsonEncode(body),
@@ -1279,7 +1344,7 @@ class ApiClient {
       _offGroups.removeWhere((group) => group.id == groupId);
       return;
     }
-    final r = await http.delete(
+    final r = await _delete(
       _uri('/groups/${Uri.encodeComponent(groupId)}'),
       headers: _headers(auth: true),
     );
@@ -1298,7 +1363,7 @@ class ApiClient {
         ..addAll(groupIds.map((id) => byId[id]).whereType<ChatGroup>());
       return;
     }
-    final r = await http.put(
+    final r = await _put(
       _uri('/groups/order'),
       headers: _headers(auth: true),
       body: jsonEncode({'group_ids': groupIds}),
@@ -1327,7 +1392,7 @@ class ApiClient {
             .toList(),
       );
     }
-    final response = await http.get(
+    final response = await _get(
       _uri('/workspaces'),
       headers: _headers(auth: true),
     );
@@ -1343,7 +1408,7 @@ class ApiClient {
           .where((item) => item.workspaceType == WorkspaceType.learning)
           .toList();
     }
-    final r = await http.get(
+    final r = await _get(
       _uri('/conversations?workspace_type=learning'),
       headers: _headers(auth: true),
     );
@@ -1358,7 +1423,7 @@ class ApiClient {
     if (kOfflineMode) {
       return _offConvs.firstWhere((conversation) => conversation.id == id);
     }
-    final response = await http.get(
+    final response = await _get(
       _uri('/conversations/${Uri.encodeComponent(id)}'),
       headers: _headers(auth: true),
     );
@@ -1374,7 +1439,7 @@ class ApiClient {
           .where((item) => item.workspaceType == workspace)
           .toList();
     }
-    final response = await http.get(
+    final response = await _get(
       _uri('/conversations?workspace_type=${workspace.wireName}'),
       headers: _headers(auth: true),
     );
@@ -1387,7 +1452,7 @@ class ApiClient {
 
   Future<ChatConversation> createConversation({String? groupId}) async {
     if (kOfflineMode) return _offlineNewConversation(groupId: groupId);
-    final r = await http.post(
+    final r = await _post(
       _uri('/conversations'),
       headers: _headers(auth: true),
       body: jsonEncode({'group_id': ?groupId}),
@@ -1428,7 +1493,7 @@ class ApiClient {
     if (groupId case final selectedGroupId?) {
       body['group_id'] = selectedGroupId;
     }
-    final response = await http.post(
+    final response = await _post(
       _uri('/conversations'),
       headers: _headers(auth: true),
       body: jsonEncode(body),
@@ -1439,7 +1504,7 @@ class ApiClient {
 
   Future<List<ResearchProject>> listResearchProjects() async {
     if (kOfflineMode) return List.of(_offResearchProjects);
-    final response = await http.get(
+    final response = await _get(
       _uri('/research/projects'),
       headers: _headers(auth: true),
     );
@@ -1464,7 +1529,7 @@ class ApiClient {
       _offResearchProjects.insert(0, project);
       return project;
     }
-    final response = await http.post(
+    final response = await _post(
       _uri('/research/projects'),
       headers: _headers(auth: true),
       body: jsonEncode({'name': name, 'description': description}),
@@ -1476,7 +1541,7 @@ class ApiClient {
   Future<ResearchProjectProfile> getResearchProjectProfile(
     String projectId,
   ) async {
-    final r = await http.get(
+    final r = await _get(
       _uri('/research/projects/${Uri.encodeComponent(projectId)}/profile'),
       headers: _headers(auth: true),
     );
@@ -1489,7 +1554,7 @@ class ApiClient {
     required String instructions,
     required int expectedRevision,
   }) async {
-    final r = await http.put(
+    final r = await _put(
       _uri('/research/projects/${Uri.encodeComponent(projectId)}/profile'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -1505,7 +1570,7 @@ class ApiClient {
     final query = status == null
         ? ''
         : '?status=${Uri.encodeQueryComponent(status)}';
-    final response = await http.get(
+    final response = await _get(
       _uri('/me/agent-actions$query'),
       headers: _headers(auth: true),
     );
@@ -1520,7 +1585,7 @@ class ApiClient {
     required bool approve,
   }) async {
     final decision = approve ? 'approve' : 'reject';
-    final response = await http.post(
+    final response = await _post(
       _uri('/me/agent-actions/${Uri.encodeComponent(actionId)}/$decision'),
       headers: _headers(auth: true),
     );
@@ -1533,7 +1598,7 @@ class ApiClient {
       _offResearchProjects.removeWhere((item) => item.id == id);
       return;
     }
-    final response = await http.patch(
+    final response = await _patch(
       _uri('/research/projects/$id'),
       headers: _headers(auth: true),
       body: jsonEncode({'status': 'archived'}),
@@ -1557,7 +1622,7 @@ class ApiClient {
       _offResearchProjects[index] = updated;
       return updated;
     }
-    final response = await http.patch(
+    final response = await _patch(
       _uri('/research/projects/$id'),
       headers: _headers(auth: true),
       body: jsonEncode({'name': name, 'description': description}),
@@ -1567,7 +1632,7 @@ class ApiClient {
   }
 
   Future<List<FrontierTrackingJob>> listFrontierJobs(String projectId) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/research/projects/$projectId/frontier-jobs'),
       headers: _headers(auth: true),
     );
@@ -1587,7 +1652,7 @@ class ApiClient {
     int timeWindowYears = 5,
     int maxResults = 20,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/research/projects/$projectId/frontier-jobs'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -1603,7 +1668,7 @@ class ApiClient {
   }
 
   Future<FrontierTrackingJob> getFrontierJob(String jobId) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/research/frontier-jobs/$jobId'),
       headers: _headers(auth: true),
     );
@@ -1614,7 +1679,7 @@ class ApiClient {
   }
 
   Future<List<ResearchDocument>> listResearchDocuments(String projectId) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/research/projects/$projectId/documents'),
       headers: _headers(auth: true),
     );
@@ -1633,7 +1698,7 @@ class ApiClient {
     required String type,
     String content = '',
   }) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/research/projects/$projectId/documents'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -1647,7 +1712,7 @@ class ApiClient {
   }
 
   Future<ResearchDocument> getResearchDocument(String documentId) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/research/documents/$documentId'),
       headers: _headers(auth: true),
     );
@@ -1659,7 +1724,7 @@ class ApiClient {
     required String documentId,
     required String content,
   }) async {
-    final response = await http.patch(
+    final response = await _patch(
       _uri('/research/documents/$documentId'),
       headers: _headers(auth: true),
       body: jsonEncode({'content': content}),
@@ -1672,7 +1737,7 @@ class ApiClient {
     String conversationId,
     DocumentAttachment attachment,
   ) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/conversations/$conversationId/attachments/${attachment.id}'),
       headers: _headers(auth: true),
     );
@@ -1690,7 +1755,7 @@ class ApiClient {
     String instruction = '',
     String sourceText = '',
   }) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/research/documents/$documentId/writing-jobs'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -1706,7 +1771,7 @@ class ApiClient {
   }
 
   Future<ResearchWritingJob> getWritingJob(String jobId) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/research/writing-jobs/$jobId'),
       headers: _headers(auth: true),
     );
@@ -1717,7 +1782,7 @@ class ApiClient {
   }
 
   Future<List<ResearchDataset>> listResearchDatasets(String projectId) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/research/projects/$projectId/datasets'),
       headers: _headers(auth: true),
     );
@@ -1758,7 +1823,7 @@ class ApiClient {
     required String type,
     Map<String, String> parameters = const {},
   }) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/research/datasets/$datasetId/analysis-jobs'),
       headers: _headers(auth: true),
       body: jsonEncode({'analysis_type': type, 'parameters': parameters}),
@@ -1770,7 +1835,7 @@ class ApiClient {
   }
 
   Future<ResearchAnalysisJob> getAnalysisJob(String jobId) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/research/analysis-jobs/$jobId'),
       headers: _headers(auth: true),
     );
@@ -1787,7 +1852,7 @@ class ApiClient {
       }
       return;
     }
-    final r = await http.patch(
+    final r = await _patch(
       _uri('/conversations/$id'),
       headers: _headers(auth: true),
       body: jsonEncode({'title': title}),
@@ -1801,7 +1866,7 @@ class ApiClient {
       if (index >= 0) _offConvs[index].groupId = groupId;
       return;
     }
-    final r = await http.patch(
+    final r = await _patch(
       _uri('/conversations/${Uri.encodeComponent(id)}'),
       headers: _headers(auth: true),
       body: jsonEncode({'group_id': groupId}),
@@ -1815,7 +1880,7 @@ class ApiClient {
       conversation.pinned = pinned;
       return;
     }
-    final r = await http.patch(
+    final r = await _patch(
       _uri('/conversations/${Uri.encodeComponent(id)}'),
       headers: _headers(auth: true),
       body: jsonEncode({'pinned': pinned}),
@@ -1829,7 +1894,7 @@ class ApiClient {
       _offMsgs.remove(id);
       return;
     }
-    final r = await http.delete(
+    final r = await _delete(
       _uri('/conversations/$id'),
       headers: _headers(auth: true),
     );
@@ -1838,7 +1903,7 @@ class ApiClient {
 
   Future<List<ChatMessage>> getMessages(String id) async {
     if (kOfflineMode) return List.of(_offMsgs[id] ?? const []);
-    final r = await http.get(
+    final r = await _get(
       _uri('/conversations/$id/messages'),
       headers: _headers(auth: true),
     );
@@ -1855,8 +1920,9 @@ class ApiClient {
     String? personalKnowledgeBaseId,
   }) async {
     if (kOfflineMode) return _offlineSend(id, content);
-    final r = await http.post(
+    final r = await _post(
       _uri('/conversations/$id/messages'),
+      timeout: _longRequestTimeout,
       headers: _headers(auth: true),
       body: jsonEncode({
         'content': content,
@@ -1885,8 +1951,9 @@ class ApiClient {
         'result': {'ok': false, 'error': 'sandbox_disabled'},
       });
     }
-    final response = await http.post(
+    final response = await _post(
       _uri('/conversations/$conversationId/code/execute'),
+      timeout: _longRequestTimeout,
       headers: _headers(auth: true),
       body: jsonEncode({'code': code, 'language': language}),
     );
@@ -1907,8 +1974,9 @@ class ApiClient {
     String? personalKnowledgeBaseId,
   }) async {
     if (kOfflineMode) return _offlineSend(id, content);
-    final r = await http.post(
+    final r = await _post(
       _uri('/conversations/$id/messages'),
+      timeout: _longRequestTimeout,
       headers: _headers(auth: true),
       body: jsonEncode({
         'content': content,
@@ -1938,8 +2006,9 @@ class ApiClient {
     String? personalKnowledgeBaseId,
   }) async {
     if (kOfflineMode) return _offlineSend(id, content);
-    final r = await http.post(
+    final r = await _post(
       _uri('/conversations/$id/messages'),
+      timeout: _longRequestTimeout,
       headers: _headers(auth: true),
       body: jsonEncode({
         'content': content,
@@ -2002,7 +2071,7 @@ class ApiClient {
     String conversationId,
     String attachmentId,
   ) async {
-    final r = await http.delete(
+    final r = await _delete(
       _uri('/conversations/$conversationId/attachments/$attachmentId'),
       headers: _headers(auth: true),
     );
@@ -2013,7 +2082,7 @@ class ApiClient {
   Future<List<PersonalKnowledgeBaseSummary>>
   listPersonalKnowledgeBases() async {
     if (kOfflineMode) return const [];
-    final response = await http.get(
+    final response = await _get(
       _uri('/me/knowledge-base/libraries'),
       headers: _headers(auth: true),
     );
@@ -2031,7 +2100,7 @@ class ApiClient {
   Future<PersonalKnowledgeBaseSummary> createPersonalKnowledgeBase(
     String name,
   ) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/me/knowledge-base/libraries'),
       headers: _headers(auth: true),
       body: jsonEncode({'name': name}),
@@ -2046,7 +2115,7 @@ class ApiClient {
     String? knowledgeBaseId,
   }) async {
     if (kOfflineMode) return const PersonalKnowledgeBase.empty();
-    final response = await http.get(
+    final response = await _get(
       _uri(
         knowledgeBaseId == null
             ? '/me/knowledge-base'
@@ -2222,7 +2291,7 @@ class ApiClient {
 
   Future<AttachmentContent> fetchSourcePreview(String url) async {
     final target = resolveSourcePreviewUri(url);
-    final response = await http.get(target, headers: _headers(auth: true));
+    final response = await _get(target, headers: _headers(auth: true));
     if (response.statusCode != 200) _fail(response);
     return AttachmentContent(
       bytes: response.bodyBytes,
@@ -2367,7 +2436,7 @@ class ApiClient {
   }
 
   Future<void> deletePersonalKnowledgeBaseFile(String fileId) async {
-    final response = await http.delete(
+    final response = await _delete(
       _uri('/me/knowledge-base/files/${Uri.encodeComponent(fileId)}'),
       headers: _headers(auth: true),
     );
@@ -2379,7 +2448,7 @@ class ApiClient {
   Future<PersonalKnowledgeBase> rebuildPersonalKnowledgeBase({
     String? knowledgeBaseId,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       _uri(
         knowledgeBaseId == null
             ? '/me/knowledge-base/rebuild'
@@ -2566,7 +2635,7 @@ class ApiClient {
 
   // ---------- 教师端与学生端 ----------
   Future<Map<String, dynamic>> getTeachingOverview() async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/teaching/overview'),
       headers: _headers(auth: true),
     );
@@ -2580,7 +2649,7 @@ class ApiClient {
     String term = '',
     String description = '',
   }) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/teaching/classes'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -2597,7 +2666,7 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> getTeachingClass(String classId) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/teaching/classes/$classId'),
       headers: _headers(auth: true),
     );
@@ -2606,7 +2675,7 @@ class ApiClient {
   }
 
   Future<void> inviteStudent(String classId, String username) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/teaching/classes/$classId/invitations'),
       headers: _headers(auth: true),
       body: jsonEncode({'username': username}),
@@ -2621,7 +2690,7 @@ class ApiClient {
     required List<Map<String, dynamic>> questions,
     DateTime? dueAt,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/teaching/classes/$classId/assignments'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -2638,7 +2707,7 @@ class ApiClient {
   }
 
   Future<TeachingAssignment> publishTeachingAssignment(String id) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/teaching/assignments/$id/publish'),
       headers: _headers(auth: true),
     );
@@ -2649,7 +2718,7 @@ class ApiClient {
   }
 
   Future<List<TeachingSubmission>> listTeachingSubmissions(String id) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/teaching/assignments/$id/submissions'),
       headers: _headers(auth: true),
     );
@@ -2664,7 +2733,7 @@ class ApiClient {
   }
 
   Future<TeachingSubmission> getTeachingSubmission(String id) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/teaching/submissions/$id'),
       headers: _headers(auth: true),
     );
@@ -2675,8 +2744,9 @@ class ApiClient {
   }
 
   Future<TeachingSubmission> analyzeTeachingSubmission(String id) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/teaching/submissions/$id/analyze'),
+      timeout: _longRequestTimeout,
       headers: _headers(auth: true),
     );
     if (response.statusCode != 200) _fail(response);
@@ -2686,8 +2756,9 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> analyzeTeachingAssignment(String id) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/teaching/assignments/$id/analyze'),
+      timeout: _longRequestTimeout,
       headers: _headers(auth: true),
     );
     if (response.statusCode != 200) _fail(response);
@@ -2698,7 +2769,7 @@ class ApiClient {
     String id,
     List<Map<String, dynamic>> reviews,
   ) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/teaching/submissions/$id/review'),
       headers: _headers(auth: true),
       body: jsonEncode({'reviews': reviews}),
@@ -2710,7 +2781,7 @@ class ApiClient {
   }
 
   Future<TeachingSubmission> publishTeachingFeedback(String id) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/teaching/submissions/$id/publish-feedback'),
       headers: _headers(auth: true),
     );
@@ -2721,7 +2792,7 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> getClassDashboard(String classId) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/teaching/classes/$classId/dashboard'),
       headers: _headers(auth: true),
     );
@@ -2733,7 +2804,7 @@ class ApiClient {
     String classId,
     String studentId,
   ) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/teaching/classes/$classId/students/$studentId'),
       headers: _headers(auth: true),
     );
@@ -2742,7 +2813,7 @@ class ApiClient {
   }
 
   Future<void> removeTeachingStudent(String classId, String studentId) async {
-    final response = await http.delete(
+    final response = await _delete(
       _uri('/teaching/classes/$classId/members/$studentId'),
       headers: _headers(auth: true),
     );
@@ -2750,7 +2821,7 @@ class ApiClient {
   }
 
   Future<List<TeachingClass>> listStudentClasses() async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/student/classes'),
       headers: _headers(auth: true),
     );
@@ -2762,7 +2833,7 @@ class ApiClient {
   }
 
   Future<TeachingClass> joinTeachingClass(String classCode) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/student/classes/join'),
       headers: _headers(auth: true),
       body: jsonEncode({'class_code': classCode.trim().toUpperCase()}),
@@ -2774,7 +2845,7 @@ class ApiClient {
   }
 
   Future<void> respondClassInvitation(String membershipId, bool accept) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/student/invitations/$membershipId/respond'),
       headers: _headers(auth: true),
       body: jsonEncode({'accept': accept}),
@@ -2783,7 +2854,7 @@ class ApiClient {
   }
 
   Future<List<TeachingAssignment>> listStudentAssignments() async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/student/assignments'),
       headers: _headers(auth: true),
     );
@@ -2798,7 +2869,7 @@ class ApiClient {
   }
 
   Future<TeachingAssignment> getStudentAssignment(String id) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/student/assignments/$id'),
       headers: _headers(auth: true),
     );
@@ -2812,7 +2883,7 @@ class ApiClient {
     String id,
     Map<String, String> answers,
   ) async {
-    final response = await http.post(
+    final response = await _post(
       _uri('/student/assignments/$id/submissions'),
       headers: _headers(auth: true),
       body: jsonEncode({
@@ -2828,7 +2899,7 @@ class ApiClient {
   }
 
   Future<TeachingSubmission> getStudentSubmission(String id) async {
-    final response = await http.get(
+    final response = await _get(
       _uri('/student/submissions/$id'),
       headers: _headers(auth: true),
     );

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -5,6 +6,20 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/api/api_client.dart';
 import 'package:frontend/models/models.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+class _TrackingClient extends MockClient {
+  _TrackingClient(super.handler);
+
+  bool closed = false;
+
+  @override
+  void close() {
+    closed = true;
+    super.close();
+  }
+}
 
 void main() {
   test('default API endpoint never exposes the backend HTTP address', () {
@@ -20,6 +35,102 @@ void main() {
       ApiClient(baseUrl: 'https://example.com/api/').baseUrl,
       'https://example.com/api',
     );
+  });
+
+  test('ordinary REST requests convert timeouts to ApiException', () async {
+    final response = Completer<http.Response>();
+    final client = _TrackingClient((_) => response.future);
+    final api = ApiClient(
+      baseUrl: 'http://test.invalid',
+      clientFactory: () => client,
+      requestTimeout: Duration.zero,
+    );
+
+    await expectLater(
+      api.listConversations(),
+      throwsA(
+        isA<ApiException>()
+            .having((error) => error.statusCode, 'statusCode', 0)
+            .having((error) => error.detail, 'detail', '请求超时，请稍后重试'),
+      ),
+    );
+    expect(client.closed, isTrue);
+    response.complete(http.Response('[]', 200));
+  });
+
+  test(
+    'REST clients close after success, HTTP error and network error',
+    () async {
+      for (final status in [200, 503, 0]) {
+        final client = _TrackingClient((_) async {
+          if (status == 0) throw http.ClientException('connection lost');
+          return http.Response(
+            status == 200 ? '[]' : '{"detail":"unavailable"}',
+            status,
+          );
+        });
+        final api = ApiClient(
+          baseUrl: 'http://test.invalid',
+          clientFactory: () => client,
+        );
+        if (status == 200) {
+          expect(await api.listConversations(), isEmpty);
+        } else {
+          await expectLater(
+            api.listConversations(),
+            throwsA(isA<ApiException>()),
+          );
+        }
+        expect(client.closed, isTrue);
+      }
+    },
+  );
+
+  test('conversation title requests use the managed REST client', () async {
+    final client = _TrackingClient((request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/conversations/history');
+      expect(request.headers['Authorization'], 'Bearer session');
+      return http.Response(
+        jsonEncode({
+          'conversation_id': 'history',
+          'title': 'Saved title',
+          'updated_at': '2026-09-05T00:00:00Z',
+        }),
+        200,
+      );
+    });
+    final api = ApiClient(
+      baseUrl: 'http://test.invalid',
+      clientFactory: () => client,
+    )..sessionId = 'session';
+
+    final conversation = await api.getConversation('history');
+
+    expect(conversation.title, 'Saved title');
+    expect(client.closed, isTrue);
+  });
+
+  test('a delayed logout cannot erase a newer login', () async {
+    final response = Completer<http.Response>();
+    final client = _TrackingClient((request) {
+      expect(request.headers['Authorization'], 'Bearer old-session');
+      return response.future;
+    });
+    final api = ApiClient(
+      baseUrl: 'http://test.invalid',
+      clientFactory: () => client,
+    )..sessionId = 'old-session';
+
+    final logout = api.logout();
+    api.sessionId = 'new-session';
+    api.userId = 'new-user';
+    response.complete(http.Response('{}', 200));
+    await logout;
+
+    expect(api.sessionId, 'new-session');
+    expect(api.userId, 'new-user');
+    expect(client.closed, isTrue);
   });
 
   test('public source preview resolves a web-relative URL through /api', () {

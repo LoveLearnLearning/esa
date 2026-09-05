@@ -13,9 +13,12 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
+from starlette.websockets import WebSocketDisconnect
 
 from backend.core.services.lsp_service import LspService
-from backend.core.utils.models import SessionPrincipal
+from backend.core.stores.session_store import SessionStore
+from backend.core.stores.user_store import UserStore
+from backend.core.utils.models import SessionPrincipal, UserRecord
 from backend.core.web.routers import lsp
 
 
@@ -206,6 +209,44 @@ class _SessionStore:
         return self.session if token == "valid-token" else None
 
 
+@pytest.mark.parametrize("account_state", ["disabled", "missing", "expired"])
+def test_websocket_revokes_invalid_account_session(tmp_path, monkeypatch, account_state) -> None:
+    app = FastAPI()
+    app.state.lsp_service = _service(tmp_path)
+    database = tmp_path / "lsp-auth.db"
+    app.state.user_store = UserStore(database)
+    app.state.session_store = SessionStore(database)
+    app.state.user_store.create(
+        UserRecord(
+            id="user-1",
+            username="user-1",
+            password_hash="unused",
+            status="disabled" if account_state == "disabled" else "active",
+        )
+    )
+    if account_state == "missing":
+        monkeypatch.setattr(app.state.user_store, "get_by_id", lambda user_id: None)
+    app.state.session_store.create(
+        SessionPrincipal(
+            session_id="valid-token",
+            user_id="user-1",
+            expires_at=datetime.now(timezone.utc)
+            + timedelta(minutes=-1 if account_state == "expired" else 5),
+        )
+    )
+    app.include_router(lsp.router)
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/lsp/cpp") as websocket:
+            websocket.send_json({"type": "esa/auth", "token": "valid-token"})
+            assert websocket.receive_json()["detail"] == "登录会话已失效"
+            with pytest.raises(WebSocketDisconnect) as disconnect:
+                websocket.receive_text()
+            assert disconnect.value.code == 1008
+
+    assert app.state.session_store.get("valid-token") is None
+
+
 def test_authenticated_websocket_proxies_lsp(tmp_path) -> None:
     """验证 `authenticated_websocket_proxies_lsp` 场景。"""
     app = FastAPI()
@@ -216,6 +257,15 @@ def test_authenticated_websocket_proxies_lsp(tmp_path) -> None:
             session_id="valid-token",
             user_id="user-1",
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        )
+    )
+    app.state.user_store = UserStore(tmp_path / "users.db")
+    app.state.user_store.create(
+        UserRecord(
+            id="user-1",
+            username="user-1",
+            password_hash="unused",
+            status="active",
         )
     )
     app.include_router(lsp.router)
@@ -255,6 +305,7 @@ def test_websocket_rejects_invalid_session(tmp_path) -> None:
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
         )
     )
+    app.state.user_store = UserStore(tmp_path / "users.db")
     app.include_router(lsp.router)
 
     with TestClient(app) as client:

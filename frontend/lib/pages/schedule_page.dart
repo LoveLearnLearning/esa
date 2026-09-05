@@ -9,6 +9,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
 import '../theme/esa_theme.dart';
+import '../widgets/load_error_banner.dart';
 
 const _weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 const _courseColors = <int>[
@@ -73,6 +74,11 @@ class _SchedulePageState extends State<SchedulePage> {
         child: Column(
           children: [
             _header(context, app, totalWeeks, narrow),
+            if (app.scheduleError != null)
+              LoadErrorBanner(
+                message: '${app.scheduleError!}；当前显示本地缓存，可能不是最新课表',
+                onRetry: () => app.loadSchedule(force: true),
+              ),
             Expanded(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,

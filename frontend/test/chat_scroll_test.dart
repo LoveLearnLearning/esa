@@ -13,14 +13,17 @@ class _FakeApiClient extends ApiClient {
 
   final List<ChatConversation> conversationData;
   final Map<String, List<ChatMessage>> messageData;
+  ApiException? messageError;
 
   @override
   Future<List<ChatConversation>> listConversations() async =>
       List.of(conversationData);
 
   @override
-  Future<List<ChatMessage>> getMessages(String id) async =>
-      List.of(messageData[id] ?? const []);
+  Future<List<ChatMessage>> getMessages(String id) async {
+    if (messageError != null) throw messageError!;
+    return List.of(messageData[id] ?? const []);
+  }
 
   @override
   Stream<ChatStreamEvent> streamMessage(
@@ -80,6 +83,69 @@ void main() {
 
   bool isAtBottom(ScrollPosition value) =>
       (value.maxScrollExtent - value.pixels).abs() <= 1;
+
+  testWidgets(
+    'failed history refresh shows retry and preserves the input draft',
+    (tester) async {
+      final fixture = await createState();
+      addTearDown(fixture.state.dispose);
+      await tester.pumpWidget(app(fixture.state));
+      await tester.pumpAndSettle();
+      final input = find.byKey(const ValueKey('composer-input'));
+      await tester.enterText(input, '保留输入');
+
+      fixture.api.messageError = ApiException(503, '历史服务不可用');
+      await fixture.state.reloadActiveMessages();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('历史服务不可用'), findsOneWidget);
+      expect(find.byKey(listKey), findsOneWidget);
+      expect(tester.widget<TextField>(input).enabled, isFalse);
+      expect(tester.widget<TextField>(input).controller!.text, '保留输入');
+
+      fixture.api.messageError = null;
+      await tester.tap(find.text('重试'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('历史服务不可用'), findsNothing);
+      expect(tester.widget<TextField>(input).enabled, isTrue);
+      expect(tester.widget<TextField>(input).controller!.text, '保留输入');
+    },
+  );
+
+  for (final width in [390.0, 1000.0]) {
+    testWidgets('initial history failure offers recovery at width $width', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _FakeApiClient([], {})
+        ..messageError = ApiException(503, '历史服务不可用');
+      final state = AppState(api: api);
+      addTearDown(state.dispose);
+      await state.setActive('history');
+      await tester.pumpWidget(
+        AppScope(
+          state: state,
+          child: MaterialApp(
+            theme: esaTheme(brightness: Brightness.dark),
+            home: const Scaffold(body: ChatPage(embedded: true)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('消息加载失败'), findsOneWidget);
+
+      api.messageError = null;
+      api.messageData['history'] = [
+        ChatMessage(id: 'saved', role: MessageRole.user, text: '真实历史消息'),
+      ];
+      await tester.tap(find.text('重试'));
+      await tester.pumpAndSettle();
+      expect(find.text('消息加载失败'), findsNothing);
+      expect(find.text('真实历史消息'), findsOneWidget);
+    });
+  }
 
   testWidgets('opens a loaded conversation at the bottom', (tester) async {
     final fixture = await createState();

@@ -9,7 +9,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' show ClientException;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
@@ -73,6 +72,7 @@ class AppState extends ChangeNotifier {
   bool loadingProfile = false;
   List<LearningCourseSummary> learningCourses = const [];
   List<TeachingAssignment> studentAssignments = const [];
+  String? studentAssignmentsError;
   MasteryReport? masteryReport;
   bool loadingLearningOverview = false;
   String? learningOverviewError;
@@ -95,7 +95,21 @@ class AppState extends ChangeNotifier {
   StreamController<ChatStreamEvent>? _activeStreamController;
   bool _stopRequested = false;
   bool loadingConversations = false;
-  bool loadingMessages = false;
+  String? scheduleError;
+  String? conversationsError;
+  String? researchProjectsError;
+  final Set<String> _loadingMessageIds = {};
+  final Map<String, int> _messageLoadTokens = {};
+  int _messageLoadSequence = 0;
+  int _conversationLoadSequence = 0;
+  int _researchProjectsLoadSequence = 0;
+  int _workspaceSwitchSequence = 0;
+  int _activeSelectionSequence = 0;
+  int _scheduleLoadSequence = 0;
+  int _assignmentsLoadSequence = 0;
+  int _sessionGeneration = 0;
+
+  (int, String?) get _sessionIdentity => (_sessionGeneration, api.sessionId);
   final List<ScheduleCourse> scheduleCourses = [];
   final List<ScheduleTable> scheduleTables = [];
   String activeScheduleTableId = '';
@@ -147,6 +161,16 @@ class AppState extends ChangeNotifier {
 
   List<ChatMessage> get messages =>
       activeId == null ? const [] : (_messages[activeId] ?? const []);
+
+  bool get loadingMessages =>
+      activeId != null && _loadingMessageIds.contains(activeId);
+
+  String? get activeMessagesError =>
+      activeId == null ? null : messagesErrorFor(activeId!);
+
+  String? messagesErrorFor(String id) => _messageErrors[id];
+
+  final Map<String, String> _messageErrors = {};
 
   ChatConversation? get activeConversation {
     if (activeId == null) return null;
@@ -275,7 +299,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _afterLogin() async {
+    final session = _sessionIdentity;
     final manifest = await api.getWorkspaceManifest();
+    if (session != _sessionIdentity) return;
     accountRole = manifest.accountRole;
     api.accountRole = manifest.accountRole;
     role = accountRole == 'teacher' ? '教师' : '学生';
@@ -293,16 +319,19 @@ class AppState extends ChangeNotifier {
         ..add(loadStudentAssignments());
     }
     await Future.wait(startupTasks);
+    if (session != _sessionIdentity) return;
     await _migrateLegacyGroupProjectBindings();
+    if (session != _sessionIdentity) return;
     // 登录后先进入学习首页，不自动打开最近一条对话；历史对话仍由侧栏选择。
     activeId = null;
     notifyListeners();
   }
 
   Future<void> logout() async {
-    await _discardDraftConversation();
-    await api.logout();
+    final discard = _discardDraftConversation();
+    final remoteLogout = api.logout();
     _clearSession();
+    await Future.wait([discard, remoteLogout]);
   }
 
   Future<void> restoreSession() async {
@@ -463,6 +492,15 @@ class AppState extends ChangeNotifier {
   }
 
   void _clearSession() {
+    _sessionGeneration++;
+    _activeSelectionSequence++;
+    _scheduleLoadSequence++;
+    _assignmentsLoadSequence++;
+    _workspaceSwitchSequence++;
+    _conversationLoadSequence++;
+    _messageLoadSequence++;
+    _researchProjectsLoadSequence++;
+    _cancelActiveStream();
     api.clearPersonalKnowledgeBasePreviewCache();
     api.sessionId = null;
     api.userId = null;
@@ -486,10 +524,15 @@ class AppState extends ChangeNotifier {
     activeId = null;
     _draftConversationId = null;
     busy = false;
-    _stopRequested = false;
-    _activeStreamSubscription = null;
-    _activeStreamController = null;
+    _stopRequested = true;
+    loadingConversations = false;
+    _loadingMessageIds.clear();
+    _messageLoadTokens.clear();
+    _messageErrors.clear();
+    conversationsError = null;
+    scheduleError = null;
     preferences = const UserPreferences();
+    loadingProfile = false;
     userProfile = const UserProfile();
     userStats = const UserStats();
     learningCourses = const [];
@@ -504,7 +547,10 @@ class AppState extends ChangeNotifier {
     researchProjects.clear();
     loadingResearchProjects = false;
     researchProjectsLoaded = false;
+    researchProjectsError = null;
+    studentAssignmentsError = null;
     email = '';
+    _conversationCreation = null;
     notifyListeners();
   }
 
@@ -517,18 +563,31 @@ class AppState extends ChangeNotifier {
 
   Future<void> loadSchedule({bool force = false}) async {
     if (scheduleLoaded && !force) return;
+    final requestToken = ++_scheduleLoadSequence;
+    final session = _sessionIdentity;
+    final storageKey = _scheduleStorageKey;
+    final settingsKey = _scheduleSettingsStorageKey;
+    final hadSchedule =
+        scheduleLoaded ||
+        scheduleCourses.isNotEmpty ||
+        scheduleTables.isNotEmpty;
+    bool isCurrent() =>
+        requestToken == _scheduleLoadSequence && session == _sessionIdentity;
     scheduleLoaded = false;
+    scheduleError = null;
     try {
       final snapshot = await api.getSchedule();
+      if (!isCurrent()) return;
       var serverCourses = snapshot.courses;
       var serverSettings = snapshot.settings;
       final localPreferences = await _getLocalPreferences();
+      if (!isCurrent()) return;
       // 旧版本地缓存只在"用户仅有一张空课表"时迁移上传；
       // 多张课程表说明服务端数据已是权威，切到空的新表时绝不能回灌缓存
       if (serverCourses.isEmpty &&
           snapshot.tables.length <= 1 &&
           localPreferences != null) {
-        final rawCourses = localPreferences.getString(_scheduleStorageKey);
+        final rawCourses = localPreferences.getString(storageKey);
         if (rawCourses != null && rawCourses.isNotEmpty) {
           try {
             final decoded = jsonDecode(rawCourses);
@@ -544,6 +603,7 @@ class AppState extends ChangeNotifier {
               final migrated = <ScheduleCourse>[];
               for (final course in legacyCourses) {
                 migrated.add(await api.saveScheduleCourse(course));
+                if (!isCurrent()) return;
               }
               serverCourses = migrated;
             }
@@ -551,9 +611,7 @@ class AppState extends ChangeNotifier {
             // 损坏的旧缓存不迁移。
           }
         }
-        final rawSettings = localPreferences.getString(
-          _scheduleSettingsStorageKey,
-        );
+        final rawSettings = localPreferences.getString(settingsKey);
         if (rawSettings != null && rawSettings.isNotEmpty) {
           try {
             final decoded = jsonDecode(rawSettings);
@@ -561,6 +619,7 @@ class AppState extends ChangeNotifier {
               serverSettings = await api.saveScheduleSettings(
                 ScheduleSettings.fromJson(Map<String, dynamic>.from(decoded)),
               );
+              if (!isCurrent()) return;
             }
           } on FormatException {
             // 损坏的旧缓存不迁移。
@@ -576,41 +635,47 @@ class AppState extends ChangeNotifier {
       activeScheduleTableId = snapshot.activeTableId;
       scheduleSettings = serverSettings;
       scheduleLoaded = true;
+      scheduleError = null;
       _sortSchedule();
       await _persistSchedule();
+      if (!isCurrent()) return;
       notifyListeners();
       return;
-    } on ApiException catch (error) {
-      if (_handled401(error)) return;
-      // 网络暂时不可用时读旧缓存，恢复联网后的写操作仍以服务端为准。
-    } on ClientException {
-      // 同上，保留离线只读回退。
+    } catch (error) {
+      if (!isCurrent() || _handled401(error)) return;
+      scheduleError = _errorMessage(error, '课表暂时无法加载');
+    }
+    if (hadSchedule) {
+      scheduleLoaded = true;
+      notifyListeners();
+      return;
     }
     final localPreferences = await _getLocalPreferences();
+    if (!isCurrent()) return;
     if (localPreferences == null) {
       scheduleLoaded = true;
       notifyListeners();
       return;
     }
-    final raw = localPreferences.getString(_scheduleStorageKey);
-    final rawSettings = localPreferences.getString(_scheduleSettingsStorageKey);
-    scheduleCourses.clear();
+    final raw = localPreferences.getString(storageKey);
+    final rawSettings = localPreferences.getString(settingsKey);
     if (raw != null && raw.isNotEmpty) {
       try {
         final decoded = jsonDecode(raw);
         if (decoded is List) {
-          scheduleCourses.addAll(
-            decoded.whereType<Map>().map(
-              (item) =>
-                  ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
-            ),
-          );
+          final cachedCourses = decoded
+              .whereType<Map>()
+              .map(
+                (item) =>
+                    ScheduleCourse.fromJson(Map<String, dynamic>.from(item)),
+              )
+              .toList();
+          scheduleCourses
+            ..clear()
+            ..addAll(cachedCourses);
         }
-      } on FormatException {
-        // 本地缓存损坏时显示空课表，不影响主功能。
-      }
+      } catch (_) {}
     }
-    scheduleSettings = const ScheduleSettings();
     if (rawSettings != null && rawSettings.isNotEmpty) {
       try {
         final decoded = jsonDecode(rawSettings);
@@ -619,9 +684,7 @@ class AppState extends ChangeNotifier {
             Map<String, dynamic>.from(decoded),
           );
         }
-      } on FormatException {
-        // 设置缓存损坏时使用默认作息。
-      }
+      } catch (_) {}
     }
     _sortSchedule();
     scheduleLoaded = true;
@@ -762,12 +825,13 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _persistSchedule() async {
+    final storageKey = _scheduleStorageKey;
+    final courses = jsonEncode(
+      scheduleCourses.map((course) => course.toJson()).toList(),
+    );
     final localPreferences = await _getLocalPreferences();
     if (localPreferences == null) return;
-    await localPreferences.setString(
-      _scheduleStorageKey,
-      jsonEncode(scheduleCourses.map((course) => course.toJson()).toList()),
-    );
+    await localPreferences.setString(storageKey, courses);
   }
 
   /// 统一处理 401 会话失效 直接回登录页
@@ -777,6 +841,13 @@ class AppState extends ChangeNotifier {
       return true;
     }
     return false;
+  }
+
+  String _errorMessage(Object error, String fallback) {
+    if (error is ApiException && error.detail.trim().isNotEmpty) {
+      return error.detail;
+    }
+    return fallback;
   }
 
   // ============ 后端连通性 ============
@@ -792,29 +863,46 @@ class AppState extends ChangeNotifier {
 
   // ============ 对话 ============
   Future<void> loadConversations() async {
+    final requestToken = ++_conversationLoadSequence;
+    final workspace = activeWorkspace;
+    final workspaceToken = _workspaceSwitchSequence;
+    final session = _sessionIdentity;
+    bool isCurrent() =>
+        session == _sessionIdentity &&
+        requestToken == _conversationLoadSequence &&
+        workspace == activeWorkspace &&
+        workspaceToken == _workspaceSwitchSequence;
     loadingConversations = true;
+    conversationsError = null;
     notifyListeners();
     try {
-      final list = activeWorkspace == WorkspaceType.learning
+      final list = workspace == WorkspaceType.learning
           ? await api.listConversations()
-          : await api.listWorkspaceConversations(activeWorkspace);
+          : await api.listWorkspaceConversations(workspace);
+      if (!isCurrent()) return;
       conversations
         ..clear()
         ..addAll(list);
+      conversationsError = null;
     } catch (e) {
-      if (!_handled401(e)) rethrow;
+      if (!isCurrent() || _handled401(e)) return;
+      conversationsError = _errorMessage(e, '对话列表暂时无法加载');
     } finally {
-      loadingConversations = false;
-      notifyListeners();
+      if (isCurrent()) {
+        loadingConversations = false;
+        notifyListeners();
+      }
     }
   }
 
   // ============ 对话分组 ============
   Future<void> _migrateLegacyGroupProjectBindings() async {
+    final session = _sessionIdentity;
     final userId = api.userId;
     if (userId == null || groups.isEmpty) return;
 
     final localPreferences = await _getLocalPreferences();
+    if (session != _sessionIdentity) return;
     final legacyKey = '$_legacyGroupProjectBindingsPrefix$userId';
     final candidates = <String, String>{};
     final locallyBoundGroups = <String>{};
@@ -860,8 +948,12 @@ class AppState extends ChangeNotifier {
       final projectId = candidates[group.id];
       if (group.projectId != null || projectId == null) continue;
       try {
-        groups[index] = await api.updateGroup(group.id, projectId: projectId);
+        final updated = await api.updateGroup(group.id, projectId: projectId);
+        if (session != _sessionIdentity) return;
+        final currentIndex = groups.indexWhere((item) => item.id == group.id);
+        if (currentIndex >= 0) groups[currentIndex] = updated;
       } catch (error) {
+        if (session != _sessionIdentity) return;
         migratedAll = false;
         debugPrint('Failed to migrate group project binding: $error');
       }
@@ -873,18 +965,24 @@ class AppState extends ChangeNotifier {
 
   Future<void> loadGroups({bool force = false}) async {
     if (loadingGroups || (groupsLoaded && !force)) return;
+    final session = _sessionIdentity;
     loadingGroups = true;
     notifyListeners();
     try {
+      final loadedGroups = await api.listGroups();
+      if (session != _sessionIdentity) return;
       groups
         ..clear()
-        ..addAll(await api.listGroups());
+        ..addAll(loadedGroups);
       groupsLoaded = true;
     } catch (error) {
+      if (session != _sessionIdentity) return;
       if (!_handled401(error)) rethrow;
     } finally {
-      loadingGroups = false;
-      notifyListeners();
+      if (session == _sessionIdentity) {
+        loadingGroups = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -1065,33 +1163,67 @@ class AppState extends ChangeNotifier {
         !availableWorkspaces.any((item) => item.type == workspace)) {
       return;
     }
-    await _discardDraftConversation();
+    final switchToken = ++_workspaceSwitchSequence;
+    final selectionToken = ++_activeSelectionSequence;
+    final session = _sessionIdentity;
+    bool isCurrent() =>
+        switchToken == _workspaceSwitchSequence && session == _sessionIdentity;
+    final discard = _discardDraftConversation();
     activeWorkspace = workspace;
     activeId = null;
+    activeGroupId = null;
+    activeResearchProjectId = null;
     conversations.clear();
+    _messageErrors.clear();
+    _messageLoadTokens.clear();
+    _loadingMessageIds.clear();
+    _messageLoadSequence++;
+    conversationsError = null;
+    _conversationLoadSequence++;
+    loadingConversations = true;
     notifyListeners();
+    await discard;
+    if (!isCurrent()) return;
     await loadConversations();
+    if (!isCurrent()) return;
     if (workspace == WorkspaceType.research) {
       await _migrateLegacyGroupProjectBindings();
     }
-    if (conversations.isNotEmpty) await setActive(conversations.first.id);
+    if (!isCurrent()) return;
+    if (selectionToken == _activeSelectionSequence &&
+        conversations.isNotEmpty) {
+      await setActive(conversations.first.id);
+    }
+    if (!isCurrent()) return;
     if (workspace == WorkspaceType.research) await loadResearchProjects();
   }
 
   Future<void> loadResearchProjects({bool force = false}) async {
     if (loadingResearchProjects || (researchProjectsLoaded && !force)) return;
+    final requestToken = ++_researchProjectsLoadSequence;
+    final session = _sessionIdentity;
+    bool isCurrent() =>
+        requestToken == _researchProjectsLoadSequence &&
+        session == _sessionIdentity;
     loadingResearchProjects = true;
+    researchProjectsError = null;
     notifyListeners();
     try {
+      final projects = await api.listResearchProjects();
+      if (!isCurrent()) return;
       researchProjects
         ..clear()
-        ..addAll(await api.listResearchProjects());
+        ..addAll(projects);
       researchProjectsLoaded = true;
+      researchProjectsError = null;
     } catch (error) {
-      if (!_handled401(error)) rethrow;
+      if (!isCurrent() || _handled401(error)) return;
+      researchProjectsError = _errorMessage(error, '科研项目暂时无法加载');
     } finally {
-      loadingResearchProjects = false;
-      notifyListeners();
+      if (isCurrent()) {
+        loadingResearchProjects = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -1177,22 +1309,45 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> setActive(String id) async {
+    final selectionToken = ++_activeSelectionSequence;
+    final session = _sessionIdentity;
     if (activeId != id) {
       await _discardDraftConversation(exceptId: id);
     }
+    if (selectionToken != _activeSelectionSequence ||
+        session != _sessionIdentity) {
+      return;
+    }
+    final shouldLoad =
+        !_messages.containsKey(id) || _messageErrors.containsKey(id);
     activeId = id;
     notifyListeners();
-    if (!_messages.containsKey(id)) {
-      await _loadMessages(id);
+    if (shouldLoad) {
+      await _loadMessages(id, force: true);
     }
   }
 
-  Future<void> _loadMessages(String id) async {
-    loadingMessages = true;
+  Future<void> reloadActiveMessages() async {
+    final id = activeId;
+    if (id == null || busy) return;
+    await _loadMessages(id, force: true);
+  }
+
+  Future<void> _loadMessages(String id, {bool force = false}) async {
+    if (!force && _loadingMessageIds.contains(id)) return;
+    final requestToken = ++_messageLoadSequence;
+    final session = _sessionIdentity;
+    bool isCurrent() =>
+        _messageLoadTokens[id] == requestToken && session == _sessionIdentity;
+    _messageLoadTokens[id] = requestToken;
+    _loadingMessageIds.add(id);
+    _messageErrors.remove(id);
     notifyListeners();
     try {
       final msgs = await api.getMessages(id);
+      if (!isCurrent()) return;
       _messages[id] = msgs;
+      _messageErrors.remove(id);
       final conversation = conversations.where((item) => item.id == id);
       if (activeId == id &&
           msgs.isEmpty &&
@@ -1203,17 +1358,22 @@ class AppState extends ChangeNotifier {
         _draftConversationId = null;
       }
     } catch (e) {
-      if (_handled401(e)) return;
-      _messages[id] = [];
+      if (!isCurrent() || _handled401(e)) return;
+      _messageErrors[id] = _errorMessage(e, '消息暂时无法加载');
     } finally {
-      loadingMessages = false;
-      notifyListeners();
+      if (isCurrent()) {
+        _messageLoadTokens.remove(id);
+        _loadingMessageIds.remove(id);
+        notifyListeners();
+      }
     }
   }
 
   Future<void> newConversation() async {
+    final selectionToken = ++_activeSelectionSequence;
     if (activeId == null) return;
     await _discardDraftConversation();
+    if (selectionToken != _activeSelectionSequence) return;
     // 新对话先保持为前端空白页，首次发送或上传附件时再写入后端。
     activeId = null;
     notifyListeners();
@@ -1237,6 +1397,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _discardDraftConversation({String? exceptId}) async {
+    final session = _sessionIdentity;
     final id = _draftConversationId;
     if (id == null || id == exceptId) return;
 
@@ -1247,6 +1408,9 @@ class AppState extends ChangeNotifier {
     _draftConversationId = null;
     conversations.removeWhere((conversation) => conversation.id == id);
     _messages.remove(id);
+    _messageErrors.remove(id);
+    _messageLoadTokens.remove(id);
+    _loadingMessageIds.remove(id);
     _adjustGroupCounts(groupId, null);
     if (activeId == id) activeId = null;
     notifyListeners();
@@ -1254,6 +1418,7 @@ class AppState extends ChangeNotifier {
     try {
       await api.deleteConversation(id);
     } catch (error) {
+      if (session != _sessionIdentity) return;
       if (!_handled401(error)) {
         debugPrint('Failed to discard unsent conversation $id: $error');
       }
@@ -1278,6 +1443,8 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _createConversationImpl() async {
+    final session = _sessionIdentity;
+    final workspaceToken = _workspaceSwitchSequence;
     try {
       final conv = activeWorkspace == WorkspaceType.learning
           ? await api.createConversation(groupId: activeGroupId)
@@ -1286,11 +1453,19 @@ class AppState extends ChangeNotifier {
               researchProjectId: activeResearchProjectId,
               groupId: activeGroupId,
             );
+      if (session != _sessionIdentity ||
+          workspaceToken != _workspaceSwitchSequence) {
+        return;
+      }
       conversations.insert(0, conv);
       _messages[conv.id] = [];
       activeId = conv.id;
       notifyListeners();
     } catch (e) {
+      if (session != _sessionIdentity ||
+          workspaceToken != _workspaceSwitchSequence) {
+        return;
+      }
       if (!_handled401(e)) rethrow;
     }
   }
@@ -1320,6 +1495,9 @@ class AppState extends ChangeNotifier {
     }
     conversations.removeWhere((c) => c.id == id);
     _messages.remove(id);
+    _messageErrors.remove(id);
+    _messageLoadTokens.remove(id);
+    _loadingMessageIds.remove(id);
     if (_draftConversationId == id) _draftConversationId = null;
     _adjustGroupCounts(removedGroupId, null);
     if (activeId == id) {
@@ -1387,13 +1565,20 @@ class AppState extends ChangeNotifier {
     },
     String? personalKnowledgeBaseId,
   }) async {
+    final session = _sessionIdentity;
     final input = text.trim();
-    if (input.isEmpty || busy) return;
+    if (input.isEmpty ||
+        busy ||
+        loadingMessages ||
+        activeMessagesError != null) {
+      return;
+    }
 
     _stopRequested = false;
     // 没有活动对话时先建一个
     if (activeId == null) {
       await _createConversation();
+      if (session != _sessionIdentity) return;
       if (activeId == null) return; // 建失败
     }
     final id = activeId!;
@@ -1458,14 +1643,17 @@ class AppState extends ChangeNotifier {
                 knowledgeSources: knowledgeSources,
                 personalKnowledgeBaseId: personalKnowledgeBaseId,
               );
+        if (session != _sessionIdentity) return;
         list.remove(placeholder);
         list.addAll(newMsgs.where((message) => !message.isUser));
         if (isFirstQuestion) {
           await _ensureConversationTitle(id, visibleInput);
+          if (session != _sessionIdentity) return;
         }
         notifyListeners();
       }
     } catch (e) {
+      if (session != _sessionIdentity) return;
       if (_isTurnPreflightRejection(e)) {
         list.remove(placeholder);
         list.remove(userMessage);
@@ -1487,6 +1675,7 @@ class AppState extends ChangeNotifier {
       // 手机浏览器切后台/锁屏/断网会掐断 SSE，但后端通常已完成生成并
       // 落库；先尝试用服务端持久化结果覆盖本地，只有拉不到时才报错
       final recovered = await _recoverInterruptedReply(id, list);
+      if (session != _sessionIdentity) return;
       if (!recovered) {
         final detail = e is ApiException ? e.detail : '无法连接服务器 请检查后端是否启动';
         list.add(
@@ -1498,21 +1687,25 @@ class AppState extends ChangeNotifier {
         );
       }
     } finally {
-      busy = false;
-      notifyListeners();
+      if (session == _sessionIdentity) {
+        busy = false;
+        notifyListeners();
+      }
     }
   }
 
   /// 用户在流式输出中点下“终止”按钮时调用：取消正在进行的 SSE 流，
   /// 保留已生成的部分内容并结束 busy 状态。
   Future<void> stopGeneration() async {
+    final session = _sessionIdentity;
     _stopRequested = true;
     final subscription = _activeStreamSubscription;
-    _activeStreamSubscription = null;
-    if (subscription != null) await subscription.cancel();
     final controller = _activeStreamController;
+    _activeStreamSubscription = null;
     _activeStreamController = null;
+    if (subscription != null) await subscription.cancel();
     if (controller != null && !controller.isClosed) await controller.close();
+    if (session != _sessionIdentity) return;
     busy = false;
     notifyListeners();
   }
@@ -1523,8 +1716,10 @@ class AppState extends ChangeNotifier {
     String id,
     List<ChatMessage> list,
   ) async {
+    final session = _sessionIdentity;
     try {
       final msgs = await api.getMessages(id);
+      if (session != _sessionIdentity) return false;
       if (msgs.isEmpty || msgs.last.isUser) return false;
       list
         ..clear()
@@ -1555,6 +1750,10 @@ class AppState extends ChangeNotifier {
     String? titleInput,
     String? taskMode,
   }) async {
+    final session = _sessionIdentity;
+    StreamController<ChatStreamEvent>? receivingController;
+    StreamSubscription<ChatStreamEvent>? receivingSubscription;
+    var receivingSourceTerminated = false;
     var completed = false;
     _stopRequested = false;
     final terminalToolFailures = <String>{};
@@ -1579,6 +1778,13 @@ class AppState extends ChangeNotifier {
     void ensureTypewriter() {
       queueDrained ??= Completer<void>();
       typewriterTimer ??= Timer.periodic(EsaMotion.streamTick, (_) {
+        if (session != _sessionIdentity) {
+          reasoningQueue.clear();
+          contentQueue.clear();
+          streamEnded = true;
+          completeDrainIfReady();
+          return;
+        }
         // 手机浏览器后台会把定时器节流到秒级，回前台时队列可能积压了
         // 几千字符；按积压量批量出队，积压过大时直接整段刷出，
         // 避免以每 tick 一个字符的速度补播几十秒
@@ -1679,16 +1885,31 @@ class AppState extends ChangeNotifier {
       // 通过可取消的控制器转发 SSE 事件：用户点“终止”时关闭控制器，
       // 让下面的 await for 正常收尾，保留已生成的部分内容。
       final controller = StreamController<ChatStreamEvent>();
+      receivingController = controller;
       _activeStreamController = controller;
       final subscription = events.listen(
-        controller.add,
-        onError: controller.addError,
-        onDone: controller.close,
+        (event) {
+          if (!controller.isClosed && session == _sessionIdentity) {
+            controller.add(event);
+          }
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          receivingSourceTerminated = true;
+          if (!controller.isClosed && session == _sessionIdentity) {
+            controller.addError(error, stackTrace);
+          }
+        },
+        onDone: () {
+          receivingSourceTerminated = true;
+          if (!controller.isClosed) unawaited(controller.close());
+        },
         cancelOnError: true,
       );
+      receivingSubscription = subscription;
       _activeStreamSubscription = subscription;
       try {
         await for (final event in controller.stream) {
+          if (session != _sessionIdentity) break;
           switch (event.event) {
             case 'start':
               final persistedId = event.data['user_message_id']?.toString();
@@ -1782,6 +2003,7 @@ class AppState extends ChangeNotifier {
             case 'done':
               finishRunningTools('工具调用已结束，未返回可展示结果');
               await finishTypewriter();
+              if (session != _sessionIdentity) return;
               completed = true;
               assistant.typing = false;
               if (assistant.text.isEmpty && assistant.reasoning.isEmpty) {
@@ -1798,13 +2020,21 @@ class AppState extends ChangeNotifier {
           }
         }
       } finally {
+        if (!receivingSourceTerminated &&
+            identical(_activeStreamSubscription, subscription)) {
+          await subscription.cancel();
+        }
         if (!controller.isClosed) await controller.close();
       }
     } finally {
-      _activeStreamSubscription = null;
-      _activeStreamController = null;
+      if (identical(_activeStreamSubscription, receivingSubscription)) {
+        _activeStreamSubscription = null;
+      }
+      if (identical(_activeStreamController, receivingController)) {
+        _activeStreamController = null;
+      }
       typewriterTimer?.cancel();
-      if (!completed) {
+      if (!completed && session == _sessionIdentity) {
         assistant.reasoning += reasoningQueue.join();
         assistant.text += contentQueue.join();
         reasoningQueue.clear();
@@ -1815,6 +2045,7 @@ class AppState extends ChangeNotifier {
       }
     }
 
+    if (session != _sessionIdentity) return;
     if (!completed) {
       if (_stopRequested) {
         // 用户主动终止生成：保留已输出的部分内容，不再当作错误处理。
@@ -1870,6 +2101,7 @@ class AppState extends ChangeNotifier {
     },
     String? personalKnowledgeBaseId,
   }) async {
+    final session = _sessionIdentity;
     final conversationId = activeId;
     final messageId = int.tryParse(message.id);
     final input = text.trim();
@@ -1902,6 +2134,7 @@ class AppState extends ChangeNotifier {
         personalKnowledgeBaseId: personalKnowledgeBaseId,
       );
     } catch (error) {
+      if (session != _sessionIdentity) return;
       if (_isTurnPreflightRejection(error)) {
         message.text = originalText;
         message.notifyListeners();
@@ -1919,6 +2152,7 @@ class AppState extends ChangeNotifier {
         return;
       }
       final recovered = await _recoverInterruptedReply(conversationId, list);
+      if (session != _sessionIdentity) return;
       if (!recovered) {
         list.remove(placeholder);
         list.add(
@@ -1930,8 +2164,10 @@ class AppState extends ChangeNotifier {
         );
       }
     } finally {
-      busy = false;
-      notifyListeners();
+      if (session == _sessionIdentity) {
+        busy = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -1985,16 +2221,19 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _ensureConversationTitle(String id, String firstInput) async {
+    final session = _sessionIdentity;
     final local = conversations.where((conversation) => conversation.id == id);
     if (local.isEmpty || local.first.title != '新对话') return;
     try {
       final conversation = await api.getConversation(id);
+      if (session != _sessionIdentity) return;
       _setConversationTitle(id, conversation.title);
       if (conversation.title != '新对话') {
         notifyListeners();
         return;
       }
     } catch (error) {
+      if (session != _sessionIdentity) return;
       if (_handled401(error)) return;
       // During a rolling deployment the old backend has no single-conversation
       // endpoint. Continue with the local fallback below.
@@ -2008,6 +2247,7 @@ class AppState extends ChangeNotifier {
     try {
       await api.renameConversation(id, title);
     } catch (error) {
+      if (session != _sessionIdentity) return;
       if (!_handled401(error)) {
         debugPrint('Failed to persist fallback title for $id: $error');
       }
@@ -2016,6 +2256,7 @@ class AppState extends ChangeNotifier {
 
   // ============ 设置 ============
   Future<void> loadPreferencesAndProfile() async {
+    final session = _sessionIdentity;
     loadingProfile = true;
     notifyListeners();
     try {
@@ -2023,24 +2264,32 @@ class AppState extends ChangeNotifier {
         api.getPreferences(),
         api.getProfile(),
       ]);
+      if (session != _sessionIdentity) return;
       preferences = values[0] as UserPreferences;
       userProfile = values[1] as UserProfile;
       if (userProfile.displayName.isNotEmpty) {
         api.username = userProfile.displayName;
       }
     } catch (e) {
+      if (session != _sessionIdentity) return;
       if (!_handled401(e)) rethrow;
     } finally {
-      loadingProfile = false;
-      notifyListeners();
+      if (session == _sessionIdentity) {
+        loadingProfile = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<void> loadUserStats() async {
+    final session = _sessionIdentity;
     try {
-      userStats = await api.getUserStats();
+      final stats = await api.getUserStats();
+      if (session != _sessionIdentity) return;
+      userStats = stats;
       notifyListeners();
     } catch (error) {
+      if (session != _sessionIdentity) return;
       if (!_handled401(error)) {
         debugPrint('Failed to load profile stats: $error');
       }
@@ -2049,6 +2298,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> loadLearningOverview() async {
     if (!api.isLoggedIn || loadingLearningOverview) return;
+    final session = _sessionIdentity;
     loadingLearningOverview = true;
     learningOverviewError = null;
     notifyListeners();
@@ -2057,27 +2307,43 @@ class AppState extends ChangeNotifier {
         api.getLearningCourses(),
         api.getMasteryReport(),
       ]);
+      if (session != _sessionIdentity) return;
       learningCourses = values[0] as List<LearningCourseSummary>;
       masteryReport = values[1] as MasteryReport;
     } on ApiException catch (error) {
+      if (session != _sessionIdentity) return;
       if (!_handled401(error)) learningOverviewError = error.detail;
     } catch (_) {
+      if (session != _sessionIdentity) return;
       learningOverviewError = '学习概览暂时无法加载';
     } finally {
-      loadingLearningOverview = false;
-      notifyListeners();
+      if (session == _sessionIdentity) {
+        loadingLearningOverview = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<void> loadStudentAssignments() async {
-    try {
-      studentAssignments = await api.listStudentAssignments();
-    } on ApiException catch (error) {
-      if (!_handled401(error)) studentAssignments = const [];
-    } catch (_) {
-      studentAssignments = const [];
-    }
+    final requestToken = ++_assignmentsLoadSequence;
+    final session = _sessionIdentity;
+    bool isCurrent() =>
+        requestToken == _assignmentsLoadSequence && session == _sessionIdentity;
+    studentAssignmentsError = null;
     notifyListeners();
+    try {
+      final assignments = await api.listStudentAssignments();
+      if (!isCurrent()) return;
+      studentAssignments = assignments;
+      studentAssignmentsError = null;
+    } catch (error) {
+      if (!isCurrent() || _handled401(error)) return;
+      studentAssignmentsError = _errorMessage(error, '作业暂时无法加载');
+    } finally {
+      if (isCurrent()) {
+        notifyListeners();
+      }
+    }
   }
 
   Future<String?> savePreferencesAndProfile({
@@ -2166,6 +2432,28 @@ class AppState extends ChangeNotifier {
     if (value is int) await localPreferences.setInt(key, value);
     if (value is String) await localPreferences.setString(key, value);
     if (value is bool) await localPreferences.setBool(key, value);
+  }
+
+  void _cancelActiveStream() {
+    _stopRequested = true;
+    final subscription = _activeStreamSubscription;
+    final controller = _activeStreamController;
+    _activeStreamSubscription = null;
+    _activeStreamController = null;
+    if (subscription != null) unawaited(subscription.cancel());
+    if (controller != null && !controller.isClosed) {
+      unawaited(controller.close());
+    }
+  }
+
+  @override
+  void dispose() {
+    _sessionGeneration++;
+    _activeSelectionSequence++;
+    _messageLoadTokens.clear();
+    _loadingMessageIds.clear();
+    _cancelActiveStream();
+    super.dispose();
   }
 }
 

@@ -22,6 +22,7 @@ class Composer extends StatefulWidget {
     super.key,
     required this.busy,
     required this.onSend,
+    this.enabled = true,
     this.taskMode,
     this.onClearTaskMode,
     this.conversationId,
@@ -44,6 +45,7 @@ class Composer extends StatefulWidget {
   });
 
   final bool busy;
+  final bool enabled;
   final void Function(String text, bool markdown) onSend;
   final TaskMode? taskMode;
   final VoidCallback? onClearTaskMode;
@@ -164,6 +166,7 @@ class ComposerState extends State<Composer> {
   }
 
   bool get _canSend =>
+      widget.enabled &&
       !widget.busy &&
       !_uploadingAttachment &&
       (_controller.text.trim().isNotEmpty || _attachment != null);
@@ -345,6 +348,7 @@ class ComposerState extends State<Composer> {
                         listenable: _focus,
                         builder: (context, _) => TextField(
                           key: const ValueKey('composer-input'),
+                          enabled: widget.enabled,
                           controller: _controller,
                           focusNode: _focus,
                           minLines: narrow ? 1 : 2,
@@ -516,14 +520,16 @@ class ComposerState extends State<Composer> {
   Widget _attachButton(BuildContext context) {
     return _composerActionButton(
       context,
-      onPressed: widget.busy || _uploadingAttachment ? null : _pickAttachment,
+      onPressed: !widget.enabled || widget.busy || _uploadingAttachment
+          ? null
+          : _pickAttachment,
       icon: const Icon(LucideIcons.paperclip, size: 15),
       label: const Text('附件'),
     );
   }
 
   Future<void> _pickAttachment() async {
-    if (widget.onUploadAttachment == null) return;
+    if (!widget.enabled || widget.onUploadAttachment == null) return;
     try {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
@@ -572,7 +578,8 @@ class ComposerState extends State<Composer> {
     Stream<List<int>> stream,
     int length,
   ) async {
-    if (widget.onUploadAttachment == null ||
+    if (!widget.enabled ||
+        widget.onUploadAttachment == null ||
         _uploadingAttachment ||
         widget.busy) {
       return;
@@ -730,7 +737,7 @@ class ComposerState extends State<Composer> {
     message: '插入公式',
     child: _composerActionButton(
       context,
-      onPressed: widget.busy ? null : _openFormulaPicker,
+      onPressed: !widget.enabled || widget.busy ? null : _openFormulaPicker,
       icon: const Icon(LucideIcons.sigma, size: 15),
       label: const Text('LaTeX'),
     ),

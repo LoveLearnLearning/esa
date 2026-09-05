@@ -6,6 +6,46 @@ import 'package:frontend/widgets/composer.dart';
 import 'package:frontend/models/models.dart';
 
 void main() {
+  testWidgets('disabled history preserves the draft and blocks sending', (
+    tester,
+  ) async {
+    final composerKey = GlobalKey<ComposerState>();
+    final sent = <String>[];
+    Widget app(bool enabled) => MaterialApp(
+      theme: esaTheme(brightness: Brightness.dark),
+      home: Scaffold(
+        body: Composer(
+          key: composerKey,
+          busy: false,
+          enabled: enabled,
+          onSend: (text, _) => sent.add(text),
+        ),
+      ),
+    );
+    await tester.pumpWidget(app(true));
+    await tester.enterText(
+      find.byKey(const ValueKey('composer-input')),
+      '保留草稿',
+    );
+
+    await tester.pumpWidget(app(false));
+    final field = tester.widget<TextField>(
+      find.byKey(const ValueKey('composer-input')),
+    );
+    expect(field.enabled, isFalse);
+    expect(field.controller!.text, '保留草稿');
+    expect(sent, isEmpty);
+    final sendButton = tester.widget<InkWell>(
+      find.descendant(of: find.byTooltip('发送'), matching: find.byType(InkWell)),
+    );
+    expect(sendButton.onTap, isNull);
+
+    await tester.pumpWidget(app(true));
+    await tester.tap(find.byTooltip('发送'));
+    await tester.pump();
+    expect(sent, ['保留草稿']);
+  });
+
   testWidgets('uses the same line metrics for hint and input cursor', (
     tester,
   ) async {

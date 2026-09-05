@@ -64,7 +64,7 @@ class AuthService:
         login_state: bool = PasswordService.verify_password(
             password, user.password_hash
         )
-        if not login_state:
+        if not login_state or user.status != "active":
             return
 
         session_id = str(uuid.uuid4())

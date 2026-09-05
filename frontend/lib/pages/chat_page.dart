@@ -24,6 +24,7 @@ import '../widgets/composer.dart';
 import '../widgets/code_editor/code_editor_pane.dart';
 import '../widgets/history_drawer.dart';
 import '../widgets/learning_dashboard.dart';
+import '../widgets/load_error_banner.dart';
 import '../widgets/memory_sheet.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/tool_call_card.dart';
@@ -200,8 +201,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     // 必须直接从 platformDispatcher 读取真实的键盘 inset。
     final bottom = WidgetsBinding.instance.platformDispatcher.views.isEmpty
         ? 0.0
-        : WidgetsBinding.instance.platformDispatcher.views.first.viewInsets
-            .bottom;
+        : WidgetsBinding
+              .instance
+              .platformDispatcher
+              .views
+              .first
+              .viewInsets
+              .bottom;
     final keyboardOpen = bottom > 0;
     if (_keyboardWasOpen && !keyboardOpen) {
       FocusManager.instance.primaryFocus?.unfocus();
@@ -665,6 +671,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     };
     final composer = Composer(
       key: _composerKey,
+      enabled: !app.loadingMessages && app.activeMessagesError == null,
       busy: app.busy,
       conversationId: app.activeId,
       taskMode: _taskMode,
@@ -764,6 +771,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             )
           : app.loadingMessages && app.messages.isEmpty
           ? const Center(child: CircularProgressIndicator())
+          : app.messages.isEmpty && app.activeMessagesError != null
+          ? _MessageLoadError(
+              message: app.activeMessagesError!,
+              onRetry: app.reloadActiveMessages,
+            )
           : app.messages.isEmpty
           ? _EmptyState(
               name: app.username,
@@ -772,7 +784,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               onPick: (mode) => setState(() => _taskMode = mode),
               mobileComposer: mobileLanding ? composer : null,
             )
-          : _messageList(context, app),
+          : Column(
+              children: [
+                if (app.activeMessagesError != null)
+                  LoadErrorBanner(
+                    message: '${app.activeMessagesError!}；已保留原有消息',
+                    onRetry: app.busy || app.loadingMessages
+                        ? null
+                        : app.reloadActiveMessages,
+                  ),
+                Expanded(child: _messageList(context, app)),
+              ],
+            ),
     );
     final panelCompact = pageWidth < 900;
     final hasPanel =
@@ -1788,6 +1811,8 @@ class _TopBar extends StatelessWidget {
                           : workspace == WorkspaceType.teaching
                           ? 'TEACHING'
                           : 'RESEARCH'} AGENT',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -1923,13 +1948,22 @@ class _LearningHome extends StatelessWidget {
                     : onContinue,
               ),
               const SizedBox(height: 12),
+              if (app.studentAssignmentsError != null)
+                LoadErrorBanner(
+                  message: app.studentAssignmentsError!,
+                  onRetry: app.loadStudentAssignments,
+                ),
               _HomeSection(
                 title: '待办',
                 count: assignments.length,
                 actionLabel: '查看全部',
                 onAction: onViewAssignments,
                 child: assignments.isEmpty
-                    ? const _HomeEmptyRow(label: '暂无待完成作业')
+                    ? _HomeEmptyRow(
+                        label: app.studentAssignmentsError == null
+                            ? '暂无待完成作业'
+                            : '未能获取作业，请重试',
+                      )
                     : Column(
                         children: [
                           for (
@@ -1947,10 +1981,21 @@ class _LearningHome extends StatelessWidget {
                       ),
               ),
               const SizedBox(height: 12),
+              if (app.conversationsError != null)
+                LoadErrorBanner(
+                  message: app.conversationsError!,
+                  onRetry: app.loadingConversations
+                      ? null
+                      : app.loadConversations,
+                ),
               _HomeSection(
                 title: '最近',
                 child: recent.isEmpty
-                    ? const _HomeEmptyRow(label: '暂无最近学习记录')
+                    ? _HomeEmptyRow(
+                        label: app.conversationsError == null
+                            ? '暂无最近学习记录'
+                            : '未能获取最近记录，请重试',
+                      )
                     : Column(
                         children: [
                           for (
@@ -2361,6 +2406,32 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+class _MessageLoadError extends StatelessWidget {
+  const _MessageLoadError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(LucideIcons.circleAlert, size: 38),
+          const SizedBox(height: 12),
+          const Text('消息加载失败'),
+          const SizedBox(height: 6),
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 14),
+          OutlinedButton(onPressed: onRetry, child: const Text('重试')),
+        ],
+      ),
+    ),
+  );
 }
 
 class _SuggestionCard extends StatelessWidget {

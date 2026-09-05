@@ -12,6 +12,7 @@ import '../theme/esa_theme.dart';
 import 'conversation_move_dialog.dart';
 import '../widgets/esa_buttons.dart';
 import 'profile_sheet.dart';
+import 'load_error_banner.dart';
 
 class HistoryDrawer extends StatefulWidget {
   const HistoryDrawer({
@@ -219,9 +220,20 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                 ],
               ),
             ),
+            if (app.conversationsError != null)
+              LoadErrorBanner(
+                message: app.conversationsError!,
+                onRetry: app.loadingConversations
+                    ? null
+                    : app.loadConversations,
+              ),
             Expanded(
-              child: filtered.isEmpty
-                  ? _noResult(context)
+              child: app.loadingConversations && filtered.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : filtered.isEmpty
+                  ? app.conversationsError == null
+                        ? _noResult(context)
+                        : const SizedBox.shrink()
                   : _groupedList(context, app, filtered),
             ),
             _userBar(context, app),

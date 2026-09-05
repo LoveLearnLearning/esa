@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
+import '../widgets/load_error_banner.dart';
 import 'research_project_page.dart';
 
 class ResearchWorkspacePage extends StatefulWidget {
@@ -125,9 +126,46 @@ class _ResearchWorkspacePageState extends State<ResearchWorkspacePage> {
               ),
             ),
           ),
+          if (app.researchProjectsError != null &&
+              app.researchProjects.isNotEmpty)
+            SliverToBoxAdapter(
+              child: LoadErrorBanner(
+                message: '${app.researchProjectsError!}；已保留原有项目',
+                onRetry: app.loadingResearchProjects
+                    ? null
+                    : () => app.loadResearchProjects(force: true),
+              ),
+            ),
           if (app.loadingResearchProjects && app.researchProjects.isEmpty)
             const SliverFillRemaining(
               child: Center(child: CircularProgressIndicator()),
+            )
+          else if (app.researchProjectsError != null &&
+              app.researchProjects.isEmpty)
+            SliverFillRemaining(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.circleAlert, size: 42),
+                      const SizedBox(height: 14),
+                      Text('科研项目加载失败', style: context.texts.titleLarge),
+                      const SizedBox(height: 8),
+                      Text(
+                        app.researchProjectsError!,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 14),
+                      OutlinedButton(
+                        onPressed: () => app.loadResearchProjects(force: true),
+                        child: const Text('重试'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             )
           else if (app.researchProjects.isEmpty)
             SliverFillRemaining(
