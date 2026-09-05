@@ -29,8 +29,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="google" content="notranslate">
   <meta name="description" content="星知智链智能学习助手">
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#2563EB">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1B1A19">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F3F2F2">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#050505">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -78,7 +78,7 @@
       margin: 0;
       padding: 0;
       height: 100%;
-      background-color: #1B1A19;
+      background-color: #050505;
       overscroll-behavior-y: none;
       overflow: hidden;
       -webkit-tap-highlight-color: transparent;
@@ -89,7 +89,7 @@
       z-index: 1;
       display: grid;
       place-items: center;
-      background: #1B1A19;
+      background: #050505;
       color: #F8FAFC;
       transition: opacity 160ms ease;
     }
@@ -114,7 +114,7 @@
       height: 22px;
       margin: 18px auto 0;
       border: 2px solid rgba(248, 250, 252, 0.24);
-      border-top-color: #3B82F6;
+      border-top-color: #D8D8DD;
       border-radius: 50%;
       animation: app-loading-spin 700ms linear infinite;
     }
@@ -136,14 +136,32 @@
     </div>
   </div>
   <script>
-    // Clean up releases that used Flutter's old offline worker, but never
-    // block the current app download on browser cache housekeeping.
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then((items) => {
-        for (const item of items) item.unregister();
-      });
+    const cleanupUrl = new URL(window.location.href);
+    if (cleanupUrl.searchParams.has('__esa_cleanup')) {
+      cleanupUrl.searchParams.delete('__esa_cleanup');
+      window.history.replaceState(null, '', cleanupUrl.href);
     }
-    if ('caches' in window) {
+
+    // Replace releases that used Flutter's old offline worker with ESA's
+    // network-only cleanup worker. It calls skipWaiting(), removes Flutter
+    // caches and reloads tabs that were still showing a cached application.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register(
+        'flutter_service_worker.js?v=esa-web-cleanup-20260905-1',
+        { scope: './', updateViaCache: 'none' },
+      ).then(async (registration) => {
+        await registration.update();
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(
+            keys.filter((key) => key.startsWith('flutter-')).map((key) => caches.delete(key)),
+          );
+        }
+      }).catch(() => {
+        // Service worker cleanup is best-effort. The hashed Flutter entrypoint
+        // below still allows the app to start if registration is unavailable.
+      });
+    } else if ('caches' in window) {
       caches.keys().then((keys) => {
         for (const key of keys) {
           if (key.startsWith('flutter-')) caches.delete(key);

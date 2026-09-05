@@ -10,6 +10,7 @@ import pytest
 from backend.agent.rag.personal.purge import PersonalKnowledgeBaseUserPurger
 from backend.core.stores.migrations import run_migrations
 from backend.core.stores.personal_knowledge_base_store import (
+    PersonalKnowledgeBaseConflict,
     PersonalKnowledgeBaseStore,
 )
 from backend.core.stores.user_store import UserStore
@@ -85,7 +86,10 @@ def test_user_purger_deletes_vectors_artifacts_and_flushes_clean_snapshot(
     assert index.deleted == ["u1"]
     assert discarded_sources == ["file-1"]
     assert discarded_artifacts == ["file-1"]
-    assert store.get_retrieval_state("u1")["files"] == {}
+    # Purge completion leaves a durable deny marker so retrieval cannot race
+    # with account deletion or accidentally expose stale artifacts.
+    with pytest.raises(PersonalKnowledgeBaseConflict, match="scheduled for purge"):
+        store.get_retrieval_state("u1")
     assert asyncio.run(purger.purge("u1"))["status"] == "completed"
 
 

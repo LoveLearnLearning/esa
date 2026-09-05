@@ -653,7 +653,7 @@ def test_qdrant_queries_filter_by_content_role() -> None:
     index = _CapturingQdrant()
     index.bm25_body("query", 5, frozenset({ContentRole.BODY, ContentRole.TABLE}))
     assert index.payload["with_payload"] == {"include": ["chunk_id"]}
-    assert index.payload["filter"]["must"][0] == {
+    assert index.payload["filter"]["must"][-1] == {
         "key": "content_role",
         "match": {"any": ["body", "table"]},
     }

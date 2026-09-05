@@ -7,10 +7,12 @@ import '../api/api_client.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
+import '../theme/esa_mobile.dart';
 import '../theme/esa_theme.dart';
 import '../widgets/profile_sheet.dart';
 import '../widgets/memory_sheet.dart';
 import '../widgets/history_drawer.dart';
+import '../widgets/esa_mobile_controls.dart';
 import '../widgets/agent_action_sheet.dart';
 import '../widgets/composer.dart';
 import '../widgets/conversation_move_dialog.dart';
@@ -315,12 +317,21 @@ class _HomeShellState extends State<HomeShell> {
                           setState(() => _sidebarCollapsed = true),
                     ),
             ),
-            if (_sidebarCollapsed && !knowledgeBase)
-              _RevealSidebarButton(
-                onTap: () => setState(() => _sidebarCollapsed = false),
-              ),
             Expanded(
-              child: _SurfaceFrame(key: ValueKey(_section), child: _page()),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _SurfaceFrame(key: ValueKey(_section), child: _page()),
+                  if (_sidebarCollapsed && !knowledgeBase)
+                    Positioned(
+                      left: 0,
+                      top: 64,
+                      child: _RevealSidebarHandle(
+                        onTap: () => setState(() => _sidebarCollapsed = false),
+                      ),
+                    ),
+                ],
+              ),
             ),
             if (showContext)
               SizedBox(
@@ -383,7 +394,6 @@ class _HomeShellState extends State<HomeShell> {
             else if (!researchProjectActive && !_inResearch)
               _MobileHeader(
                 section: _section,
-                onSelect: (section) => unawaited(_select(section)),
                 onProfile: () => showProfileSheet(context),
                 onMemory: () => showMemorySheet(context),
                 onActions: () => showAgentActionSheet(context),
@@ -533,13 +543,9 @@ class _RailButton extends StatelessWidget {
         onPressed: onTap,
         style: IconButton.styleFrom(
           minimumSize: const Size(42, 42),
-          backgroundColor: active
-              ? EsaColors.accent.withValues(alpha: 0.18)
-              : Colors.transparent,
-          foregroundColor: active ? const Color(0xFF66A0FF) : context.n.n600,
-          side: active
-              ? BorderSide(color: EsaColors.accent.withValues(alpha: 0.22))
-              : BorderSide.none,
+          backgroundColor: active ? context.n.n200 : Colors.transparent,
+          foregroundColor: active ? context.n.n700 : context.n.n600,
+          side: active ? BorderSide(color: context.n.n300) : BorderSide.none,
         ),
         icon: Icon(icon, size: 21),
       ),
@@ -988,17 +994,29 @@ class _WorkspaceSidebar extends StatelessWidget {
   }
 }
 
-class _RevealSidebarButton extends StatelessWidget {
-  const _RevealSidebarButton({required this.onTap});
+class _RevealSidebarHandle extends StatelessWidget {
+  const _RevealSidebarHandle({required this.onTap});
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.center,
-    child: IconButton(
-      tooltip: '展开侧栏',
-      onPressed: onTap,
-      icon: const Icon(LucideIcons.chevronsRight, size: 17),
+  Widget build(BuildContext context) => Material(
+    key: const ValueKey('desktop-sidebar-reveal-handle'),
+    color: context.n.n100,
+    shape: RoundedRectangleBorder(
+      borderRadius: const BorderRadius.horizontal(right: Radius.circular(8)),
+      side: BorderSide(color: context.n.divider),
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: Tooltip(
+      message: '展开侧栏',
+      child: InkWell(
+        onTap: onTap,
+        child: const SizedBox(
+          width: 30,
+          height: 36,
+          child: Icon(LucideIcons.panelLeftOpen, size: 16),
+        ),
+      ),
     ),
   );
 }
@@ -1019,9 +1037,7 @@ class _SideEntry extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 3),
     child: Material(
-      color: selected
-          ? EsaColors.accent.withValues(alpha: 0.15)
-          : Colors.transparent,
+      color: selected ? context.n.n200 : Colors.transparent,
       borderRadius: BorderRadius.circular(7),
       child: InkWell(
         borderRadius: BorderRadius.circular(7),
@@ -1033,7 +1049,7 @@ class _SideEntry extends StatelessWidget {
               Icon(
                 icon,
                 size: 17,
-                color: selected ? const Color(0xFF5D98FF) : context.n.n600,
+                color: selected ? context.n.n700 : context.n.n600,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1043,7 +1059,8 @@ class _SideEntry extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 13,
-                    color: selected ? const Color(0xFF6EA3FF) : null,
+                    color: selected ? context.n.n700 : null,
+                    fontWeight: selected ? FontWeight.w600 : null,
                   ),
                 ),
               ),
@@ -1617,126 +1634,74 @@ class _ContextCard extends StatelessWidget {
 class _MobileHeader extends StatelessWidget {
   const _MobileHeader({
     required this.section,
-    required this.onSelect,
     required this.onProfile,
     required this.onMemory,
     required this.onActions,
     this.onHistory,
   });
   final StudentSection section;
-  final ValueChanged<StudentSection> onSelect;
   final VoidCallback onProfile;
   final VoidCallback onMemory;
   final VoidCallback onActions;
   final VoidCallback? onHistory;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => SizedBox(
     key: const ValueKey('mobile-app-bar'),
-    height: 52,
-    padding: const EdgeInsets.only(left: 16, right: 6),
-    decoration: BoxDecoration(
+    width: double.infinity,
+    height: 56,
+    child: ColoredBox(
       color: context.scheme.surface,
-      border: Border(bottom: BorderSide(color: context.n.divider)),
-    ),
-    child: Row(
-      children: [
-        const _EsaWordmark(compact: true),
-        Container(
-          width: 1,
-          height: 16,
-          margin: const EdgeInsets.symmetric(horizontal: 10),
-          color: context.n.divider,
-        ),
-        Expanded(
-          child: Text(
-            switch (section) {
-              StudentSection.home => '首页',
-              StudentSection.research => '研究空间',
-              StudentSection.knowledge => '知识地图',
-              StudentSection.knowledgeBase => '个人知识库',
-              StudentSection.assignments => '作业',
-              StudentSection.schedule => '日程',
-            },
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: context.texts.titleMedium?.copyWith(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        PopupMenuButton<_MobileHeaderMenuAction>(
-          key: const ValueKey('mobile-header-more'),
-          tooltip: '更多',
-          icon: const Icon(LucideIcons.ellipsis, size: 20),
-          iconSize: 20,
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 180, maxWidth: 240),
-          onSelected: (action) {
-            switch (action) {
-              case _MobileHeaderMenuAction.history:
-                onHistory?.call();
-              case _MobileHeaderMenuAction.memory:
-                onMemory();
-              case _MobileHeaderMenuAction.actions:
-                onActions();
-              case _MobileHeaderMenuAction.settings:
-                onProfile();
-            }
-          },
-          itemBuilder: (context) => [
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16, right: 6),
+        child: Row(
+          children: [
             if (onHistory != null)
-              const PopupMenuItem(
-                value: _MobileHeaderMenuAction.history,
-                child: _MobileHeaderMenuItem(
-                  icon: LucideIcons.panelLeftOpen,
-                  label: '历史对话',
+              EsaMobileIconButton(
+                tooltip: '历史对话',
+                icon: LucideIcons.panelLeftOpen,
+                onPressed: onHistory,
+              ),
+            if (onHistory != null) const SizedBox(width: 4),
+            const _EsaWordmark(compact: true),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                switch (section) {
+                  StudentSection.home => '首页',
+                  StudentSection.research => '研究空间',
+                  StudentSection.knowledge => '知识地图',
+                  StudentSection.knowledgeBase => '个人知识库',
+                  StudentSection.assignments => '作业',
+                  StudentSection.schedule => '日程',
+                },
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.texts.titleMedium?.copyWith(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            const PopupMenuItem(
-              value: _MobileHeaderMenuAction.memory,
-              child: _MobileHeaderMenuItem(
-                icon: LucideIcons.brain,
-                label: '长期记忆',
-              ),
             ),
-            PopupMenuItem(
-              value: _MobileHeaderMenuAction.actions,
-              child: _MobileHeaderMenuItem(
-                icon: LucideIcons.shieldCheck,
-                label: '待确认动作',
-              ),
+            EsaMobileIconButton(
+              tooltip: '长期记忆',
+              icon: LucideIcons.brain,
+              onPressed: onMemory,
             ),
-            PopupMenuItem(
-              value: _MobileHeaderMenuAction.settings,
-              child: _MobileHeaderMenuItem(
-                icon: LucideIcons.settings,
-                label: '设置与账户',
-              ),
+            EsaMobileIconButton(
+              tooltip: '待确认动作',
+              icon: LucideIcons.shieldCheck,
+              onPressed: onActions,
+            ),
+            EsaMobileIconButton(
+              tooltip: '设置与账户',
+              icon: LucideIcons.settings,
+              onPressed: onProfile,
             ),
           ],
         ),
-      ],
+      ),
     ),
-  );
-}
-
-enum _MobileHeaderMenuAction { history, memory, actions, settings }
-
-class _MobileHeaderMenuItem extends StatelessWidget {
-  const _MobileHeaderMenuItem({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Icon(icon, size: 18, color: context.n.n600),
-      const SizedBox(width: 12),
-      Text(label),
-    ],
   );
 }
 
@@ -1763,6 +1728,11 @@ class _MobileConversationHeader extends StatelessWidget {
             onPressed: onBack,
             icon: const Icon(LucideIcons.chevronLeft, size: 25),
           ),
+          IconButton(
+            tooltip: '历史对话',
+            onPressed: onHistory,
+            icon: const Icon(LucideIcons.panelLeftOpen, size: 21),
+          ),
           Expanded(
             child: Text(
               title,
@@ -1771,11 +1741,6 @@ class _MobileConversationHeader extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: context.texts.titleLarge?.copyWith(fontSize: 17),
             ),
-          ),
-          IconButton(
-            tooltip: '历史对话',
-            onPressed: onHistory,
-            icon: const Icon(LucideIcons.panelLeftOpen, size: 21),
           ),
         ],
       ),
@@ -1790,89 +1755,30 @@ class _MobileLearningTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const entries = [
-      (StudentSection.home, '首页'),
-      (StudentSection.assignments, '作业'),
-      (StudentSection.schedule, '日程'),
-      (StudentSection.knowledge, '知识'),
-      (StudentSection.knowledgeBase, '资料库'),
+    const entries = <EsaMobileTabEntry<StudentSection>>[
+      EsaMobileTabEntry(StudentSection.home, '首页'),
+      EsaMobileTabEntry(StudentSection.assignments, '作业'),
+      EsaMobileTabEntry(StudentSection.schedule, '日程'),
+      EsaMobileTabEntry(StudentSection.knowledge, '知识'),
+      EsaMobileTabEntry(StudentSection.knowledgeBase, '资料库'),
     ];
     return Container(
       key: const ValueKey('mobile-primary-navigation'),
-      height: 44,
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
       decoration: BoxDecoration(
         color: context.scheme.surface,
         border: Border(bottom: BorderSide(color: context.n.divider)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(
-          children: [
-            for (final entry in entries)
-              _MobileLearningTab(
-                label: entry.$2,
-                active: section == entry.$1,
-                onTap: () => onSelect(entry.$1),
-              ),
-          ],
-        ),
+      child: EsaMobileTabStrip<StudentSection>(
+        value: section,
+        entries: entries,
+        onChanged: onSelect,
+        padding: EdgeInsets.zero,
+        minItemWidth: 68,
       ),
     );
   }
-}
-
-class _MobileLearningTab extends StatelessWidget {
-  const _MobileLearningTab({
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    selected: active,
-    label: label,
-    child: InkWell(
-      onTap: onTap,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 70, minHeight: 44),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                label,
-                style: context.texts.bodySmall?.copyWith(
-                  color: active ? context.scheme.onSurface : context.n.n600,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ),
-            if (active)
-              Positioned(
-                left: 14,
-                right: 14,
-                bottom: 0,
-                child: Container(
-                  height: 2,
-                  decoration: BoxDecoration(
-                    color: context.scheme.primary,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    ),
-  );
 }
 
 class _MobileBottomBar extends StatelessWidget {
@@ -1942,7 +1848,9 @@ class _BottomDestination extends StatelessWidget {
     child: InkWell(
       onTap: onTap,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 52),
+        constraints: const BoxConstraints(
+          minHeight: EsaMobile.bottomBarContentHeight,
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
@@ -1950,7 +1858,7 @@ class _BottomDestination extends StatelessWidget {
             Icon(
               icon,
               size: 20,
-              color: active ? const Color(0xFF4B8CFF) : context.n.n600,
+              color: active ? context.n.n700 : context.n.n600,
             ),
             const SizedBox(height: 2),
             Text(
@@ -1958,7 +1866,7 @@ class _BottomDestination extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                color: active ? const Color(0xFF4B8CFF) : context.n.n600,
+                color: active ? context.n.n700 : context.n.n600,
               ),
             ),
           ],
@@ -1976,7 +1884,7 @@ class _EsaWordmark extends StatelessWidget {
   Widget build(BuildContext context) => Text(
     'ESA',
     style: TextStyle(
-      color: const Color(0xFF6B9DFF),
+      color: context.n.n700,
       fontSize: compact ? 15 : 26,
       fontWeight: FontWeight.w800,
       letterSpacing: 0,
@@ -1997,7 +1905,7 @@ class _UserAvatar extends StatelessWidget {
       height: 36,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        color: EsaColors.accent,
+        color: EsaColors.dN300,
       ),
       child: const Icon(LucideIcons.userRound, size: 19, color: Colors.white),
     ),

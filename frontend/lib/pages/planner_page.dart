@@ -7,7 +7,9 @@ import '../api/api_client.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
+import '../theme/esa_mobile.dart';
 import '../theme/esa_theme.dart';
+import '../widgets/esa_mobile_controls.dart';
 import '../widgets/esa_segmented.dart';
 import 'schedule_page.dart';
 
@@ -419,7 +421,7 @@ class _PlannerPageState extends State<PlannerPage> {
       PlannerTab.schedule => const SizedBox.shrink(),
     };
     if (MediaQuery.sizeOf(context).width < 600) {
-      return _mobileHeader(context, action);
+      return _mobileHeader(context);
     }
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
@@ -479,17 +481,37 @@ class _PlannerPageState extends State<PlannerPage> {
     );
   }
 
-  Widget _mobileHeader(BuildContext context, Widget action) {
-    const entries = <(PlannerTab, String)>[
-      (PlannerTab.schedule, '课表'),
-      (PlannerTab.todo, 'Todo'),
-      (PlannerTab.deadline, 'Deadline'),
-      (PlannerTab.goal, 'Goal'),
+  Widget _mobileHeader(BuildContext context) {
+    const entries = <EsaMobileTabEntry<PlannerTab>>[
+      EsaMobileTabEntry(PlannerTab.schedule, '课表'),
+      EsaMobileTabEntry(PlannerTab.todo, 'Todo'),
+      EsaMobileTabEntry(PlannerTab.deadline, 'Deadline'),
+      EsaMobileTabEntry(PlannerTab.goal, 'Goal'),
     ];
-    final showAction = _tab != PlannerTab.schedule;
+    final action = switch (_tab) {
+      PlannerTab.todo => EsaMobileIconButton(
+        key: const ValueKey('planner-add-todo'),
+        tooltip: '新建待办',
+        icon: LucideIcons.plus,
+        onPressed: _addTodo,
+      ),
+      PlannerTab.goal => EsaMobileIconButton(
+        key: const ValueKey('planner-add-goal'),
+        tooltip: '新建目标',
+        icon: LucideIcons.plus,
+        onPressed: _addGoal,
+      ),
+      PlannerTab.deadline => EsaMobileIconButton(
+        tooltip: '刷新截止时间',
+        icon: LucideIcons.refreshCw,
+        onPressed: _loadingDeadlines
+            ? null
+            : () => unawaited(_loadAssignments(force: true)),
+      ),
+      PlannerTab.schedule => null,
+    };
     return Container(
       key: const ValueKey('mobile-planner-tabs'),
-      height: 44,
       decoration: BoxDecoration(
         color: context.scheme.surface,
         border: Border(bottom: BorderSide(color: context.n.divider)),
@@ -497,50 +519,15 @@ class _PlannerPageState extends State<PlannerPage> {
       child: Row(
         children: [
           Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(left: 8),
-              child: Row(
-                children: [
-                  for (final entry in entries)
-                    InkWell(
-                      onTap: () => _selectTab(entry.$1),
-                      child: Container(
-                        constraints: const BoxConstraints(
-                          minWidth: 70,
-                          minHeight: 44,
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(
-                              color: _tab == entry.$1
-                                  ? context.scheme.primary
-                                  : Colors.transparent,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          entry.$2,
-                          style: context.texts.bodySmall?.copyWith(
-                            fontSize: 13,
-                            color: _tab == entry.$1
-                                ? context.scheme.onSurface
-                                : context.n.n600,
-                            fontWeight: _tab == entry.$1
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+            child: EsaMobileTabStrip<PlannerTab>(
+              value: _tab,
+              entries: entries,
+              onChanged: _selectTab,
+              height: EsaMobile.touchTarget,
+              minItemWidth: 72,
             ),
           ),
-          if (showAction) SizedBox(width: 52, child: Center(child: action)),
+          if (action case final action?) ...[action, const SizedBox(width: 4)],
         ],
       ),
     );
@@ -949,8 +936,8 @@ class _PlannerPageState extends State<PlannerPage> {
               children: [
                 Text(
                   '${goal.progress}%',
-                  style: const TextStyle(
-                    color: Color(0xFF4B8CFF),
+                  style: TextStyle(
+                    color: context.n.n700,
                     fontWeight: FontWeight.w700,
                   ),
                 ),

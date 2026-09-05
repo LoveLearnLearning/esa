@@ -108,3 +108,31 @@ def test_course_alias_resolves_to_canonical_course(tmp_path):
     assert store.resolve_course_name("数字电路技术") == "数字逻辑与数字电路"
     assert store.resolve_course_name("  数字 电路技术 ") == "数字逻辑与数字电路"
     assert store.resolve_course_name("不存在的课程") is None
+
+
+def test_course_map_walks_multilevel_external_prerequisites(tmp_path):
+    kg = KnowledgeGraphStore(tmp_path / "kg-cross-course.db")
+    kg.add_point("current", "当前知识点", "目标课程", 0.8)
+    kg.add_point("external", "外部前置", "先修课程", 0.5)
+    kg.add_point("external-base", "外部前置的前置", "基础课程", 0.3)
+    kg.add_prerequisite("current", "external")
+    kg.add_prerequisite("external", "external-base")
+    service = KnowledgeMapService(
+        kg_store=kg,
+        mastery_store=MasteryStore(tmp_path / "mastery-cross-course.db"),
+        evidence_store=LearningEvidenceStore(tmp_path / "evidence-cross-course.db"),
+    )
+
+    result = service.get_course_map(user_name="alice", course="目标课程")
+
+    assert {node["id"] for node in result["nodes"]} == {
+        "__course__:目标课程",
+        "current",
+        "external",
+        "external-base",
+    }
+    assert {
+        (edge["from"], edge["to"])
+        for edge in result["edges"]
+        if edge["type"] == "prerequisite"
+    } == {("external", "current"), ("external-base", "external")}

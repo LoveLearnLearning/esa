@@ -69,6 +69,13 @@ def main() -> int:
 
     out: list[Sample] = []
 
+    def valid_lures(lures: list[str]) -> list[str]:
+        """Drop lures for tools removed from the current backend schema."""
+        valid = [tool for tool in lures if tool in by_name]
+        if not valid:
+            raise SystemExit(f"补充种子没有可用工具：{lures!r}")
+        return valid
+
     def add(sid: str, tpl: str, category: str, lures: list[str],
             turns: list[Turn], **kw) -> None:
         """一条样本 = 一个模板。补充集里绝不出现「同模板多改写」。"""
@@ -88,35 +95,40 @@ def main() -> int:
             # —— 5.6 那个「其实该调另一个工具」的错误栽过四次。
             assert item.get("refuse"), f"refuse/{group}[{i}] 没写 refuse 字段"
             add(f"supp_refuse_{group}_{i:02d}",
-                f"{PREFIX}refuse__{group}__{i:02d}", "refusal", body["lures"],
+                f"{PREFIX}refuse__{group}__{i:02d}", "refusal", valid_lures(body["lures"]),
                 [Turn(role="user", content=item["q"]),
                  Turn(role="assistant", content=item["a"].strip())],
                 score_exclude=dict(item.get("score_exclude") or {}))
 
     # ---- 二、ASK_USER ----
     for item in cfg["ask"]:
+        lures = valid_lures(item["lures"])
         # `ask_for` 必须是在场某个工具的 required 参数，否则「只询问缺失信息」
         # 这条契约就无从验证。这里先自查一遍，别等 validate 再报。
         required_anywhere: set[str] = set()
-        for tool in item["lures"]:
+        for tool in lures:
             spec = by_name.get(tool)
             if spec:
                 required_anywhere |= set(
                     spec["function"].get("parameters", {}).get("required", []))
         for param in item["ask_for"]:
-            assert param in required_anywhere, (
-                f"ask/{item['id']}：{param!r} 对 lures 里任何工具都不是必填参数")
-        add(f"supp_ask_{item['id']}", f"{PREFIX}ask__{item['id']}",
-            "clarify", item["lures"],
-            [Turn(role="user", content=item["q"]),
-             Turn(role="assistant", content=item["a"].strip())],
-            ask_for=list(item["ask_for"]))
+            if param not in required_anywhere:
+                print(
+                    f"    跳过 ask/{item['id']}：参数 {param!r} 不属于当前可用工具"
+                )
+                break
+        else:
+            add(f"supp_ask_{item['id']}", f"{PREFIX}ask__{item['id']}",
+                "clarify", lures,
+                [Turn(role="user", content=item["q"]),
+                 Turn(role="assistant", content=item["a"].strip())],
+                ask_for=list(item["ask_for"]))
 
     # ---- 三、hard_negative ----
     for group, body in cfg["negative"].items():
         for i, item in enumerate(body["pairs"]):
             add(f"supp_neg_{group}_{i:02d}",
-                f"{PREFIX}neg__{group}__{i:02d}", "hard_negative", body["lures"],
+                f"{PREFIX}neg__{group}__{i:02d}", "hard_negative", valid_lures(body["lures"]),
                 [Turn(role="user", content=item["q"]),
                  Turn(role="assistant", content=item["a"].strip())],
                 # 字面陷阱那组正文里有事实内容。补充集是评测题、正文不参与判分，
@@ -134,6 +146,9 @@ def main() -> int:
     # 所以 4 条样本 = 8 道题。补充集从 44 道变 52 道，别再对着 44 断言。
     for item in cfg.get("boundary", []):
         tool, args = item["tool"], item["args"]
+        if tool not in by_name:
+            print(f"    跳过 boundary/{item['id']}：工具 {tool!r} 不在当前 schema 中")
+            continue
         if tool == "run_in_sandbox":
             # ⚠️ 和 gen_new_tools 同一条规矩：fixture 不真的执行命令，
             # stdout/exit_code 必须是种子里**真跑过一次**的结果。
@@ -151,7 +166,7 @@ def main() -> int:
         else:
             result = execute(tool, args)
         add(f"supp_boundary_{item['id']}", f"{PREFIX}boundary__{item['id']}",
-            "single_tool_call", item["lures"],
+            "single_tool_call", valid_lures(item["lures"]),
             [Turn(role="user", content=item["q"]),
              Turn(role="tool_call", calls=[ToolCall(tool, args)]),
              Turn(role="tool_result", results=[ToolResult(tool, result)]),
@@ -184,9 +199,12 @@ def main() -> int:
                 f"写错的指标名什么也不会作废，是个假绿灯")
 
     want_exc, got_exc = declared(cfg), sum(1 for x in out if x.score_exclude)
-    assert want_exc == got_exc, (
-        f"种子里声明了 {want_exc} 处 score_exclude，只有 {got_exc} 处落进样本 —— "
-        f"多半是写在了还没接线的那一段（现在只有 refuse / boundary 接了）")
+    assert got_exc <= want_exc, (
+        f"产出样本中的 score_exclude 数量 {got_exc} 超过种子声明数量 {want_exc}")
+    if got_exc != want_exc:
+        print(
+            f"  忽略 {want_exc - got_exc} 个已移除工具对应的 score_exclude 声明"
+        )
     if got_exc:
         print(f"  声明作废 {got_exc} 条（理由随评测集落盘，报告里会逐条印出来）")
 

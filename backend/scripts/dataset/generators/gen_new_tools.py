@@ -406,6 +406,9 @@ def main() -> int:
     for tool, groups in cfg.items():
         if tool == "kp_pool":
             continue
+        if tool not in all_names:
+            print(f"    跳过 {tool}：当前工具 schema 中不存在")
+            continue
         for group, phrasings in groups.items():
             if group.startswith("正例"):
                 target = POSITIVE_TOOL.get(tool, tool)

@@ -66,6 +66,8 @@ class AuthService:
         )
         if not login_state:
             return
+        if user.status != "active":
+            return
 
         session_id = str(uuid.uuid4())
 

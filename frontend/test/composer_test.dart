@@ -106,6 +106,85 @@ void main() {
     expect(find.bySemanticsLabel('发送'), findsOneWidget);
   });
 
+  testWidgets('mobile home keeps authoring and knowledge tools accessible', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    Set<KnowledgeSource>? selectedSources;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(
+          body: Composer(
+            busy: false,
+            mobileHome: true,
+            knowledgeSources: const {KnowledgeSource.personal},
+            onKnowledgeSourcesChanged: (value) => selectedSources = value,
+            onSend: (_, _) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('mobile-home-composer-tools')),
+      findsOneWidget,
+    );
+    expect(find.text('Markdown'), findsOneWidget);
+    expect(find.text('LaTeX'), findsOneWidget);
+    expect(find.byKey(const ValueKey('knowledge-source-menu')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('knowledge-source-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('knowledge-source-public')).last,
+    );
+    await tester.pump();
+    expect(selectedSources, containsAll(KnowledgeSource.values));
+
+    await tester.tapAt(const Offset(380, 20));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('插入公式'));
+    await tester.pumpAndSettle();
+    expect(find.text('插入 LaTeX 公式'), findsOneWidget);
+  });
+
+  testWidgets('mobile home composer controls share one vertical center', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(430, 932);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(
+          body: Composer(busy: false, mobileHome: true, onSend: (_, _) {}),
+        ),
+      ),
+    );
+
+    final attachment = tester.getRect(
+      find.byKey(const ValueKey('mobile-home-attachment')),
+    );
+    final input = tester.getRect(find.byKey(const ValueKey('composer-input')));
+    final voice = tester.getRect(
+      find.byKey(const ValueKey('mobile-home-voice')),
+    );
+    expect(attachment.height, 44);
+    expect(voice.height, 44);
+    expect(input.height, greaterThanOrEqualTo(44));
+    expect(attachment.center.dy, closeTo(voice.center.dy, 0.1));
+    expect(input.center.dy, closeTo(voice.center.dy, 0.1));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('inserts an inline LaTeX template at the current selection', (
     tester,
   ) async {

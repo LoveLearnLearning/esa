@@ -542,10 +542,7 @@ def check_memory_behaviour(root: Path) -> list[bool]:
         # 每条豁免都是「后端已删、我们的快照还没重生成」这个窗口期的临时状态；
         # 重生成之后该工具会从快照里消失，那时这条豁免就是死条目 —— 下面第二道
         # 检查会要求把它删掉，免得豁免表越积越长、再没人敢动。
-        DELETED_UPSTREAM = {
-            "record_answer": "2026-08-24 上游从注册表删除（CI 现在断言它不存在）；"
-                             "我们的快照仍是 c2d1f09 的 26 个，待下一轮重生成一并清掉",
-        }
+        DELETED_UPSTREAM: dict[str, str] = {}
         snapshot = json.loads(
             (root / "dataset/schemas/tool_schemas.json").read_text(encoding="utf-8"))
         live_tools = {(s.get("function", s))["name"] for s in snapshot}

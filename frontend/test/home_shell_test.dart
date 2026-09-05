@@ -5,6 +5,7 @@ import 'package:frontend/models/models.dart';
 import 'package:frontend/pages/home_shell.dart';
 import 'package:frontend/state/app_state.dart';
 import 'package:frontend/theme/esa_theme.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _ScheduleApi extends ApiClient {
@@ -515,6 +516,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('学习空间'), findsNothing);
       expect(find.byTooltip('展开侧栏'), findsOneWidget);
+      expect(
+        tester.getSize(
+          find.byKey(const ValueKey('desktop-sidebar-reveal-handle')),
+        ),
+        const Size(30, 36),
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey(StudentSection.home))).dx,
+        72,
+      );
       expect(tester.takeException(), isNull);
 
       await tester.tap(find.byTooltip('展开侧栏'));
@@ -524,13 +535,15 @@ void main() {
     },
   );
 
-  testWidgets('mobile timetable defaults to today and offers readable views', (
+  testWidgets('mobile timetable keeps the complete week and all controls', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
     final today = DateTime.now().weekday;
     final nextDay = today % 7 + 1;
@@ -565,31 +578,36 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('日程'));
     await tester.pumpAndSettle();
-    expect(find.text('高等数学'), findsOneWidget);
-    expect(find.text('操作系统'), findsNothing);
-    expect(
-      find.byKey(const ValueKey('mobile-schedule-view-today')),
-      findsOneWidget,
-    );
-    expect(find.textContaining('08:00'), findsOneWidget);
-    expect(find.textContaining('09:40'), findsOneWidget);
-    await tester.tap(
-      find.byKey(const ValueKey('mobile-schedule-view-three-day')),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('操作系统'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('mobile-schedule-view-week')));
-    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('schedule-week-grid')), findsOneWidget);
+    for (var weekday = 1; weekday <= 7; weekday++) {
+      expect(find.byKey(ValueKey('schedule-weekday-$weekday')), findsOneWidget);
+    }
+    expect(find.text('高等数学'), findsOneWidget);
+    expect(find.text('操作系统'), findsOneWidget);
+    expect(find.byKey(const ValueKey('schedule-table-menu')), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('mobile-schedule-week-scroll')),
+      find.byKey(const ValueKey('mobile-schedule-week-picker')),
       findsOneWidget,
     );
-    expect(tester.getSize(find.text('高等数学')).width, greaterThan(48));
     expect(
       find.byKey(const ValueKey('mobile-schedule-add-course')),
       findsOneWidget,
     );
+    expect(find.byKey(const ValueKey('mobile-schedule-more')), findsOneWidget);
+
+    await tester.tap(find.text('高等数学'));
+    await tester.pumpAndSettle();
+    expect(find.text('编辑课程'), findsOneWidget);
+    expect(find.byKey(const ValueKey('schedule-course-name')), findsOneWidget);
+    await tester.tap(find.byIcon(LucideIcons.x).last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('mobile-schedule-more')));
+    await tester.pumpAndSettle();
+    expect(find.text('从文件导入'), findsOneWidget);
+    expect(find.text('从华科教务导入'), findsOneWidget);
+    expect(find.text('课表设置'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -656,8 +674,11 @@ void main() {
     expect(find.text('解释一个概念'), findsOneWidget);
     expect(find.text('帮我规划今天'), findsOneWidget);
     expect(find.text('继续上次学习'), findsOneWidget);
-    expect(find.byTooltip('历史对话'), findsNothing);
-    expect(find.byTooltip('更多'), findsOneWidget);
+    expect(find.byTooltip('长期记忆'), findsOneWidget);
+    expect(find.byTooltip('待确认动作'), findsOneWidget);
+    expect(find.byTooltip('历史对话'), findsOneWidget);
+    expect(find.byTooltip('设置与账户'), findsOneWidget);
+    expect(find.byTooltip('更多'), findsNothing);
 
     final cardSize = tester.getSize(
       find.byKey(const ValueKey('continue-learning-card')),
@@ -671,6 +692,21 @@ void main() {
       find.byKey(const ValueKey('student-learning-destination')),
     );
     expect(composerRect.bottom, lessThanOrEqualTo(bottomBarRect.top));
+    final attachmentSize = tester.getSize(
+      find.byKey(const ValueKey('mobile-home-attachment')),
+    );
+    expect(attachmentSize.width, greaterThanOrEqualTo(44));
+    expect(attachmentSize.height, greaterThanOrEqualTo(44));
+    final voiceSize = tester.getSize(
+      find.byKey(const ValueKey('mobile-home-voice')),
+    );
+    expect(voiceSize.width, greaterThanOrEqualTo(44));
+    expect(voiceSize.height, greaterThanOrEqualTo(44));
+    final suggestionTarget = find.ancestor(
+      of: find.text('解释一个概念'),
+      matching: find.byType(InkWell),
+    );
+    expect(tester.getSize(suggestionTarget.first).height, 44);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byKey(const ValueKey('home-section-action-近期')));
@@ -761,9 +797,7 @@ void main() {
     await tester.pumpWidget(app(state));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('更多'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('历史对话'));
+    await tester.tap(find.byTooltip('历史对话'));
     await tester.pumpAndSettle();
 
     expect(find.text('搜索历史对话'), findsOneWidget);

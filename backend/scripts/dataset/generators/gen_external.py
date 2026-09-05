@@ -1,11 +1,10 @@
 # backend/scripts/dataset/generators/gen_external.py
 
-"""外部工具生成器：arxiv_search / get_time / get_weather / web_search。
+"""外部工具生成器：arxiv_search / get_time / web_search。
 
 四个工具性质不同，处理方式也不同：
   arxiv_search  观测值是真实论文（data/cache/arxiv_real.json），绝不编造
   get_time      后端是纯函数，可完全复刻
-  get_weather   后端是硬编码桩，可完全复刻（但因此只能训"何时该调"）
   web_search    没有真实 SearXNG，只做错误恢复样本；报错文案逐字取自后端源码
 
 顺带补上目前为 0 的 RECOVER_TOOL_ERROR 类。
@@ -228,7 +227,6 @@ def main() -> int:
 
     gen_arxiv(cfg, version, rng, all_names, out)
     gen_time(cfg, version, rng, all_names, out)
-    gen_weather(cfg, version, rng, all_names, out)
     gen_web_search_errors(cfg, version, rng, all_names, out)
 
     dump_samples(out, OUT)

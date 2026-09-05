@@ -2245,7 +2245,7 @@ class _ContinueLearningSection extends StatelessWidget {
           child: Icon(
             LucideIcons.bookOpenCheck,
             size: 20,
-            color: const Color(0xFF72A5FF),
+            color: context.n.n700,
           ),
         ),
         const SizedBox(width: 10),
@@ -2620,16 +2620,16 @@ class _EmptyState extends StatelessWidget {
   final Widget? mobileComposer;
 
   static const _cards = [
-    (LucideIcons.calendarCheck2, Color(0xFF3478F6), TaskMode.studyPlan),
+    (LucideIcons.calendarCheck2, Color(0xFF9A9AA2), TaskMode.studyPlan),
     (LucideIcons.lightbulb, Color(0xFF20C85A), TaskMode.concept),
-    (LucideIcons.penLine, Color(0xFF8B5CF6), TaskMode.reviewHomework),
+    (LucideIcons.penLine, Color(0xFF77777F), TaskMode.reviewHomework),
   ];
 
   static const _researchCards = [
     (LucideIcons.filePenLine, Color(0xFF20C85A), TaskMode.academicWriting),
     (
       LucideIcons.chartNoAxesCombined,
-      Color(0xFF8B5CF6),
+      Color(0xFF77777F),
       TaskMode.researchDataAnalysis,
     ),
     (LucideIcons.flaskConical, Color(0xFFFFA514), TaskMode.researchPlanning),
@@ -2660,7 +2660,7 @@ class _EmptyState extends StatelessWidget {
                     TextSpan(text: '你好，我是 '),
                     TextSpan(
                       text: 'ESA',
-                      style: TextStyle(color: Color(0xFF4387FF)),
+                      style: TextStyle(color: Color(0xFFD8D8DD)),
                     ),
                     TextSpan(text: ' 学习助手'),
                   ],
@@ -2828,7 +2828,7 @@ class _AssistantOrb extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: const Color(0xFF1E65E8).withValues(alpha: .25),
+              color: const Color(0xFF66666D).withValues(alpha: .35),
             ),
           ),
         ),
@@ -2838,14 +2838,10 @@ class _AssistantOrb extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: const Color(0xFF2476FF).withValues(alpha: .5),
+              color: const Color(0xFF8A8A92).withValues(alpha: .65),
             ),
             boxShadow: const [
-              BoxShadow(
-                color: Color(0x553878FF),
-                blurRadius: 28,
-                spreadRadius: 2,
-              ),
+              BoxShadow(color: Color(0x33000000), blurRadius: 18),
             ],
           ),
         ),
@@ -2854,9 +2850,7 @@ class _AssistantOrb extends StatelessWidget {
           height: compact ? 46 : 58,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            gradient: LinearGradient(
-              colors: [Color(0xFF61C9FF), Color(0xFF365BFF)],
-            ),
+            color: Color(0xFF35353A),
           ),
           child: const Icon(
             LucideIcons.messageCircleMore,

@@ -35,3 +35,45 @@ jobs:
 
       - name: Unit tests
         run: python -m pytest
+
+      - name: Dataset contract tests
+        working-directory: backend/scripts/dataset
+        run: |
+          for test in \
+            tests/test_fixture_contract.py \
+            tests/test_parser_compat.py \
+            tests/test_eval_scoring.py \
+            tests/test_review_ledger.py \
+            tests/test_validator.py \
+            tests/test_llamafactory_ingest.py
+          do
+            if [ "$test" = "tests/test_llamafactory_ingest.py" ] && [ ! -d "$HOME/Downloads/llamafactory-0.9.4" ]; then
+              echo "Skipping LLaMA-Factory ingestion gate: external checkout is not present"
+              continue
+            fi
+            PYTHONPATH=. python "$test"
+          done
+
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        working-directory: frontend
+        run: flutter pub get
+
+      - name: Static analysis
+        working-directory: frontend
+        run: flutter analyze
+
+      - name: Flutter tests
+        working-directory: frontend
+        run: flutter test

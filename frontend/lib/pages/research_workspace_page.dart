@@ -4,6 +4,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
+import '../theme/esa_mobile.dart';
+import '../widgets/esa_mobile_controls.dart';
 import 'research_project_page.dart';
 
 enum _ResearchFilter { all, active, archived }
@@ -219,7 +221,7 @@ class _ResearchWorkspacePageState extends State<ResearchWorkspacePage> {
       body: Column(
         children: [
           Container(
-            height: 52,
+            height: EsaMobile.topBarHeight,
             padding: const EdgeInsets.only(left: 16, right: 4),
             decoration: BoxDecoration(
               color: context.scheme.surface,
@@ -236,35 +238,28 @@ class _ResearchWorkspacePageState extends State<ResearchWorkspacePage> {
                     ),
                   ),
                 ),
-                IconButton(
+                EsaMobileIconButton(
                   key: const ValueKey('research-search-toggle'),
                   tooltip: '搜索项目',
+                  icon: _searchVisible ? LucideIcons.x : LucideIcons.search,
+                  selected: _searchVisible,
                   onPressed: () =>
                       setState(() => _searchVisible = !_searchVisible),
-                  constraints: const BoxConstraints.tightFor(
-                    width: 44,
-                    height: 44,
-                  ),
-                  icon: Icon(
-                    _searchVisible ? LucideIcons.x : LucideIcons.search,
-                    size: 20,
-                  ),
                 ),
-                IconButton(
+                EsaMobileIconButton(
                   key: const ValueKey('new-research-project'),
                   tooltip: '新建项目',
+                  icon: LucideIcons.plus,
                   onPressed: _createProject,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 44,
-                    height: 44,
-                  ),
-                  icon: const Icon(LucideIcons.plus, size: 21),
                 ),
               ],
             ),
           ),
           AnimatedSize(
-            duration: const Duration(milliseconds: 160),
+            duration: EsaMobile.motion(
+              context,
+              duration: const Duration(milliseconds: 160),
+            ),
             child: !_searchVisible
                 ? const SizedBox.shrink()
                 : Padding(
@@ -284,29 +279,16 @@ class _ResearchWorkspacePageState extends State<ResearchWorkspacePage> {
                     ),
                   ),
           ),
-          SizedBox(
-            height: 44,
-            child: Row(
-              children: [
-                const SizedBox(width: 8),
-                _ResearchFilterButton(
-                  label: '全部',
-                  selected: _filter == _ResearchFilter.all,
-                  onTap: () => setState(() => _filter = _ResearchFilter.all),
-                ),
-                _ResearchFilterButton(
-                  label: '进行中',
-                  selected: _filter == _ResearchFilter.active,
-                  onTap: () => setState(() => _filter = _ResearchFilter.active),
-                ),
-                _ResearchFilterButton(
-                  label: '已归档',
-                  selected: _filter == _ResearchFilter.archived,
-                  onTap: () =>
-                      setState(() => _filter = _ResearchFilter.archived),
-                ),
-              ],
-            ),
+          EsaMobileTabStrip<_ResearchFilter>(
+            value: _filter,
+            entries: const [
+              EsaMobileTabEntry(_ResearchFilter.all, '全部'),
+              EsaMobileTabEntry(_ResearchFilter.active, '进行中'),
+              EsaMobileTabEntry(_ResearchFilter.archived, '已归档'),
+            ],
+            onChanged: (value) => setState(() => _filter = value),
+            height: EsaMobile.touchTarget,
+            minItemWidth: 76,
           ),
           Expanded(
             child: app.loadingResearchProjects && app.researchProjects.isEmpty
@@ -353,44 +335,6 @@ class _ResearchWorkspacePageState extends State<ResearchWorkspacePage> {
       ),
     );
   }
-}
-
-class _ResearchFilterButton extends StatelessWidget {
-  const _ResearchFilterButton({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    child: Container(
-      constraints: const BoxConstraints(minWidth: 76, minHeight: 44),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: selected ? context.scheme.primary : Colors.transparent,
-            width: 2,
-          ),
-        ),
-      ),
-      child: Text(
-        label,
-        style: context.texts.bodySmall?.copyWith(
-          fontSize: 13,
-          color: selected ? context.scheme.onSurface : context.n.n600,
-          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-        ),
-      ),
-    ),
-  );
 }
 
 class _MobileProjectRow extends StatelessWidget {

@@ -51,6 +51,22 @@ def get_current_session(
                 logger.warning("更新过期会话的离线状态失败", exc_info=True)
         raise HTTPException(401, "会话过期")
 
+    user_store = getattr(request.app.state, "user_store", None)
+    if user_store is not None:
+        user = user_store.get_by_id(session.user_id)
+        if user is None:
+            session_store.revoke(session.session_id)
+            raise HTTPException(401, "用户不存在")
+        if user.status != "active":
+            session_store.revoke(session.session_id)
+            presence_store = getattr(request.app.state, "user_presence_store", None)
+            if isinstance(presence_store, UserPresenceStore):
+                try:
+                    presence_store.mark_offline(session.user_id)
+                except sqlite3.Error:
+                    logger.warning("更新停用用户的离线状态失败", exc_info=True)
+            raise HTTPException(403, "账户已停用")
+
     presence_store = getattr(request.app.state, "user_presence_store", None)
     if isinstance(presence_store, UserPresenceStore):
         try:

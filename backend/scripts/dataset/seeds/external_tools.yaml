@@ -1,4 +1,4 @@
-# 外部工具种子库：arxiv_search / get_time / get_weather / web_search
+# 外部工具种子库：arxiv_search / get_time / web_search
 #
 # 这四个和学情类工具的性质不同：它们的返回值要么来自外部世界，要么随时间变化。
 # 处理原则各不相同，写在各自段落里。

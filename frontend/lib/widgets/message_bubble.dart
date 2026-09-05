@@ -120,20 +120,9 @@ class _UserBubbleState extends State<UserBubble> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
               decoration: BoxDecoration(
-                gradient: context.isDark
-                    ? const LinearGradient(
-                        colors: [Color(0xFF132B55), Color(0xFF0E2344)],
-                      )
-                    : LinearGradient(
-                        colors: [
-                          EsaColors.accent.withValues(alpha: 0.88),
-                          EsaColors.accent600.withValues(alpha: 0.92),
-                        ],
-                      ),
+                color: context.isDark ? context.n.n200 : EsaColors.accent100,
                 border: Border.all(
-                  color: context.isDark
-                      ? const Color(0xFF24436E)
-                      : EsaColors.accent.withValues(alpha: 0.5),
+                  color: context.isDark ? context.n.n300 : EsaColors.accent300,
                 ),
                 borderRadius: BorderRadius.circular(14),
               ),
