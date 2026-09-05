@@ -164,11 +164,11 @@ refuse:
 # ⚠️ 追问正文里不能出现用户没说过的两位数以上数字，那叫替用户猜参数。
 # ===========================================================================
 ask:
-  - id: 缺city
-    lures: [get_weather, get_time, recommend_practice]
-    ask_for: [city]
-    q: "明天要不要带伞？"
-    a: "帮你查之前先确认一下，你在哪个城市？"
+  # 🪦 `缺city`（「明天要不要带伞？」）随上游删 `get_weather` 一并移除：
+  #    在场工具里再没有一个的 required 参数是 `city`，
+  #    正确行为已经不是「追问城市」了，留着就是一道答案错了的题。
+  #    ⚠️ 代价：补充集 ASK_USER 从 4 个模板降到 3 个，而且丢的是唯一一条
+  #    **学习场景之外**的追问题（跨场景泛化的对照点，见 external_tools.yaml 墓碑）。
   - id: 缺kp_id_掌握度
     lures: [get_mastery_level, get_mastery_report, recommend_practice]
     ask_for: [kp_id]
@@ -278,7 +278,7 @@ negative:
   # C. 词面陷阱：句子里出现了工具名对应的词，但问的是**概念**，不是那次操作。
   #    最后一条最贴当前的失败模式 —— 一见「记忆」两个字就去调记忆工具。
   字面陷阱:
-    lures: [get_mastery_level, bitwise_calculator, arxiv_search, retrieve_knowledge, recommend_practice, get_weather, search_core_memories, get_core_memories, calculator, save_core_memory, delete_core_memory]
+    lures: [get_mastery_level, bitwise_calculator, arxiv_search, retrieve_knowledge, recommend_practice, search_core_memories, get_core_memories, calculator, save_core_memory, delete_core_memory]
     pairs:
       - q: "「掌握度」这个指标一般是怎么算出来的？"
         a: "常见做法是把每次练习的对错、用了多少提示、隔了多久折算成一个估计值，答对往上走，久不复习会衰减。你是想了解原理，还是想看自己的？"
@@ -402,29 +402,24 @@ boundary:
   # ⚠️ 三条都声明了 score_exclude：query / command 都是**自由文本**，
   #    逐字精确匹配没有唯一正确答案 —— 和 `明确要求_保存偏好` 那条 content 同一类问题。
   #    该看的是工具选择准确率。
-  - id: 新工具_默认走联合检索
-    tool: retrieve_federated_knowledge
+  # 🔴 2026-08-26 上游 c80bad7 之后重写：原来这里是两条
+  #    「默认走联合检索」/「明确只查个人库」，教的是**模型该选哪个库**。
+  #    那个决策已经不由模型做了（前端选，进可信执行上下文），两条一起作废。
+  #    换成一条：不管用户怎么说范围，都只调 retrieve_knowledge，别去找别的工具。
+  - id: 新工具_范围由前端定
+    tool: retrieve_knowledge
     args: { query: "页面置换算法" }
     score_exclude:
       参数完全匹配率: "query 是自由文本检索词，逐字精确匹配没有唯一答案；该看的是工具选择准确率"
       工具调用完全正确率: "同上——它含参数匹配这一半，会跟着一起失真"
-    lures: [retrieve_federated_knowledge, retrieve_personal_knowledge, retrieve_knowledge, get_knowledge_base_stats]
-    q: "帮我讲讲页面置换算法的原理"
+    lures: [retrieve_knowledge, get_knowledge_base_stats, load_skill, web_search]
+    q: "只在我上传的那份资料里讲讲页面置换算法的原理"
     a: |
-      两边知识库这次都没接上（个人库不可用、公共库检索失败），所以我没法引用资料原文。
-      要我按通用理解先讲一遍吗？或者你把相关材料贴过来，我基于它讲。
-  - id: 新工具_明确只查个人库
-    tool: retrieve_personal_knowledge
-    args: { query: "拥塞控制" }
-    score_exclude:
-      参数完全匹配率: "同上，query 是自由文本"
-      工具调用完全正确率: "同上"
-    lures: [retrieve_personal_knowledge, retrieve_federated_knowledge, retrieve_knowledge]
-    q: "只在我上传的那份资料里找一下拥塞控制是怎么讲的"
-    a: |
-      个人知识库现在不可用，你上传的资料我这边读不到。
-      要么等它恢复，要么你把想看的那段贴过来，我基于它讲。
-  # stdout 是 2026-08-22 本机真跑出来的：python3 -c "print(2**10)" → 1024
+      检索回来 0 条（degraded: personal_knowledge_base_unavailable）——你选的个人知识库这次没连上，
+      所以我没法引用你那份资料的原文。
+
+      要我按通用理解先讲一遍页面置换吗？那样讲的东西不带出处，我会标明。
+      或者你把相关那几页贴过来，我基于它讲。
   - id: 新工具_沙箱跑代码
     tool: run_in_sandbox
     args: { command: 'python3 -c "print(2**10)"' }

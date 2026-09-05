@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "captured_at": "2026-08-19T12:15:24+00:00",
+    "captured_at": "2026-09-02T04:57:44+00:00",
     "source": "github.com/LoveLearnLearning/esa",
-    "source_repo": "local-clone@2aea243",
+    "source_repo": "local-clone@d172b62",
     "workspace": "learning",
     "layer": "BoundToolExecutor.execute",
     "note": "由 dataset/tools/capture_memory_tools.py 在临时 SQLite 上跑真实 CapabilityRuntime.compile().bind().execute() 产出，禁止手改。抓的是**模型真正看得见的那一层**（线上再套一层 json.dumps）。memory_id 与各时间戳每次抓取都会变，所以**只用它钉字段名和结构，不要把具体值写进种子**；命中判定用 search_matrix（只存 memory_key，稳定可复现）。"
@@ -21,14 +21,13 @@
       "get_review_timing",
       "get_time",
       "get_weak_prerequisites",
-      "get_weather",
       "load_skill",
       "math_solver",
       "propose_core_memory",
       "recommend_practice",
-      "record_answer",
       "record_learning_evidence",
       "retrieve_knowledge",
+      "run_in_sandbox",
       "save_core_memory",
       "search_core_memories",
       "web_search"
@@ -45,13 +44,12 @@
       "get_review_timing",
       "get_time",
       "get_weak_prerequisites",
-      "get_weather",
       "load_skill",
       "math_solver",
       "recommend_practice",
-      "record_answer",
       "record_learning_evidence",
       "retrieve_knowledge",
+      "run_in_sandbox",
       "search_core_memories",
       "web_search"
     ],
@@ -66,13 +64,12 @@
       "get_review_timing",
       "get_time",
       "get_weak_prerequisites",
-      "get_weather",
       "load_skill",
       "math_solver",
       "recommend_practice",
-      "record_answer",
       "record_learning_evidence",
       "retrieve_knowledge",
+      "run_in_sandbox",
       "web_search"
     ]
   },
@@ -119,7 +116,7 @@
       "result": {
         "status": "created",
         "memory": {
-          "memory_id": "87bf2f24d571424dbfcf30f080ed38a8",
+          "memory_id": "8d887d960df64bfdb2e04980a9b34b3f",
           "user_id": "stu_demo",
           "memory_key": "learning_goal",
           "content": "这学期把数据结构和算法吃透，准备考研",
@@ -129,11 +126,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.519711+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.625852+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.519711+00:00",
-          "updated_at": "2026-08-19T12:15:24.519711+00:00"
+          "created_at": "2026-09-02T04:57:44.625852+00:00",
+          "updated_at": "2026-09-02T04:57:44.625852+00:00"
         }
       }
     },
@@ -149,7 +146,7 @@
       "result": {
         "status": "created",
         "memory": {
-          "memory_id": "b6e9b25733f748d98678c648884d4168",
+          "memory_id": "bbc843429bf24fdb8c2a4f8a5ebf17d3",
           "user_id": "stu_demo",
           "memory_key": "response_style",
           "content": "喜欢先看直观例子，再看公式推导",
@@ -159,11 +156,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.521227+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.627652+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.521227+00:00",
-          "updated_at": "2026-08-19T12:15:24.521227+00:00"
+          "created_at": "2026-09-02T04:57:44.627652+00:00",
+          "updated_at": "2026-09-02T04:57:44.627652+00:00"
         }
       }
     },
@@ -179,7 +176,7 @@
       "result": {
         "status": "created",
         "memory": {
-          "memory_id": "ee954926cbf346a880aaed7055803b22",
+          "memory_id": "bf02de3601124284a14f1aec70d37950",
           "user_id": "stu_demo",
           "memory_key": "major_info",
           "content": "软件工程专业大三",
@@ -189,11 +186,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.522581+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.629379+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.522581+00:00",
-          "updated_at": "2026-08-19T12:15:24.522581+00:00"
+          "created_at": "2026-09-02T04:57:44.629379+00:00",
+          "updated_at": "2026-09-02T04:57:44.629379+00:00"
         }
       }
     },
@@ -209,7 +206,7 @@
       "result": {
         "status": "created",
         "memory": {
-          "memory_id": "23de45d9e6754b61b73936da5abb7a71",
+          "memory_id": "7f2903801b26433597383751acb80fc6",
           "user_id": "stu_demo",
           "memory_key": "weak_topics",
           "content": "图论相关的知识点普遍薄弱",
@@ -219,11 +216,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.523834+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.631015+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.523834+00:00",
-          "updated_at": "2026-08-19T12:15:24.523834+00:00"
+          "created_at": "2026-09-02T04:57:44.631015+00:00",
+          "updated_at": "2026-09-02T04:57:44.631015+00:00"
         }
       }
     },
@@ -239,7 +236,7 @@
       "result": {
         "status": "created",
         "memory": {
-          "memory_id": "c2b112b79f83451180b6d498d6743b65",
+          "memory_id": "1e0b046d73cf48cc9a64fa38d30d5416",
           "user_id": "stu_demo",
           "memory_key": "exam_schedule",
           "content": "期末考试从第 16 周开始",
@@ -249,11 +246,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.525264+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.632639+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.525264+00:00",
-          "updated_at": "2026-08-19T12:15:24.525264+00:00"
+          "created_at": "2026-09-02T04:57:44.632639+00:00",
+          "updated_at": "2026-09-02T04:57:44.632639+00:00"
         }
       }
     },
@@ -263,7 +260,7 @@
       "arguments": {},
       "result": [
         {
-          "memory_id": "c2b112b79f83451180b6d498d6743b65",
+          "memory_id": "1e0b046d73cf48cc9a64fa38d30d5416",
           "user_id": "stu_demo",
           "memory_key": "exam_schedule",
           "content": "期末考试从第 16 周开始",
@@ -273,14 +270,14 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.525264+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.632639+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.525264+00:00",
-          "updated_at": "2026-08-19T12:15:24.525264+00:00"
+          "created_at": "2026-09-02T04:57:44.632639+00:00",
+          "updated_at": "2026-09-02T04:57:44.632639+00:00"
         },
         {
-          "memory_id": "23de45d9e6754b61b73936da5abb7a71",
+          "memory_id": "7f2903801b26433597383751acb80fc6",
           "user_id": "stu_demo",
           "memory_key": "weak_topics",
           "content": "图论相关的知识点普遍薄弱",
@@ -290,14 +287,14 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.523834+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.631015+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.523834+00:00",
-          "updated_at": "2026-08-19T12:15:24.523834+00:00"
+          "created_at": "2026-09-02T04:57:44.631015+00:00",
+          "updated_at": "2026-09-02T04:57:44.631015+00:00"
         },
         {
-          "memory_id": "ee954926cbf346a880aaed7055803b22",
+          "memory_id": "bf02de3601124284a14f1aec70d37950",
           "user_id": "stu_demo",
           "memory_key": "major_info",
           "content": "软件工程专业大三",
@@ -307,14 +304,14 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.522581+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.629379+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.522581+00:00",
-          "updated_at": "2026-08-19T12:15:24.522581+00:00"
+          "created_at": "2026-09-02T04:57:44.629379+00:00",
+          "updated_at": "2026-09-02T04:57:44.629379+00:00"
         },
         {
-          "memory_id": "b6e9b25733f748d98678c648884d4168",
+          "memory_id": "bbc843429bf24fdb8c2a4f8a5ebf17d3",
           "user_id": "stu_demo",
           "memory_key": "response_style",
           "content": "喜欢先看直观例子，再看公式推导",
@@ -324,14 +321,14 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.521227+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.627652+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.521227+00:00",
-          "updated_at": "2026-08-19T12:15:24.521227+00:00"
+          "created_at": "2026-09-02T04:57:44.627652+00:00",
+          "updated_at": "2026-09-02T04:57:44.627652+00:00"
         },
         {
-          "memory_id": "87bf2f24d571424dbfcf30f080ed38a8",
+          "memory_id": "8d887d960df64bfdb2e04980a9b34b3f",
           "user_id": "stu_demo",
           "memory_key": "learning_goal",
           "content": "这学期把数据结构和算法吃透，准备考研",
@@ -341,11 +338,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.519711+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.625852+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.519711+00:00",
-          "updated_at": "2026-08-19T12:15:24.519711+00:00"
+          "created_at": "2026-09-02T04:57:44.625852+00:00",
+          "updated_at": "2026-09-02T04:57:44.625852+00:00"
         }
       ]
     },
@@ -376,7 +373,7 @@
       },
       "result": [
         {
-          "memory_id": "ee954926cbf346a880aaed7055803b22",
+          "memory_id": "bf02de3601124284a14f1aec70d37950",
           "user_id": "stu_demo",
           "memory_key": "major_info",
           "content": "软件工程专业大三",
@@ -386,11 +383,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.522581+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.629379+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.522581+00:00",
-          "updated_at": "2026-08-19T12:15:24.522581+00:00",
+          "created_at": "2026-09-02T04:57:44.629379+00:00",
+          "updated_at": "2026-09-02T04:57:44.629379+00:00",
           "score": 9.0,
           "estimated_tokens": 3
         }
@@ -414,7 +411,7 @@
       },
       "result": [
         {
-          "memory_id": "23de45d9e6754b61b73936da5abb7a71",
+          "memory_id": "7f2903801b26433597383751acb80fc6",
           "user_id": "stu_demo",
           "memory_key": "weak_topics",
           "content": "图论相关的知识点普遍薄弱",
@@ -424,11 +421,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.523834+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.631015+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.523834+00:00",
-          "updated_at": "2026-08-19T12:15:24.523834+00:00",
+          "created_at": "2026-09-02T04:57:44.631015+00:00",
+          "updated_at": "2026-09-02T04:57:44.631015+00:00",
           "score": 9.0,
           "estimated_tokens": 4
         }
@@ -443,7 +440,7 @@
       },
       "result": [
         {
-          "memory_id": "c2b112b79f83451180b6d498d6743b65",
+          "memory_id": "1e0b046d73cf48cc9a64fa38d30d5416",
           "user_id": "stu_demo",
           "memory_key": "exam_schedule",
           "content": "期末考试从第 16 周开始",
@@ -453,11 +450,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.525264+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.632639+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.525264+00:00",
-          "updated_at": "2026-08-19T12:15:24.525264+00:00",
+          "created_at": "2026-09-02T04:57:44.632639+00:00",
+          "updated_at": "2026-09-02T04:57:44.632639+00:00",
           "score": 9.0,
           "estimated_tokens": 5
         }
@@ -511,7 +508,7 @@
       "result": {
         "status": "created",
         "memory": {
-          "memory_id": "49b516ac1d394dbb8b9e91703289788a",
+          "memory_id": "8a67ad3da559481d9dff9cd8f1ee18b0",
           "user_id": "stu_demo",
           "memory_key": "study_time_preference",
           "content": "倾向晚上学习",
@@ -521,11 +518,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.547686+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.661569+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.547686+00:00",
-          "updated_at": "2026-08-19T12:15:24.547686+00:00"
+          "created_at": "2026-09-02T04:57:44.661569+00:00",
+          "updated_at": "2026-09-02T04:57:44.661569+00:00"
         }
       }
     },
@@ -541,7 +538,7 @@
       "result": {
         "status": "unchanged",
         "memory": {
-          "memory_id": "b6e9b25733f748d98678c648884d4168",
+          "memory_id": "bbc843429bf24fdb8c2a4f8a5ebf17d3",
           "user_id": "stu_demo",
           "memory_key": "response_style",
           "content": "喜欢先看直观例子，再看公式推导",
@@ -551,11 +548,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.521227+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.627652+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.521227+00:00",
-          "updated_at": "2026-08-19T12:15:24.521227+00:00"
+          "created_at": "2026-09-02T04:57:44.627652+00:00",
+          "updated_at": "2026-09-02T04:57:44.627652+00:00"
         }
       }
     },
@@ -571,8 +568,8 @@
       "result": {
         "status": "confirmation_required",
         "candidate": {
-          "candidate_id": "db3f9ed44480486792466c24a36634e8",
-          "memory_id": "b6e9b25733f748d98678c648884d4168",
+          "candidate_id": "5ae04e77799f4c7dbd6e913beaad8afe",
+          "memory_id": "bbc843429bf24fdb8c2a4f8a5ebf17d3",
           "memory_key": "response_style",
           "proposed_content": "改成先看公式推导再看例子",
           "category": "preference",
@@ -582,9 +579,9 @@
           "status": "pending",
           "expected_revision": 1,
           "resulting_memory_id": null,
-          "created_at": "2026-08-19T12:15:24.549673+00:00",
+          "created_at": "2026-09-02T04:57:44.663808+00:00",
           "decided_at": null,
-          "expires_at": "2026-09-18T12:15:24.549664+00:00"
+          "expires_at": "2026-10-02T04:57:44.663800+00:00"
         }
       }
     },
@@ -599,9 +596,12 @@
       "branch": "sensitive",
       "result": {
         "ok": false,
+        "error_code": "memory_policy_denied",
         "error": "memory_policy_denied",
+        "retryable": false,
         "tool": "save_core_memory",
-        "detail": "sensitive credentials cannot be stored"
+        "attempt": 1,
+        "message": "当前记忆策略不允许执行该工具"
       }
     },
     {
@@ -615,9 +615,12 @@
       "branch": "empty_content",
       "result": {
         "ok": false,
-        "error": "tool_execution_error",
+        "error_code": "invalid_tool_arguments",
+        "error": "invalid_tool_arguments",
+        "retryable": false,
         "tool": "save_core_memory",
-        "detail": "memory content cannot be empty"
+        "attempt": 1,
+        "message": "工具参数无效"
       }
     },
     {
@@ -632,7 +635,7 @@
       "result": {
         "status": "created",
         "memory": {
-          "memory_id": "661ff20acbd04e318c553d8035cae0a5",
+          "memory_id": "f23284d1562e460ba519aa05142e750c",
           "user_id": "stu_demo",
           "memory_key": "preferred_code_language",
           "content": "平时写 Python",
@@ -642,11 +645,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.552138+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.666627+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.552138+00:00",
-          "updated_at": "2026-08-19T12:15:24.552138+00:00"
+          "created_at": "2026-09-02T04:57:44.666627+00:00",
+          "updated_at": "2026-09-02T04:57:44.666627+00:00"
         }
       }
     },
@@ -661,7 +664,7 @@
       "result": {
         "status": "confirmation_required",
         "candidate": {
-          "candidate_id": "30e6afaa16d74d69b4b7ab3c1122cf1c",
+          "candidate_id": "08a5ccab75674853b47df9285cf4a294",
           "memory_id": null,
           "memory_key": "study_pace",
           "proposed_content": "倾向每天固定两小时",
@@ -672,9 +675,9 @@
           "status": "pending",
           "expected_revision": null,
           "resulting_memory_id": null,
-          "created_at": "2026-08-19T12:15:24.553414+00:00",
+          "created_at": "2026-09-02T04:57:44.668164+00:00",
           "decided_at": null,
-          "expires_at": "2026-09-18T12:15:24.553407+00:00"
+          "expires_at": "2026-10-02T04:57:44.668157+00:00"
         }
       }
     },
@@ -682,7 +685,7 @@
       "mode": "normal",
       "tool": "delete_core_memory",
       "arguments": {
-        "memory_id": "c2b112b79f83451180b6d498d6743b65"
+        "memory_id": "1e0b046d73cf48cc9a64fa38d30d5416"
       },
       "branch": "ok",
       "result": {
@@ -696,9 +699,14 @@
         "memory_id": "does-not-exist"
       },
       "branch": "missing",
-      "raises": {
-        "type": "KeyError",
-        "message": "'does-not-exist'"
+      "result": {
+        "ok": false,
+        "error_code": "tool_internal_error",
+        "error": "tool_internal_error",
+        "retryable": false,
+        "tool": "delete_core_memory",
+        "attempt": 1,
+        "message": "工具暂时无法完成请求，请稍后重试"
       }
     },
     {
@@ -710,7 +718,7 @@
       },
       "result": [
         {
-          "memory_id": "49b516ac1d394dbb8b9e91703289788a",
+          "memory_id": "8a67ad3da559481d9dff9cd8f1ee18b0",
           "user_id": "stu_demo",
           "memory_key": "study_time_preference",
           "content": "倾向晚上学习",
@@ -720,11 +728,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.547686+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.661569+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.547686+00:00",
-          "updated_at": "2026-08-19T12:15:24.547686+00:00",
+          "created_at": "2026-09-02T04:57:44.661569+00:00",
+          "updated_at": "2026-09-02T04:57:44.661569+00:00",
           "score": 1.0,
           "estimated_tokens": 2
         }
@@ -736,7 +744,7 @@
       "arguments": {},
       "result": [
         {
-          "memory_id": "661ff20acbd04e318c553d8035cae0a5",
+          "memory_id": "f23284d1562e460ba519aa05142e750c",
           "user_id": "stu_demo",
           "memory_key": "preferred_code_language",
           "content": "平时写 Python",
@@ -746,14 +754,14 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.552138+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.666627+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.552138+00:00",
-          "updated_at": "2026-08-19T12:15:24.552138+00:00"
+          "created_at": "2026-09-02T04:57:44.666627+00:00",
+          "updated_at": "2026-09-02T04:57:44.666627+00:00"
         },
         {
-          "memory_id": "49b516ac1d394dbb8b9e91703289788a",
+          "memory_id": "8a67ad3da559481d9dff9cd8f1ee18b0",
           "user_id": "stu_demo",
           "memory_key": "study_time_preference",
           "content": "倾向晚上学习",
@@ -763,14 +771,14 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.547686+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.661569+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.547686+00:00",
-          "updated_at": "2026-08-19T12:15:24.547686+00:00"
+          "created_at": "2026-09-02T04:57:44.661569+00:00",
+          "updated_at": "2026-09-02T04:57:44.661569+00:00"
         },
         {
-          "memory_id": "23de45d9e6754b61b73936da5abb7a71",
+          "memory_id": "7f2903801b26433597383751acb80fc6",
           "user_id": "stu_demo",
           "memory_key": "weak_topics",
           "content": "图论相关的知识点普遍薄弱",
@@ -780,14 +788,14 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.523834+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.631015+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.523834+00:00",
-          "updated_at": "2026-08-19T12:15:24.523834+00:00"
+          "created_at": "2026-09-02T04:57:44.631015+00:00",
+          "updated_at": "2026-09-02T04:57:44.631015+00:00"
         },
         {
-          "memory_id": "ee954926cbf346a880aaed7055803b22",
+          "memory_id": "bf02de3601124284a14f1aec70d37950",
           "user_id": "stu_demo",
           "memory_key": "major_info",
           "content": "软件工程专业大三",
@@ -797,14 +805,14 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.522581+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.629379+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.522581+00:00",
-          "updated_at": "2026-08-19T12:15:24.522581+00:00"
+          "created_at": "2026-09-02T04:57:44.629379+00:00",
+          "updated_at": "2026-09-02T04:57:44.629379+00:00"
         },
         {
-          "memory_id": "b6e9b25733f748d98678c648884d4168",
+          "memory_id": "bbc843429bf24fdb8c2a4f8a5ebf17d3",
           "user_id": "stu_demo",
           "memory_key": "response_style",
           "content": "喜欢先看直观例子，再看公式推导",
@@ -814,14 +822,14 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.521227+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.627652+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.521227+00:00",
-          "updated_at": "2026-08-19T12:15:24.521227+00:00"
+          "created_at": "2026-09-02T04:57:44.627652+00:00",
+          "updated_at": "2026-09-02T04:57:44.627652+00:00"
         },
         {
-          "memory_id": "87bf2f24d571424dbfcf30f080ed38a8",
+          "memory_id": "8d887d960df64bfdb2e04980a9b34b3f",
           "user_id": "stu_demo",
           "memory_key": "learning_goal",
           "content": "这学期把数据结构和算法吃透，准备考研",
@@ -831,11 +839,11 @@
           "status": "active",
           "source_type": "explicit_user",
           "revision": 1,
-          "confirmed_at": "2026-08-19T12:15:24.519711+00:00",
+          "confirmed_at": "2026-09-02T04:57:44.625852+00:00",
           "review_after": null,
           "expires_at": null,
-          "created_at": "2026-08-19T12:15:24.519711+00:00",
-          "updated_at": "2026-08-19T12:15:24.519711+00:00"
+          "created_at": "2026-09-02T04:57:44.625852+00:00",
+          "updated_at": "2026-09-02T04:57:44.625852+00:00"
         }
       ]
     },
@@ -849,20 +857,28 @@
       },
       "result": {
         "ok": false,
+        "error_code": "tool_not_available",
         "error": "tool_not_available",
-        "tool": "save_core_memory"
+        "retryable": false,
+        "tool": "save_core_memory",
+        "attempt": 1,
+        "message": "当前上下文无法使用该工具"
       }
     },
     {
       "mode": "no_write",
       "tool": "delete_core_memory",
       "arguments": {
-        "memory_id": "c2b112b79f83451180b6d498d6743b65"
+        "memory_id": "1e0b046d73cf48cc9a64fa38d30d5416"
       },
       "result": {
         "ok": false,
+        "error_code": "tool_not_available",
         "error": "tool_not_available",
-        "tool": "delete_core_memory"
+        "retryable": false,
+        "tool": "delete_core_memory",
+        "attempt": 1,
+        "message": "当前上下文无法使用该工具"
       }
     },
     {
@@ -874,8 +890,12 @@
       },
       "result": {
         "ok": false,
+        "error_code": "tool_not_available",
         "error": "tool_not_available",
-        "tool": "search_core_memories"
+        "retryable": false,
+        "tool": "search_core_memories",
+        "attempt": 1,
+        "message": "当前上下文无法使用该工具"
       }
     },
     {
@@ -884,8 +904,12 @@
       "arguments": {},
       "result": {
         "ok": false,
+        "error_code": "tool_not_available",
         "error": "tool_not_available",
-        "tool": "get_core_memories"
+        "retryable": false,
+        "tool": "get_core_memories",
+        "attempt": 1,
+        "message": "当前上下文无法使用该工具"
       }
     },
     {
@@ -898,20 +922,28 @@
       },
       "result": {
         "ok": false,
+        "error_code": "tool_not_available",
         "error": "tool_not_available",
-        "tool": "save_core_memory"
+        "retryable": false,
+        "tool": "save_core_memory",
+        "attempt": 1,
+        "message": "当前上下文无法使用该工具"
       }
     },
     {
       "mode": "isolated",
       "tool": "delete_core_memory",
       "arguments": {
-        "memory_id": "c2b112b79f83451180b6d498d6743b65"
+        "memory_id": "1e0b046d73cf48cc9a64fa38d30d5416"
       },
       "result": {
         "ok": false,
+        "error_code": "tool_not_available",
         "error": "tool_not_available",
-        "tool": "delete_core_memory"
+        "retryable": false,
+        "tool": "delete_core_memory",
+        "attempt": 1,
+        "message": "当前上下文无法使用该工具"
       }
     }
   ]

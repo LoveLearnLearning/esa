@@ -70,11 +70,25 @@ def main() -> int:
     out: list[Sample] = []
 
     def valid_lures(lures: list[str]) -> list[str]:
-        """Drop lures for tools removed from the current backend schema."""
-        valid = [tool for tool in lures if tool in by_name]
-        if not valid:
-            raise SystemExit(f"补充种子没有可用工具：{lures!r}")
-        return valid
+        """种子里引用的工具必须都还在当前 schema 里。
+
+        来自上游 `8696eee`，但**判据改了**：上游版本是「悄悄过滤掉失效的，
+        只有全部失效才报错」。我们要求**一个都不许失效**。
+
+        理由：种子引用了后端已删的工具，是配置漂移，正确响应是**去更新种子**
+        （像 2026-08-28 对 `get_weather` 做的：删掉那一组、留一块墓碑注释写明
+        上游哪个 commit 删的）。悄悄过滤会让样本组悄悄变小，而
+        `test_tool_coverage.py` 抓不到 —— 它比的是「考卷考到的工具训练池有没有」，
+        两边都少生成时它是绿的。
+        """
+        gone = [t for t in lures if t not in by_name]
+        if gone:
+            raise SystemExit(
+                f"❌ 补充种子引用了当前 schema 里没有的工具：{gone}\n"
+                f"   整条 lures：{lures}\n"
+                "   去 seeds/ 里把这几个删掉并留墓碑注释（写明上游哪个 commit 删的），"
+                "别让生成器静默跳过。")
+        return list(lures)
 
     def add(sid: str, tpl: str, category: str, lures: list[str],
             turns: list[Turn], **kw) -> None:
@@ -102,9 +116,13 @@ def main() -> int:
 
     # ---- 二、ASK_USER ----
     for item in cfg["ask"]:
-        lures = valid_lures(item["lures"])
         # `ask_for` 必须是在场某个工具的 required 参数，否则「只询问缺失信息」
         # 这条契约就无从验证。这里先自查一遍，别等 validate 再报。
+        # 🔴 上游 `8696eee` 把下面这个 assert 改成了 `print(...)  + break`（少生成一条）。
+        #    **不接受**：ASK_USER 是「追问命中率」的来源，静默少生成会让那个指标
+        #    在一个更小的分母上算，而报表照样全绿（5.19 同族）。
+        #    契约破了就该炸，让人去修种子。
+        lures = valid_lures(item["lures"])
         required_anywhere: set[str] = set()
         for tool in lures:
             spec = by_name.get(tool)
@@ -112,23 +130,19 @@ def main() -> int:
                 required_anywhere |= set(
                     spec["function"].get("parameters", {}).get("required", []))
         for param in item["ask_for"]:
-            if param not in required_anywhere:
-                print(
-                    f"    跳过 ask/{item['id']}：参数 {param!r} 不属于当前可用工具"
-                )
-                break
-        else:
-            add(f"supp_ask_{item['id']}", f"{PREFIX}ask__{item['id']}",
-                "clarify", lures,
-                [Turn(role="user", content=item["q"]),
-                 Turn(role="assistant", content=item["a"].strip())],
-                ask_for=list(item["ask_for"]))
+            assert param in required_anywhere, (
+                f"ask/{item['id']}：{param!r} 对 lures 里任何工具都不是必填参数")
+        add(f"supp_ask_{item['id']}", f"{PREFIX}ask__{item['id']}",
+            "clarify", lures,
+            [Turn(role="user", content=item["q"]),
+             Turn(role="assistant", content=item["a"].strip())],
+            ask_for=list(item["ask_for"]))
 
     # ---- 三、hard_negative ----
     for group, body in cfg["negative"].items():
         for i, item in enumerate(body["pairs"]):
             add(f"supp_neg_{group}_{i:02d}",
-                f"{PREFIX}neg__{group}__{i:02d}", "hard_negative", valid_lures(body["lures"]),
+                f"{PREFIX}neg__{group}__{i:02d}", "hard_negative", body["lures"],
                 [Turn(role="user", content=item["q"]),
                  Turn(role="assistant", content=item["a"].strip())],
                 # 字面陷阱那组正文里有事实内容。补充集是评测题、正文不参与判分，
@@ -146,9 +160,6 @@ def main() -> int:
     # 所以 4 条样本 = 8 道题。补充集从 44 道变 52 道，别再对着 44 断言。
     for item in cfg.get("boundary", []):
         tool, args = item["tool"], item["args"]
-        if tool not in by_name:
-            print(f"    跳过 boundary/{item['id']}：工具 {tool!r} 不在当前 schema 中")
-            continue
         if tool == "run_in_sandbox":
             # ⚠️ 和 gen_new_tools 同一条规矩：fixture 不真的执行命令，
             # stdout/exit_code 必须是种子里**真跑过一次**的结果。
@@ -166,7 +177,7 @@ def main() -> int:
         else:
             result = execute(tool, args)
         add(f"supp_boundary_{item['id']}", f"{PREFIX}boundary__{item['id']}",
-            "single_tool_call", valid_lures(item["lures"]),
+            "single_tool_call", item["lures"],
             [Turn(role="user", content=item["q"]),
              Turn(role="tool_call", calls=[ToolCall(tool, args)]),
              Turn(role="tool_result", results=[ToolResult(tool, result)]),
@@ -199,12 +210,9 @@ def main() -> int:
                 f"写错的指标名什么也不会作废，是个假绿灯")
 
     want_exc, got_exc = declared(cfg), sum(1 for x in out if x.score_exclude)
-    assert got_exc <= want_exc, (
-        f"产出样本中的 score_exclude 数量 {got_exc} 超过种子声明数量 {want_exc}")
-    if got_exc != want_exc:
-        print(
-            f"  忽略 {want_exc - got_exc} 个已移除工具对应的 score_exclude 声明"
-        )
+    assert want_exc == got_exc, (
+        f"种子里声明了 {want_exc} 处 score_exclude，只有 {got_exc} 处落进样本 —— "
+        f"多半是写在了还没接线的那一段（现在只有 refuse / boundary 接了）")
     if got_exc:
         print(f"  声明作废 {got_exc} 条（理由随评测集落盘，报告里会逐条印出来）")
 

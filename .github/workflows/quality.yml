@@ -36,6 +36,27 @@ jobs:
       - name: Unit tests
         run: python -m pytest
 
+      # 数据集侧的闸门。两点和上一版不同：
+      #   ① 不再在 workflow 里判 LLaMA-Factory 装没装。那个判断写的是
+      #      `$HOME/Downloads/llamafactory-0.9.4`，CI runner 上永远没有这个目录，
+      #      于是那道闸门在 CI 里一次都不会真跑，日志里只有一行 "Skipping"——
+      #      而它守的正是「LLaMA-Factory 静默吃掉训练样本」。
+      #      判断已收进 test_llamafactory_ingest.py 自己：找不到源码时它退出码 0，
+      #      但会打印一整块「⚠️ 这道闸门没有运行」，不会被误读成通过。
+      #      要让它在 CI 里真跑，给 runner 设 $ESA_LF 指向一份 0.9.5.dev0 的源码。
+      #      本地开训前请用 `--require`，那时找不到就判失败。
+      #   ② 补上另外五个测试。其中 test_error_payload_visible.py 查的是
+      #      「教给模型的话术不许引用模型实际看不见的内容」，和 8696eee 里
+      #      test_skill_bodies_match_runtime_capabilities 是同一个方向。
+      # test_llamafactory_ingest 需要 data/out/（渲染产物，按设计不入库），
+      # 没有它会 FileNotFoundError。这一步顺带也是个检查：生成管线必须能在
+      # 干净 checkout 上从 IR 一路跑到 data/out/。
+      - name: Render dataset artifacts
+        working-directory: backend/scripts/dataset
+        run: |
+          PYTHONPATH=. python -m esa.evalset
+          PYTHONPATH=. python -m esa.split data/eval/train_ir.jsonl
+
       - name: Dataset contract tests
         working-directory: backend/scripts/dataset
         run: |
@@ -45,12 +66,13 @@ jobs:
             tests/test_eval_scoring.py \
             tests/test_review_ledger.py \
             tests/test_validator.py \
+            tests/test_error_payload_visible.py \
+            tests/test_esa_tool_format.py \
+            tests/test_runtime_error_contract.py \
+            tests/test_tool_coverage.py \
+            tests/test_verbosity_tools.py \
             tests/test_llamafactory_ingest.py
           do
-            if [ "$test" = "tests/test_llamafactory_ingest.py" ] && [ ! -d "$HOME/Downloads/llamafactory-0.9.4" ]; then
-              echo "Skipping LLaMA-Factory ingestion gate: external checkout is not present"
-              continue
-            fi
             PYTHONPATH=. python "$test"
           done
 

@@ -114,15 +114,22 @@ def latex_of(sympy_result: str) -> str:
 # 学情三件套已由 fixtures.py 用测试学情库真实计算，不在此列。
 BACKEND_REQUIRED = {
     "load_skill",
-    "retrieve_knowledge",
     "get_knowledge_base_stats",
 }
+# 🔴 2026-08-26：`retrieve_knowledge` 从这里移出。
+# c80bad7 把三个检索工具统一成它一个之后，`unified_retrieval.py` 在
+# 「已选个人库、服务为 None」时**返回降级载荷**（不是抛错），我们跑得出来，
+# 于是有了 `fixtures.retrieve_knowledge`（逐字段抄自真实 `model_content`）。
+# ⚠️ 它**只覆盖降级那一支**：`knowledge_sources=["public"]` 时上游是
+# `raise RuntimeError("public knowledge service is not configured")`，
+# 那一支仍然只能走 `seeds/tool_errors.yaml` 的 `exec_error`。
+# **检索成功的样本我们一条也产不出来**，这条要写进《06》局限。
 
 # 这些必须调真实外部 API。
 # arxiv_search 尤其不能编造 —— 赛题《02—伦理与安全合规性声明》要求承诺
 # 「输出内容不涉及伪造学术数据、虚假文献」，训练数据里编论文等于教模型编引用。
 # arxiv_search 走 data/cache/arxiv_real.json 的真实检索结果；
-# get_time / get_weather 后端本身就是纯函数/硬编码桩，可完全复刻。
+# get_time 后端本身就是纯函数，可完全复刻。（get_weather 已随上游 c18c84e 删除）
 # web_search 需要真实 SearXNG 实例，没有就只做错误恢复样本，不编造检索结果。
 EXTERNAL_API = {"web_search"}
 

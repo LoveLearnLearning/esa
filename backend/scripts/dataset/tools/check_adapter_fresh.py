@@ -27,7 +27,7 @@ lora 评测会安安静静地测一遍旧模型，而且十二项指标全都长
 用法
 ----
     python3 tools/check_adapter_fresh.py \\
-        --adapter /persist_data/home/chenxuzhao/esa_lora_out/adapter_model.safetensors \\
+        --adapter $HOME/esa_lora_out/adapter_model.safetensors \\
         --train-job 78907
 
 自测（不碰 Slurm，直接喂一行假的 sacct 输出）：
@@ -83,7 +83,7 @@ def sacct_line(job: str) -> str | None:
     return None
 
 
-def check(adapter: Path, job: str, line: str | None, mtime: float | None) -> tuple[bool, list[str]]:
+def check(adapter: Path, job: str, line: str | None, mtime: float | None, proof: Path | None = None) -> tuple[bool, list[str]]:
     """判定。返回 (通过与否, 要打印的行)。
 
     Args:
@@ -115,14 +115,38 @@ def check(adapter: Path, job: str, line: str | None, mtime: float | None) -> tup
     submit = parse_utc(submit_raw)
 
     if state != "COMPLETED":
-        return False, [f"❌ 训练作业 {job} 的状态是 {state or '(空)'}，不是 COMPLETED —— 这次训练没成功"]
+        # 🔴 2026-09-04 加的窄口子。起因：94421 训练**跑满了** 105 步、adapter 与
+        # 输出目录 md5 一致，但作业最后一步另存时 /persist_data 满了（Errno 28），
+        # 脚本 exit 1，于是 sacct 记成 FAILED。这道闸门据此判「这次训练没成功」——
+        # 判错了，而重训要烧四小时 GPU。
+        #
+        # 但**不能**因此放宽成「FAILED 也放行」：这道闸门存在的理由正是
+        # 「训练没写成功时别拿旧 adapter 去评测」（5.32 ②）。
+        # 所以口子要同时满足两条，缺一不可：
+        #   ① 调用方显式给 --completed-proof（不会顺手发生）
+        #   ② 那份 trainer_state.json 自己证明跑满了：global_step == max_steps
+        # 证据来自训练进程自己写的文件，比作业退出码更接近「训练有没有跑完」这件事。
+        if proof is None:
+            return False, [
+                f"❌ 训练作业 {job} 的状态是 {state or '(空)'}，不是 COMPLETED —— 这次训练没成功",
+                "   如果确认训练本身跑满了、只是作业最后一步（比如另存）失败，",
+                "   用 --completed-proof <trainer_state.json> 再来一次；那份文件要能自证 "
+                "global_step == max_steps。",
+            ]
+        done, why = _finished(proof)
+        if not done:
+            return False, [
+                f"❌ 训练作业 {job} 的状态是 {state}，而 --completed-proof 也证明不了跑完：{why}",
+            ]
+        out.append(f"⚠️ 训练作业 {job} 状态是 {state}，但 {proof.name} 自证跑满（{why}）——")
+        out.append("   按证据放行。**这条只对「训练跑完、收尾失败」成立**，别当成常规用法。")
     if submit is None:
         return False, [
             f"❌ sacct 给的提交时刻解析不出来：{submit_raw!r} —— **拒绝放行**。",
             "   （按 UTC 解析。解析不了就不猜，猜错的方向会让闸门变松。）",
         ]
 
-    out.append(f"   训练作业 {job}：状态 COMPLETED，提交于 {fmt(submit)}")
+    out.append(f"   训练作业 {job}：状态 {state}，提交于 {fmt(submit)}")
     out.append(f"   adapter mtime：            {fmt(mtime)}")
     if mtime <= submit:
         out.append(f"❌ adapter 比训练作业 {job} 的提交时刻还早 —— 这是**上一轮的残留**，")
@@ -130,6 +154,35 @@ def check(adapter: Path, job: str, line: str | None, mtime: float | None) -> tup
         return False, out
     out.append(f"✅ 闸门：adapter 晚于提交时刻 {int(mtime - submit)} 秒，是这次训练的产出")
     return True, out
+
+
+def _finished(proof: Path) -> tuple[bool, str]:
+    """读 trainer_state.json，判断这次训练是不是**跑满了**。
+
+    判据是 `global_step == max_steps` —— 训练进程自己写的两个数。
+    读不到、对不上、文件坏了，一律判「证明不了」，不猜。
+    """
+    import json  # noqa: PLC0415
+    try:
+        d = json.loads(proof.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        return False, f"{proof} 读不出来（{exc}）"
+    gs, ms = d.get("global_step"), d.get("max_steps")
+    if not isinstance(gs, int) or not isinstance(ms, int) or ms <= 0:
+        return False, f"global_step={gs!r} / max_steps={ms!r}，不是一对能比的数"
+    if gs != ms:
+        return False, f"global_step={gs} ≠ max_steps={ms}，训练没跑满"
+    return True, f"global_step={gs} = max_steps={ms}"
+
+
+def _tmp_state(global_step: int, max_steps: int) -> Path:
+    """自测用：写一份临时 trainer_state.json，返回路径。"""
+    import json      # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+    fh = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+    json.dump({"global_step": global_step, "max_steps": max_steps}, fh)
+    fh.close()
+    return Path(fh.name)
 
 
 def self_test() -> int:
@@ -162,6 +215,19 @@ def self_test() -> int:
          check(fake, "1", "COMPLETED|Unknown", at(2026, 8, 21, 0, 0))[0] is False),
         ("时区：UTC 串按 UTC 解析，残留在任何 TZ 下都拦得住",
          parse_utc("2026-08-20T10:00:00") == at(2026, 8, 20, 10, 0)),
+        # ── 2026-09-04 那个窄口子的三条反向验证 ──
+        ("FAILED + 没给 proof → 仍然拦下",
+         check(fake, "1", "FAILED|2026-08-20T10:00:00", at(2026, 8, 21, 0, 0),
+               None)[0] is False),
+        ("FAILED + proof 说没跑满 → 仍然拦下",
+         check(fake, "1", "FAILED|2026-08-20T10:00:00", at(2026, 8, 21, 0, 0),
+               _tmp_state(63, 105))[0] is False),
+        ("FAILED + proof 自证跑满 → 放行（这才是那个口子）",
+         check(fake, "1", "FAILED|2026-08-20T10:00:00", at(2026, 8, 21, 0, 0),
+               _tmp_state(105, 105))[0] is True),
+        ("FAILED + proof 跑满，但 adapter 早于提交 → 还是拦下（新增的口子不该盖住老判据）",
+         check(fake, "1", "FAILED|2026-08-20T10:00:00", at(2026, 8, 20, 4, 0),
+               _tmp_state(105, 105))[0] is False),
     ]
     ok = 0
     for name, passed in cases:
@@ -188,10 +254,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="自测用：直接给一行 'State|Submit'，不去跑 sacct")
     ap.add_argument("--adapter-mtime", default=None, type=float,
                     help="自测用：直接给 adapter 的 mtime（epoch 秒）")
+    ap.add_argument("--completed-proof", default=None, type=Path,
+                    help="训练跑满了但作业收尾失败时才用：指向那次训练的 trainer_state.json。"
+                         "只有当它自证 global_step == max_steps 才放行，"
+                         "**不是**「跳过状态检查」的开关")
     a = ap.parse_args(argv)
 
     line = a.sacct_line if a.sacct_line is not None else sacct_line(a.train_job)
-    ok, lines = check(a.adapter, a.train_job, line, a.adapter_mtime)
+    ok, lines = check(a.adapter, a.train_job, line, a.adapter_mtime, a.completed_proof)
     for text in lines:
         print(text)
     return 0 if ok else 1

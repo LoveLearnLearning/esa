@@ -74,7 +74,7 @@ EDGE_CASES = [
     "<tool_call><function=calculator><parameter=expression></parameter></function></tool_call>",
     # 并行调用
     "<tool_call><function=get_time></function></tool_call>"
-    "<tool_call><function=get_weather><parameter=city>北京</parameter></function></tool_call>",
+    "<tool_call><function=get_mastery_level><parameter=kp_id>二叉树遍历</parameter></function></tool_call>",
 ]
 
 
