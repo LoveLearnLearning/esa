@@ -2097,6 +2097,7 @@ class _ContinueLearningSection extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         FilledButton.icon(
+          key: const ValueKey('continue-learning'),
           onPressed: onContinue,
           icon: const Icon(LucideIcons.play, size: 15),
           label: const Text('继续'),

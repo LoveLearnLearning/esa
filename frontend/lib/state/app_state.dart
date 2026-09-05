@@ -994,6 +994,7 @@ class AppState extends ChangeNotifier {
     String? tone,
     String? projectId,
   }) async {
+    final session = _sessionIdentity;
     final group = await api.createGroup(
       name: name.trim(),
       description: description,
@@ -1002,6 +1003,7 @@ class AppState extends ChangeNotifier {
       tone: tone,
       projectId: projectId,
     );
+    if (session != _sessionIdentity) return group;
     groups.add(group);
     _sortGroups();
     activeGroupId = group.id;
@@ -1016,10 +1018,14 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> toggleGroupPin(String groupId) async {
+    final session = _sessionIdentity;
     final index = groups.indexWhere((group) => group.id == groupId);
     if (index < 0) return;
     final updated = await api.setGroupPinned(groupId, !groups[index].pinned);
-    groups[index] = updated;
+    if (session != _sessionIdentity) return;
+    final currentIndex = groups.indexWhere((group) => group.id == groupId);
+    if (currentIndex < 0) return;
+    groups[currentIndex] = updated;
     _sortGroups();
     notifyListeners();
   }
@@ -1081,6 +1087,7 @@ class AppState extends ChangeNotifier {
     Object? style = groupFieldUnset,
     Object? tone = groupFieldUnset,
   }) async {
+    final session = _sessionIdentity;
     final updated = await api.updateGroup(
       groupId,
       name: name?.trim(),
@@ -1089,6 +1096,7 @@ class AppState extends ChangeNotifier {
       style: style,
       tone: tone,
     );
+    if (session != _sessionIdentity) return updated;
     final index = groups.indexWhere((group) => group.id == groupId);
     if (index >= 0) {
       groups[index] = updated;
@@ -1101,7 +1109,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> deleteGroup(String groupId) async {
+    final session = _sessionIdentity;
     await api.deleteGroup(groupId);
+    if (session != _sessionIdentity) return;
     groups.removeWhere((group) => group.id == groupId);
     if (activeGroupId == groupId) activeGroupId = null;
     for (final conversation in conversations) {
@@ -1115,14 +1125,19 @@ class AppState extends ChangeNotifier {
     String conversationId,
     String? groupId,
   ) async {
+    final session = _sessionIdentity;
     final index = conversations.indexWhere(
       (conversation) => conversation.id == conversationId,
     );
     if (index < 0) throw ApiException(404, '对话不存在');
-    final previousGroupId = conversations[index].groupId;
+    final conversation = conversations[index];
+    final previousGroupId = conversation.groupId;
     if (previousGroupId == groupId) return;
     await api.moveConversation(conversationId, groupId);
-    conversations[index].groupId = groupId;
+    if (session != _sessionIdentity || !conversations.contains(conversation)) {
+      return;
+    }
+    conversation.groupId = groupId;
     _adjustGroupCounts(previousGroupId, groupId);
     notifyListeners();
   }
@@ -1471,28 +1486,33 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> renameConversation(String id, String title) async {
-    final t = title.trim();
-    if (t.isEmpty) return;
-    for (final c in conversations) {
-      if (c.id == id) c.title = t;
+    final session = _sessionIdentity;
+    final normalizedTitle = title.trim();
+    if (normalizedTitle.isEmpty) return;
+    for (final conversation in conversations) {
+      if (conversation.id == id) conversation.title = normalizedTitle;
     }
     notifyListeners();
     try {
-      await api.renameConversation(id, t);
+      await api.renameConversation(id, normalizedTitle);
     } catch (e) {
+      if (session != _sessionIdentity) return;
       if (!_handled401(e)) rethrow;
     }
   }
 
   Future<void> deleteConversation(String id) async {
+    final session = _sessionIdentity;
     final index = conversations.indexWhere((c) => c.id == id);
     final removedGroupId = index >= 0 ? conversations[index].groupId : null;
     try {
       await api.deleteConversation(id);
     } catch (e) {
+      if (session != _sessionIdentity) return;
       if (_handled401(e)) return;
       rethrow;
     }
+    if (session != _sessionIdentity) return;
     conversations.removeWhere((c) => c.id == id);
     _messages.remove(id);
     _messageErrors.remove(id);
@@ -1506,16 +1526,27 @@ class AppState extends ChangeNotifier {
         await _loadMessages(activeId!);
       }
     }
+    if (session != _sessionIdentity) return;
     notifyListeners();
   }
 
   Future<void> togglePin(String id) async {
+    final session = _sessionIdentity;
     final conversation = conversations
         .where((item) => item.id == id)
         .firstOrNull;
     if (conversation == null) return;
     final next = !conversation.pinned;
-    await api.setConversationPinned(id, next);
+    try {
+      await api.setConversationPinned(id, next);
+    } catch (e) {
+      if (session != _sessionIdentity) return;
+      if (_handled401(e)) return;
+      rethrow;
+    }
+    if (session != _sessionIdentity || !conversations.contains(conversation)) {
+      return;
+    }
     conversation.pinned = next;
     userStats = UserStats(
       conversationCount: userStats.conversationCount,

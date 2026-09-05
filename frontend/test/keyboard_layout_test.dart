@@ -87,7 +87,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 进入对话界面
-      final continueButton = find.widgetWithText(FilledButton, '继续');
+      final continueButton = find.byKey(const ValueKey('continue-learning'));
       await tester.ensureVisible(continueButton);
       await tester.tap(continueButton);
       await tester.pumpAndSettle();
@@ -161,7 +161,7 @@ void main() {
       await tester.pumpWidget(app(state, keyboardInsets));
       await tester.pumpAndSettle();
 
-      final continueButton = find.widgetWithText(FilledButton, '继续');
+      final continueButton = find.byKey(const ValueKey('continue-learning'));
       await tester.ensureVisible(continueButton);
       await tester.tap(continueButton);
       await tester.pumpAndSettle();

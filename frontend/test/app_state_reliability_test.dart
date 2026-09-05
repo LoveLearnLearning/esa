@@ -18,6 +18,11 @@ class _ReliabilityApi extends ApiClient {
   Future<List<TeachingAssignment>> Function()? assignmentsLoader;
   Future<void> Function()? logoutHandler;
   Future<void> Function(String)? deleteHandler;
+  Future<void> Function(String, String)? renameHandler;
+  Future<void> Function(String, bool)? pinHandler;
+  Future<ChatGroup> Function()? groupMutationLoader;
+  Future<void> Function()? groupDeletionHandler;
+  Future<void> Function()? moveHandler;
   Future<ScheduleSnapshot> Function()? scheduleLoader;
   final Map<String, Stream<ChatStreamEvent>> streams = {};
 
@@ -29,7 +34,44 @@ class _ReliabilityApi extends ApiClient {
       deleteHandler?.call(id) ?? Future.value();
 
   @override
-  Future<void> renameConversation(String id, String title) async {}
+  Future<ChatGroup> createGroup({
+    required String name,
+    String description = '',
+    String customInstruction = '',
+    String? style,
+    String? tone,
+    String? projectId,
+  }) => groupMutationLoader!();
+
+  @override
+  Future<ChatGroup> updateGroup(
+    String groupId, {
+    String? name,
+    String? description,
+    String? customInstruction,
+    Object? style = groupFieldUnset,
+    Object? tone = groupFieldUnset,
+    Object? projectId = groupFieldUnset,
+    bool? pinned,
+  }) => groupMutationLoader!();
+
+  @override
+  Future<ChatGroup> setGroupPinned(String groupId, bool pinned) =>
+      groupMutationLoader!();
+
+  @override
+  Future<void> deleteGroup(String groupId) => groupDeletionHandler!();
+
+  @override
+  Future<void> moveConversation(String id, String? groupId) => moveHandler!();
+
+  @override
+  Future<void> renameConversation(String id, String title) =>
+      renameHandler?.call(id, title) ?? Future.value();
+
+  @override
+  Future<void> setConversationPinned(String id, bool pinned) =>
+      pinHandler?.call(id, pinned) ?? Future.value();
 
   @override
   Future<ChatConversation> getConversation(String id) =>
@@ -105,6 +147,17 @@ class _NotificationTrackingState extends AppState {
 ChatConversation _conversation(String id) =>
     ChatConversation(id: id, title: id, updatedAt: DateTime(2026));
 
+ChatGroup _group(String name) => ChatGroup(
+  id: 'group-1',
+  userId: 'user-1',
+  name: name,
+  description: '',
+  customInstruction: '',
+  conversationCount: 0,
+  createdAt: DateTime(2026),
+  updatedAt: DateTime(2026),
+);
+
 const _workspaces = [
   WorkspaceDescriptor(
     type: WorkspaceType.learning,
@@ -129,6 +182,147 @@ const _workspaces = [
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final operation in [
+    'create',
+    'update',
+    'delete',
+    'move',
+    'pin',
+    'delete-chat',
+  ]) {
+    for (final boundary in ['logout', 'dispose']) {
+      test('$operation response cannot mutate state after $boundary', () async {
+        final groupResponse = Completer<ChatGroup>();
+        final mutationResponse = Completer<void>();
+        final api = _ReliabilityApi()..sessionId = 'old-session';
+        api.groupMutationLoader = () => groupResponse.future;
+        api.groupDeletionHandler = () => mutationResponse.future;
+        api.moveHandler = () => mutationResponse.future;
+        api.deleteHandler = (_) => mutationResponse.future;
+        final state = _NotificationTrackingState(api: api)
+          ..groups.add(_group('old-group'))
+          ..conversations.add(_conversation('conversation-1'));
+        final pending = switch (operation) {
+          'create' =>
+            state.createGroup(name: 'old-response').then<void>((_) {}),
+          'update' =>
+            state
+                .updateGroup('group-1', name: 'old-response')
+                .then<void>((_) {}),
+          'delete' => state.deleteGroup('group-1'),
+          'move' => state.moveConversationToGroup('conversation-1', 'group-1'),
+          'pin' => state.toggleGroupPin('group-1'),
+          _ => state.deleteConversation('conversation-1'),
+        };
+        if (boundary == 'logout') {
+          addTearDown(state.dispose);
+          await state.logout();
+          api.sessionId = 'new-session';
+          state.groups.add(_group('new-group'));
+          state.conversations.add(_conversation('conversation-1'));
+        } else {
+          state.dispose();
+        }
+        final notifications = state.notifications;
+        groupResponse.complete(_group('old-response'));
+        mutationResponse.complete();
+        await pending;
+        expect(state.notifications, notifications);
+        expect(
+          state.groups.single.name,
+          boundary == 'logout' ? 'new-group' : 'old-group',
+        );
+        expect(state.conversations.single.groupId, isNull);
+        if (boundary == 'logout') expect(api.sessionId, 'new-session');
+      });
+    }
+  }
+
+  test(
+    'moving a removed conversation cannot update its old list slot',
+    () async {
+      final response = Completer<void>();
+      final api = _ReliabilityApi()..moveHandler = () => response.future;
+      final state = AppState(api: api)
+        ..groups.add(_group('target'))
+        ..conversations.add(_conversation('old-conversation'));
+      addTearDown(state.dispose);
+      final pending = state.moveConversationToGroup(
+        'old-conversation',
+        'group-1',
+      );
+      state.conversations
+        ..clear()
+        ..add(_conversation('replacement-conversation'));
+      response.complete();
+      await pending;
+      expect(state.conversations.single.groupId, isNull);
+      expect(state.groups.single.conversationCount, 0);
+    },
+  );
+
+  test('late conversation deletion 401 does not clear a new session', () async {
+    final response = Completer<void>();
+    final api = _ReliabilityApi()
+      ..sessionId = 'old-session'
+      ..deleteHandler = (_) => response.future;
+    final state = AppState(api: api)
+      ..conversations.add(_conversation('conversation-1'));
+    addTearDown(state.dispose);
+    final pending = state.deleteConversation('conversation-1');
+    await state.logout();
+    api.sessionId = 'new-session';
+    response.completeError(ApiException(401, 'old session expired'));
+    await pending;
+    expect(api.sessionId, 'new-session');
+  });
+
+  test('late conversation rename 401 does not clear a new session', () async {
+    final response = Completer<void>();
+    final api = _ReliabilityApi()
+      ..sessionId = 'old-session'
+      ..renameHandler = (id, title) => response.future;
+    final state = AppState(api: api)..conversations.add(_conversation('chat'));
+    addTearDown(state.dispose);
+
+    final pending = state.renameConversation('chat', '旧会话标题');
+    expect(state.conversations.single.title, '旧会话标题');
+    await state.logout();
+    api.sessionId = 'new-session';
+    state.conversations.add(_conversation('new-chat'));
+    response.completeError(ApiException(401, 'old session expired'));
+
+    await pending;
+
+    expect(api.sessionId, 'new-session');
+    expect(state.conversations.single.id, 'new-chat');
+  });
+
+  test(
+    'late conversation pin response cannot mutate a replacement list',
+    () async {
+      final response = Completer<void>();
+      final api = _ReliabilityApi()
+        ..sessionId = 'session'
+        ..pinHandler = (id, pinned) => response.future;
+      final state = AppState(api: api)
+        ..conversations.add(_conversation('chat'));
+      addTearDown(state.dispose);
+
+      final pending = state.togglePin('chat');
+      state.conversations
+        ..clear()
+        ..add(_conversation('replacement'));
+      response.complete();
+
+      await pending;
+
+      expect(state.conversations.single.id, 'replacement');
+      expect(state.conversations.single.pinned, isFalse);
+      expect(state.userStats.pinnedCount, 0);
+    },
+  );
 
   for (final newerCompletesFirst in [true, false]) {
     test(

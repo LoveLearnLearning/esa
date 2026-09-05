@@ -5,6 +5,8 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -203,13 +205,21 @@ void main() {
   testWidgets('registration requires an explicit account type selection', (
     tester,
   ) async {
-    await tester.pumpWidget(const EsaApp());
+    final api = _RegistrationApi();
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+    await tester.pumpWidget(EsaApp(state: state));
     await tester.pump();
 
     await tester.tap(find.text('注册').first);
     await tester.pump();
     final fields = find.byType(EditableText);
     await tester.enterText(fields.at(0), 'student@example.com');
+    final sendCodeButton = find.byKey(const ValueKey('registration-send-code'));
+    await tester.ensureVisible(sendCodeButton);
+    await tester.tap(sendCodeButton);
+    await tester.pump();
+    expect(api.codeEmail, 'student@example.com');
     await tester.enterText(fields.at(1), '123456');
     await tester.enterText(fields.at(2), 'student');
     await tester.enterText(fields.at(3), 'password123');
@@ -218,6 +228,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('请选择注册账号类型'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('auth page renders without overflow on desktop', (tester) async {
@@ -233,6 +244,53 @@ void main() {
     expect(find.text('欢迎回来'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  for (final replyBeforeChange in [true, false]) {
+    testWidgets(
+      'changing registration email invalidates code ($replyBeforeChange)',
+      (tester) async {
+        final response = Completer<int>();
+        final api = _RegistrationApi()..codeSender = (_) => response.future;
+        final state = AppState(api: api);
+        addTearDown(state.dispose);
+        await tester.pumpWidget(EsaApp(state: state));
+        await tester.tap(find.text('注册').first);
+        await tester.pump();
+        final fields = find.byType(EditableText);
+        await tester.enterText(fields.at(0), 'old@example.com');
+        final sendButton = find.byKey(const ValueKey('registration-send-code'));
+        await tester.ensureVisible(sendButton);
+        await tester.tap(sendButton);
+        await tester.pump();
+        expect(api.codeEmail, 'old@example.com');
+        if (replyBeforeChange) {
+          response.complete(60);
+          await tester.pump();
+        }
+        await tester.enterText(fields.at(1), '123456');
+        await tester.enterText(fields.at(0), 'new@example.com');
+        await tester.pump();
+        expect(
+          tester.widget<EditableText>(fields.at(1)).controller.text,
+          isEmpty,
+        );
+        if (!replyBeforeChange) {
+          response.complete(60);
+          await tester.pump();
+        }
+        expect(tester.widget<OutlinedButton>(sendButton).onPressed, isNotNull);
+        expect(find.text('获取验证码'), findsOneWidget);
+        await tester.enterText(fields.at(1), '123456');
+        await tester.enterText(fields.at(2), 'student');
+        await tester.enterText(fields.at(3), 'password123');
+        await tester.enterText(fields.at(4), 'password123');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pump();
+        expect(find.text('请先为当前邮箱获取验证码'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
 
   testWidgets('desktop knowledge graph responds to mouse movement', (
     tester,
@@ -272,4 +330,17 @@ void main() {
 class _ProfileApi extends ApiClient {
   @override
   Future<UserStats> getUserStats() async => const UserStats();
+}
+
+class _RegistrationApi extends ApiClient {
+  _RegistrationApi() : super(baseUrl: 'http://test.invalid');
+
+  String? codeEmail;
+  Future<int> Function(String)? codeSender;
+
+  @override
+  Future<int> sendRegistrationCode(String email) async {
+    codeEmail = email;
+    return codeSender?.call(email) ?? 60;
+  }
 }

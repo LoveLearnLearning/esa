@@ -75,6 +75,8 @@ def test_trusted_install_can_share_network_without_changing_default(
     tmp_path: Path,
 ) -> None:
     service = SandboxService(tmp_path, enabled=True, runtime="bwrap")
+    service.pip_package_path = tmp_path / "installer" / "pip"
+    service.pip_package_path.mkdir(parents=True)
     workspace = service.workspace_for("u", "c")
     argv = service._bwrap_argv(
         "/usr/bin/bwrap",
@@ -86,6 +88,30 @@ def test_trusted_install_can_share_network_without_changing_default(
 
     assert argv.index("--share-net") > argv.index("--unshare-all")
     assert "/opt/esa-installer/pip" in argv
+
+
+@pytest.mark.parametrize("missing_path", [False, True])
+def test_missing_installer_fails_before_process_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, missing_path: bool
+) -> None:
+    service = SandboxService(tmp_path, enabled=True, runtime="bwrap")
+    service.pip_package_path = tmp_path / "missing-pip" if missing_path else None
+    monkeypatch.setattr(
+        SandboxService, "runtime_path", property(lambda _service: "/usr/bin/bwrap")
+    )
+
+    async def unexpected_spawn(*args, **kwargs):
+        pytest.fail("missing installer must not start a subprocess")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", unexpected_spawn)
+    assert asyncio.run(
+        service.execute(
+            user_id="user",
+            conversation_id="conversation",
+            command="python3 -m pip --version",
+            allow_network=True,
+        )
+    ) == {"ok": False, "error": "sandbox_package_installer_unavailable"}
 
 
 def test_code_command_quotes_source_and_normalizes_languages() -> None:

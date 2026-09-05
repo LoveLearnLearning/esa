@@ -55,6 +55,7 @@ PRODUCT_NARRATIVE.md      竞赛方案、答辩与 Demo 可复用的产品叙事
 TEACHING_STUDENT_DEMO.md  教师端与学生端的可运行闭环和双账号脚本
 API.md                    前后端接口约定
 TODO.md                   唯一待办清单与已知边界
+COMPETITION_AUDIT.md      2026-09-05 竞赛交付前工程审查、验证证据与已知限制
 DATASET_GENERATION.md     Qwen3.5/LLaMA-Factory 数据集方案
 OPTIMIZATION_NOTES.md     已完成的工程优化、修复与验证记录
 documents/HUST_TIMETABLE_IMPORT.md  华科教务导入调研、配置与验收说明

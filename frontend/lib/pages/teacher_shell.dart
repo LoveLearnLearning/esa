@@ -50,9 +50,14 @@ class _TeacherShellState extends State<TeacherShell> {
   }
 
   Future<void> _loadOverview() async {
+    if (!mounted) return;
+    final app = AppScope.of(context);
+    final sessionId = app.api.sessionId;
     try {
-      final value = await AppScope.of(context).api.getTeachingOverview();
-      if (mounted) setState(() => _overview = value);
+      final value = await app.api.getTeachingOverview();
+      if (mounted && app.api.sessionId == sessionId) {
+        setState(() => _overview = value);
+      }
     } on ApiException {
       // The main workspace owns the visible retry state.
     }
@@ -98,9 +103,11 @@ class _TeacherShellState extends State<TeacherShell> {
   }
 
   Future<void> _createClassFromSidebar() async {
-    final name = TextEditingController();
-    final course = TextEditingController();
-    final term = TextEditingController();
+    final app = AppScope.of(context);
+    final sessionId = app.api.sessionId;
+    var name = '';
+    var course = '';
+    var term = '';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -110,19 +117,19 @@ class _TeacherShellState extends State<TeacherShell> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: name,
+              TextFormField(
+                onChanged: (value) => name = value,
                 autofocus: true,
                 decoration: const InputDecoration(labelText: '班级名称'),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: course,
+              TextFormField(
+                onChanged: (value) => course = value,
                 decoration: const InputDecoration(labelText: '课程目录中的准确名称'),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: term,
+              TextFormField(
+                onChanged: (value) => term = value,
                 decoration: const InputDecoration(labelText: '学期（可选）'),
               ),
             ],
@@ -140,25 +147,19 @@ class _TeacherShellState extends State<TeacherShell> {
         ],
       ),
     );
-    if (confirmed == true && mounted) {
-      try {
-        final classroom = await AppScope.of(context).api.createTeachingClass(
-          name: name.text.trim(),
-          course: course.text.trim(),
-          term: term.text.trim(),
+    if (confirmed == true && mounted && app.api.sessionId == sessionId) {
+      await _runSidebarAction(() async {
+        final classroom = await app.api.createTeachingClass(
+          name: name.trim(),
+          course: course.trim(),
+          term: term.trim(),
         );
+        if (!mounted || app.api.sessionId != sessionId) return;
         await _loadOverview();
-        if (mounted) _openClass(classroom);
-      } on ApiException catch (error) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(error.detail)));
+        if (mounted && app.api.sessionId == sessionId) {
+          _openClass(classroom);
         }
-      }
-    }
-    for (final controller in [name, course, term]) {
-      controller.dispose();
+      });
     }
   }
 
@@ -182,43 +183,32 @@ class _TeacherShellState extends State<TeacherShell> {
     if (mounted) _showTeachingAssistant();
   }
 
-  Future<void> _createGroupFromSidebar() async {
-    final controller = TextEditingController();
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('新建分组'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: '分组名称'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('创建'),
-          ),
-        ],
-      ),
-    );
-    if (accepted == true && controller.text.trim().isNotEmpty) {
-      await AppScope.of(context).createGroup(name: controller.text.trim());
+  Future<void> _runSidebarAction<T>(Future<T> Function() action) async {
+    final app = AppScope.of(context);
+    final sessionId = app.api.sessionId;
+    try {
+      await action();
+    } on ApiException catch (error) {
+      if (!mounted || app.api.sessionId != sessionId) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.detail)));
     }
-    controller.dispose();
   }
 
-  Future<void> _renameGroup(ChatGroup group) async {
-    final controller = TextEditingController(text: group.name);
-    final accepted = await showDialog<String>(
+  Future<String?> _requestGroupName({
+    required String title,
+    required String actionLabel,
+    String initialValue = '',
+  }) {
+    var name = initialValue;
+    return showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('重命名分组'),
-        content: TextField(
-          controller: controller,
+        title: Text(title),
+        content: TextFormField(
+          initialValue: initialValue,
+          onChanged: (value) => name = value,
           autofocus: true,
           decoration: const InputDecoration(labelText: '分组名称'),
         ),
@@ -228,20 +218,47 @@ class _TeacherShellState extends State<TeacherShell> {
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('保存'),
+            onPressed: () => Navigator.pop(dialogContext, name.trim()),
+            child: Text(actionLabel),
           ),
         ],
       ),
     );
-    final name = accepted?.trim();
-    if (name != null && name.isNotEmpty) {
-      await AppScope.of(context).updateGroup(group.id, name: name);
+  }
+
+  Future<void> _createGroupFromSidebar() async {
+    final app = AppScope.of(context);
+    final sessionId = app.api.sessionId;
+    final name = await _requestGroupName(title: '新建分组', actionLabel: '创建');
+    if (name == null ||
+        name.isEmpty ||
+        !mounted ||
+        app.api.sessionId != sessionId) {
+      return;
     }
-    controller.dispose();
+    await _runSidebarAction(() => app.createGroup(name: name));
+  }
+
+  Future<void> _renameGroup(ChatGroup group) async {
+    final app = AppScope.of(context);
+    final sessionId = app.api.sessionId;
+    final name = await _requestGroupName(
+      title: '重命名分组',
+      actionLabel: '保存',
+      initialValue: group.name,
+    );
+    if (name == null ||
+        name.isEmpty ||
+        !mounted ||
+        app.api.sessionId != sessionId) {
+      return;
+    }
+    await _runSidebarAction(() => app.updateGroup(group.id, name: name));
   }
 
   Future<void> _deleteGroup(ChatGroup group) async {
+    final app = AppScope.of(context);
+    final sessionId = app.api.sessionId;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -262,12 +279,14 @@ class _TeacherShellState extends State<TeacherShell> {
         ],
       ),
     );
-    if (confirmed == true) {
-      await AppScope.of(context).deleteGroup(group.id);
+    if (confirmed == true && mounted && app.api.sessionId == sessionId) {
+      await _runSidebarAction(() => app.deleteGroup(group.id));
     }
   }
 
   Future<void> _deleteConversation(ChatConversation conversation) async {
+    final app = AppScope.of(context);
+    final sessionId = app.api.sessionId;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -288,8 +307,8 @@ class _TeacherShellState extends State<TeacherShell> {
         ],
       ),
     );
-    if (confirmed == true) {
-      await AppScope.of(context).deleteConversation(conversation.id);
+    if (confirmed == true && mounted && app.api.sessionId == sessionId) {
+      await _runSidebarAction(() => app.deleteConversation(conversation.id));
     }
   }
 
@@ -751,6 +770,7 @@ class _TeacherSidebar extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
+            key: const ValueKey('teacher-new-class'),
             onPressed: onNewClass,
             icon: const Icon(LucideIcons.plus, size: 17),
             label: const Align(

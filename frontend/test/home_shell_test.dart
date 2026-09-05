@@ -289,7 +289,7 @@ void main() {
     await tester.pumpWidget(app(state));
     await tester.pumpAndSettle();
 
-    final continueButton = find.widgetWithText(FilledButton, '继续');
+    final continueButton = find.byKey(const ValueKey('continue-learning'));
     await tester.ensureVisible(continueButton);
     await tester.tap(continueButton);
     await tester.pumpAndSettle();
@@ -307,7 +307,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final button = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, '继续'),
+      find.byKey(const ValueKey('continue-learning')),
     );
     expect(button.onPressed, isNull);
   });

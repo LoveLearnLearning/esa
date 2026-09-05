@@ -902,6 +902,11 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                     (user_id,),
                 ).fetchone()
                 if existing is not None:
+                    if existing["status"] in ("applied", "completed"):
+                        connection.execute(
+                            "DELETE FROM personal_knowledge_base_catalogs WHERE user_id = ?",
+                            (user_id,),
+                        )
                     if existing["status"] == "failed":
                         connection.execute(
                             """
@@ -1056,6 +1061,7 @@ class PersonalKnowledgeBaseStore(BaseSQLiteStore):
                     "personal_knowledge_base_jobs",
                     "personal_knowledge_base_mutations",
                     "personal_knowledge_base_files",
+                    "personal_knowledge_base_catalogs",
                     "personal_knowledge_bases",
                     "personal_knowledge_base_generations",
                 ):

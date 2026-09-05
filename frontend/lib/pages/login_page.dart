@@ -693,6 +693,7 @@ class _LoginPageState extends State<LoginPage>
               width: 110,
               height: 48,
               child: OutlinedButton(
+                key: const ValueKey('registration-send-code'),
                 onPressed: disabled ? null : _sendVerificationCode,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _text,
@@ -887,7 +888,6 @@ class _LoginPageState extends State<LoginPage>
       ),
     );
   }
-
 }
 
 class _BackgroundWash extends StatelessWidget {

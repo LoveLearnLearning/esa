@@ -10,6 +10,7 @@ import pytest
 from backend.agent.rag.personal.purge import PersonalKnowledgeBaseUserPurger
 from backend.core.stores.migrations import run_migrations
 from backend.core.stores.personal_knowledge_base_store import (
+    PersonalKnowledgeBaseConflict,
     PersonalKnowledgeBaseStore,
 )
 from backend.core.stores.user_store import UserStore
@@ -58,6 +59,11 @@ def test_user_purger_deletes_vectors_artifacts_and_flushes_clean_snapshot(
     tmp_path,
 ):
     store = _store(tmp_path)
+    store.create_knowledge_base(user_id="u1", name="private library")
+    store.execute(
+        "INSERT INTO users (id, username, password_hash) VALUES ('u2', 'two', 'hash')"
+    )
+    other_library = store.create_knowledge_base(user_id="u2", name="retained library")
     index = _Index()
     discarded_sources: list[str] = []
     discarded_artifacts: list[str] = []
@@ -85,8 +91,31 @@ def test_user_purger_deletes_vectors_artifacts_and_flushes_clean_snapshot(
     assert index.deleted == ["u1"]
     assert discarded_sources == ["file-1"]
     assert discarded_artifacts == ["file-1"]
-    assert store.get_retrieval_state("u1")["files"] == {}
-    assert asyncio.run(purger.purge("u1"))["status"] == "completed"
+    for table in (
+        "personal_knowledge_base_files",
+        "personal_knowledge_bases",
+        "personal_knowledge_base_catalogs",
+    ):
+        assert store.query_one(
+            f"SELECT COUNT(*) FROM {table} WHERE user_id = ?", ("u1",)
+        )[0] == 0
+    with pytest.raises(PersonalKnowledgeBaseConflict, match="scheduled for purge"):
+        store.get_retrieval_state("u1")
+    with pytest.raises(PersonalKnowledgeBaseConflict, match="scheduled for purge"):
+        store.create_knowledge_base(user_id="u1", name="recreated")
+    assert store.list_knowledge_bases("u2")[0]["id"] == other_library["id"]
+    store.execute(
+        """
+        INSERT INTO personal_knowledge_base_catalogs (
+            knowledge_base_id, user_id, name, created_at, updated_at
+        ) VALUES ('legacy-residual', 'u1', 'legacy private name', 'now', 'now')
+        """
+    )
+    assert asyncio.run(purger.purge("u1")) == result
+    assert store.query_one(
+        "SELECT COUNT(*) FROM personal_knowledge_base_catalogs WHERE user_id = 'u1'"
+    )[0] == 0
+    assert index.deleted == ["u1"]
 
 
 def test_user_purger_never_commits_when_qdrant_absence_is_unproven(tmp_path):

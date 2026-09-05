@@ -57,7 +57,7 @@ class _ASGIClient:
 
 def _client(tmp_path, *, enabled: bool = True) -> tuple[_ASGIClient, dict, dict]:
     database = tmp_path / "user.db"
-    UserStore(database)
+    users = UserStore(database)
     SessionStore(database)
     run_migrations(database)
     connection = sqlite3.connect(database)
@@ -92,6 +92,7 @@ def _client(tmp_path, *, enabled: bool = True) -> tuple[_ASGIClient, dict, dict]
         forwarded_allow_ips=("testclient",),
         enable_legacy_routes=False,
     )
+    app.state.user_store = users
     app.state.session_store = sessions
     app.state.personal_knowledge_base_service = service
     return (
@@ -106,16 +107,20 @@ def test_empty_snapshot_and_authentication(tmp_path):
     assert client.get("/api/me/knowledge-base").status_code == 401
     response = client.get("/api/me/knowledge-base", headers=user_one)
     assert response.status_code == 200
-    assert response.json() == {
+    snapshot = response.json()
+    updated_at = snapshot["updated_at"]
+    assert datetime.fromisoformat(updated_at).tzinfo is not None
+    assert snapshot == {
         "file_count": 0,
         "chunk_count": 0,
         "index_count": 0,
         "status": "idle",
         "progress": 0.0,
-        "updated_at": None,
+        "updated_at": updated_at,
         "error": None,
         "files": [],
     }
+    assert client.get("/api/me/knowledge-base", headers=user_one).json() == snapshot
 
 
 def test_upload_deduplicate_isolate_and_delete(tmp_path):

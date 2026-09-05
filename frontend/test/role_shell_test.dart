@@ -10,6 +10,68 @@ import 'package:shared_preferences/shared_preferences.dart';
 class _RoleShellApi extends ApiClient {
   _RoleShellApi() : super(baseUrl: 'http://test.invalid');
 
+  final List<String> mutations = [];
+  bool rejectMutations = false;
+
+  void _recordMutation(String operation) {
+    mutations.add(operation);
+    if (rejectMutations) throw ApiException(503, '服务暂时不可用，请重试');
+  }
+
+  @override
+  Future<ChatGroup> createGroup({
+    required String name,
+    String description = '',
+    String customInstruction = '',
+    String? style,
+    String? tone,
+    String? projectId,
+  }) async {
+    _recordMutation('createGroup');
+    return _group(name: name);
+  }
+
+  @override
+  Future<ChatGroup> updateGroup(
+    String groupId, {
+    String? name,
+    String? description,
+    String? customInstruction,
+    Object? style = groupFieldUnset,
+    Object? tone = groupFieldUnset,
+    Object? projectId = groupFieldUnset,
+    bool? pinned,
+  }) async {
+    _recordMutation('updateGroup');
+    return _group(name: name ?? '原分组');
+  }
+
+  @override
+  Future<void> deleteGroup(String groupId) async {
+    _recordMutation('deleteGroup');
+  }
+
+  @override
+  Future<void> deleteConversation(String id) async {
+    _recordMutation('deleteConversation');
+  }
+
+  @override
+  Future<TeachingClass> createTeachingClass({
+    required String name,
+    required String course,
+    String term = '',
+    String description = '',
+  }) async {
+    _recordMutation('createClass');
+    return TeachingClass.fromJson({
+      'class_id': 'class-1',
+      'name': name,
+      'canonical_course': course,
+      'term': term,
+    });
+  }
+
   @override
   Future<void> logout() async {
     sessionId = null;
@@ -92,11 +154,29 @@ class _RoleShellApi extends ApiClient {
   }) async => const PersonalKnowledgeBase.empty();
 }
 
-Widget _app(AppState state) => AppScope(
+ChatGroup _group({String name = '原分组'}) => ChatGroup(
+  id: 'group-1',
+  userId: 'user',
+  name: name,
+  description: '',
+  customInstruction: '',
+  conversationCount: 0,
+  createdAt: DateTime(2026),
+  updatedAt: DateTime(2026),
+);
+
+Widget _app(AppState state, {ValueNotifier<bool>? shellVisible}) => AppScope(
   state: state,
   child: MaterialApp(
     theme: esaTheme(brightness: Brightness.dark),
-    home: const RoleShell(),
+    home: shellVisible == null
+        ? const RoleShell()
+        : ValueListenableBuilder<bool>(
+            valueListenable: shellVisible,
+            builder: (context, visible, child) =>
+                visible ? child! : const Scaffold(body: Text('已离开教学空间')),
+            child: const RoleShell(),
+          ),
   ),
 );
 
@@ -138,6 +218,111 @@ AppState _state({required bool teacher}) {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final scenario in [
+    (trigger: '新建班级', confirm: '创建班级', operation: 'createClass'),
+    (trigger: '新建分组', confirm: '创建', operation: 'createGroup'),
+    (trigger: '重命名分组', confirm: '保存', operation: 'updateGroup'),
+    (trigger: '删除分组', confirm: '删除', operation: 'deleteGroup'),
+    (trigger: '删除对话', confirm: '删除', operation: 'deleteConversation'),
+  ]) {
+    for (final outcome in [
+      'cancel',
+      'unmount',
+      'session-change',
+      'failure',
+      'success',
+    ]) {
+      testWidgets('teacher ${scenario.operation} dialog handles $outcome', (
+        tester,
+      ) async {
+        tester.view.physicalSize = const Size(1440, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final visible = ValueNotifier(true);
+        addTearDown(visible.dispose);
+        final state = _state(teacher: true)
+          ..groups.add(_group())
+          ..conversations.add(
+            ChatConversation(
+              id: 'conversation-1',
+              title: '原对话',
+              workspaceType: WorkspaceType.teaching,
+              updatedAt: DateTime(2026),
+            ),
+          );
+        addTearDown(state.dispose);
+        final api = state.api as _RoleShellApi;
+        api.rejectMutations = outcome == 'failure';
+        await tester.pumpWidget(_app(state, shellVisible: visible));
+        await tester.pumpAndSettle();
+        final trigger = scenario.operation == 'createClass'
+            ? find.byKey(const ValueKey('teacher-new-class'))
+            : find.byTooltip(scenario.trigger).first;
+        await tester.ensureVisible(trigger);
+        await tester.tap(trigger);
+        await tester.pumpAndSettle();
+        final dialog = find.byType(AlertDialog);
+        final input = find.descendant(
+          of: dialog,
+          matching: find.byType(TextField),
+        );
+        if (input.evaluate().isNotEmpty) {
+          await tester.enterText(input.first, '修改后的分组');
+          if (scenario.operation == 'createClass') {
+            await tester.enterText(input.at(1), '数据结构');
+            await tester.enterText(input.at(2), '2026 秋');
+          }
+        }
+        if (outcome == 'unmount') {
+          visible.value = false;
+          await tester.pumpAndSettle();
+        } else if (outcome == 'session-change') {
+          api.sessionId = 'replacement-session';
+        }
+        await tester.tap(
+          find.descendant(
+            of: dialog,
+            matching: outcome == 'cancel'
+                ? find.widgetWithText(TextButton, '取消')
+                : find.widgetWithText(
+                    scenario.confirm == '删除' ? TextButton : FilledButton,
+                    scenario.confirm,
+                  ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        if (outcome == 'failure' || outcome == 'success') {
+          expect(api.mutations, [scenario.operation]);
+        } else {
+          expect(api.mutations, isEmpty);
+        }
+        if (outcome == 'failure') {
+          expect(find.text('服务暂时不可用，请重试'), findsOneWidget);
+          expect(state.groups.single.name, '原分组');
+          expect(state.conversations.single.title, '原对话');
+        } else if (outcome == 'success') {
+          switch (scenario.operation) {
+            case 'createClass':
+              expect(
+                find.byKey(const ValueKey('teacher-class-class-1')),
+                findsWidgets,
+              );
+            case 'createGroup':
+              expect(state.groups.last.name, '修改后的分组');
+            case 'updateGroup':
+              expect(state.groups.single.name, '修改后的分组');
+            case 'deleteGroup':
+              expect(state.groups, isEmpty);
+            case 'deleteConversation':
+              expect(state.conversations, isEmpty);
+          }
+        }
+      });
+    }
+  }
 
   testWidgets('student role renders only the student application shell', (
     tester,
