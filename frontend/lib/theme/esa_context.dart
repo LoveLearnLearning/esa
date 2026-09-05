@@ -9,4 +9,7 @@ extension EsaContext on BuildContext {
   ColorScheme get scheme => Theme.of(this).colorScheme;
   TextTheme get texts => Theme.of(this).textTheme;
   bool get isDark => Theme.of(this).brightness == Brightness.dark;
+
+  /// 当前亮度下的强调色：深色用浅灰、浅色用深灰，保证文字与图标在两种模式下都可读。
+  Color get accent => isDark ? EsaColors.accent : EsaColors.accent600;
 }

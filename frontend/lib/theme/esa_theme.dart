@@ -27,9 +27,9 @@ class EsaColors {
   static const lN100 = Color(0xFFF8F4F4);
   static const lN200 = Color(0xFFEAE7E7);
   static const lN300 = Color(0xFFD7D3D3);
-  static const lN500 = Color.fromARGB(255, 164, 158, 158);
-  static const lN600 = Color.fromARGB(255, 48, 46, 46);
-  static const lN700 = Color.fromARGB(255, 0, 0, 0);
+  static const lN500 = Color(0xFF7C7575);
+  static const lN600 = Color(0xFF262424);
+  static const lN700 = Color(0xFF000000);
 
   // shared —— 中性主色阶。所有平台复用同一套黑灰配色，避免桌面端
   // 组件绕过 surface token 后重新出现蓝色选中块或蓝黑卡片。
