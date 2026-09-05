@@ -85,3 +85,11 @@ class AnswerReviewInput(BaseModel):
 class SubmissionReviewRequest(BaseModel):
     """表示 `submission review request` 数据结构。"""
     reviews: list[AnswerReviewInput] = Field(min_length=1, max_length=30)
+
+    @model_validator(mode="after")
+    def unique_answers(self):
+        """拒绝同一份提交中重复复核同一个答案。"""
+        ids = [item.answer_id for item in self.reviews]
+        if len(ids) != len(set(ids)):
+            raise ValueError("同一个答案不能重复复核")
+        return self

@@ -381,6 +381,11 @@ ENABLE_LEGACY_API_ROUTES: bool = _bool_from_env(
     "ESA_ENABLE_LEGACY_API_ROUTES",
     True,
 )
+INTERNAL_METRICS_TOKEN: str | None = _optional_str_from_env(
+    "ESA_INTERNAL_METRICS_TOKEN"
+)
+if INTERNAL_METRICS_TOKEN is not None and len(INTERNAL_METRICS_TOKEN) < 32:
+    raise ValueError("ESA_INTERNAL_METRICS_TOKEN must be at least 32 characters")
 
 # Workspace runtime rollout. Authorization is always computed by Core Router;
 # these switches only select the execution adapter during a staged deployment.

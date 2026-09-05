@@ -5,10 +5,11 @@
 import asyncio
 import logging
 import os
+import secrets
 import tempfile
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -143,6 +144,7 @@ from backend.core.utils.config import (
     EMAIL_VERIFICATION_SECRET,
     ENABLE_LEGACY_API_ROUTES,
     FORWARDED_ALLOW_IPS,
+    INTERNAL_METRICS_TOKEN,
     LSP_ALLOWED_ORIGINS,
     LSP_DOCUMENT_FILENAMES,
     LSP_ENABLED,
@@ -837,6 +839,23 @@ api_router = APIRouter()
 api_router.include_router(business_router)
 
 
+def _require_internal_metrics_access(
+    authorization: str | None = Header(default=None),
+    x_internal_metrics_token: str | None = Header(default=None),
+) -> None:
+    """Require an explicitly configured secret for operational metrics."""
+
+    if INTERNAL_METRICS_TOKEN is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    candidate = x_internal_metrics_token
+    if candidate is None and authorization is not None:
+        scheme, _, value = authorization.partition(" ")
+        if scheme.lower() == "bearer":
+            candidate = value.strip()
+    if candidate is None or not secrets.compare_digest(candidate, INTERNAL_METRICS_TOKEN):
+        raise HTTPException(status_code=404, detail="Not found")
+
+
 @api_router.get("/health", tags=["operations"])
 def health() -> dict[str, str]:
     """Process liveness only; deliberately avoids models, RAG, and databases."""
@@ -844,7 +863,11 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@api_router.get("/internal/metrics", tags=["operations"])
+@api_router.get(
+    "/internal/metrics",
+    tags=["operations"],
+    dependencies=[Depends(_require_internal_metrics_access)],
+)
 def get_internal_metrics(request: Request):
     """Expose in-process profile and Agent runtime metrics."""
 
@@ -859,7 +882,11 @@ def get_internal_metrics(request: Request):
     }
 
 
-@api_router.get("/internal/metrics/personal-knowledge-base", tags=["operations"])
+@api_router.get(
+    "/internal/metrics/personal-knowledge-base",
+    tags=["operations"],
+    dependencies=[Depends(_require_internal_metrics_access)],
+)
 def get_personal_knowledge_base_metrics(request: Request):
     """Expose SQLite-only personal queue and recovery readiness counters."""
 
@@ -876,6 +903,7 @@ def get_personal_knowledge_base_metrics(request: Request):
     "/internal/metrics/prometheus",
     response_class=PlainTextResponse,
     tags=["operations"],
+    dependencies=[Depends(_require_internal_metrics_access)],
 )
 def get_metrics_prometheus(request: Request):
     """Expose profile and Agent metrics using the Prometheus text format."""
@@ -916,6 +944,7 @@ def create_app(
             "Cache-Control",
             "Content-Type",
             "Last-Event-ID",
+            "X-Internal-Metrics-Token",
         ],
     )
     application.add_middleware(
@@ -944,6 +973,7 @@ def create_app(
             get_internal_metrics,
             methods=["GET"],
             include_in_schema=False,
+            dependencies=[Depends(_require_internal_metrics_access)],
         )
         application.add_api_route(
             "/internal/metrics/prometheus",
@@ -951,6 +981,7 @@ def create_app(
             methods=["GET"],
             response_class=PlainTextResponse,
             include_in_schema=False,
+            dependencies=[Depends(_require_internal_metrics_access)],
         )
 
     return application

@@ -355,15 +355,21 @@ def review_submission(
     answers = {item["answer_id"]: item for item in submission["answers"]}
     if set(answers) != {item.answer_id for item in body.reviews}:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "必须复核全部题目")
+    review_payload = []
     for review in body.reviews:
         answer = answers[review.answer_id]
         if review.score > float(answer["max_points"]):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "得分不能超过题目满分")
-        if review.kp_id and request.app.state.knowledge_graph_store.resolve_kp_id(review.kp_id) is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "知识点不存在")
+        payload = review.model_dump()
+        if review.kp_id:
+            resolved = request.app.state.knowledge_graph_store.resolve_kp_id(review.kp_id)
+            if resolved is None:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "知识点不存在")
+            payload["kp_id"] = resolved
+        review_payload.append(payload)
     return store.review_submission(
         submission_id=submission_id,
-        reviews=[item.model_dump() for item in body.reviews],
+        reviews=review_payload,
         teacher_id=user.id,
     )
 

@@ -15,6 +15,7 @@ from backend.core.stores.session_store import SessionStore
 from backend.core.stores.user_presence_store import UserPresenceStore
 from backend.core.stores.user_store import UserStore
 from backend.core.web.webAPI import create_app
+import backend.core.web.webAPI as web_api
 
 
 class _FakeEmailSender:
@@ -307,3 +308,22 @@ def test_legacy_routes_remain_available_during_migration(tmp_path):
     )
 
     assert response.status_code == 401
+
+
+def test_internal_metrics_requires_configured_token(tmp_path, monkeypatch):
+    """验证内部指标端点未授权时不可访问。"""
+    client = TestClient(_app(tmp_path))
+
+    monkeypatch.setattr(web_api, "INTERNAL_METRICS_TOKEN", None)
+    assert client.get("/api/internal/metrics").status_code == 404
+
+    monkeypatch.setattr(
+        web_api,
+        "INTERNAL_METRICS_TOKEN",
+        "metrics-token-that-is-at-least-32-characters",
+    )
+    assert client.get("/api/internal/metrics").status_code == 404
+    assert client.get(
+        "/api/internal/metrics",
+        headers={"X-Internal-Metrics-Token": "metrics-token-that-is-at-least-32-characters"},
+    ).status_code == 200

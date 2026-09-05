@@ -1159,6 +1159,11 @@ inline 文件名和安全响应头；跨用户、已删除及不存在统一 `40
 各阶段持久耗时统计、待清理文件与 generation、collection readiness，以及 Qdrant
 mutation/snapshot sequence。该接口不读取文档正文或 Qdrant 查询结果。
 
+`/api/internal/metrics`、`/api/internal/metrics/personal-knowledge-base` 和
+`/api/internal/metrics/prometheus` 均要求服务端配置至少 32 字符的
+`ESA_INTERNAL_METRICS_TOKEN`，并通过 `X-Internal-Metrics-Token` 或
+`Authorization: Bearer` 发送。未配置令牌时接口关闭并返回 `404`。
+
 ## Web 部署约定
 
 Flutter Web 默认使用同源 `/api`。Nginx 必须把 `/api` 前缀原样转发到后端；

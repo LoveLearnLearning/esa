@@ -767,6 +767,8 @@ class _BindEmailDialogState extends State<_BindEmailDialog> {
   bool _sending = false;
   bool _submitting = false;
   int _cooldown = 0;
+  String? _verificationEmail;
+  String? _pendingVerificationEmail;
   Timer? _timer;
   String? _error;
 
@@ -774,11 +776,13 @@ class _BindEmailDialogState extends State<_BindEmailDialog> {
   void initState() {
     super.initState();
     _email = TextEditingController(text: widget.initialEmail);
+    _email.addListener(_handleEmailChanged);
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _email.removeListener(_handleEmailChanged);
     _email.dispose();
     _code.dispose();
     super.dispose();
@@ -793,6 +797,24 @@ class _BindEmailDialogState extends State<_BindEmailDialog> {
         !parts.last.endsWith('.');
   }
 
+  void _handleEmailChanged() {
+    final email = _email.text.trim().toLowerCase();
+    if ((_verificationEmail == null || email == _verificationEmail) &&
+        (_pendingVerificationEmail == null ||
+            email == _pendingVerificationEmail)) {
+      return;
+    }
+    _timer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _code.clear();
+      _verificationEmail = null;
+      _pendingVerificationEmail = null;
+      _cooldown = 0;
+      _sending = false;
+    });
+  }
+
   Future<void> _sendCode() async {
     if (_sending || _cooldown > 0) return;
     final value = _email.text.trim();
@@ -800,17 +822,27 @@ class _BindEmailDialogState extends State<_BindEmailDialog> {
       setState(() => _error = '请输入正确的邮箱地址');
       return;
     }
+    final normalizedEmail = value.toLowerCase();
     setState(() {
       _sending = true;
       _error = null;
+      _pendingVerificationEmail = normalizedEmail;
     });
     final result = await AppScope.of(context).sendBindEmailCode(value);
     if (!mounted) return;
+    if (_email.text.trim().toLowerCase() != normalizedEmail ||
+        _pendingVerificationEmail != normalizedEmail) {
+      return;
+    }
     final seconds = int.tryParse(result ?? '');
     setState(() {
       _sending = false;
+      _pendingVerificationEmail = null;
       _error = seconds == null ? result : null;
-      if (seconds != null) _cooldown = seconds;
+      if (seconds != null) {
+        _verificationEmail = normalizedEmail;
+        _cooldown = seconds;
+      }
     });
     if (seconds == null) return;
     _timer?.cancel();
@@ -833,6 +865,10 @@ class _BindEmailDialogState extends State<_BindEmailDialog> {
     }
     if (!RegExp(r'^\d{6}$').hasMatch(_code.text)) {
       setState(() => _error = '请输入 6 位邮箱验证码');
+      return;
+    }
+    if (_verificationEmail != value.toLowerCase()) {
+      setState(() => _error = '请先为当前邮箱获取验证码');
       return;
     }
     setState(() {

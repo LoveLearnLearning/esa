@@ -48,6 +48,8 @@ class _LoginPageState extends State<LoginPage>
   bool _loading = false;
   bool _sendingCode = false;
   int _codeCooldown = 0;
+  String? _verificationEmail;
+  String? _pendingVerificationEmail;
   Timer? _codeTimer;
   String? _error;
 
@@ -65,6 +67,7 @@ class _LoginPageState extends State<LoginPage>
     ]) {
       focusNode.addListener(_handleInputFocusChange);
     }
+    _email.addListener(_handleEmailChanged);
     _graphPointer = ValueNotifier<Offset?>(null);
     _graphAnimation = AnimationController(
       vsync: this,
@@ -92,9 +95,28 @@ class _LoginPageState extends State<LoginPage>
     if (mounted) setState(() {});
   }
 
+  void _handleEmailChanged() {
+    final email = _email.text.trim().toLowerCase();
+    if ((_verificationEmail == null || email == _verificationEmail) &&
+        (_pendingVerificationEmail == null ||
+            email == _pendingVerificationEmail)) {
+      return;
+    }
+    _codeTimer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _verificationCode.clear();
+      _verificationEmail = null;
+      _pendingVerificationEmail = null;
+      _codeCooldown = 0;
+      _sendingCode = false;
+    });
+  }
+
   @override
   void dispose() {
     _codeTimer?.cancel();
+    _email.removeListener(_handleEmailChanged);
     _graphAnimation.dispose();
     _graphPointer.dispose();
     for (final focusNode in [
@@ -136,17 +158,27 @@ class _LoginPageState extends State<LoginPage>
       _emailFocus.requestFocus();
       return;
     }
+    final normalizedEmail = email.toLowerCase();
     setState(() {
       _error = null;
       _sendingCode = true;
+      _pendingVerificationEmail = normalizedEmail;
     });
     final result = await AppScope.of(context).sendRegistrationCode(email);
     if (!mounted) return;
+    if (_email.text.trim().toLowerCase() != normalizedEmail ||
+        _pendingVerificationEmail != normalizedEmail) {
+      return;
+    }
     final seconds = int.tryParse(result ?? '');
     setState(() {
       _sendingCode = false;
+      _pendingVerificationEmail = null;
       _error = seconds == null ? result : null;
-      if (seconds != null) _codeCooldown = seconds;
+      if (seconds != null) {
+        _verificationEmail = normalizedEmail;
+        _codeCooldown = seconds;
+      }
     });
     if (seconds == null) return;
     _verificationCodeFocus.requestFocus();
@@ -184,6 +216,10 @@ class _LoginPageState extends State<LoginPage>
     }
     if (_isRegister && !RegExp(r'^\d{6}$').hasMatch(verificationCode)) {
       setState(() => _error = '请输入邮件中的 6 位验证码');
+      return;
+    }
+    if (_isRegister && _verificationEmail != email.toLowerCase()) {
+      setState(() => _error = '请先为当前邮箱获取验证码');
       return;
     }
     if (username.length > 32) {

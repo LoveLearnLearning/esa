@@ -157,6 +157,16 @@ def test_teacher_student_homework_vertical_slice(tmp_path, monkeypatch):
     )
     assert "ai_score" not in hidden.json()["answers"][0]
 
+    duplicate_review = client.post(
+        f"/api/teaching/submissions/{submission_id}/review",
+        headers=teacher_headers,
+        json={"reviews": [
+            {"answer_id": answer["answer_id"], "score": 8},
+            {"answer_id": answer["answer_id"], "score": 9},
+        ]},
+    )
+    assert duplicate_review.status_code == 422
+
     reviewed = client.post(
         f"/api/teaching/submissions/{submission_id}/review",
         headers=teacher_headers,
@@ -164,11 +174,12 @@ def test_teacher_student_homework_vertical_slice(tmp_path, monkeypatch):
             "answer_id": answer["answer_id"],
             "score": 9,
             "feedback": "结论正确，请补充搜索区间规模的递推关系。",
-            "kp_id": "binary_search",
+            "kp_id": "二分查找",
         }]},
     )
     assert reviewed.status_code == 200
     assert reviewed.json()["total_score"] == 9
+    assert reviewed.json()["answers"][0]["final_kp_id"] == "binary_search"
     unpublished_list = client.get("/api/student/assignments", headers=student_headers)
     assert unpublished_list.json()[0]["total_score"] is None
     assert client.post(
