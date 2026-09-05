@@ -19,12 +19,12 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage>
     with SingleTickerProviderStateMixin {
-  static const _background = Color(0xFF070A11);
-  static const _text = Color(0xFFF4F7FB);
-  static const _muted = Color(0xFF8D9AAF);
-  static const _soft = Color(0xFF66748A);
-  static const _accent = Color(0xFF9BB0FF);
-  static const _cyan = Color(0xFF8DDBF8);
+  static const _background = Color(0xFF0A0A0A);
+  static const _text = Color(0xFFF7F7F7);
+  static const _muted = Color(0xFF999999);
+  static const _soft = Color(0xFF737373);
+  static const _accent = Color(0xFFB1B1B1);
+  static const _cyan = Color(0xFFCDCDCD);
   static const _line = Color(0x17FFFFFF);
 
   final _email = TextEditingController();
@@ -325,7 +325,7 @@ class _LoginPageState extends State<LoginPage>
       constraints: const BoxConstraints(maxWidth: 450),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: const Color(0xE612111B),
+          color: const Color(0xE6121212),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: _line),
           boxShadow: const [
@@ -437,7 +437,7 @@ class _LoginPageState extends State<LoginPage>
     return Container(
       height: 44,
       decoration: BoxDecoration(
-        color: const Color(0x4D03070E),
+        color: const Color(0x4D070707),
         borderRadius: BorderRadius.circular(13),
         border: Border.all(color: _line),
       ),
@@ -455,7 +455,7 @@ class _LoginPageState extends State<LoginPage>
     final selected = _mode == mode;
     return Expanded(
       child: Material(
-        color: selected ? const Color(0xFFF4F7FB) : Colors.transparent,
+        color: selected ? const Color(0xFFF7F7F7) : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
@@ -479,7 +479,7 @@ class _LoginPageState extends State<LoginPage>
                 Text(
                   sublabel,
                   style: TextStyle(
-                    color: selected ? const Color(0xFF5E6878) : _soft,
+                    color: selected ? const Color(0xFF676767) : _soft,
                     fontSize: 9,
                     fontWeight: FontWeight.w600,
                   ),
@@ -515,7 +515,7 @@ class _LoginPageState extends State<LoginPage>
           alignment: Alignment.center,
           margin: const EdgeInsets.all(3),
           decoration: BoxDecoration(
-            color: selected ? const Color(0x1F9BB0FF) : Colors.transparent,
+            color: selected ? const Color(0x1FB1B1B1) : Colors.transparent,
             borderRadius: BorderRadius.circular(9),
           ),
           child: Text(
@@ -535,7 +535,7 @@ class _LoginPageState extends State<LoginPage>
     final text = Text(
       label,
       style: const TextStyle(
-        color: Color(0xFFB9C3D1),
+        color: Color(0xFFC2C2C2),
         fontSize: 12,
         fontWeight: FontWeight.w500,
       ),
@@ -590,7 +590,7 @@ class _LoginPageState extends State<LoginPage>
   Widget _inputShell({required Widget child}) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0x7303070E),
+        color: const Color(0x73070707),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0x18FFFFFF)),
       ),
@@ -605,7 +605,7 @@ class _LoginPageState extends State<LoginPage>
   }) {
     return InputDecoration(
       hintText: showHint ? hint : null,
-      hintStyle: const TextStyle(color: Color(0xFF58657A), fontSize: 14),
+      hintStyle: const TextStyle(color: Color(0xFF646464), fontSize: 14),
       suffixIcon: suffix,
       filled: false,
       isDense: true,
@@ -750,7 +750,7 @@ class _LoginPageState extends State<LoginPage>
                           setState(() => _rememberLogin = value ?? false),
                 activeColor: _accent,
                 checkColor: _background,
-                side: const BorderSide(color: Color(0xFF66748A)),
+                side: const BorderSide(color: Color(0xFF737373)),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(5),
                 ),
@@ -808,11 +808,11 @@ class _LoginPageState extends State<LoginPage>
       height: 50,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFFB6C4FF), _cyan]),
+          gradient: const LinearGradient(colors: [Color(0xFFC5C5C5), _cyan]),
           borderRadius: BorderRadius.circular(14),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x245680FF),
+              color: Color(0x24808080),
               blurRadius: 28,
               offset: Offset(0, 12),
             ),
@@ -832,7 +832,7 @@ class _LoginPageState extends State<LoginPage>
                   Text(
                     _loading ? '正在连接…' : (_isRegister ? '创建知识空间' : '进入 ESA'),
                     style: const TextStyle(
-                      color: Color(0xFF08101F),
+                      color: Color(0xFF0F0F0F),
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
                     ),
@@ -841,7 +841,7 @@ class _LoginPageState extends State<LoginPage>
                   const Icon(
                     LucideIcons.arrowRight,
                     size: 17,
-                    color: Color(0xFF08101F),
+                    color: Color(0xFF0F0F0F),
                   ),
                 ],
               ),
@@ -851,7 +851,6 @@ class _LoginPageState extends State<LoginPage>
       ),
     );
   }
-
 }
 
 class _BackgroundWash extends StatelessWidget {
@@ -867,7 +866,7 @@ class _BackgroundWash extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xFF080B13), Color(0xFF060910)],
+              colors: [Color(0xFF0B0B0B), Color(0xFF090909)],
             ),
           ),
         ),
@@ -876,7 +875,7 @@ class _BackgroundWash extends StatelessWidget {
             gradient: RadialGradient(
               center: Alignment(-0.65, -0.05),
               radius: 1.15,
-              colors: [Color(0x192F4BD6), Color(0x00070A11)],
+              colors: [Color(0x194F4F4F), Color(0x000A0A0A)],
             ),
           ),
         ),
@@ -935,17 +934,17 @@ class _BrandPainter extends CustomPainter {
       Offset(29, 23),
     ];
     final edge = Paint()
-      ..color = const Color(0x739EB4FF)
+      ..color = const Color(0x73B5B5B5)
       ..strokeWidth = 1;
     canvas.drawLine(points[0], points[1], edge);
     canvas.drawLine(points[0], points[2], edge);
     canvas.drawLine(points[1], points[3], edge);
     canvas.drawLine(points[2], points[3], edge);
     const colors = [
-      Color(0xFFC4D1FF),
-      Color(0xFF91B6FF),
-      Color(0xFF8EE1FF),
-      Color(0xFFDCE5FF),
+      Color(0xFFD2D2D2),
+      Color(0xFFB3B3B3),
+      Color(0xFFD2D2D2),
+      Color(0xFFE5E5E5),
     ];
     for (var i = 0; i < points.length; i++) {
       canvas.drawCircle(
@@ -977,7 +976,7 @@ class _Metrics extends StatelessWidget {
         SizedBox(width: 24),
         Text(
           'continuously evolving',
-          style: TextStyle(color: Color(0xFF738299), fontSize: 11),
+          style: TextStyle(color: Color(0xFF808080), fontSize: 11),
         ),
       ],
     );
@@ -1030,14 +1029,14 @@ class _MetricState extends State<_Metric> with SingleTickerProviderStateMixin {
               TextSpan(
                 text: '$displayed  ',
                 style: const TextStyle(
-                  color: Color(0xFFC6D0DF),
+                  color: Color(0xFFCFCFCF),
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               TextSpan(
                 text: widget.label,
-                style: const TextStyle(color: Color(0xFF738299), fontSize: 11),
+                style: const TextStyle(color: Color(0xFF808080), fontSize: 11),
               ),
             ],
           ),
@@ -1058,7 +1057,7 @@ class _HeroCopy extends StatelessWidget {
         Text(
           'ENTER YOUR KNOWLEDGE SPACE',
           style: TextStyle(
-            color: Color(0xFF77879E),
+            color: Color(0xFF858585),
             fontSize: 10,
             fontWeight: FontWeight.w600,
           ),
@@ -1083,7 +1082,7 @@ class _HeroCopy extends StatelessWidget {
           child: Text(
             'ESA 理解你已经掌握的内容、正在学习的方向，以及下一步该去哪里，并围绕你持续重建学习路径。',
             style: TextStyle(
-              color: Color(0xFF8E9DB2),
+              color: Color(0xFF9B9B9B),
               fontSize: 14,
               height: 1.75,
             ),
@@ -1104,7 +1103,7 @@ class _CompactHero extends StatelessWidget {
       children: [
         Text(
           'ENTER YOUR KNOWLEDGE SPACE',
-          style: TextStyle(color: Color(0xFF77879E), fontSize: 9),
+          style: TextStyle(color: Color(0xFF858585), fontSize: 9),
         ),
         SizedBox(height: 10),
         Text(
@@ -1127,7 +1126,7 @@ class _LoadingStage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: const Color(0xE8070A11),
+      color: const Color(0xE80A0A0A),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1185,7 +1184,7 @@ class _KnowledgeGraphPainter extends CustomPainter {
         text: TextSpan(
           text: nodes[index].label,
           style: TextStyle(
-            color: small ? const Color(0xFF8794A8) : const Color(0xFFDCE4F2),
+            color: small ? const Color(0xFF939393) : const Color(0xFFE3E3E3),
             fontSize: small ? 10 : 12,
             fontWeight: FontWeight.w500,
           ),
@@ -1217,7 +1216,7 @@ class _KnowledgeGraphPainter extends CustomPainter {
   final Paint _haloPaint = Paint()..style = PaintingStyle.fill;
   final Paint _nodePaint = Paint()..style = PaintingStyle.fill;
   final Paint _cursorEdgePaint = Paint()
-    ..color = const Color(0x6B8DDBF8)
+    ..color = const Color(0x6BCDCDCD)
     ..style = PaintingStyle.stroke
     ..strokeWidth = 1;
 
@@ -1370,8 +1369,8 @@ class _KnowledgeGraphPainter extends CustomPainter {
         _proximity(_points[edge.$2]),
       );
       _edgePaint.color = Color.lerp(
-        i % 5 == 0 ? const Color(0x579FB4FF) : const Color(0x2E9FB4FF),
-        const Color(0xB58DDBF8),
+        i % 5 == 0 ? const Color(0x57B5B5B5) : const Color(0x2EB5B5B5),
+        const Color(0xB5CDCDCD),
         proximity,
       )!;
       _edgePaint.strokeWidth = 1 + proximity * .7;
@@ -1395,8 +1394,8 @@ class _KnowledgeGraphPainter extends CustomPainter {
       final radius = node.radius * (1 + proximity * .38);
 
       _ringPaint.color = Color.lerp(
-        const Color(0x479CB0FF),
-        const Color(0xC98DDBF8),
+        const Color(0x47B1B1B1),
+        const Color(0xC9CDCDCD),
         proximity,
       )!;
       _ringPaint.strokeWidth = 1 + proximity;
@@ -1407,12 +1406,12 @@ class _KnowledgeGraphPainter extends CustomPainter {
       );
       if (node.core) {
         _haloPaint.color = Color.lerp(
-          const Color(0x2492A8FF),
-          const Color(0x568DDBF8),
+          const Color(0x24AAAAAA),
+          const Color(0x56CDCDCD),
           proximity,
         )!;
         canvas.drawCircle(point, radius + 8, _haloPaint);
-        _haloPaint.color = const Color(0x1A92A8FF);
+        _haloPaint.color = const Color(0x1AAAAAAA);
         canvas.drawCircle(
           point,
           radius + 15 + math.sin(phase + i) * 2,
@@ -1420,8 +1419,8 @@ class _KnowledgeGraphPainter extends CustomPainter {
         );
       }
       _nodePaint.color = Color.lerp(
-        node.core ? const Color(0xFFA9BBFF) : const Color(0xFFDDE5F5),
-        const Color(0xFFB9F0FF),
+        node.core ? const Color(0xFFBCBCBC) : const Color(0xFFE4E4E4),
+        const Color(0xFFE5E5E5),
         proximity,
       )!;
       canvas.drawCircle(point, radius, _nodePaint);
@@ -1432,7 +1431,7 @@ class _KnowledgeGraphPainter extends CustomPainter {
 
     if (_hoverAmount > .05 && nearestIndex >= 0 && nearestDistance < 190) {
       _cursorEdgePaint.color = const Color(
-        0x6B8DDBF8,
+        0x6BCDCDCD,
       ).withValues(alpha: .42 * _hoverAmount * (1 - nearestDistance / 190));
       canvas.drawLine(
         _smoothedPointer,

@@ -1237,6 +1237,7 @@ class ResearchProject {
     required this.description,
     required this.status,
     required this.updatedAt,
+    this.documentCount = 0,
   });
 
   final String id;
@@ -1244,6 +1245,7 @@ class ResearchProject {
   final String description;
   final String status;
   final DateTime updatedAt;
+  final int documentCount;
 
   factory ResearchProject.fromJson(Map<String, dynamic> json) =>
       ResearchProject(
@@ -1254,6 +1256,10 @@ class ResearchProject {
         updatedAt:
             DateTime.tryParse(json['updated_at'] as String? ?? '')?.toLocal() ??
             DateTime.now(),
+        documentCount:
+            (json['document_count'] as num?)?.toInt() ??
+            (json['paper_count'] as num?)?.toInt() ??
+            0,
       );
 
   ResearchProject copyWith({
@@ -1261,12 +1267,14 @@ class ResearchProject {
     String? description,
     String? status,
     DateTime? updatedAt,
+    int? documentCount,
   }) => ResearchProject(
     id: id,
     name: name ?? this.name,
     description: description ?? this.description,
     status: status ?? this.status,
     updatedAt: updatedAt ?? this.updatedAt,
+    documentCount: documentCount ?? this.documentCount,
   );
 }
 

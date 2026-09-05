@@ -91,12 +91,30 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
     super.didChangeDependencies();
     if (!_started) {
       _started = true;
-      unawaited(_loadCourses());
+      final cachedCourses = widget.api == null
+          ? AppScope.of(context).learningCourses
+          : const <LearningCourseSummary>[];
+      if (cachedCourses.isEmpty) {
+        unawaited(_loadCourses());
+      } else {
+        _courses = cachedCourses;
+        _course = cachedCourses.firstOrNull?.name;
+        final selected = _selectedCourse;
+        final cacheKey = selected?.canonicalCourse ?? selected?.name;
+        _map = cacheKey == null
+            ? null
+            : AppScope.of(context).cachedKnowledgeMap(cacheKey);
+        _loading = _map == null && selected?.supported == true;
+        if (_loading) unawaited(_loadMap());
+      }
       unawaited(_loadBannerDismissed());
     }
   }
 
-  Future<void> _loadCourses({String? select}) async {
+  Future<void> _loadCourses({
+    String? select,
+    bool forceMapRefresh = false,
+  }) async {
     setState(() {
       _loading = true;
       _error = null;
@@ -118,7 +136,7 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
       if (selected == null || _selectedCourse?.supported != true) {
         setState(() => _loading = false);
       } else {
-        await _loadMap();
+        await _loadMap(forceRefresh: forceMapRefresh);
       }
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -135,18 +153,21 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
     }
   }
 
-  Future<void> _loadMap() async {
+  Future<void> _loadMap({bool forceRefresh = false}) async {
     final selected = _selectedCourse;
     if (selected == null || !selected.supported) return;
+    final app = widget.api == null ? AppScope.of(context) : null;
+    final api = _api;
     setState(() {
       _loading = true;
       _error = null;
       _map = null;
     });
     try {
-      final result = await _api.getKnowledgeMap(
-        selected.canonicalCourse ?? selected.name,
-      );
+      final course = selected.canonicalCourse ?? selected.name;
+      final result = app != null
+          ? await app.loadKnowledgeMap(course, forceRefresh: forceRefresh)
+          : await api.getKnowledgeMap(course);
       if (!mounted) return;
       setState(() {
         _map = result;
@@ -677,7 +698,9 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
                 ),
                 IconButton(
                   tooltip: '刷新',
-                  onPressed: _loading ? null : _loadCourses,
+                  onPressed: _loading
+                      ? null
+                      : () => _loadCourses(forceMapRefresh: true),
                   icon: const Icon(LucideIcons.refreshCw, size: 18),
                 ),
               ],
@@ -711,7 +734,9 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
         actions: [
           IconButton(
             tooltip: '刷新',
-            onPressed: _loading ? null : _loadCourses,
+            onPressed: _loading
+                ? null
+                : () => _loadCourses(forceMapRefresh: true),
             icon: const Icon(LucideIcons.refreshCw),
           ),
         ],
@@ -848,6 +873,8 @@ class _KnowledgeMapPageState extends State<KnowledgeMapPage> {
             visibleNodes: _visibleNodes(),
             edges: data.edges,
             onNodeTap: _openNode,
+            persistenceKey:
+                _selectedCourse?.canonicalCourse ?? _selectedCourse?.name,
           ),
         ),
       ],
@@ -1100,14 +1127,11 @@ class _ChapterOutline extends StatelessWidget {
   Widget build(BuildContext context) {
     final tree = _buildTree();
     return Container(
-      color: const Color(0xFF08131F),
+      color: context.scheme.surface,
       padding: const EdgeInsets.fromLTRB(12, 14, 8, 12),
       child: ListView(
         children: [
-          const Text(
-            '知识结构',
-            style: TextStyle(fontSize: 12, color: Color(0xFFAAB5C7)),
-          ),
+          Text('知识结构', style: TextStyle(fontSize: 12, color: context.n.n600)),
           const SizedBox(height: 12),
           if (tree.isEmpty)
             Text('暂无知识点', style: context.texts.bodySmall)
@@ -1145,21 +1169,23 @@ class _OutlineRow extends StatelessWidget {
     final node = entry.node;
     final branchWidth = 18.0 + entry.depth * 16.0;
     final color = node.isCourse
-        ? const Color(0xFFF1C75B)
+        ? context.n.n700
+        : node.needsReview
+        ? EsaColors.warning
         : node.hasRecord
-        ? const Color(0xFF5795FF)
+        ? EsaColors.success
         : context.n.n500;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () => onTap(node),
         borderRadius: BorderRadius.circular(8),
-        hoverColor: const Color(0xFF17304F).withValues(alpha: .55),
+        hoverColor: context.n.n200,
         child: Container(
           height: 36,
           decoration: BoxDecoration(
             color: node.needsReview
-                ? EsaColors.accent.withValues(alpha: .10)
+                ? EsaColors.warning.withValues(alpha: .10)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
@@ -1174,6 +1200,8 @@ class _OutlineRow extends StatelessWidget {
                     isLast: entry.isLast,
                     ancestorHasNext: entry.ancestorHasNext,
                     nodeColor: color,
+                    backgroundColor: context.scheme.surface,
+                    lineColor: context.n.n300,
                   ),
                 ),
               ),
@@ -1206,12 +1234,16 @@ class _GitBranchPainter extends CustomPainter {
     required this.isLast,
     required this.ancestorHasNext,
     required this.nodeColor,
+    required this.backgroundColor,
+    required this.lineColor,
   });
 
   final int depth;
   final bool isLast;
   final List<bool> ancestorHasNext;
   final Color nodeColor;
+  final Color backgroundColor;
+  final Color lineColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1219,7 +1251,7 @@ class _GitBranchPainter extends CustomPainter {
     const origin = 9.0;
     final centerY = size.height / 2;
     final line = Paint()
-      ..color = const Color(0xFF43536A)
+      ..color = lineColor
       ..strokeWidth = 1.15
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
@@ -1250,7 +1282,7 @@ class _GitBranchPainter extends CustomPainter {
     canvas.drawCircle(
       Offset(x, centerY),
       4.1,
-      Paint()..color = const Color(0xFF08131F),
+      Paint()..color = backgroundColor,
     );
     canvas.drawCircle(Offset(x, centerY), 3.0, Paint()..color = nodeColor);
   }
@@ -1260,7 +1292,9 @@ class _GitBranchPainter extends CustomPainter {
       oldDelegate.depth != depth ||
       oldDelegate.isLast != isLast ||
       oldDelegate.ancestorHasNext != ancestorHasNext ||
-      oldDelegate.nodeColor != nodeColor;
+      oldDelegate.nodeColor != nodeColor ||
+      oldDelegate.backgroundColor != backgroundColor ||
+      oldDelegate.lineColor != lineColor;
 }
 
 class _EmptyGraphPainter extends CustomPainter {
@@ -1269,10 +1303,10 @@ class _EmptyGraphPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final line = Paint()
-      ..color = const Color(0xFF4F7FF5).withValues(alpha: 0.25)
+      ..color = const Color(0xFF8A8A92).withValues(alpha: 0.32)
       ..strokeWidth = 2;
     final fill = Paint()
-      ..color = const Color(0xFF4F7FF5).withValues(alpha: 0.5);
+      ..color = const Color(0xFF8A8A92).withValues(alpha: 0.55);
     final points = [
       Offset(size.width * 0.18, size.height * 0.68),
       Offset(size.width * 0.5, size.height * 0.28),
@@ -1285,7 +1319,7 @@ class _EmptyGraphPainter extends CustomPainter {
     canvas.drawLine(points[3], points[2], line);
     for (final point in points) {
       canvas.drawCircle(point, 13, fill);
-      canvas.drawCircle(point, 5, Paint()..color = const Color(0xFFDCE7FF));
+      canvas.drawCircle(point, 5, Paint()..color = const Color(0xFFE7E7EA));
     }
   }
 

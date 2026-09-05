@@ -7,7 +7,9 @@ import '../api/api_client.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
+import '../theme/esa_mobile.dart';
 import '../theme/esa_theme.dart';
+import '../widgets/esa_mobile_controls.dart';
 import '../widgets/esa_segmented.dart';
 import 'schedule_page.dart';
 
@@ -199,10 +201,9 @@ class _PlannerPageState extends State<PlannerPage> {
     titleController.dispose();
     if (draft == null || !mounted) return;
     try {
-      final created = await AppScope.of(context).api.createPlannerTodo(
-        draft.title,
-        dueAt: draft.dueAt,
-      );
+      final created = await AppScope.of(
+        context,
+      ).api.createPlannerTodo(draft.title, dueAt: draft.dueAt);
       if (mounted) setState(() => _todos = [created, ..._todos]);
     } on ApiException catch (error) {
       if (mounted) _showError(error.detail);
@@ -211,10 +212,9 @@ class _PlannerPageState extends State<PlannerPage> {
 
   Future<void> _toggleTodo(String id, bool done) async {
     try {
-      final updated = await AppScope.of(context).api.updatePlannerTodo(
-        id,
-        done: done,
-      );
+      final updated = await AppScope.of(
+        context,
+      ).api.updatePlannerTodo(id, done: done);
       if (!mounted) return;
       setState(() {
         _todos = [for (final todo in _todos) todo.id == id ? updated : todo];
@@ -347,10 +347,9 @@ class _PlannerPageState extends State<PlannerPage> {
 
   Future<void> _updateGoalProgress(String id, int progress) async {
     try {
-      final updated = await AppScope.of(context).api.updatePlannerGoal(
-        id,
-        progress: progress.clamp(0, 100),
-      );
+      final updated = await AppScope.of(
+        context,
+      ).api.updatePlannerGoal(id, progress: progress.clamp(0, 100));
       if (!mounted) return;
       setState(() {
         _goals = [for (final goal in _goals) goal.id == id ? updated : goal];
@@ -372,7 +371,9 @@ class _PlannerPageState extends State<PlannerPage> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -419,6 +420,9 @@ class _PlannerPageState extends State<PlannerPage> {
       ),
       PlannerTab.schedule => const SizedBox.shrink(),
     };
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return _mobileHeader(context);
+    }
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       decoration: BoxDecoration(
@@ -472,6 +476,58 @@ class _PlannerPageState extends State<PlannerPage> {
             ],
             onChanged: _selectTab,
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mobileHeader(BuildContext context) {
+    const entries = <EsaMobileTabEntry<PlannerTab>>[
+      EsaMobileTabEntry(PlannerTab.schedule, '课表'),
+      EsaMobileTabEntry(PlannerTab.todo, 'Todo'),
+      EsaMobileTabEntry(PlannerTab.deadline, 'Deadline'),
+      EsaMobileTabEntry(PlannerTab.goal, 'Goal'),
+    ];
+    final action = switch (_tab) {
+      PlannerTab.todo => EsaMobileIconButton(
+        key: const ValueKey('planner-add-todo'),
+        tooltip: '新建待办',
+        icon: LucideIcons.plus,
+        onPressed: _addTodo,
+      ),
+      PlannerTab.goal => EsaMobileIconButton(
+        key: const ValueKey('planner-add-goal'),
+        tooltip: '新建目标',
+        icon: LucideIcons.plus,
+        onPressed: _addGoal,
+      ),
+      PlannerTab.deadline => EsaMobileIconButton(
+        tooltip: '刷新截止时间',
+        icon: LucideIcons.refreshCw,
+        onPressed: _loadingDeadlines
+            ? null
+            : () => unawaited(_loadAssignments(force: true)),
+      ),
+      PlannerTab.schedule => null,
+    };
+    return Container(
+      key: const ValueKey('mobile-planner-tabs'),
+      decoration: BoxDecoration(
+        color: context.scheme.surface,
+        border: Border(bottom: BorderSide(color: context.n.divider)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: EsaMobileTabStrip<PlannerTab>(
+              value: _tab,
+              entries: entries,
+              onChanged: _selectTab,
+              height: EsaMobile.touchTarget,
+              minItemWidth: 72,
+            ),
+          ),
+          if (action case final action?) ...[action, const SizedBox(width: 4)],
         ],
       ),
     );
@@ -880,8 +936,8 @@ class _PlannerPageState extends State<PlannerPage> {
               children: [
                 Text(
                   '${goal.progress}%',
-                  style: const TextStyle(
-                    color: Color(0xFF4B8CFF),
+                  style: TextStyle(
+                    color: context.n.n700,
                     fontWeight: FontWeight.w700,
                   ),
                 ),

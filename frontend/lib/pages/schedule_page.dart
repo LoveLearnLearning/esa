@@ -8,7 +8,9 @@ import '../models/hust_import_models.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
+import '../theme/esa_mobile.dart';
 import '../theme/esa_theme.dart';
+import '../widgets/esa_mobile_controls.dart';
 
 const _weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 const _courseColors = <int>[
@@ -68,6 +70,47 @@ class _SchedulePageState extends State<SchedulePage> {
     if (_week > totalWeeks) _week = totalWeeks;
     final narrow = MediaQuery.sizeOf(context).width < 760;
 
+    if (narrow) {
+      return Scaffold(
+        body: Column(
+          children: [
+            _mobileToolbar(context, app, totalWeeks),
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragEnd: (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity < -250) {
+                    _changeWeek(_week + 1, totalWeeks);
+                  } else if (velocity > 250) {
+                    _changeWeek(_week - 1, totalWeeks);
+                  }
+                },
+                child: !app.scheduleLoaded
+                    ? const Center(child: CircularProgressIndicator())
+                    : AnimatedSwitcher(
+                        duration: EsaMobile.motion(
+                          context,
+                          duration: const Duration(milliseconds: 220),
+                        ),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        child: KeyedSubtree(
+                          key: ValueKey<int>(_week),
+                          child: _weekSchedule(
+                            context,
+                            app,
+                            compactLayout: true,
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -124,15 +167,242 @@ class _SchedulePageState extends State<SchedulePage> {
           ],
         ),
       ),
-      floatingActionButton: narrow
-          ? FloatingActionButton(
-              tooltip: '添加课程',
-              onPressed: () => _openEditor(app, totalWeeks),
-              child: const Icon(LucideIcons.plus),
-            )
-          : null,
     );
   }
+
+  Widget _mobileToolbar(
+    BuildContext context,
+    AppState app,
+    int totalWeeks,
+  ) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: context.scheme.surface,
+      border: Border(bottom: BorderSide(color: context.n.divider)),
+    ),
+    child: SizedBox(
+      height: 52,
+      child: Row(
+        children: [
+          const SizedBox(width: 8),
+          Expanded(
+            child: PopupMenuButton<String>(
+              key: const ValueKey('schedule-table-menu'),
+              tooltip: '切换或管理课程表',
+              constraints: const BoxConstraints(minWidth: 200, maxWidth: 280),
+              onSelected: (value) => _onTableMenuSelected(app, value),
+              itemBuilder: (_) => [
+                for (final table in app.scheduleTables)
+                  PopupMenuItem(
+                    value: table.id,
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 24,
+                          child: table.id == app.activeScheduleTableId
+                              ? const Icon(LucideIcons.check, size: 16)
+                              : null,
+                        ),
+                        Flexible(
+                          child: Text(
+                            table.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: '__create__',
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.plus, size: 16),
+                      SizedBox(width: 10),
+                      Text('新建课程表'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: '__rename__',
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.pencil, size: 16),
+                      SizedBox(width: 10),
+                      Text('重命名当前课程表'),
+                    ],
+                  ),
+                ),
+                if (app.scheduleTables.length > 1)
+                  const PopupMenuItem(
+                    value: '__delete__',
+                    child: Row(
+                      children: [
+                        Icon(LucideIcons.trash2, size: 16),
+                        SizedBox(width: 10),
+                        Text('删除当前课程表'),
+                      ],
+                    ),
+                  ),
+              ],
+              child: Semantics(
+                button: true,
+                label: '当前课程表：${app.activeScheduleTable?.name ?? '课表'}',
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 44),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.calendarDays, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          app.activeScheduleTable?.name ?? '课表',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.texts.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(LucideIcons.chevronDown, size: 14),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          EsaMobileIconButton(
+            tooltip: '上一周',
+            icon: LucideIcons.chevronLeft,
+            onPressed: _week <= 1
+                ? null
+                : () => _changeWeek(_week - 1, totalWeeks),
+          ),
+          PopupMenuButton<int>(
+            key: const ValueKey('mobile-schedule-week-picker'),
+            tooltip: '选择教学周',
+            constraints: const BoxConstraints(minWidth: 120, maxWidth: 180),
+            onSelected: (week) => _changeWeek(week, totalWeeks),
+            itemBuilder: (_) => [
+              for (var week = 1; week <= totalWeeks; week++)
+                PopupMenuItem(
+                  value: week,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 22,
+                        child: week == _week
+                            ? const Icon(LucideIcons.check, size: 15)
+                            : null,
+                      ),
+                      Text('第 $week 周'),
+                    ],
+                  ),
+                ),
+            ],
+            child: Semantics(
+              button: true,
+              label: '当前第 $_week 周，共 $totalWeeks 周',
+              child: SizedBox(
+                width: 58,
+                height: 44,
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '第$_week周',
+                          maxLines: 1,
+                          style: context.texts.bodySmall?.copyWith(
+                            color: context.scheme.onSurface,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(LucideIcons.chevronDown, size: 12),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          EsaMobileIconButton(
+            tooltip: '下一周',
+            icon: LucideIcons.chevronRight,
+            onPressed: _week >= totalWeeks
+                ? null
+                : () => _changeWeek(_week + 1, totalWeeks),
+          ),
+          EsaMobileIconButton(
+            key: const ValueKey('mobile-schedule-add-course'),
+            tooltip: '添加课程',
+            icon: LucideIcons.plus,
+            onPressed: () => _openEditor(app, totalWeeks),
+          ),
+          Semantics(
+            button: true,
+            label: '课表更多操作',
+            child: SizedBox.square(
+              dimension: EsaMobile.touchTarget,
+              child: PopupMenuButton<String>(
+                key: const ValueKey('mobile-schedule-more'),
+                tooltip: '课表更多操作',
+                constraints: const BoxConstraints(minWidth: 180, maxWidth: 260),
+                padding: EdgeInsets.zero,
+                icon: const Icon(LucideIcons.ellipsis, size: 20),
+                onSelected: (value) {
+                  if (value == '__import_file__') {
+                    _importSchedule(app);
+                  } else if (value == '__import_hust__') {
+                    _importHustSchedule(app);
+                  } else if (value == '__settings__') {
+                    _openScheduleSettings(app);
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: '__import_file__',
+                    child: Row(
+                      children: [
+                        Icon(LucideIcons.fileUp, size: 17),
+                        SizedBox(width: 10),
+                        Text('从文件导入'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: '__import_hust__',
+                    child: Row(
+                      children: [
+                        Icon(LucideIcons.graduationCap, size: 17),
+                        SizedBox(width: 10),
+                        Text('从华科教务导入'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: '__settings__',
+                    child: Row(
+                      children: [
+                        Icon(LucideIcons.settings2, size: 17),
+                        SizedBox(width: 10),
+                        Text('课表设置'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+    ),
+  );
 
   Widget _header(
     BuildContext context,
@@ -439,125 +709,142 @@ class _SchedulePageState extends State<SchedulePage> {
                       key: const ValueKey('schedule-week-grid'),
                       width: gridWidth,
                       height: totalHeight,
-                      child: Stack(
-                        children: [
-                          Positioned.fill(
-                            child: CustomPaint(
-                              painter: _ScheduleGridPainter(
-                                divider: context.n.divider,
-                                surface: context.n.n100,
-                                labelWidth: labelWidth,
-                                headerHeight: headerHeight,
-                                dayWidth: dayWidth,
-                                periodHeight: periodHeight,
-                                periodCount: totalPeriods,
+                      child: MediaQuery.withClampedTextScaling(
+                        minScaleFactor: compactLayout ? 1 : 0,
+                        maxScaleFactor: compactLayout ? 1 : double.infinity,
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: CustomPaint(
+                                painter: _ScheduleGridPainter(
+                                  divider: context.n.divider,
+                                  surface: context.n.n100,
+                                  labelWidth: labelWidth,
+                                  headerHeight: headerHeight,
+                                  dayWidth: dayWidth,
+                                  periodHeight: periodHeight,
+                                  periodCount: totalPeriods,
+                                ),
                               ),
                             ),
-                          ),
-                          for (var day = 0; day < 7; day++)
-                            Positioned(
-                              left: labelWidth + day * dayWidth,
-                              top: 0,
-                              width: dayWidth,
-                              height: headerHeight,
-                              child: Center(
-                                key: ValueKey('schedule-weekday-${day + 1}'),
-                                child: Text(
-                                  _weekdays[day],
-                                  maxLines: 1,
-                                  style: context.texts.titleMedium?.copyWith(
-                                    fontSize: compactLayout ? 10 : null,
+                            for (var day = 0; day < 7; day++)
+                              Positioned(
+                                left: labelWidth + day * dayWidth,
+                                top: 0,
+                                width: dayWidth,
+                                height: headerHeight,
+                                child: Center(
+                                  key: ValueKey('schedule-weekday-${day + 1}'),
+                                  child: Text(
+                                    _weekdays[day],
+                                    maxLines: 1,
+                                    style: context.texts.titleMedium?.copyWith(
+                                      fontSize: compactLayout ? 10 : null,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          for (var period = 1; period <= totalPeriods; period++)
-                            Positioned(
-                              left: 0,
-                              top: headerHeight + (period - 1) * periodHeight,
-                              width: labelWidth,
-                              height: periodHeight,
-                              child: Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      '第 $period 节',
-                                      style: context.texts.bodySmall?.copyWith(
-                                        fontSize: compactLayout ? 9 : null,
-                                        fontWeight: FontWeight.w700,
-                                        color: context.scheme.onSurface,
+                            for (
+                              var period = 1;
+                              period <= totalPeriods;
+                              period++
+                            )
+                              Positioned(
+                                left: 0,
+                                top: headerHeight + (period - 1) * periodHeight,
+                                width: labelWidth,
+                                height: periodHeight,
+                                child: Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        '第 $period 节',
+                                        style: context.texts.bodySmall
+                                            ?.copyWith(
+                                              fontSize: compactLayout
+                                                  ? 9
+                                                  : null,
+                                              fontWeight: FontWeight.w700,
+                                              color: context.scheme.onSurface,
+                                            ),
                                       ),
-                                    ),
-                                    SizedBox(height: compactLayout ? 1 : 2),
-                                    Text(
-                                      app.scheduleSettings.periodStartLabel(
-                                        period,
+                                      SizedBox(height: compactLayout ? 1 : 2),
+                                      Text(
+                                        app.scheduleSettings.periodStartLabel(
+                                          period,
+                                        ),
+                                        style: context.texts.bodySmall
+                                            ?.copyWith(
+                                              fontSize: compactLayout ? 8 : 10,
+                                            ),
                                       ),
-                                      style: context.texts.bodySmall?.copyWith(
-                                        fontSize: compactLayout ? 8 : 10,
+                                      Text(
+                                        app.scheduleSettings.periodEndLabel(
+                                          period,
+                                        ),
+                                        style: context.texts.bodySmall
+                                            ?.copyWith(
+                                              fontSize: compactLayout ? 8 : 10,
+                                            ),
                                       ),
-                                    ),
-                                    Text(
-                                      app.scheduleSettings.periodEndLabel(
-                                        period,
-                                      ),
-                                      style: context.texts.bodySmall?.copyWith(
-                                        fontSize: compactLayout ? 8 : 10,
-                                      ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          for (final course in courses)
-                            Positioned(
-                              left:
-                                  labelWidth +
-                                  (course.weekday - 1) * dayWidth +
-                                  tileInset,
-                              top:
-                                  headerHeight +
-                                  (course.startPeriod - 1) * periodHeight +
-                                  tileInset,
-                              width: dayWidth - tileInset * 2,
-                              height:
-                                  (course.endPeriod - course.startPeriod + 1) *
-                                      periodHeight -
-                                  tileInset * 2,
-                              child: _courseTile(
-                                context,
-                                app,
-                                course,
-                                compact: compactTiles,
-                                ultraCompact: ultraCompactTiles,
+                            for (final course in courses)
+                              Positioned(
+                                left:
+                                    labelWidth +
+                                    (course.weekday - 1) * dayWidth +
+                                    tileInset,
+                                top:
+                                    headerHeight +
+                                    (course.startPeriod - 1) * periodHeight +
+                                    tileInset,
+                                width: dayWidth - tileInset * 2,
+                                height:
+                                    (course.endPeriod -
+                                            course.startPeriod +
+                                            1) *
+                                        periodHeight -
+                                    tileInset * 2,
+                                child: _courseTile(
+                                  context,
+                                  app,
+                                  course,
+                                  compact: compactTiles,
+                                  ultraCompact: ultraCompactTiles,
+                                ),
                               ),
-                            ),
-                          for (final course in ghostCourses)
-                            Positioned(
-                              left:
-                                  labelWidth +
-                                  (course.weekday - 1) * dayWidth +
-                                  tileInset,
-                              top:
-                                  headerHeight +
-                                  (course.startPeriod - 1) * periodHeight +
-                                  tileInset,
-                              width: dayWidth - tileInset * 2,
-                              height:
-                                  (course.endPeriod - course.startPeriod + 1) *
-                                      periodHeight -
-                                  tileInset * 2,
-                              child: _courseTile(
-                                context,
-                                app,
-                                course,
-                                compact: compactTiles,
-                                ultraCompact: ultraCompactTiles,
-                                dimmed: true,
+                            for (final course in ghostCourses)
+                              Positioned(
+                                left:
+                                    labelWidth +
+                                    (course.weekday - 1) * dayWidth +
+                                    tileInset,
+                                top:
+                                    headerHeight +
+                                    (course.startPeriod - 1) * periodHeight +
+                                    tileInset,
+                                width: dayWidth - tileInset * 2,
+                                height:
+                                    (course.endPeriod -
+                                            course.startPeriod +
+                                            1) *
+                                        periodHeight -
+                                    tileInset * 2,
+                                child: _courseTile(
+                                  context,
+                                  app,
+                                  course,
+                                  compact: compactTiles,
+                                  ultraCompact: ultraCompactTiles,
+                                  dimmed: true,
+                                ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   },

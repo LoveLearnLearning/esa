@@ -212,6 +212,36 @@ def test_legacy_username_containing_at_sign_still_logs_in(tmp_path):
     assert response.json()["username"] == "legacy@example"
 
 
+def test_disabled_user_cannot_login_or_reuse_existing_session(tmp_path):
+    app = _app(tmp_path)
+    user = app.state.auth.register("disabled", "correct-password")
+    assert user is not None
+    client = TestClient(app)
+
+    active_login = client.post(
+        "/api/auth/login",
+        json={"username": "disabled", "password": "correct-password"},
+    )
+    assert active_login.status_code == 200
+    token = active_login.json()["session_id"]
+
+    with app.state.user_store._connect() as connection:
+        connection.execute("UPDATE users SET status = 'disabled' WHERE id = ?", (user.id,))
+        connection.commit()
+
+    rejected_login = client.post(
+        "/api/auth/login",
+        json={"username": "disabled", "password": "correct-password"},
+    )
+    rejected_session = client.get(
+        "/api/workspaces",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert rejected_login.status_code == 401
+    assert rejected_session.status_code == 403
+    assert app.state.session_store.get(token) is None
+
+
 def test_cors_preflight_allows_only_configured_origin(tmp_path):
     """验证 `cors_preflight_allows_only_configured_origin` 场景。"""
     client = TestClient(_app(tmp_path))

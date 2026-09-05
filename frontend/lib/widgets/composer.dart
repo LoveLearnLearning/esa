@@ -12,9 +12,11 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/task_mode.dart';
 import '../models/models.dart';
 import '../theme/esa_context.dart';
+import '../theme/esa_mobile.dart';
 import '../theme/esa_theme.dart';
 import '../utils/paste_attachment.dart';
 import 'esa_markdown.dart';
+import 'esa_mobile_controls.dart';
 import 'latex_formula_picker.dart';
 
 class Composer extends StatefulWidget {
@@ -41,6 +43,8 @@ class Composer extends StatefulWidget {
     this.personalKnowledgeBaseId,
     this.onPersonalKnowledgeBaseChanged,
     this.onStop,
+    this.mobileHome = false,
+    this.onVoice,
   });
 
   final bool busy;
@@ -76,6 +80,8 @@ class Composer extends StatefulWidget {
   final List<PersonalKnowledgeBaseSummary> personalKnowledgeBases;
   final String? personalKnowledgeBaseId;
   final ValueChanged<String?>? onPersonalKnowledgeBaseChanged;
+  final bool mobileHome;
+  final VoidCallback? onVoice;
 
   /// 模型正在输出时，发送按钮切换为终止按钮，点击后调用该回调。
   final VoidCallback? onStop;
@@ -290,6 +296,9 @@ class ComposerState extends State<Composer> {
     final codeBlocks = _codeBlocks;
     final showMarkdownPreview =
         _controller.text.isNotEmpty && (_markdownMode || codeBlocks.isNotEmpty);
+    if (widget.mobileHome && narrow) {
+      return _buildMobileHomeComposer(context, inputStyle);
+    }
     return Container(
       padding: EdgeInsets.fromLTRB(narrow ? 0 : 18, 12, narrow ? 0 : 18, 14),
       child: Center(
@@ -412,6 +421,194 @@ class ComposerState extends State<Composer> {
                       },
                     ),
                   ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileHomeComposer(BuildContext context, TextStyle inputStyle) {
+    const suggestions = <String>['解释一个概念', '帮我规划今天', '继续上次学习'];
+    return ColoredBox(
+      key: const ValueKey('mobile-home-composer'),
+      color: context.scheme.surface,
+      child: SafeArea(
+        top: false,
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: EsaMobile.touchTarget,
+                child: ListView.separated(
+                  key: const ValueKey('mobile-home-suggestions'),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: suggestions.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) => Semantics(
+                    button: true,
+                    label: suggestions[index],
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          setText(suggestions[index]);
+                          _focus.requestFocus();
+                        },
+                        borderRadius: BorderRadius.circular(EsaMobile.radius),
+                        child: Center(
+                          child: Container(
+                            height: 34,
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: context.n.n100,
+                              border: Border.all(color: context.n.divider),
+                              borderRadius: BorderRadius.circular(
+                                EsaMobile.radius,
+                              ),
+                            ),
+                            child: Text(
+                              suggestions[index],
+                              style: context.texts.bodySmall?.copyWith(
+                                color: context.n.n700,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (widget.taskMode != null ||
+                  _attachment != null ||
+                  _uploadingAttachment) ...[
+                const SizedBox(height: 8),
+                if (widget.taskMode != null)
+                  _taskModeCard(context, widget.taskMode!),
+                if (widget.taskMode != null &&
+                    (_attachment != null || _uploadingAttachment))
+                  const SizedBox(height: 8),
+                if (_attachment != null || _uploadingAttachment)
+                  _attachmentChip(context),
+              ],
+              const SizedBox(height: 8),
+              SizedBox(
+                key: const ValueKey('mobile-home-composer-tools'),
+                height: EsaMobile.touchTarget,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        height: EsaMobile.touchTarget,
+                        child: Center(
+                          child: _markdownButton(context, scaleDown: false),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        height: EsaMobile.touchTarget,
+                        child: Center(
+                          child: _formulaButton(context, scaleDown: false),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        height: EsaMobile.touchTarget,
+                        child: Center(child: _knowledgeSourceMenu(context)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              ListenableBuilder(
+                listenable: _focus,
+                builder: (context, _) => AnimatedContainer(
+                  duration: EsaMobile.motion(
+                    context,
+                    duration: const Duration(milliseconds: 140),
+                  ),
+                  constraints: const BoxConstraints(minHeight: 56),
+                  decoration: BoxDecoration(
+                    color: context.n.n100,
+                    border: Border.all(
+                      color: _focus.hasFocus
+                          ? context.scheme.primary
+                          : context.n.divider,
+                      width: _focus.hasFocus ? 1.5 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(4, 5, 5, 5),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      EsaMobileIconButton(
+                        key: const ValueKey('mobile-home-attachment'),
+                        tooltip: '添加附件',
+                        icon: LucideIcons.plus,
+                        onPressed: widget.busy || _uploadingAttachment
+                            ? null
+                            : _pickAttachment,
+                      ),
+                      Expanded(
+                        child: Focus(
+                          onKeyEvent: _onKey,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 44),
+                            child: TextField(
+                              key: const ValueKey('composer-input'),
+                              controller: _controller,
+                              focusNode: _focus,
+                              minLines: 1,
+                              maxLines: 4,
+                              onChanged: _handleTextChanged,
+                              style: inputStyle.copyWith(
+                                fontSize: 16,
+                                height: 1.4,
+                              ),
+                              textAlignVertical: TextAlignVertical.center,
+                              decoration: InputDecoration(
+                                isCollapsed: true,
+                                filled: false,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 10.8,
+                                ),
+                                hintText: _focus.hasFocus ? null : '问我任何学习问题…',
+                                hintStyle: inputStyle.copyWith(
+                                  color: context.n.n600,
+                                  fontSize: 16,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      EsaMobileIconButton(
+                        key: const ValueKey('mobile-home-voice'),
+                        tooltip: widget.onVoice == null ? '语音输入暂不可用' : '语音输入',
+                        icon: LucideIcons.mic,
+                        onPressed: widget.onVoice,
+                      ),
+                      const SizedBox(width: 2),
+                      _sendButton(context),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -623,7 +820,7 @@ class ComposerState extends State<Composer> {
     }
   }
 
-  Widget _markdownButton(BuildContext context) {
+  Widget _markdownButton(BuildContext context, {bool scaleDown = true}) {
     final active = _markdownMode;
     return Tooltip(
       message: active ? '退出 Markdown 输入' : 'Markdown 输入',
@@ -634,8 +831,9 @@ class ComposerState extends State<Composer> {
           _saveCurrentDraft();
         }),
         icon: const Icon(LucideIcons.fileCode2, size: 15),
-        label: const Text('Markdown'),
+        label: const Text('Markdown', style: TextStyle(fontFamily: 'Arial')),
         active: active,
+        scaleDown: scaleDown,
       ),
     );
   }
@@ -646,24 +844,27 @@ class ComposerState extends State<Composer> {
     required Widget icon,
     required Widget label,
     bool active = false,
-  }) => OutlinedButton(
-    onPressed: onPressed,
-    style: OutlinedButton.styleFrom(
-      minimumSize: const Size(0, 32),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 7),
-      foregroundColor: active ? EsaColors.accent : context.n.n700,
-      side: BorderSide(color: active ? EsaColors.accent : context.n.divider),
-      textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    ),
-    child: FittedBox(
-      fit: BoxFit.scaleDown,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [icon, const SizedBox(width: 4), label],
+    bool scaleDown = true,
+  }) {
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [icon, const SizedBox(width: 4), label],
+    );
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 32),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 7),
+        foregroundColor: active ? EsaColors.accent : context.n.n700,
+        side: BorderSide(color: active ? EsaColors.accent : context.n.divider),
+        textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
-    ),
-  );
+      child: scaleDown
+          ? FittedBox(fit: BoxFit.scaleDown, child: content)
+          : content,
+    );
+  }
 
   Widget _sendButton(BuildContext context) {
     // 模型输出中把发送按钮切换成“终止”按钮，点击即可停止生成。
@@ -680,8 +881,8 @@ class ComposerState extends State<Composer> {
               onTap: widget.onStop,
               borderRadius: BorderRadius.circular(10),
               child: Container(
-                width: 42,
-                height: 42,
+                width: EsaMobile.touchTarget,
+                height: EsaMobile.touchTarget,
                 alignment: Alignment.center,
                 child: const Icon(
                   LucideIcons.square,
@@ -710,8 +911,8 @@ class ComposerState extends State<Composer> {
               onTap: enabled ? _send : null,
               borderRadius: BorderRadius.circular(10),
               child: Container(
-                width: 42,
-                height: 42,
+                width: EsaMobile.touchTarget,
+                height: EsaMobile.touchTarget,
                 alignment: Alignment.center,
                 child: const Icon(
                   LucideIcons.send,
@@ -726,15 +927,17 @@ class ComposerState extends State<Composer> {
     );
   }
 
-  Widget _formulaButton(BuildContext context) => Tooltip(
-    message: '插入公式',
-    child: _composerActionButton(
-      context,
-      onPressed: widget.busy ? null : _openFormulaPicker,
-      icon: const Icon(LucideIcons.sigma, size: 15),
-      label: const Text('LaTeX'),
-    ),
-  );
+  Widget _formulaButton(BuildContext context, {bool scaleDown = true}) =>
+      Tooltip(
+        message: '插入公式',
+        child: _composerActionButton(
+          context,
+          onPressed: widget.busy ? null : _openFormulaPicker,
+          icon: const Icon(LucideIcons.sigma, size: 15),
+          label: const Text('LaTeX', style: TextStyle(fontFamily: 'Arial')),
+          scaleDown: scaleDown,
+        ),
+      );
 
   Future<void> _openFormulaPicker() async {
     final beforeSelection = _controller.selection;

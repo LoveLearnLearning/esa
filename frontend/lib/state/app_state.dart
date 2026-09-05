@@ -72,6 +72,9 @@ class AppState extends ChangeNotifier {
   UserStats userStats = const UserStats();
   bool loadingProfile = false;
   List<LearningCourseSummary> learningCourses = const [];
+  final Map<String, KnowledgeMapData> _knowledgeMaps = {};
+  final Map<String, Future<KnowledgeMapData>> _knowledgeMapRequests = {};
+  int _knowledgeMapGeneration = 0;
   List<TeachingAssignment> studentAssignments = const [];
   MasteryReport? masteryReport;
   bool loadingLearningOverview = false;
@@ -493,6 +496,9 @@ class AppState extends ChangeNotifier {
     userProfile = const UserProfile();
     userStats = const UserStats();
     learningCourses = const [];
+    _knowledgeMapGeneration += 1;
+    _knowledgeMaps.clear();
+    _knowledgeMapRequests.clear();
     studentAssignments = const [];
     masteryReport = null;
     loadingLearningOverview = false;
@@ -2067,6 +2073,52 @@ class AppState extends ChangeNotifier {
       loadingLearningOverview = false;
       notifyListeners();
     }
+  }
+
+  KnowledgeMapData? cachedKnowledgeMap(String course) =>
+      _knowledgeMaps[course.trim()];
+
+  Future<KnowledgeMapData> loadKnowledgeMap(
+    String course, {
+    bool forceRefresh = false,
+  }) {
+    final normalized = course.trim();
+    if (!forceRefresh) {
+      final cached = _knowledgeMaps[normalized];
+      if (cached != null) return Future.value(cached);
+      final pending = _knowledgeMapRequests[normalized];
+      if (pending != null) return pending;
+    }
+
+    final generation = _knowledgeMapGeneration;
+    final requestUserId = api.userId;
+    final requestSessionId = api.sessionId;
+    late final Future<KnowledgeMapData> request;
+    request = api.getKnowledgeMap(normalized).then((result) {
+      if (generation == _knowledgeMapGeneration &&
+          requestUserId == api.userId &&
+          requestSessionId == api.sessionId &&
+          identical(_knowledgeMapRequests[normalized], request)) {
+        _knowledgeMaps[normalized] = result;
+      }
+      return result;
+    });
+    _knowledgeMapRequests[normalized] = request;
+    unawaited(
+      request.then<void>(
+        (_) {
+          if (identical(_knowledgeMapRequests[normalized], request)) {
+            _knowledgeMapRequests.remove(normalized);
+          }
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          if (identical(_knowledgeMapRequests[normalized], request)) {
+            _knowledgeMapRequests.remove(normalized);
+          }
+        },
+      ),
+    );
+    return request;
   }
 
   Future<void> loadStudentAssignments() async {

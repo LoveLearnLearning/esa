@@ -94,6 +94,60 @@ class KnowledgeMapService:
             roots.extend(component_roots or [min(component)])
         return roots
 
+    @staticmethod
+    def _unseen_state(user_name: str, kp_id: str) -> dict:
+        """Build the read-only unseen state without issuing a database query."""
+        return {
+            "user_name": user_name,
+            "kp_id": kp_id,
+            "has_record": False,
+            "mastery_level": None,
+            "status": "unseen",
+            "retention": None,
+            "evidence_confidence": 0.0,
+            "needs_review": False,
+            "practice_count": 0,
+        }
+
+    @staticmethod
+    def _weak_prerequisite_counts(
+        node_ids: set[str],
+        edges: list[dict],
+        states: dict[str, dict],
+        *,
+        mastery_threshold: float = 50.0,
+        max_depth: int = 5,
+    ) -> dict[str, int]:
+        """Count weak/unseen ancestors using the graph already loaded in memory."""
+        parents: dict[str, set[str]] = defaultdict(set)
+        for edge in edges:
+            source, target = edge["from"], edge["to"]
+            if source in node_ids and target in node_ids:
+                parents[target].add(source)
+
+        counts: dict[str, int] = {}
+        for node_id in node_ids:
+            seen = {node_id}
+            queue = deque((parent, 1) for parent in parents[node_id])
+            weak: set[str] = set()
+            while queue:
+                current, depth = queue.popleft()
+                if current in seen or depth > max_depth:
+                    continue
+                seen.add(current)
+                state = states.get(current)
+                if (
+                    state is None
+                    or float(state["mastery_level"]) < mastery_threshold
+                ):
+                    weak.add(current)
+                if depth < max_depth:
+                    queue.extend(
+                        (parent, depth + 1) for parent in parents[current]
+                    )
+            counts[node_id] = len(weak)
+        return counts
+
     def get_courses(
         self, *, user_name: str, course_names: list[str] | None = None
     ) -> dict:
@@ -162,9 +216,26 @@ class KnowledgeMapService:
         if not points:
             return {"course": course, "nodes": [], "edges": []}
         node_ids = {point["id"] for point in points}
-        edges = self.kg_store.get_edges(
-            course=course, include_external_prerequisites=True
-        )
+        all_edges = self.kg_store.get_edges()
+        edges_by_target: dict[str, list[dict]] = defaultdict(list)
+        for edge in all_edges:
+            edges_by_target[edge["to"]].append(edge)
+        edges = []
+        visited = set(node_ids)
+        queue = deque(node_ids)
+        seen_edges: set[tuple[str, str]] = set()
+        while queue:
+            dependent = queue.popleft()
+            for edge in edges_by_target.get(dependent, []):
+                edge_key = (edge["from"], edge["to"])
+                if edge_key not in seen_edges:
+                    seen_edges.add(edge_key)
+                    edges.append(edge)
+                prerequisite = edge["from"]
+                if prerequisite not in visited:
+                    visited.add(prerequisite)
+                    queue.append(prerequisite)
+        node_ids = visited
         for edge in edges:
             node_ids.update((edge["from"], edge["to"]))
         all_points = {
@@ -188,15 +259,23 @@ class KnowledgeMapService:
         ]
         edges = [*course_edges, *edges]
         levels = self._levels({*node_ids, course_node_id}, edges)
+        states = {
+            state["kp_id"]: state
+            for state in self.mastery_store.list_for_user(
+                user_name, kp_ids=node_ids
+            )
+        }
+        evidence_counts = self.evidence_store.count_by_kp(
+            user_name, node_ids, limit_per_kp=50
+        )
+        weak_prerequisite_counts = self._weak_prerequisite_counts(
+            node_ids, edges, states
+        )
         nodes = []
         for node_id in node_ids:
             point = all_points[node_id]
-            state = self.mastery_store.get_state(user_name, node_id)
-            summary = self.evidence_store.get_summary(
-                user_name, kp_id=node_id, limit=50
-            )
-            weak_prerequisites = self.mastery_store.get_weak_prerequisites(
-                user_name, node_id, self.kg_store
+            state = states.get(node_id) or self._unseen_state(
+                user_name, node_id
             )
             nodes.append(
                 {
@@ -214,8 +293,10 @@ class KnowledgeMapService:
                     "evidence_confidence": state["evidence_confidence"],
                     "needs_review": state["needs_review"],
                     "practice_count": state["practice_count"],
-                    "evidence_count": summary["evidence_count"],
-                    "weak_prerequisite_count": len(weak_prerequisites),
+                    "evidence_count": evidence_counts.get(node_id, 0),
+                    "weak_prerequisite_count": weak_prerequisite_counts.get(
+                        node_id, 0
+                    ),
                     "level": levels[node_id],
                 }
             )

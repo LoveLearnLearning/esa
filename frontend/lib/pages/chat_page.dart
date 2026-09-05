@@ -105,6 +105,7 @@ class ChatPage extends StatefulWidget {
     this.onSelectedAttachmentsChanged,
     this.onContinueLearning,
     this.onViewAssignments,
+    this.onViewRecent,
     this.onOpenConversation,
     this.onStartChat,
   });
@@ -118,6 +119,7 @@ class ChatPage extends StatefulWidget {
   final ValueChanged<List<DocumentAttachment>>? onSelectedAttachmentsChanged;
   final VoidCallback? onContinueLearning;
   final VoidCallback? onViewAssignments;
+  final VoidCallback? onViewRecent;
   final ValueChanged<String>? onOpenConversation;
 
   /// 首页（学习仪表盘）模式下用户开始发送消息时，通知外壳切回对话视图。
@@ -200,8 +202,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     // 必须直接从 platformDispatcher 读取真实的键盘 inset。
     final bottom = WidgetsBinding.instance.platformDispatcher.views.isEmpty
         ? 0.0
-        : WidgetsBinding.instance.platformDispatcher.views.first.viewInsets
-            .bottom;
+        : WidgetsBinding
+              .instance
+              .platformDispatcher
+              .views
+              .first
+              .viewInsets
+              .bottom;
     final keyboardOpen = bottom > 0;
     if (_keyboardWasOpen && !keyboardOpen) {
       FocusManager.instance.primaryFocus?.unfocus();
@@ -649,6 +656,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         (app.messages.isNotEmpty || widget.onExitEmbedded != null) &&
         !narrow;
     final conversation = app.activeConversation;
+    final mobileHome =
+        narrow &&
+        widget.homeMode &&
+        app.activeWorkspace == WorkspaceType.learning &&
+        (app.activeId == null || !_pendingSend);
     final bindingLabel = switch (conversation?.workspaceType) {
       WorkspaceType.research =>
         app.researchProjects
@@ -669,6 +681,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       conversationId: app.activeId,
       taskMode: _taskMode,
       onStop: app.stopGeneration,
+      mobileHome: mobileHome,
       onClearTaskMode: () => setState(() => _taskMode = null),
       onOpenCodeEditor: (blockId, code, language) => _openCodeEditor(
         blockId,
@@ -757,9 +770,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               app.activeWorkspace == WorkspaceType.learning &&
               (app.activeId == null || !_pendingSend)
           ? _LearningHome(
-              mobileComposer: mobileLanding ? composer : null,
               onContinue: widget.onContinueLearning,
               onViewAssignments: widget.onViewAssignments,
+              onViewRecent: widget.onViewRecent,
               onOpenConversation: widget.onOpenConversation,
             )
           : app.loadingMessages && app.messages.isEmpty
@@ -905,13 +918,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             onBack: widget.onExitEmbedded,
           ),
         pageBody,
-        if (!hasPanel && !mobileLanding) composer,
+        if (!hasPanel && (!mobileLanding || mobileHome)) composer,
       ],
     );
 
     return Scaffold(
       key: _scaffoldKey,
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: narrow,
       drawerEdgeDragWidth: 24,
       drawer: widget.embedded ? null : const HistoryDrawer(),
       body: widget.embedded ? content : SafeArea(child: content),
@@ -1866,20 +1879,21 @@ class _OutlineIconButton extends StatelessWidget {
 
 class _LearningHome extends StatelessWidget {
   const _LearningHome({
-    this.mobileComposer,
     this.onContinue,
     this.onViewAssignments,
+    this.onViewRecent,
     this.onOpenConversation,
   });
 
-  final Widget? mobileComposer;
   final VoidCallback? onContinue;
   final VoidCallback? onViewAssignments;
+  final VoidCallback? onViewRecent;
   final ValueChanged<String>? onOpenConversation;
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final mobile = MediaQuery.sizeOf(context).width < 600;
     final now = DateTime.now();
     final courses = app.learningCourses;
     final courseName = courses.isNotEmpty
@@ -1895,24 +1909,47 @@ class _LearningHome extends StatelessWidget {
         final right = b.dueAt ?? DateTime(9999);
         return left.compareTo(right);
       });
+    final pendingAssignments = assignments
+        .where((assignment) => assignment.submissionId == null)
+        .toList();
     final recent = _recentItems(app);
 
     return SingleChildScrollView(
       key: const ValueKey('learning-home-scroll'),
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+      padding: EdgeInsets.fromLTRB(
+        mobile ? 16 : 24,
+        mobile ? 14 : 24,
+        mobile ? 16 : 24,
+        16,
+      ),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 900),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('今天', style: context.texts.headlineSmall),
-              const SizedBox(height: 4),
-              Text(
-                '${now.month} 月 ${now.day} 日  ${_weekdayLabel(now.weekday)}',
-                style: context.texts.bodySmall,
+              _TodayOverview(
+                date: now,
+                todoCount: pendingAssignments.length,
+                progress: progress,
+                streakDays: app.userStats.learningStreakDays,
               ),
-              const SizedBox(height: 22),
+              if (app.loadingLearningOverview) ...[
+                const SizedBox(height: 10),
+                const LinearProgressIndicator(
+                  key: ValueKey('learning-home-loading'),
+                  minHeight: 2,
+                ),
+              ] else if (app.learningOverviewError != null) ...[
+                const SizedBox(height: 10),
+                _LearningOverviewError(
+                  message: app.learningOverviewError!,
+                  onRetry: app.loadLearningOverview,
+                ),
+              ],
+              SizedBox(height: mobile ? 16 : 22),
+              const _HomeSectionHeading(title: '继续学习'),
+              const SizedBox(height: 8),
               _ContinueLearningSection(
                 courseName: courseName,
                 focusName: focusPoint?.name,
@@ -1922,58 +1959,66 @@ class _LearningHome extends StatelessWidget {
                     ? null
                     : onContinue,
               ),
-              const SizedBox(height: 12),
-              _HomeSection(
-                title: '待办',
-                count: assignments.length,
-                actionLabel: '查看全部',
-                onAction: onViewAssignments,
-                child: assignments.isEmpty
-                    ? const _HomeEmptyRow(label: '暂无待完成作业')
-                    : Column(
-                        children: [
-                          for (
-                            var index = 0;
-                            index < assignments.take(4).length;
-                            index++
-                          ) ...[
-                            if (index > 0) const Divider(height: 1),
-                            _AssignmentHomeRow(
-                              assignment: assignments[index],
-                              onTap: onViewAssignments,
-                            ),
+              SizedBox(height: mobile ? 14 : 12),
+              if (mobile)
+                _MobileHomeActivity(
+                  assignments: pendingAssignments,
+                  recent: recent,
+                  onViewAssignments: onViewAssignments,
+                  onViewRecent: onViewRecent,
+                  onOpenConversation: onOpenConversation,
+                )
+              else ...[
+                _HomeSection(
+                  title: '待办',
+                  count: pendingAssignments.length,
+                  actionLabel: '查看全部',
+                  onAction: onViewAssignments,
+                  child: pendingAssignments.isEmpty
+                      ? const _HomeEmptyRow(label: '今天没有待完成任务')
+                      : Column(
+                          children: [
+                            for (
+                              var index = 0;
+                              index < pendingAssignments.take(4).length;
+                              index++
+                            ) ...[
+                              if (index > 0) const Divider(height: 1),
+                              _AssignmentHomeRow(
+                                assignment: pendingAssignments[index],
+                                onTap: onViewAssignments,
+                              ),
+                            ],
                           ],
-                        ],
-                      ),
-              ),
-              const SizedBox(height: 12),
-              _HomeSection(
-                title: '最近',
-                child: recent.isEmpty
-                    ? const _HomeEmptyRow(label: '暂无最近学习记录')
-                    : Column(
-                        children: [
-                          for (
-                            var index = 0;
-                            index < recent.length;
-                            index++
-                          ) ...[
-                            if (index > 0) const Divider(height: 1),
-                            _RecentHomeRow(
-                              item: recent[index],
-                              onTap: recent[index].conversationId == null
-                                  ? null
-                                  : () => onOpenConversation?.call(
-                                      recent[index].conversationId!,
-                                    ),
-                            ),
-                          ],
-                        ],
-                      ),
-              ),
-              if (mobileComposer != null) ...[
+                        ),
+                ),
                 const SizedBox(height: 12),
-                mobileComposer!,
+                _HomeSection(
+                  title: '近期',
+                  actionLabel: '查看全部',
+                  onAction: onViewRecent,
+                  child: recent.isEmpty
+                      ? const _HomeEmptyRow(label: '暂无最近学习记录')
+                      : Column(
+                          children: [
+                            for (
+                              var index = 0;
+                              index < recent.length;
+                              index++
+                            ) ...[
+                              if (index > 0) const Divider(height: 1),
+                              _RecentHomeRow(
+                                item: recent[index],
+                                onTap: recent[index].conversationId == null
+                                    ? null
+                                    : () => onOpenConversation?.call(
+                                        recent[index].conversationId!,
+                                      ),
+                              ),
+                            ],
+                          ],
+                        ),
+                ),
               ],
             ],
           ),
@@ -1983,19 +2028,183 @@ class _LearningHome extends StatelessWidget {
   }
 
   List<_HomeRecentItem> _recentItems(AppState app) {
-    return app.conversations
-        .take(4)
-        .map(
-          (conversation) => _HomeRecentItem(
-            icon: LucideIcons.messageSquare,
-            title: conversation.title,
-            meta: '对话 · 学习空间',
-            time: _relativeTime(conversation.updatedAt),
-            conversationId: conversation.id,
-          ),
-        )
-        .toList();
+    final items = <_HomeRecentItem>[
+      for (final conversation in app.conversations)
+        _HomeRecentItem(
+          icon: LucideIcons.messageSquare,
+          title: conversation.title,
+          meta:
+              '对话 · ${app.groups.where((group) => group.id == conversation.groupId).map((group) => group.name).firstOrNull ?? '学习空间'}',
+          time: _relativeTime(conversation.updatedAt),
+          conversationId: conversation.id,
+        ),
+      for (final attachment in app.recentAttachments)
+        _HomeRecentItem(
+          icon: _attachmentHomeIcon(attachment.extension),
+          title: attachment.filename,
+          meta:
+              '${attachment.extension.isEmpty ? '文件' : attachment.extension.toUpperCase()} · 学习空间',
+          time: '最近使用',
+        ),
+    ];
+    return items.take(4).toList();
   }
+}
+
+class _TodayOverview extends StatelessWidget {
+  const _TodayOverview({
+    required this.date,
+    required this.todoCount,
+    required this.progress,
+    required this.streakDays,
+  });
+
+  final DateTime date;
+  final int todoCount;
+  final double? progress;
+  final int streakDays;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    key: const ValueKey('mobile-today-overview'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        children: [
+          Text(
+            '今天',
+            style: context.texts.titleMedium?.copyWith(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '${date.month} 月 ${date.day} 日 · ${_weekdayLabel(date.weekday)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.texts.bodySmall,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 11),
+      Container(
+        height: 42,
+        decoration: BoxDecoration(
+          color: context.n.n100,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _OverviewStat(label: '待办', value: '$todoCount'),
+            ),
+            _OverviewDivider(color: context.n.divider),
+            Expanded(
+              child: _OverviewStat(
+                label: '学习进度',
+                value: progress == null ? '—' : '${progress!.round()}%',
+              ),
+            ),
+            _OverviewDivider(color: context.n.divider),
+            Expanded(
+              child: _OverviewStat(label: '连续学习', value: '$streakDays 天'),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+class _OverviewStat extends StatelessWidget {
+  const _OverviewStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.texts.labelSmall,
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          value,
+          maxLines: 1,
+          style: context.texts.bodySmall?.copyWith(
+            color: context.n.n700,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _OverviewDivider extends StatelessWidget {
+  const _OverviewDivider({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) =>
+      Container(width: 1, height: 18, color: color);
+}
+
+class _LearningOverviewError extends StatelessWidget {
+  const _LearningOverviewError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('learning-home-error'),
+    padding: const EdgeInsets.only(left: 10),
+    decoration: BoxDecoration(
+      color: context.n.n100,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      children: [
+        Icon(LucideIcons.circleAlert, size: 16, color: context.n.n600),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            message,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.texts.bodySmall,
+          ),
+        ),
+        TextButton(onPressed: onRetry, child: const Text('重试')),
+      ],
+    ),
+  );
+}
+
+class _HomeSectionHeading extends StatelessWidget {
+  const _HomeSectionHeading({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    title,
+    style: context.texts.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+  );
 }
 
 class _ContinueLearningSection extends StatelessWidget {
@@ -2015,7 +2224,9 @@ class _ContinueLearningSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+    key: const ValueKey('continue-learning-card'),
+    constraints: const BoxConstraints(minHeight: 112),
+    padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
     decoration: BoxDecoration(
       color: context.n.n100,
       border: Border.all(color: context.n.divider),
@@ -2023,40 +2234,84 @@ class _ContinueLearningSection extends StatelessWidget {
     ),
     child: Row(
       children: [
-        Icon(
-          LucideIcons.bookOpenCheck,
-          size: 19,
-          color: context.scheme.primary,
+        Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: context.scheme.primary.withValues(alpha: 0.13),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            LucideIcons.bookOpenCheck,
+            size: 20,
+            color: context.n.n700,
+          ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('继续学习', style: context.texts.titleMedium),
-              const SizedBox(height: 8),
               Text(
-                focusName == null ? courseName : '$courseName / $focusName',
+                courseName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: context.texts.bodyLarge?.copyWith(height: 1.25),
+                style: context.texts.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
-                '上次学习：${lastStudiedAt == null ? '暂无记录' : _relativeTime(lastStudiedAt!)}'
-                '${progress == null ? '' : ' · 学习进度：${progress!.round()}%'}',
+                focusName ?? '继续当前学习进度',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.texts.bodySmall?.copyWith(color: context.n.n700),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                '上次学习：${lastStudiedAt == null ? '暂无记录' : _relativeTime(lastStudiedAt!)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: context.texts.bodySmall,
+              ),
+              const SizedBox(height: 7),
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        key: const ValueKey('continue-learning-progress'),
+                        value: progress == null
+                            ? 0
+                            : (progress! / 100).clamp(0, 1),
+                        minHeight: 4,
+                        backgroundColor: context.n.n300,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    progress == null ? '—' : '${progress!.round()}%',
+                    style: context.texts.labelSmall?.copyWith(
+                      color: context.n.n700,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
         FilledButton.icon(
+          key: const ValueKey('continue-learning-action'),
           onPressed: onContinue,
           icon: const Icon(LucideIcons.play, size: 15),
           label: const Text('继续'),
           style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            minimumSize: const Size(72, 40),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           ),
         ),
       ],
@@ -2064,13 +2319,69 @@ class _ContinueLearningSection extends StatelessWidget {
   );
 }
 
+class _MobileHomeActivity extends StatelessWidget {
+  const _MobileHomeActivity({
+    required this.assignments,
+    required this.recent,
+    this.onViewAssignments,
+    this.onViewRecent,
+    this.onOpenConversation,
+  });
+
+  final List<TeachingAssignment> assignments;
+  final List<_HomeRecentItem> recent;
+  final VoidCallback? onViewAssignments;
+  final VoidCallback? onViewRecent;
+  final ValueChanged<String>? onOpenConversation;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <Widget>[];
+    for (final assignment in assignments.take(2)) {
+      rows.add(
+        _AssignmentHomeRow(assignment: assignment, onTap: onViewAssignments),
+      );
+    }
+    for (final item in recent.take(2 - rows.length)) {
+      rows.add(
+        _RecentHomeRow(
+          item: item,
+          onTap: item.conversationId == null
+              ? null
+              : () => onOpenConversation?.call(item.conversationId!),
+        ),
+      );
+    }
+    return _HomeSection(
+      key: const ValueKey('mobile-home-activity'),
+      title: assignments.isEmpty ? '近期' : '待办与近期',
+      count: assignments.isEmpty ? null : assignments.length,
+      actionLabel: '查看全部',
+      onAction: assignments.isNotEmpty ? onViewAssignments : onViewRecent,
+      compact: true,
+      child: rows.isEmpty
+          ? const _HomeEmptyRow(label: '暂无待办和最近学习记录')
+          : Column(
+              children: [
+                for (var index = 0; index < rows.length; index++) ...[
+                  if (index > 0) const Divider(height: 1),
+                  rows[index],
+                ],
+              ],
+            ),
+    );
+  }
+}
+
 class _HomeSection extends StatelessWidget {
   const _HomeSection({
+    super.key,
     required this.title,
     required this.child,
     this.count,
     this.actionLabel,
     this.onAction,
+    this.compact = false,
   });
 
   final String title;
@@ -2078,36 +2389,54 @@ class _HomeSection extends StatelessWidget {
   final String? actionLabel;
   final VoidCallback? onAction;
   final Widget child;
+  final bool compact;
 
   @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      color: context.n.n100,
-      border: Border.all(color: context.n.divider),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Column(
+  Widget build(BuildContext context) {
+    final content = Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+          padding: EdgeInsets.only(left: compact ? 0 : 16),
           child: Row(
             children: [
-              Text(title, style: context.texts.titleMedium),
+              Text(
+                title,
+                style: context.texts.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               if (count != null) ...[
                 const SizedBox(width: 7),
-                Text('$count', style: context.texts.bodySmall),
+                Text('$count', style: context.texts.labelSmall),
               ],
               const Spacer(),
               if (actionLabel != null)
-                TextButton(onPressed: onAction, child: Text(actionLabel!)),
+                TextButton(
+                  key: ValueKey('home-section-action-$title'),
+                  onPressed: onAction,
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(68, 44),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  child: Text(actionLabel!),
+                ),
             ],
           ),
         ),
         Divider(height: 1, color: context.n.divider),
         child,
       ],
-    ),
-  );
+    );
+    if (compact) return content;
+    return Container(
+      decoration: BoxDecoration(
+        color: context.n.n100,
+        border: Border.all(color: context.n.divider),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: content,
+    );
+  }
 }
 
 class _AssignmentHomeRow extends StatelessWidget {
@@ -2121,34 +2450,37 @@ class _AssignmentHomeRow extends StatelessWidget {
     final completed = assignment.submissionId != null;
     return InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Row(
-          children: [
-            Icon(
-              completed
-                  ? Icons.check_circle_outline
-                  : Icons.radio_button_unchecked,
-              size: 20,
-              color: completed ? context.scheme.primary : context.n.n500,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                assignment.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  decoration: completed ? TextDecoration.lineThrough : null,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Row(
+            children: [
+              Icon(
+                completed
+                    ? Icons.check_circle_outline
+                    : Icons.radio_button_unchecked,
+                size: 20,
+                color: completed ? context.scheme.primary : context.n.n500,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  assignment.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    decoration: completed ? TextDecoration.lineThrough : null,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              _deadlineLabel(assignment.dueAt),
-              style: context.texts.bodySmall,
-            ),
-          ],
+              const SizedBox(width: 12),
+              Text(
+                _deadlineLabel(assignment.dueAt),
+                style: context.texts.bodySmall,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2164,25 +2496,37 @@ class _RecentHomeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: onTap,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-      child: Row(
-        children: [
-          Icon(item.icon, size: 16, color: context.n.n600),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(item.meta, style: context.texts.bodySmall),
-              ],
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 54),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Row(
+          children: [
+            Icon(item.icon, size: 16, color: context.n.n600),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.meta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.texts.bodySmall,
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Text(item.time, style: context.texts.bodySmall),
-        ],
+            const SizedBox(width: 12),
+            Text(item.time, style: context.texts.bodySmall),
+          ],
+        ),
       ),
     ),
   );
@@ -2194,11 +2538,20 @@ class _HomeEmptyRow extends StatelessWidget {
   final String label;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(16),
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: Text(label, style: context.texts.bodySmall),
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(minHeight: 44),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 11),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Row(
+          children: [
+            Icon(LucideIcons.circleCheck, size: 15, color: context.n.n500),
+            const SizedBox(width: 8),
+            Text(label, style: context.texts.bodySmall),
+          ],
+        ),
+      ),
     ),
   );
 }
@@ -2218,6 +2571,13 @@ class _HomeRecentItem {
   final String time;
   final String? conversationId;
 }
+
+IconData _attachmentHomeIcon(String extension) => switch (extension) {
+  'pdf' => LucideIcons.fileText,
+  'md' || 'txt' => LucideIcons.notebookText,
+  'png' || 'jpg' || 'jpeg' || 'webp' => LucideIcons.image,
+  _ => LucideIcons.file,
+};
 
 String _weekdayLabel(int weekday) => const [
   '星期一',
@@ -2260,16 +2620,16 @@ class _EmptyState extends StatelessWidget {
   final Widget? mobileComposer;
 
   static const _cards = [
-    (LucideIcons.calendarCheck2, Color(0xFF3478F6), TaskMode.studyPlan),
+    (LucideIcons.calendarCheck2, Color(0xFF9A9AA2), TaskMode.studyPlan),
     (LucideIcons.lightbulb, Color(0xFF20C85A), TaskMode.concept),
-    (LucideIcons.penLine, Color(0xFF8B5CF6), TaskMode.reviewHomework),
+    (LucideIcons.penLine, Color(0xFF77777F), TaskMode.reviewHomework),
   ];
 
   static const _researchCards = [
     (LucideIcons.filePenLine, Color(0xFF20C85A), TaskMode.academicWriting),
     (
       LucideIcons.chartNoAxesCombined,
-      Color(0xFF8B5CF6),
+      Color(0xFF77777F),
       TaskMode.researchDataAnalysis,
     ),
     (LucideIcons.flaskConical, Color(0xFFFFA514), TaskMode.researchPlanning),
@@ -2300,7 +2660,7 @@ class _EmptyState extends StatelessWidget {
                     TextSpan(text: '你好，我是 '),
                     TextSpan(
                       text: 'ESA',
-                      style: TextStyle(color: Color(0xFF4387FF)),
+                      style: TextStyle(color: Color(0xFFD8D8DD)),
                     ),
                     TextSpan(text: ' 学习助手'),
                   ],
@@ -2468,7 +2828,7 @@ class _AssistantOrb extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: const Color(0xFF1E65E8).withValues(alpha: .25),
+              color: const Color(0xFF66666D).withValues(alpha: .35),
             ),
           ),
         ),
@@ -2478,14 +2838,10 @@ class _AssistantOrb extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: const Color(0xFF2476FF).withValues(alpha: .5),
+              color: const Color(0xFF8A8A92).withValues(alpha: .65),
             ),
             boxShadow: const [
-              BoxShadow(
-                color: Color(0x553878FF),
-                blurRadius: 28,
-                spreadRadius: 2,
-              ),
+              BoxShadow(color: Color(0x33000000), blurRadius: 18),
             ],
           ),
         ),
@@ -2494,9 +2850,7 @@ class _AssistantOrb extends StatelessWidget {
           height: compact ? 46 : 58,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            gradient: LinearGradient(
-              colors: [Color(0xFF61C9FF), Color(0xFF365BFF)],
-            ),
+            color: Color(0xFF35353A),
           ),
           child: const Icon(
             LucideIcons.messageCircleMore,

@@ -87,6 +87,18 @@ server {
         proxy_send_timeout 3600s;
     }
 
+    # The production build uses --base-href=/esa/ and the release archive
+    # places the generated files in /var/www/esa.
+    location = /esa {
+        return 301 /esa/;
+    }
+
+    location ^~ /esa/ {
+        root /var/www;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri $uri/ /esa/index.html;
+    }
+
     location / {
         add_header Cache-Control "no-cache" always;
         try_files $uri $uri/ /index.html;

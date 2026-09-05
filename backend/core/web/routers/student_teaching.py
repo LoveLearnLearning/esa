@@ -12,7 +12,11 @@ from backend.core.stores.teaching_store import TeachingStore
 from backend.core.stores.user_store import UserStore
 from backend.core.utils.models import SessionPrincipal, UserRecord
 from backend.core.web.deps import get_current_session
-from backend.core.web.teaching_schemas import InvitationResponseRequest, SubmissionCreateRequest
+from backend.core.web.teaching_schemas import (
+    InvitationResponseRequest,
+    JoinClassRequest,
+    SubmissionCreateRequest,
+)
 
 router = APIRouter(prefix="/student", tags=["student teaching"])
 CurrentSession = Annotated[SessionPrincipal, Depends(get_current_session)]

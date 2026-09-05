@@ -69,6 +69,27 @@ def main() -> int:
 
     out: list[Sample] = []
 
+    def valid_lures(lures: list[str]) -> list[str]:
+        """种子里引用的工具必须都还在当前 schema 里。
+
+        来自上游 `8696eee`，但**判据改了**：上游版本是「悄悄过滤掉失效的，
+        只有全部失效才报错」。我们要求**一个都不许失效**。
+
+        理由：种子引用了后端已删的工具，是配置漂移，正确响应是**去更新种子**
+        （像 2026-08-28 对 `get_weather` 做的：删掉那一组、留一块墓碑注释写明
+        上游哪个 commit 删的）。悄悄过滤会让样本组悄悄变小，而
+        `test_tool_coverage.py` 抓不到 —— 它比的是「考卷考到的工具训练池有没有」，
+        两边都少生成时它是绿的。
+        """
+        gone = [t for t in lures if t not in by_name]
+        if gone:
+            raise SystemExit(
+                f"❌ 补充种子引用了当前 schema 里没有的工具：{gone}\n"
+                f"   整条 lures：{lures}\n"
+                "   去 seeds/ 里把这几个删掉并留墓碑注释（写明上游哪个 commit 删的），"
+                "别让生成器静默跳过。")
+        return list(lures)
+
     def add(sid: str, tpl: str, category: str, lures: list[str],
             turns: list[Turn], **kw) -> None:
         """一条样本 = 一个模板。补充集里绝不出现「同模板多改写」。"""
@@ -88,7 +109,7 @@ def main() -> int:
             # —— 5.6 那个「其实该调另一个工具」的错误栽过四次。
             assert item.get("refuse"), f"refuse/{group}[{i}] 没写 refuse 字段"
             add(f"supp_refuse_{group}_{i:02d}",
-                f"{PREFIX}refuse__{group}__{i:02d}", "refusal", body["lures"],
+                f"{PREFIX}refuse__{group}__{i:02d}", "refusal", valid_lures(body["lures"]),
                 [Turn(role="user", content=item["q"]),
                  Turn(role="assistant", content=item["a"].strip())],
                 score_exclude=dict(item.get("score_exclude") or {}))
@@ -97,8 +118,13 @@ def main() -> int:
     for item in cfg["ask"]:
         # `ask_for` 必须是在场某个工具的 required 参数，否则「只询问缺失信息」
         # 这条契约就无从验证。这里先自查一遍，别等 validate 再报。
+        # 🔴 上游 `8696eee` 把下面这个 assert 改成了 `print(...)  + break`（少生成一条）。
+        #    **不接受**：ASK_USER 是「追问命中率」的来源，静默少生成会让那个指标
+        #    在一个更小的分母上算，而报表照样全绿（5.19 同族）。
+        #    契约破了就该炸，让人去修种子。
+        lures = valid_lures(item["lures"])
         required_anywhere: set[str] = set()
-        for tool in item["lures"]:
+        for tool in lures:
             spec = by_name.get(tool)
             if spec:
                 required_anywhere |= set(
@@ -107,7 +133,7 @@ def main() -> int:
             assert param in required_anywhere, (
                 f"ask/{item['id']}：{param!r} 对 lures 里任何工具都不是必填参数")
         add(f"supp_ask_{item['id']}", f"{PREFIX}ask__{item['id']}",
-            "clarify", item["lures"],
+            "clarify", lures,
             [Turn(role="user", content=item["q"]),
              Turn(role="assistant", content=item["a"].strip())],
             ask_for=list(item["ask_for"]))

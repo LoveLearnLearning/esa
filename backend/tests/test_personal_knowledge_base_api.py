@@ -106,16 +106,21 @@ def test_empty_snapshot_and_authentication(tmp_path):
     assert client.get("/api/me/knowledge-base").status_code == 401
     response = client.get("/api/me/knowledge-base", headers=user_one)
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    updated_at = body.pop("updated_at")
+    assert body == {
         "file_count": 0,
         "chunk_count": 0,
         "index_count": 0,
         "status": "idle",
         "progress": 0.0,
-        "updated_at": None,
         "error": None,
         "files": [],
     }
+    # Resolving the default library creates the durable per-user base, so an
+    # empty library still has a meaningful creation/update timestamp.
+    assert isinstance(updated_at, str)
+    datetime.fromisoformat(updated_at)
 
 
 def test_upload_deduplicate_isolate_and_delete(tmp_path):
@@ -421,6 +426,23 @@ def test_upload_request_size_is_rejected_before_multipart_parsing(tmp_path):
         files=[("files", ("quota.txt", b"too large", "text/plain"))],
     )
     assert quota.status_code == 413
+
+
+def test_named_library_upload_is_rejected_before_multipart_parsing(tmp_path):
+    client, user_one, _user_two = _client(tmp_path)
+    created = client.post(
+        "/api/me/knowledge-base/libraries",
+        headers=user_one,
+        json={"name": "课程资料"},
+    )
+    assert created.status_code == 201
+    library_id = created.json()["id"]
+    response = client.post(
+        f"/api/me/knowledge-base/libraries/{library_id}/files",
+        headers={**user_one, "Content-Length": str(2**40)},
+        content=b"",
+    )
+    assert response.status_code == 413
 
 
 def test_rebuild_returns_accepted_snapshot_for_existing_file(tmp_path):

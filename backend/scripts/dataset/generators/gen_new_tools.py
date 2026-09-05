@@ -445,6 +445,17 @@ def main() -> int:
     for tool, groups in cfg.items():
         if tool == "kp_pool":
             continue
+        # 🔴 来自上游 `8696eee`，但**判据改了**：上游是 `print(...)  + continue`
+        #    ——种子引用了后端已删的工具，就悄悄少生成**一整组**样本。
+        #    那比 gen_supplement 那处还狠，而且 `test_tool_coverage.py` 抓不到：
+        #    它比的是「考卷考到的工具训练池有没有」，考卷和训练池同一个生成器产出，
+        #    两边一起少生成时它是绿的。
+        #    正确响应是去更新种子（像 2026-08-28 删 `get_weather` 那样，留墓碑注释）。
+        if tool not in all_names:
+            raise SystemExit(
+                f"❌ 种子里的 {tool!r} 不在当前工具 schema 里（共 {len(all_names)} 个）。\n"
+                "   去 seeds/ 把这一组删掉并留墓碑注释（写明上游哪个 commit 删的），"
+                "别让生成器静默跳过一整组。")
         for group, phrasings in groups.items():
             if group.startswith("正例"):
                 target = POSITIVE_TOOL.get(tool, tool)

@@ -5,6 +5,7 @@ import 'package:frontend/models/models.dart';
 import 'package:frontend/pages/home_shell.dart';
 import 'package:frontend/state/app_state.dart';
 import 'package:frontend/theme/esa_theme.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _ScheduleApi extends ApiClient {
@@ -289,7 +290,9 @@ void main() {
     await tester.pumpWidget(app(state));
     await tester.pumpAndSettle();
 
-    final continueButton = find.widgetWithText(FilledButton, '继续');
+    final continueButton = find.byKey(
+      const ValueKey('continue-learning-action'),
+    );
     await tester.ensureVisible(continueButton);
     await tester.tap(continueButton);
     await tester.pumpAndSettle();
@@ -307,7 +310,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final button = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, '继续'),
+      find.byKey(const ValueKey('continue-learning-action')),
     );
     expect(button.onPressed, isNull);
   });
@@ -408,8 +411,8 @@ void main() {
 
       expect(find.byKey(const ValueKey('learning-home')), findsOneWidget);
       expect(find.text('继续学习'), findsWidgets);
-      expect(find.text('待办'), findsOneWidget);
-      expect(find.text('最近'), findsOneWidget);
+      expect(find.text('待办'), findsWidgets);
+      expect(find.text('近期'), findsOneWidget);
       expect(find.textContaining('你好，我是'), findsNothing);
       expect(find.text('生成复习计划'), findsNothing);
       expect(find.text('附件'), findsOneWidget);
@@ -513,6 +516,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('学习空间'), findsNothing);
       expect(find.byTooltip('展开侧栏'), findsOneWidget);
+      expect(
+        tester.getSize(
+          find.byKey(const ValueKey('desktop-sidebar-reveal-handle')),
+        ),
+        const Size(30, 36),
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey(StudentSection.home))).dx,
+        72,
+      );
       expect(tester.takeException(), isNull);
 
       await tester.tap(find.byTooltip('展开侧栏'));
@@ -522,21 +535,25 @@ void main() {
     },
   );
 
-  testWidgets('narrow timetable keeps the complete seven-day grid visible', (
+  testWidgets('mobile timetable keeps the complete week and all controls', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
+    final today = DateTime.now().weekday;
+    final nextDay = today % 7 + 1;
     final state = createState();
     addTearDown(state.dispose);
     await state.saveScheduleCourse(
-      const ScheduleCourse(
+      ScheduleCourse(
         id: 'mobile-course',
         name: '高等数学',
-        weekday: 1,
+        weekday: today,
         startPeriod: 1,
         endPeriod: 2,
         startWeek: 1,
@@ -545,10 +562,10 @@ void main() {
       ),
     );
     await state.saveScheduleCourse(
-      const ScheduleCourse(
+      ScheduleCourse(
         id: 'mobile-course-2',
         name: '操作系统',
-        weekday: 2,
+        weekday: nextDay,
         startPeriod: 3,
         endPeriod: 4,
         startWeek: 1,
@@ -561,39 +578,180 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('日程'));
     await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('schedule-week-grid')), findsOneWidget);
+    for (var weekday = 1; weekday <= 7; weekday++) {
+      expect(find.byKey(ValueKey('schedule-weekday-$weekday')), findsOneWidget);
+    }
     expect(find.text('高等数学'), findsOneWidget);
     expect(find.text('操作系统'), findsOneWidget);
-    expect(find.byKey(const ValueKey('schedule-week-grid')), findsOneWidget);
-    expect(find.byKey(const ValueKey('schedule-weekday-1')), findsOneWidget);
-    expect(find.byKey(const ValueKey('schedule-weekday-7')), findsOneWidget);
-    final gridRect = tester.getRect(
-      find.byKey(const ValueKey('schedule-week-grid')),
-    );
+    expect(find.byKey(const ValueKey('schedule-table-menu')), findsOneWidget);
     expect(
-      tester.getRect(find.byKey(const ValueKey('schedule-weekday-7'))).right,
-      lessThanOrEqualTo(gridRect.right + 0.01),
-    );
-    expect(tester.getSize(find.text('高等数学')).width, lessThan(48));
-    expect(find.text('08:00'), findsOneWidget);
-    expect(find.text('09:40'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('schedule-import-button')),
+      find.byKey(const ValueKey('mobile-schedule-week-picker')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey('mobile-schedule-add-course')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('mobile-schedule-more')), findsOneWidget);
 
-    expect(find.text('第 1 周'), findsOneWidget);
-    await tester.fling(find.text('高等数学'), const Offset(-320, 0), 1000);
+    await tester.tap(find.text('高等数学'));
     await tester.pumpAndSettle();
-    expect(find.text('第 2 周'), findsOneWidget);
+    expect(find.text('编辑课程'), findsOneWidget);
+    expect(find.byKey(const ValueKey('schedule-course-name')), findsOneWidget);
+    await tester.tap(find.byIcon(LucideIcons.x).last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('mobile-schedule-more')));
+    await tester.pumpAndSettle();
+    expect(find.text('从文件导入'), findsOneWidget);
+    expect(find.text('从华科教务导入'), findsOneWidget);
+    expect(find.text('课表设置'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mobile home keeps the daily workspace dense and reachable', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final state = createState()
+      ..learningCourses = const [
+        LearningCourseSummary(
+          name: '数据结构与算法',
+          totalPoints: 12,
+          evaluatedPoints: 8,
+          weakPoints: 2,
+          reviewPoints: 1,
+          averageMastery: 51,
+        ),
+      ]
+      ..masteryReport = const MasteryReport(
+        totalPoints: 12,
+        averageMastery: 51,
+        weakPoints: [MasteryPoint(name: 'Dijkstra', masteryLevel: 42)],
+        strongPoints: [],
+        stalePoints: [],
+      )
+      ..userStats = const UserStats(learningStreakDays: 6)
+      ..conversations.addAll([
+        ChatConversation(
+          id: 'recent-1',
+          title: '最短路径算法对比（Dijkstra vs Bellman-Ford）',
+          updatedAt: DateTime(2026, 9, 2, 14, 20),
+        ),
+        ChatConversation(
+          id: 'recent-2',
+          title: '图的存储结构',
+          updatedAt: DateTime(2026, 9, 1, 21, 15),
+        ),
+      ]);
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('mobile-app-bar')), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('schedule-settings-button')),
+      find.byKey(const ValueKey('mobile-primary-navigation')),
       findsOneWidget,
     );
-    await tester.tap(find.byKey(const ValueKey('schedule-settings-button')));
+    expect(find.byKey(const ValueKey('mobile-today-overview')), findsOneWidget);
+    expect(find.text('学习进度'), findsOneWidget);
+    expect(find.text('51%'), findsNWidgets(2));
+    expect(find.text('连续学习'), findsOneWidget);
+    expect(find.text('6 天'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('continue-learning-card')),
+      findsOneWidget,
+    );
+    expect(find.text('近期'), findsOneWidget);
+    expect(find.byKey(const ValueKey('mobile-home-composer')), findsOneWidget);
+    expect(find.text('问我任何学习问题…'), findsOneWidget);
+    expect(find.text('解释一个概念'), findsOneWidget);
+    expect(find.text('帮我规划今天'), findsOneWidget);
+    expect(find.text('继续上次学习'), findsOneWidget);
+    expect(find.byTooltip('长期记忆'), findsOneWidget);
+    expect(find.byTooltip('待确认动作'), findsOneWidget);
+    expect(find.byTooltip('历史对话'), findsOneWidget);
+    expect(find.byTooltip('设置与账户'), findsOneWidget);
+    expect(find.byTooltip('更多'), findsNothing);
+
+    final cardSize = tester.getSize(
+      find.byKey(const ValueKey('continue-learning-card')),
+    );
+    expect(cardSize.height, inInclusiveRange(110, 132));
+    expect(cardSize.width, 358);
+    final composerRect = tester.getRect(
+      find.byKey(const ValueKey('mobile-home-composer')),
+    );
+    final bottomBarRect = tester.getRect(
+      find.byKey(const ValueKey('student-learning-destination')),
+    );
+    expect(composerRect.bottom, lessThanOrEqualTo(bottomBarRect.top));
+    final attachmentSize = tester.getSize(
+      find.byKey(const ValueKey('mobile-home-attachment')),
+    );
+    expect(attachmentSize.width, greaterThanOrEqualTo(44));
+    expect(attachmentSize.height, greaterThanOrEqualTo(44));
+    final voiceSize = tester.getSize(
+      find.byKey(const ValueKey('mobile-home-voice')),
+    );
+    expect(voiceSize.width, greaterThanOrEqualTo(44));
+    expect(voiceSize.height, greaterThanOrEqualTo(44));
+    final suggestionTarget = find.ancestor(
+      of: find.text('解释一个概念'),
+      matching: find.byType(InkWell),
+    );
+    expect(tester.getSize(suggestionTarget.first).height, 44);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const ValueKey('home-section-action-近期')));
     await tester.pumpAndSettle();
-    expect(find.text('上午'), findsOneWidget);
-    expect(find.text('下午'), findsOneWidget);
-    expect(find.text('晚上'), findsOneWidget);
+    expect(find.text('搜索历史对话'), findsOneWidget);
+  });
+
+  testWidgets('mobile home tolerates larger system text without overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(430, 932);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    final state = createState()
+      ..learningCourses = const [
+        LearningCourseSummary(
+          name: '数据结构与算法课程',
+          totalPoints: 12,
+          evaluatedPoints: 8,
+          weakPoints: 2,
+          reviewPoints: 1,
+          averageMastery: 51,
+        ),
+      ]
+      ..masteryReport = const MasteryReport(
+        totalPoints: 12,
+        averageMastery: 51,
+        weakPoints: [MasteryPoint(name: '单源最短路径与松弛操作', masteryLevel: 42)],
+        strongPoints: [],
+        stalePoints: [],
+      );
+    addTearDown(state.dispose);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('mobile-app-bar')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('continue-learning-card')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('student mobile navigation exposes the personal knowledge base', (
