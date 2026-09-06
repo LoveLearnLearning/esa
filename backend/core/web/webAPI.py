@@ -560,6 +560,7 @@ async def lifespan(app: FastAPI):
             "no_proxy",
             "NODE_EXTRA_CA_CERTS",
             "NODE_USE_ENV_PROXY",
+            "NPM_CONFIG_CACHE",
             "SSL_CERT_FILE",
         ):
             value = os.environ.get(env_name)

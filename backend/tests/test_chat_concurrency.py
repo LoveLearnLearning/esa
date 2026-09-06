@@ -272,6 +272,43 @@ def test_unavailable_knowledge_source_does_not_revise_persisted_message(tmp_path
     assert chat_store.get_history(conversation_id) == before
 
 
+def test_revising_user_turn_replaces_persisted_assistant_tail(tmp_path):
+    database_path = tmp_path / "chat.db"
+    user_store, chat_store, conversation_id = _setup(database_path)
+    chat_store.append_messages(
+        conversation_id,
+        [
+            {"role": "user", "content": "原问题", "is_visible": True},
+            {"role": "tool", "content": "旧工具结果", "is_visible": True},
+            {"role": "assistant", "content": "旧回答", "is_visible": True},
+        ],
+    )
+    user_message_id = chat_store.get_history(conversation_id)[0]["id"]
+    agent = _Agent()
+    coordinator = ConversationTurnCoordinator(database_path)
+    request = _request(user_store, chat_store, agent, coordinator)
+    session = SessionPrincipal(session_id="s1", user_id="u1")
+
+    asyncio.run(
+        send_message(
+            conversation_id,
+            SendMessageRequest(
+                content="原问题",
+                knowledge_sources=[],
+                replace_message_id=user_message_id,
+            ),
+            request,
+            session,
+        )
+    )
+
+    history = chat_store.get_history(conversation_id)
+    assert [(item["role"], item["content"]) for item in history] == [
+        ("user", "原问题"),
+        ("assistant", "reply:原问题"),
+    ]
+
+
 def test_same_conversation_turns_are_serialized(tmp_path):
     """验证 `same_conversation_turns_are_serialized` 场景。"""
     database_path = tmp_path / "chat.db"

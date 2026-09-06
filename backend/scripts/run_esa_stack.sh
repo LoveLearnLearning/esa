@@ -157,6 +157,8 @@ if [[ "$personal_kb_enabled" != "$personal_kb_config_enabled" ]]; then
 fi
 
 if [[ "$mcp_enabled" == "1" ]]; then
+    export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-$PROJECT_ROOT/runtime/npm-cache}"
+    mkdir -p "$NPM_CONFIG_CACHE"
     if [[ -z "${YDC_API_KEY:-}" ]]; then
         echo "ERROR: MCP 已启用，但超算环境中没有 YDC_API_KEY。" >&2
         exit 1
@@ -170,8 +172,13 @@ if [[ "$mcp_enabled" == "1" ]]; then
         echo "ERROR: You.com MCP 需要 Node.js >= 18，当前为 $(node --version)。" >&2
         exit 1
     fi
-    if ! python -c 'import mcp' >/dev/null 2>&1; then
+    if ! python -c 'import importlib.util, sys; sys.exit(importlib.util.find_spec("mcp") is None)' >/dev/null 2>&1; then
         echo "ERROR: Python MCP SDK 未安装，请先执行 python -m pip install -r requirements.txt。" >&2
+        exit 1
+    fi
+    echo "===== Preparing You.com MCP package ====="
+    if ! npx --yes @youdotcom-oss/mcp@3.5.0 </dev/null; then
+        echo "ERROR: You.com MCP 包下载或启动预检失败。" >&2
         exit 1
     fi
 fi
@@ -213,7 +220,14 @@ fi
 runtime_root="${SLURM_TMPDIR:-/tmp}/esa-${SLURM_JOB_ID:-$$}"
 auxiliary_cache="$runtime_root/triton-auxiliary"
 main_cache="$runtime_root/triton-main"
-mkdir -p "$auxiliary_cache" "$main_cache" logs
+auxiliary_vllm_cache="$runtime_root/vllm-auxiliary"
+main_vllm_cache="$runtime_root/vllm-main"
+mkdir -p \
+    "$auxiliary_cache" \
+    "$main_cache" \
+    "$auxiliary_vllm_cache" \
+    "$main_vllm_cache" \
+    logs
 
 mineru_api_port="${MM_MINERU_API_PORT:-51026}"
 mineru_api_url="${MM_MINERU_API_URL:-http://127.0.0.1:${mineru_api_port}}"
@@ -402,6 +416,7 @@ fi
 echo "===== Starting auxiliary Qwen3.5-9B service ====="
 CUDA_VISIBLE_DEVICES="$auxiliary_device" \
 TRITON_CACHE_DIR="$auxiliary_cache" \
+VLLM_CACHE_ROOT="$auxiliary_vllm_cache" \
 python -m vllm.entrypoints.openai.api_server \
     --model "$auxiliary_model" \
     --served-model-name "$auxiliary_name" \
@@ -504,6 +519,7 @@ fi
 echo "===== Starting ESA backend ====="
 CUDA_VISIBLE_DEVICES="$backend_devices" \
 TRITON_CACHE_DIR="$main_cache" \
+VLLM_CACHE_ROOT="$main_vllm_cache" \
 setsid python -m backend.main &
 backend_pid=$!
 

@@ -2208,37 +2208,75 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void regenerate(
+  Future<void> regenerate(
     String assistantMessageId, {
     Set<KnowledgeSource> knowledgeSources = const {
       KnowledgeSource.personal,
       KnowledgeSource.public,
     },
     String? personalKnowledgeBaseId,
-  }) {
-    final id = activeId;
-    if (id == null || busy) return;
-    final list = _messages[id];
+  }) async {
+    final session = _sessionIdentity;
+    final conversationId = activeId;
+    if (conversationId == null || busy) return;
+    final list = _messages[conversationId];
     if (list == null) return;
-    final index = list.indexWhere((m) => m.id == assistantMessageId);
-    if (index < 0) return;
-    String? prompt;
-    for (var i = index - 1; i >= 0; i--) {
+    final assistantIndex = list.indexWhere(
+      (message) => message.id == assistantMessageId,
+    );
+    if (assistantIndex < 0 || list[assistantIndex].isUser) return;
+
+    var userIndex = -1;
+    for (var i = assistantIndex - 1; i >= 0; i--) {
       if (list[i].isUser) {
-        prompt = list[i].text;
+        userIndex = i;
         break;
       }
     }
-    if (prompt != null) {
-      final source = list.lastWhere(
-        (message) => message.isUser && message.text == prompt,
-      );
-      send(
-        prompt,
-        markdown: source.markdown,
+    if (userIndex < 0) return;
+
+    final userMessage = list[userIndex];
+    final userMessageId = int.tryParse(userMessage.id);
+    if (userMessageId == null || userMessage.text.trim().isEmpty) return;
+
+    final originalTail = List<ChatMessage>.of(list.skip(userIndex + 1));
+    list.removeRange(userIndex + 1, list.length);
+    final placeholder = ChatMessage.typingPlaceholder();
+    list.add(placeholder);
+    busy = true;
+    notifyListeners();
+
+    try {
+      await _receiveStream(
+        conversationId,
+        userMessage.text,
+        list,
+        placeholder,
+        attachmentIds: userMessage.attachments
+            .map((attachment) => attachment.id)
+            .toList(),
+        replaceMessageId: userMessageId,
         knowledgeSources: knowledgeSources,
         personalKnowledgeBaseId: personalKnowledgeBaseId,
       );
+    } catch (error) {
+      if (session != _sessionIdentity) return;
+      if (_isTurnPreflightRejection(error)) {
+        list.removeRange(userIndex + 1, list.length);
+        list.addAll(originalTail);
+        return;
+      }
+      final recovered = await _recoverInterruptedReply(conversationId, list);
+      if (session != _sessionIdentity) return;
+      if (!recovered) {
+        list.removeRange(userIndex + 1, list.length);
+        list.addAll(originalTail);
+      }
+    } finally {
+      if (session == _sessionIdentity) {
+        busy = false;
+        notifyListeners();
+      }
     }
   }
 

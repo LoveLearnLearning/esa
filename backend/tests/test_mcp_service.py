@@ -16,10 +16,18 @@ from backend.core.services.mcp_service import (
 
 
 class _AsyncContext:
-    def __init__(self, value, events: list[str], label: str) -> None:
+    def __init__(
+        self,
+        value,
+        events: list[str],
+        label: str,
+        *,
+        exit_error: BaseException | None = None,
+    ) -> None:
         self.value = value
         self.events = events
         self.label = label
+        self.exit_error = exit_error
 
     async def __aenter__(self):
         self.events.append(f"enter:{self.label}")
@@ -28,6 +36,8 @@ class _AsyncContext:
     async def __aexit__(self, exc_type, exc, traceback):
         del exc_type, exc, traceback
         self.events.append(f"exit:{self.label}")
+        if self.exit_error is not None:
+            raise self.exit_error
 
 
 class _Block:
@@ -145,6 +155,41 @@ def test_mcp_start_fails_closed_when_allowlisted_tool_is_missing(monkeypatch):
     manager = MCPClientManager((_config(),))
 
     with pytest.raises(RuntimeError, match="did not expose allowed tools"):
+        asyncio.run(manager.start())
+
+    assert events[-2:] == ["exit:session", "exit:transport"]
+
+
+def test_mcp_start_preserves_original_error_when_cleanup_also_fails(monkeypatch):
+    events: list[str] = []
+
+    class _Params:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+    class _FailingSession:
+        async def initialize(self):
+            raise RuntimeError("initialize failed")
+
+    def stdio_client(_params):
+        return _AsyncContext(("read", "write"), events, "transport")
+
+    def ClientSession(_read, _write, **_kwargs):
+        return _AsyncContext(
+            _FailingSession(),
+            events,
+            "session",
+            exit_error=RuntimeError("cleanup failed"),
+        )
+
+    monkeypatch.setattr(
+        mcp_service,
+        "_load_mcp_sdk",
+        lambda: (ClientSession, _Params, stdio_client),
+    )
+    manager = MCPClientManager((_config(),))
+
+    with pytest.raises(RuntimeError, match="initialize failed"):
         asyncio.run(manager.start())
 
     assert events[-2:] == ["exit:session", "exit:transport"]

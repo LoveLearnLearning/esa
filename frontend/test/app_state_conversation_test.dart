@@ -103,6 +103,51 @@ class _KnowledgeUnavailableApi extends _ConversationApi {
   }
 }
 
+class _RegenerateApi extends _ConversationApi {
+  int? replacedMessageId;
+  String? regeneratedContent;
+  List<String>? regeneratedAttachmentIds;
+
+  final List<ChatMessage> persistedMessages = [
+    ChatMessage(id: '1', role: MessageRole.user, text: '原问题'),
+    ChatMessage(id: '2', role: MessageRole.tool, text: '旧工具结果'),
+    ChatMessage(id: '3', role: MessageRole.assistant, text: '旧回答'),
+  ];
+
+  @override
+  Future<List<ChatMessage>> getMessages(String conversationId) async =>
+      List<ChatMessage>.of(persistedMessages);
+
+  @override
+  Stream<ChatStreamEvent> streamMessage(
+    String id,
+    String content, {
+    String? personalKnowledgeBaseId,
+  }) async* {
+    throw StateError('重新生成不应追加新的用户消息');
+  }
+
+  @override
+  Stream<ChatStreamEvent> streamRevisedMessage(
+    String id,
+    String content,
+    int messageId,
+    List<String> attachmentIds, {
+    Set<KnowledgeSource> knowledgeSources = const {
+      KnowledgeSource.personal,
+      KnowledgeSource.public,
+    },
+    String? personalKnowledgeBaseId,
+  }) async* {
+    replacedMessageId = messageId;
+    regeneratedContent = content;
+    regeneratedAttachmentIds = List<String>.of(attachmentIds);
+    yield ChatStreamEvent('start', {'user_message_id': messageId});
+    yield const ChatStreamEvent('content', {'delta': '新回答'});
+    yield const ChatStreamEvent('done', {});
+  }
+}
+
 class _RepeatedToolIdApi extends _ConversationApi {
   int streamCalls = 0;
 
@@ -374,6 +419,30 @@ void main() {
       '旧回答',
       '（修改消息失败：所选知识库服务暂不可用：公共知识库）',
     ]);
+  });
+
+  test('重新生成会覆盖旧回答而不是追加重复问答', () async {
+    final api = _RegenerateApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+    final conversation = ChatConversation(
+      id: 'existing',
+      title: '已有对话',
+      updatedAt: DateTime(2026),
+    );
+    state.conversations.add(conversation);
+    await state.setActive(conversation.id);
+
+    await state.regenerate('3');
+
+    expect(api.replacedMessageId, 1);
+    expect(api.regeneratedContent, '原问题');
+    expect(api.regeneratedAttachmentIds, isEmpty);
+    expect(state.messages.map((message) => message.text), ['原问题', '新回答']);
+    expect(state.messages.where((message) => message.isUser), hasLength(1));
   });
 
   test('重复工具事件 ID 只更新当前轮最新的工具卡片', () async {

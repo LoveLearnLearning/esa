@@ -75,6 +75,11 @@ class MCPStdioServer:
 
         if self.ready:
             return
+        logger.info(
+            "server startup started server=%s command=%s",
+            self.config.name,
+            self.config.command,
+        )
         ClientSession, StdioServerParameters, stdio_client = _load_mcp_sdk()
         stack = AsyncExitStack()
         try:
@@ -132,7 +137,13 @@ class MCPStdioServer:
                 self.config.command,
             )
         except BaseException:
-            await stack.aclose()
+            try:
+                await stack.aclose()
+            except BaseException:
+                logger.exception(
+                    "server startup cleanup failed server=%s",
+                    self.config.name,
+                )
             raise
 
     async def close(self) -> None:

@@ -1040,10 +1040,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   onContentChanged: _scrollToBottom,
                   onRegenerate: () {
                     _resumeFollowing();
-                    app.regenerate(
-                      m.id,
-                      knowledgeSources: _knowledgeSources,
-                      personalKnowledgeBaseId: _selectedPersonalKnowledgeBaseId,
+                    unawaited(
+                      app.regenerate(
+                        m.id,
+                        knowledgeSources: _knowledgeSources,
+                        personalKnowledgeBaseId:
+                            _selectedPersonalKnowledgeBaseId,
+                      ),
                     );
                   },
                   onOpenCodeEditor: (code, language) => _openCodeEditor(

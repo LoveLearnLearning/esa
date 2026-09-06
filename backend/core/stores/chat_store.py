@@ -769,6 +769,7 @@ class ChatStore(BaseSQLiteStore):
                 rows = connection.execute(
                     """
                     SELECT role, COALESCE(model_content, content) AS content, name
+                    FROM messages
                     WHERE conversation_id = ? AND id < ?
                     ORDER BY id ASC
                     """,
