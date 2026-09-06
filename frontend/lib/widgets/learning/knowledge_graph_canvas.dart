@@ -1,12 +1,13 @@
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/models.dart';
 import '../../theme/esa_context.dart';
+
+enum KnowledgeGraphLayoutDirection { horizontal, vertical }
 
 class KnowledgeGraphCanvas extends StatefulWidget {
   const KnowledgeGraphCanvas({
@@ -14,68 +15,161 @@ class KnowledgeGraphCanvas extends StatefulWidget {
     required this.visibleNodes,
     required this.edges,
     required this.onNodeTap,
+    this.persistenceKey,
   });
 
   final List<KnowledgeMapNode> visibleNodes;
   final List<KnowledgeMapEdge> edges;
   final ValueChanged<KnowledgeMapNode> onNodeTap;
+  final String? persistenceKey;
 
   @override
   State<KnowledgeGraphCanvas> createState() => _KnowledgeGraphCanvasState();
 }
 
-class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas> {
+class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas>
+    with SingleTickerProviderStateMixin {
   final TransformationController _transform = TransformationController();
-  Offset? _cursor;
-  Offset? _pendingCursor;
+  late final AnimationController _layoutAnimation = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 280),
+    value: 1,
+  );
+
+  KnowledgeGraphLayoutDirection _direction =
+      KnowledgeGraphLayoutDirection.horizontal;
+  final Set<String> _collapsedIds = {};
+  final Map<String, Offset> _manualOffsets = {};
   String? _hoveredId;
   String? _selectedId;
-  bool _cursorFramePending = false;
+  Map<String, Offset> _animationFrom = const {};
+  Map<String, Offset> _lastDrawnPositions = const {};
+  int? _layoutSignature;
+  _MindMapLayout? _cachedLayout;
   int? _lastFitSignature;
   Size _viewportSize = Size.zero;
   Size _canvasSize = Size.zero;
+  Rect _contentBounds = Rect.zero;
+
+  String get _preferencePrefix =>
+      'esa.knowledge_graph.${widget.persistenceKey ?? 'default'}';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
+
+  @override
+  void didUpdateWidget(covariant KnowledgeGraphCanvas oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.persistenceKey != widget.persistenceKey) {
+      _collapsedIds.clear();
+      _manualOffsets.clear();
+      _selectedId = null;
+      _invalidateLayout();
+      _loadPreferences();
+      return;
+    }
+    if (oldWidget.visibleNodes != widget.visibleNodes ||
+        oldWidget.edges != widget.edges) {
+      final ids = widget.visibleNodes.map((node) => node.id).toSet();
+      _collapsedIds.removeWhere((id) => !ids.contains(id));
+      _manualOffsets.removeWhere((id, _) => !ids.contains(id));
+      if (!ids.contains(_selectedId)) _selectedId = null;
+      _invalidateLayout();
+    }
+  }
 
   @override
   void dispose() {
+    _layoutAnimation.dispose();
     _transform.dispose();
     super.dispose();
   }
 
-  void _open(KnowledgeMapNode node) {
-    setState(() => _selectedId = node.id);
-    widget.onNodeTap(node);
-  }
-
-  void _handleHover(PointerHoverEvent event) {
-    _pendingCursor = event.localPosition;
-    if (_cursorFramePending) return;
-    _cursorFramePending = true;
-    SchedulerBinding.instance.scheduleFrameCallback((_) {
+  Future<void> _loadPreferences() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final direction = preferences.getString('$_preferencePrefix.direction');
+      final collapsed =
+          preferences.getStringList('$_preferencePrefix.collapsed') ?? const [];
       if (!mounted) return;
       setState(() {
-        _cursor = _pendingCursor;
-        _cursorFramePending = false;
+        _direction = direction == 'vertical'
+            ? KnowledgeGraphLayoutDirection.vertical
+            : KnowledgeGraphLayoutDirection.horizontal;
+        _collapsedIds
+          ..clear()
+          ..addAll(collapsed);
+        _invalidateLayout();
       });
-    });
+    } catch (_) {
+      // Local persistence is optional. The graph remains fully usable.
+    }
   }
 
-  void _clearCursor(PointerExitEvent _) {
-    _pendingCursor = null;
+  Future<void> _savePreferences() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(
+        '$_preferencePrefix.direction',
+        _direction.name,
+      );
+      await preferences.setStringList(
+        '$_preferencePrefix.collapsed',
+        _collapsedIds.toList()..sort(),
+      );
+    } catch (_) {
+      // Ignore unavailable platform storage during hot restart and tests.
+    }
+  }
+
+  void _invalidateLayout() {
+    _layoutSignature = null;
+    _cachedLayout = null;
+    _lastFitSignature = null;
+  }
+
+  void _beginLayoutMutation(VoidCallback mutation) {
+    _animationFrom = Map<String, Offset>.from(_lastDrawnPositions);
     setState(() {
-      _cursor = null;
-      _cursorFramePending = false;
+      mutation();
+      _invalidateLayout();
+    });
+    _layoutAnimation.forward(from: 0);
+  }
+
+  void _setDirection(KnowledgeGraphLayoutDirection direction) {
+    if (_direction == direction) return;
+    _beginLayoutMutation(() {
+      _direction = direction;
+      _manualOffsets.clear();
+    });
+    _savePreferences();
+  }
+
+  void _autoArrange() {
+    _beginLayoutMutation(_manualOffsets.clear);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _fitGraph();
     });
   }
 
-  Offset _interactivePosition(Offset point) {
-    final cursor = _cursor;
-    if (cursor == null) return point;
-    final delta = cursor - point;
-    final distance = delta.distance;
-    const influenceRadius = 190.0;
-    if (distance <= 0.1 || distance >= influenceRadius) return point;
-    final strength = math.pow(1 - distance / influenceRadius, 2).toDouble();
-    return point + delta / distance * (13 * strength);
+  void _toggleCollapsed(String nodeId) {
+    _beginLayoutMutation(() {
+      if (!_collapsedIds.add(nodeId)) _collapsedIds.remove(nodeId);
+    });
+    _savePreferences();
+  }
+
+  void _dragNode(String nodeId, Offset screenDelta) {
+    if (_layoutAnimation.isAnimating) _layoutAnimation.stop();
+    final scale = _transform.value.getMaxScaleOnAxis();
+    setState(() {
+      _manualOffsets[nodeId] =
+          (_manualOffsets[nodeId] ?? Offset.zero) + screenDelta / scale;
+    });
   }
 
   void _scheduleInitialFit(_MindMapLayout layout, Size viewport) {
@@ -84,10 +178,12 @@ class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas> {
       layout.size.height.round(),
       viewport.width.round(),
       viewport.height.round(),
-      Object.hashAll(widget.visibleNodes.map((node) => node.id)),
+      _direction,
+      Object.hashAll(layout.positions.keys),
     );
     _viewportSize = viewport;
     _canvasSize = layout.size;
+    _contentBounds = layout.contentBounds;
     if (_lastFitSignature == signature) return;
     _lastFitSignature = signature;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -97,24 +193,43 @@ class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas> {
 
   void _fitGraph() {
     if (_viewportSize.isEmpty || _canvasSize.isEmpty) return;
+    final bounds = _contentBounds.isEmpty
+        ? Offset.zero & _canvasSize
+        : _contentBounds;
     final scale = math
         .min(
-          (_viewportSize.width - 28) / _canvasSize.width,
-          (_viewportSize.height - 28) / _canvasSize.height,
+          (_viewportSize.width - 32) / bounds.width,
+          (_viewportSize.height - 32) / bounds.height,
         )
-        .clamp(_viewportSize.width < 600 ? .60 : .68, 1.0)
+        .clamp(.18, 1.0)
         .toDouble();
-    final dx = (_viewportSize.width - _canvasSize.width * scale) / 2;
-    final dy = (_viewportSize.height - _canvasSize.height * scale) / 2;
+    final dx =
+        (_viewportSize.width - bounds.width * scale) / 2 - bounds.left * scale;
+    final dy =
+        (_viewportSize.height - bounds.height * scale) / 2 - bounds.top * scale;
     _transform.value = Matrix4.identity()
       ..translateByDouble(dx, dy, 0, 1)
+      ..scaleByDouble(scale, scale, scale, 1);
+  }
+
+  void _centerRoot(_MindMapLayout layout) {
+    final root = layout.positions[layout.rootId];
+    if (root == null || _viewportSize.isEmpty) return;
+    final scale = _transform.value.getMaxScaleOnAxis().clamp(.5, 1.25);
+    final viewportCenter = Offset(
+      _viewportSize.width / 2,
+      _viewportSize.height / 2,
+    );
+    final translation = viewportCenter - root * scale;
+    _transform.value = Matrix4.identity()
+      ..translateByDouble(translation.dx, translation.dy, 0, 1)
       ..scaleByDouble(scale, scale, scale, 1);
   }
 
   void _setScale(double requested) {
     if (_viewportSize.isEmpty) return;
     final oldScale = _transform.value.getMaxScaleOnAxis();
-    final newScale = requested.clamp(.18, 2.2).toDouble();
+    final newScale = requested.clamp(.18, 2.4).toDouble();
     final translation = _transform.value.getTranslation();
     final focal = Offset(_viewportSize.width / 2, _viewportSize.height / 2);
     final worldFocal = Offset(
@@ -127,112 +242,206 @@ class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas> {
       ..scaleByDouble(newScale, newScale, newScale, 1);
   }
 
+  _MindMapLayout _layoutFor(
+    Size viewport, {
+    required bool compact,
+    required _GraphProjection projection,
+  }) {
+    final signature = Object.hash(
+      viewport.width.round(),
+      viewport.height.round(),
+      compact,
+      _direction,
+      Object.hashAll(
+        projection.nodes.map(
+          (node) => Object.hash(node.id, node.level, node.category, node.name),
+        ),
+      ),
+      Object.hashAll(
+        projection.edges.map(
+          (edge) => Object.hash(edge.from, edge.to, edge.type),
+        ),
+      ),
+    );
+    if (_layoutSignature == signature && _cachedLayout != null) {
+      return _cachedLayout!;
+    }
+    final layout = _MindMapLayout.calculate(
+      nodes: projection.nodes,
+      edges: projection.edges,
+      minimumSize: viewport,
+      compact: compact,
+      direction: _direction,
+    );
+    _layoutSignature = signature;
+    _cachedLayout = layout;
+    return layout;
+  }
+
+  Map<String, Offset> _animatedPositions(_MindMapLayout layout) {
+    final target = <String, Offset>{
+      for (final entry in layout.positions.entries)
+        entry.key: entry.value + (_manualOffsets[entry.key] ?? Offset.zero),
+    };
+    if (!_layoutAnimation.isAnimating && _layoutAnimation.value == 1) {
+      _lastDrawnPositions = target;
+      return target;
+    }
+    final t = Curves.easeInOutCubic.transform(_layoutAnimation.value);
+    final positions = <String, Offset>{
+      for (final entry in target.entries)
+        entry.key: Offset.lerp(
+          _animationFrom[entry.key] ?? entry.value,
+          entry.value,
+          t,
+        )!,
+    };
+    _lastDrawnPositions = positions;
+    return positions;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.visibleNodes.isEmpty) {
       return const Center(child: Text('当前筛选条件下没有知识点'));
     }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 600;
-        final viewport = Size(
-          constraints.maxWidth,
-          constraints.maxHeight.isFinite ? constraints.maxHeight : 560,
-        );
-        final layout = _MindMapLayout.calculate(
-          nodes: widget.visibleNodes,
-          edges: widget.edges,
-          minimumSize: viewport,
-          compact: compact,
-        );
-        _scheduleInitialFit(layout, viewport);
-        final positions = <String, Offset>{
-          for (final entry in layout.positions.entries)
-            entry.key: _interactivePosition(entry.value),
-        };
-        return ClipRect(
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: _DotBackgroundPainter(cursor: _cursor),
+    return AnimatedBuilder(
+      animation: _layoutAnimation,
+      builder: (context, _) => LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 700;
+          final viewport = Size(
+            constraints.maxWidth,
+            constraints.maxHeight.isFinite ? constraints.maxHeight : 560,
+          );
+          final fullTree = _GraphTree.build(widget.visibleNodes, widget.edges);
+          final projection = _GraphProjection.fromTree(
+            nodes: widget.visibleNodes,
+            edges: widget.edges,
+            tree: fullTree,
+            collapsedIds: _collapsedIds,
+          );
+          final layout = _layoutFor(
+            viewport,
+            compact: compact,
+            projection: projection,
+          );
+          _scheduleInitialFit(layout, viewport);
+          final positions = _animatedPositions(layout);
+          final selectedNode = projection.byId[_selectedId];
+
+          return ClipRect(
+            child: Stack(
+              children: [
+                const Positioned.fill(
+                  child: CustomPaint(painter: _DotBackgroundPainter()),
                 ),
-              ),
-              InteractiveViewer(
-                transformationController: _transform,
-                constrained: false,
-                minScale: .18,
-                maxScale: 2.2,
-                boundaryMargin: const EdgeInsets.all(260),
-                trackpadScrollCausesScale: true,
-                child: MouseRegion(
-                  opaque: false,
-                  onHover: _handleHover,
-                  onExit: _clearCursor,
-                  child: SizedBox(
-                    width: layout.size.width,
-                    height: layout.size.height,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Positioned.fill(
-                          child: CustomPaint(
-                            painter: _MindMapEdgePainter(
-                              positions: positions,
-                              nodes: {
-                                for (final node in widget.visibleNodes)
-                                  node.id: node,
-                              },
-                              edges: widget.edges,
-                              rootId: layout.rootId,
-                              hoveredId: _hoveredId,
-                              compact: compact,
+                InteractiveViewer(
+                  transformationController: _transform,
+                  constrained: false,
+                  minScale: .18,
+                  maxScale: 2.4,
+                  boundaryMargin: const EdgeInsets.all(1200),
+                  trackpadScrollCausesScale: true,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => setState(() => _selectedId = null),
+                    child: SizedBox(
+                      width: layout.size.width,
+                      height: layout.size.height,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Positioned.fill(
+                            child: CustomPaint(
+                              key: ValueKey(
+                                'knowledge-tree-edge-count-${projection.edges.length}',
+                              ),
+                              painter: _MindMapEdgePainter(
+                                positions: positions,
+                                sizes: layout.nodeSizes,
+                                edges: projection.edges,
+                                hoveredId: _hoveredId,
+                                selectedId: _selectedId,
+                                direction: _direction,
+                              ),
                             ),
                           ),
-                        ),
-                        for (final node in widget.visibleNodes)
-                          _nodeAt(
-                            node,
-                            positions[node.id]!,
-                            root: node.id == layout.rootId,
-                            compact: compact,
-                          ),
-                      ],
+                          for (final node in projection.nodes)
+                            _nodeAt(
+                              node,
+                              positions[node.id]!,
+                              size: layout.nodeSizes[node.id]!,
+                              depth: layout.depths[node.id] ?? node.level,
+                              childCount:
+                                  fullTree.children[node.id]?.length ?? 0,
+                              collapsed: _collapsedIds.contains(node.id),
+                              compact: compact,
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              if (!compact)
-                const Positioned(left: 14, bottom: 14, child: _GraphLegend()),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 12,
-                child: Center(
-                  child: AnimatedBuilder(
-                    animation: _transform,
-                    builder: (context, _) => _ZoomBar(
-                      value: _transform.value.getMaxScaleOnAxis(),
-                      onChanged: _setScale,
-                      onFit: _fitGraph,
+                Positioned(
+                  left: compact ? 10 : 14,
+                  top: compact ? 10 : 14,
+                  child: _GraphToolbar(
+                    direction: _direction,
+                    onDirectionChanged: _setDirection,
+                    onAutoArrange: _autoArrange,
+                    onCenterRoot: () => _centerRoot(layout),
+                  ),
+                ),
+                if (!compact)
+                  const Positioned(left: 14, bottom: 14, child: _GraphLegend()),
+                if (!compact && selectedNode != null)
+                  Positioned(
+                    key: const ValueKey('knowledge-node-inspector'),
+                    right: 14,
+                    top: 14,
+                    child: _NodeInspector(
+                      node: selectedNode,
+                      depth:
+                          layout.depths[selectedNode.id] ?? selectedNode.level,
+                      childCount:
+                          fullTree.children[selectedNode.id]?.length ?? 0,
+                      onOpen: () => widget.onNodeTap(selectedNode),
+                      onClose: () => setState(() => _selectedId = null),
+                    ),
+                  ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 12,
+                  child: Center(
+                    child: AnimatedBuilder(
+                      animation: _transform,
+                      builder: (context, _) => _ZoomBar(
+                        value: _transform.value.getMaxScaleOnAxis(),
+                        onChanged: _setScale,
+                        onFit: _fitGraph,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
-      },
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
   Widget _nodeAt(
     KnowledgeMapNode node,
     Offset point, {
-    required bool root,
+    required Size size,
+    required int depth,
+    required int childCount,
+    required bool collapsed,
     required bool compact,
   }) {
-    final size = _mindMapNodeSize(root: root, compact: compact);
     return Positioned(
       key: ValueKey('knowledge-graph-node-${node.id}'),
       left: point.dx - size.width / 2,
@@ -240,397 +449,387 @@ class _KnowledgeGraphCanvasState extends State<KnowledgeGraphCanvas> {
       width: size.width,
       height: size.height,
       child: MouseRegion(
-        cursor: SystemMouseCursors.click,
+        cursor: SystemMouseCursors.move,
         onEnter: (_) => setState(() => _hoveredId = node.id),
         onExit: (_) {
           if (_hoveredId == node.id) setState(() => _hoveredId = null);
         },
-        child: _MindMapNode(
-          node: node,
-          root: root,
-          hovered: _hoveredId == node.id,
-          selected: _selectedId == node.id,
-          onTap: () => _open(node),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanUpdate: (details) => _dragNode(node.id, details.delta),
+          child: _MindMapNode(
+            node: node,
+            depth: depth,
+            hovered: _hoveredId == node.id,
+            selected: _selectedId == node.id,
+            childCount: childCount,
+            collapsed: collapsed,
+            direction: _direction,
+            compact: compact,
+            onTap: () {
+              setState(() => _selectedId = node.id);
+              widget.onNodeTap(node);
+            },
+            onOpen: () => widget.onNodeTap(node),
+            onToggleCollapsed: childCount == 0
+                ? null
+                : () => _toggleCollapsed(node.id),
+          ),
         ),
       ),
     );
   }
 }
 
-Size _mindMapNodeSize({required bool root, required bool compact}) => Size(
-  root ? (compact ? 132.0 : 174.0) : (compact ? 112.0 : 152.0),
-  root ? (compact ? 58.0 : 68.0) : (compact ? 46.0 : 54.0),
-);
+class _GraphProjection {
+  const _GraphProjection({
+    required this.nodes,
+    required this.edges,
+    required this.byId,
+  });
+
+  final List<KnowledgeMapNode> nodes;
+  final List<KnowledgeMapEdge> edges;
+  final Map<String, KnowledgeMapNode> byId;
+
+  factory _GraphProjection.fromTree({
+    required List<KnowledgeMapNode> nodes,
+    required List<KnowledgeMapEdge> edges,
+    required _GraphTree tree,
+    required Set<String> collapsedIds,
+  }) {
+    final hidden = <String>{};
+    void hideDescendants(String id) {
+      for (final child in tree.children[id] ?? const <String>[]) {
+        if (!hidden.add(child)) continue;
+        hideDescendants(child);
+      }
+    }
+
+    for (final id in collapsedIds) {
+      if (tree.byId.containsKey(id)) hideDescendants(id);
+    }
+    final visibleNodes = nodes
+        .where((node) => !hidden.contains(node.id))
+        .toList();
+    final visibleIds = visibleNodes.map((node) => node.id).toSet();
+    final originalByPair = <String, KnowledgeMapEdge>{};
+    for (final edge in edges) {
+      originalByPair.putIfAbsent('${edge.from}\u0000${edge.to}', () => edge);
+    }
+    final visibleEdges = <KnowledgeMapEdge>[];
+    for (final parent in tree.children.entries) {
+      if (!visibleIds.contains(parent.key)) continue;
+      for (final child in parent.value) {
+        if (!visibleIds.contains(child)) continue;
+        visibleEdges.add(
+          originalByPair['${parent.key}\u0000$child'] ??
+              KnowledgeMapEdge(from: parent.key, to: child, type: 'tree'),
+        );
+      }
+    }
+    return _GraphProjection(
+      nodes: visibleNodes,
+      edges: visibleEdges,
+      byId: {for (final node in visibleNodes) node.id: node},
+    );
+  }
+}
+
+class _GraphTree {
+  const _GraphTree({
+    required this.rootId,
+    required this.byId,
+    required this.children,
+    required this.depths,
+  });
+
+  final String rootId;
+  final Map<String, KnowledgeMapNode> byId;
+  final Map<String, List<String>> children;
+  final Map<String, int> depths;
+
+  factory _GraphTree.build(
+    List<KnowledgeMapNode> nodes,
+    List<KnowledgeMapEdge> edges,
+  ) {
+    final byId = {for (final node in nodes) node.id: node};
+    final outgoing = {for (final node in nodes) node.id: <String>[]};
+    final incomingCount = {for (final node in nodes) node.id: 0};
+    for (final edge in edges) {
+      if (!byId.containsKey(edge.from) || !byId.containsKey(edge.to)) continue;
+      outgoing[edge.from]!.add(edge.to);
+      incomingCount[edge.to] = incomingCount[edge.to]! + 1;
+    }
+    for (final values in outgoing.values) {
+      values.sort((a, b) => byId[a]!.name.compareTo(byId[b]!.name));
+    }
+    final courseRoot = nodes.where((node) => node.isCourse).firstOrNull;
+    final roots = nodes.where((node) => incomingCount[node.id] == 0).toList()
+      ..sort((a, b) {
+        final level = a.level.compareTo(b.level);
+        return level != 0 ? level : a.name.compareTo(b.name);
+      });
+    final root = courseRoot ?? roots.firstOrNull ?? nodes.first;
+    final parentIds = <String>{root.id};
+    final children = {for (final node in nodes) node.id: <String>[]};
+    final depths = <String, int>{root.id: 0};
+
+    void attachComponent(String componentRoot, String? parentId) {
+      if (parentId != null) {
+        children[parentId]!.add(componentRoot);
+        depths[componentRoot] = depths[parentId]! + 1;
+      }
+      final queue = <String>[componentRoot];
+      for (var index = 0; index < queue.length; index++) {
+        final current = queue[index];
+        for (final child in outgoing[current]!) {
+          if (!parentIds.add(child)) continue;
+          children[current]!.add(child);
+          depths[child] = depths[current]! + 1;
+          queue.add(child);
+        }
+      }
+    }
+
+    attachComponent(root.id, null);
+    for (final node in nodes) {
+      if (!parentIds.add(node.id)) continue;
+      attachComponent(node.id, root.id);
+    }
+    for (final values in children.values) {
+      values.sort((a, b) => byId[a]!.name.compareTo(byId[b]!.name));
+    }
+    return _GraphTree(
+      rootId: root.id,
+      byId: byId,
+      children: children,
+      depths: depths,
+    );
+  }
+}
+
+Size _mindMapNodeSize({required int depth, required bool compact}) {
+  if (depth == 0) return Size(compact ? 162 : 196, compact ? 70 : 78);
+  if (depth == 1) return Size(compact ? 148 : 174, compact ? 64 : 68);
+  return Size(compact ? 136 : 158, compact ? 60 : 64);
+}
 
 class _MindMapLayout {
   const _MindMapLayout({
     required this.size,
     required this.positions,
+    required this.nodeSizes,
     required this.rootId,
+    required this.depths,
+    required this.branchRootById,
+    required this.contentBounds,
   });
 
   final Size size;
   final Map<String, Offset> positions;
+  final Map<String, Size> nodeSizes;
   final String rootId;
+  final Map<String, int> depths;
+  final Map<String, String> branchRootById;
+  final Rect contentBounds;
 
   static _MindMapLayout calculate({
     required List<KnowledgeMapNode> nodes,
     required List<KnowledgeMapEdge> edges,
     required Size minimumSize,
     required bool compact,
+    required KnowledgeGraphLayoutDirection direction,
   }) {
-    final byId = {for (final node in nodes) node.id: node};
-    final degree = {for (final node in nodes) node.id: 0};
-    final adjacency = {for (final node in nodes) node.id: <String>{}};
-    for (final edge in edges) {
-      if (!byId.containsKey(edge.from) || !byId.containsKey(edge.to)) continue;
-      adjacency[edge.from]!.add(edge.to);
-      adjacency[edge.to]!.add(edge.from);
-      degree[edge.from] = degree[edge.from]! + 1;
-      degree[edge.to] = degree[edge.to]! + 1;
-    }
-    final minimumLevel = nodes.map((node) => node.level).reduce(math.min);
-    final rootCandidates = nodes.where((node) => node.level == minimumLevel);
-    final courseRoot = nodes.where((node) => node.isCourse).firstOrNull;
-    final root =
-        courseRoot ??
-        rootCandidates.reduce((a, b) => degree[a.id]! >= degree[b.id]! ? a : b);
-
-    final depths = <String, int>{root.id: 0};
-    final queue = <String>[root.id];
-    for (var index = 0; index < queue.length; index++) {
-      final current = queue[index];
-      final neighbors = adjacency[current]!.toList()
-        ..sort((a, b) => byId[a]!.name.compareTo(byId[b]!.name));
-      for (final neighbor in neighbors) {
-        if (depths.containsKey(neighbor)) continue;
-        depths[neighbor] = depths[current]! + 1;
-        queue.add(neighbor);
+    final tree = _GraphTree.build(nodes, edges);
+    final nodeSizes = <String, Size>{
+      for (final node in nodes)
+        node.id: _mindMapNodeSize(
+          depth: tree.depths[node.id] ?? node.level,
+          compact: compact,
+        ),
+    };
+    final branchRootById = <String, String>{tree.rootId: tree.rootId};
+    void assignBranch(String id, String branchRoot) {
+      branchRootById[id] = branchRoot;
+      for (final child in tree.children[id] ?? const <String>[]) {
+        assignBranch(child, branchRoot);
       }
     }
-    for (final node in nodes) {
-      depths.putIfAbsent(
-        node.id,
-        () => math.max(1, node.level - minimumLevel + 1),
-      );
+
+    for (final child in tree.children[tree.rootId] ?? const <String>[]) {
+      assignBranch(child, child);
     }
 
-    final groups = <(int, int), List<KnowledgeMapNode>>{};
-    final sorted = nodes.where((node) => node.id != root.id).toList()
-      ..sort((a, b) {
-        final depth = depths[a.id]!.compareTo(depths[b.id]!);
-        if (depth != 0) return depth;
-        final category = a.category.compareTo(b.category);
-        return category != 0 ? category : a.name.compareTo(b.name);
-      });
-    final sideByNode = <String, int>{};
-    var nextRootSide = 1;
-    for (final node in sorted) {
-      final depth = depths[node.id]!;
-      final parent = adjacency[node.id]!
-          .where((id) => depths[id] == depth - 1)
-          .firstOrNull;
-      final side = parent == null || parent == root.id
-          ? nextRootSide
-          : (sideByNode[parent] ?? nextRootSide);
-      if (parent == null || parent == root.id) nextRootSide *= -1;
-      sideByNode[node.id] = side;
-      groups.putIfAbsent((depth, side), () => []).add(node);
+    final leafSpan = compact ? 76.0 : 88.0;
+    final depthSpan = compact ? 224.0 : 272.0;
+    final sidePadding = compact ? 112.0 : 142.0;
+    final crossPadding = compact ? 94.0 : 124.0;
+    var nextLeaf = 0.0;
+    final cross = <String, double>{};
+
+    double place(String id) {
+      final children = tree.children[id] ?? const <String>[];
+      if (children.isEmpty) {
+        final value = nextLeaf;
+        nextLeaf += leafSpan;
+        cross[id] = value;
+        return value;
+      }
+      final first = place(children.first);
+      var last = first;
+      for (final child in children.skip(1)) {
+        last = place(child);
+      }
+      final value = (first + last) / 2;
+      cross[id] = value;
+      return value;
     }
 
-    final maxDepth = depths.values.reduce(math.max);
-    final largestColumn = groups.values.fold<int>(
-      1,
-      (value, group) => math.max(value, group.length),
-    );
-    final horizontalGap = compact ? 220.0 : 312.0;
-    final verticalGap = compact ? 108.0 : 132.0;
-    final sidePadding = compact ? 142.0 : 210.0;
-    final verticalPadding = compact ? 126.0 : 174.0;
-    final size = Size(
-      math.max(
-        minimumSize.width,
-        sidePadding * 2 + maxDepth * horizontalGap * 2,
-      ),
-      math.max(
-        minimumSize.height,
-        verticalPadding * 2 + (largestColumn - 1) * verticalGap,
-      ),
-    );
-    final center = Offset(size.width / 2, size.height / 2);
-    final positions = <String, Offset>{root.id: center};
-    for (final entry in groups.entries) {
-      final depth = entry.key.$1;
-      final side = entry.key.$2;
-      final column = entry.value;
-      final top = center.dy - (column.length - 1) * verticalGap / 2;
-      for (var index = 0; index < column.length; index++) {
-        positions[column[index].id] = Offset(
-          center.dx + side * depth * horizontalGap,
-          top + index * verticalGap,
+    place(tree.rootId);
+    final maxDepth = tree.depths.values.fold<int>(0, math.max);
+    final crossExtent = math.max(0.0, nextLeaf - leafSpan);
+    final positions = <String, Offset>{};
+    if (direction == KnowledgeGraphLayoutDirection.horizontal) {
+      for (final node in nodes) {
+        positions[node.id] = Offset(
+          sidePadding + (tree.depths[node.id] ?? 0) * depthSpan,
+          crossPadding + (cross[node.id] ?? 0),
+        );
+      }
+    } else {
+      for (final node in nodes) {
+        positions[node.id] = Offset(
+          crossPadding + (cross[node.id] ?? 0),
+          sidePadding + (tree.depths[node.id] ?? 0) * (compact ? 134 : 154),
         );
       }
     }
-    return _MindMapLayout(size: size, positions: positions, rootId: root.id);
+    final largestWidth = nodeSizes.values
+        .map((size) => size.width)
+        .fold<double>(0, math.max);
+    final largestHeight = nodeSizes.values
+        .map((size) => size.height)
+        .fold<double>(0, math.max);
+    final calculatedWidth =
+        direction == KnowledgeGraphLayoutDirection.horizontal
+        ? sidePadding * 2 + maxDepth * depthSpan + largestWidth
+        : crossPadding * 2 + crossExtent + largestWidth;
+    final calculatedHeight =
+        direction == KnowledgeGraphLayoutDirection.horizontal
+        ? crossPadding * 2 + crossExtent + largestHeight
+        : sidePadding * 2 + maxDepth * (compact ? 134 : 154) + largestHeight;
+    var contentBounds = Rect.zero;
+    for (final node in nodes) {
+      final bounds = Rect.fromCenter(
+        center: positions[node.id]!,
+        width: nodeSizes[node.id]!.width,
+        height: nodeSizes[node.id]!.height,
+      );
+      contentBounds = contentBounds.isEmpty
+          ? bounds
+          : contentBounds.expandToInclude(bounds);
+    }
+    contentBounds = contentBounds.inflate(compact ? 22 : 30);
+    return _MindMapLayout(
+      size: Size(
+        math.max(minimumSize.width, calculatedWidth),
+        math.max(minimumSize.height, calculatedHeight),
+      ),
+      positions: positions,
+      nodeSizes: nodeSizes,
+      rootId: tree.rootId,
+      depths: tree.depths,
+      branchRootById: branchRootById,
+      contentBounds: contentBounds,
+    );
   }
 }
 
 class _DotBackgroundPainter extends CustomPainter {
-  const _DotBackgroundPainter({this.cursor});
-
-  final Offset? cursor;
+  const _DotBackgroundPainter();
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(
       Offset.zero & size,
-      Paint()..color = const Color(0xFF030B15),
+      Paint()..color = const Color(0xFF030303),
     );
-    final dotPaint = Paint()
-      ..color = const Color(0xFF1458B8).withValues(alpha: .24);
+    final paint = Paint()..color = const Color(0xFF2B2B30);
     for (double x = 14; x < size.width; x += 28) {
       for (double y = 14; y < size.height; y += 28) {
-        canvas.drawCircle(Offset(x, y), .72, dotPaint);
+        canvas.drawCircle(Offset(x, y), .72, paint);
       }
-    }
-    if (cursor case final point?) {
-      final halo = Paint()
-        ..shader = RadialGradient(
-          colors: [
-            const Color(0xFF3478F6).withValues(alpha: .12),
-            Colors.transparent,
-          ],
-        ).createShader(Rect.fromCircle(center: point, radius: 150));
-      canvas.drawCircle(point, 150, halo);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _DotBackgroundPainter oldDelegate) =>
-      oldDelegate.cursor != cursor;
+  bool shouldRepaint(covariant _DotBackgroundPainter oldDelegate) => false;
 }
 
 class _MindMapEdgePainter extends CustomPainter {
   const _MindMapEdgePainter({
     required this.positions,
-    required this.nodes,
+    required this.sizes,
     required this.edges,
-    required this.rootId,
     required this.hoveredId,
-    required this.compact,
+    required this.selectedId,
+    required this.direction,
   });
 
   final Map<String, Offset> positions;
-  final Map<String, KnowledgeMapNode> nodes;
+  final Map<String, Size> sizes;
   final List<KnowledgeMapEdge> edges;
-  final String rootId;
   final String? hoveredId;
-  final bool compact;
+  final String? selectedId;
+  final KnowledgeGraphLayoutDirection direction;
 
-  Rect _nodeBounds(String id, Offset center, {double clearance = 0}) {
-    final size = _mindMapNodeSize(root: id == rootId, compact: compact);
-    return Rect.fromCenter(
-      center: center,
-      width: size.width + clearance * 2,
-      height: size.height + clearance * 2,
-    );
-  }
-
-  Offset _boundaryPoint(
-    Offset center,
-    Offset toward,
-    String nodeId, {
-    double clearance = 0,
-  }) {
+  Offset _boundaryPoint(Offset center, Offset toward, String nodeId) {
     final delta = toward - center;
     if (delta.distanceSquared < .01) return center;
-    final bounds = _nodeBounds(nodeId, center, clearance: clearance);
-    final halfWidth = bounds.width / 2;
-    final halfHeight = bounds.height / 2;
+    final size = sizes[nodeId] ?? const Size(150, 64);
     final xScale = delta.dx.abs() < .001
         ? double.infinity
-        : halfWidth / delta.dx.abs();
+        : size.width / 2 / delta.dx.abs();
     final yScale = delta.dy.abs() < .001
         ? double.infinity
-        : halfHeight / delta.dy.abs();
+        : size.height / 2 / delta.dy.abs();
     return center + delta * math.min(xScale, yScale);
   }
 
-  bool _polylineIntersectsNode(
-    List<Offset> points,
-    String startId,
-    String endId,
-  ) {
-    for (final entry in positions.entries) {
-      if (entry.key == startId || entry.key == endId) continue;
-      final bounds = _nodeBounds(
-        entry.key,
-        entry.value,
-        clearance: compact ? 18 : 24,
-      );
-      for (var index = 1; index < points.length; index++) {
-        if (_segmentIntersectsRect(points[index - 1], points[index], bounds)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  bool _segmentIntersectsRect(Offset start, Offset end, Rect rect) {
-    if (rect.contains(start) || rect.contains(end)) return true;
-    final delta = end - start;
-    var lower = 0.0;
-    var upper = 1.0;
-    for (final axis in <(double, double, double, double)>[
-      (start.dx, delta.dx, rect.left, rect.right),
-      (start.dy, delta.dy, rect.top, rect.bottom),
-    ]) {
-      if (axis.$2.abs() < .001) {
-        if (axis.$1 < axis.$3 || axis.$1 > axis.$4) return false;
-        continue;
-      }
-      final first = (axis.$3 - axis.$1) / axis.$2;
-      final second = (axis.$4 - axis.$1) / axis.$2;
-      lower = math.max(lower, math.min(first, second));
-      upper = math.min(upper, math.max(first, second));
-      if (lower > upper) return false;
-    }
-    return upper >= 0 && lower <= 1;
-  }
-
-  Path _edgePath(Offset start, Offset end, String startId, String endId) {
-    final direction = end.dx >= start.dx ? 1.0 : -1.0;
-    final bend = math.max(42.0, (end.dx - start.dx).abs() * .42);
-    final firstControl = Offset(start.dx + bend * direction, start.dy);
-    final secondControl = Offset(end.dx - bend * direction, end.dy);
-    final samples = <Offset>[
-      for (var step = 0; step <= 24; step++)
-        _cubicPoint(start, firstControl, secondControl, end, step / 24),
-    ];
-    if (!_polylineIntersectsNode(samples, startId, endId)) {
+  Path _edgePath(Offset start, Offset end) {
+    if (direction == KnowledgeGraphLayoutDirection.horizontal) {
+      final middleX = (start.dx + end.dx) / 2;
+      final verticalDirection = end.dy >= start.dy ? 1.0 : -1.0;
+      final radius = math.min(12.0, (end.dy - start.dy).abs() / 2);
       return Path()
         ..moveTo(start.dx, start.dy)
-        ..cubicTo(
-          firstControl.dx,
-          firstControl.dy,
-          secondControl.dx,
-          secondControl.dy,
-          end.dx,
-          end.dy,
-        );
-    }
-
-    final routeAbove = (start.dy + end.dy) / 2 <= sizeCenterY;
-    final outerY = routeAbove
-        ? positions.values.map((point) => point.dy).reduce(math.min)
-        : positions.values.map((point) => point.dy).reduce(math.max);
-    final baseClearance = compact ? 48.0 : 64.0;
-    final lead = compact ? 54.0 : 76.0;
-    final startCorridorX = start.dx + lead * direction;
-    final endCorridorX = end.dx - lead * direction;
-    final midpointX = (startCorridorX + endCorridorX) / 2;
-    var fallbackRouteY = outerY;
-    for (final factor in const [1.0, 1.7, 2.5]) {
-      final clearance = baseClearance * factor;
-      final routeY = routeAbove ? outerY - clearance : outerY + clearance;
-      fallbackRouteY = routeY;
-      final midpoint = Offset(midpointX, routeY);
-      final firstControl = Offset(start.dx + lead * direction * .72, start.dy);
-      final firstRouteControl = Offset(startCorridorX, routeY);
-      final secondRouteControl = Offset(endCorridorX, routeY);
-      final secondControl = Offset(end.dx - lead * direction * .72, end.dy);
-      final detourSamples = <Offset>[
-        for (var step = 0; step <= 18; step++)
-          _cubicPoint(
-            start,
-            firstControl,
-            firstRouteControl,
-            midpoint,
-            step / 18,
-          ),
-        for (var step = 1; step <= 18; step++)
-          _cubicPoint(
-            midpoint,
-            secondRouteControl,
-            secondControl,
-            end,
-            step / 18,
-          ),
-      ];
-      if (_polylineIntersectsNode(detourSamples, startId, endId)) continue;
-      return Path()
-        ..moveTo(start.dx, start.dy)
-        ..cubicTo(
-          firstControl.dx,
-          firstControl.dy,
-          firstRouteControl.dx,
-          firstRouteControl.dy,
-          midpoint.dx,
-          midpoint.dy,
+        ..lineTo(middleX - 8, start.dy)
+        ..quadraticBezierTo(
+          middleX,
+          start.dy,
+          middleX,
+          start.dy + radius * verticalDirection,
         )
-        ..cubicTo(
-          secondRouteControl.dx,
-          secondRouteControl.dy,
-          secondControl.dx,
-          secondControl.dy,
-          end.dx,
-          end.dy,
-        );
+        ..lineTo(middleX, end.dy - radius * verticalDirection)
+        ..quadraticBezierTo(middleX, end.dy, middleX + 8, end.dy)
+        ..lineTo(end.dx, end.dy);
     }
-    return _roundedPolylinePath([
-      start,
-      Offset(startCorridorX, start.dy),
-      Offset(startCorridorX, fallbackRouteY),
-      Offset(endCorridorX, fallbackRouteY),
-      Offset(endCorridorX, end.dy),
-      end,
-    ], compact ? 22 : 30);
-  }
-
-  Path _roundedPolylinePath(List<Offset> points, double radius) {
-    final path = Path()..moveTo(points.first.dx, points.first.dy);
-    for (var index = 1; index < points.length - 1; index++) {
-      final previous = points[index - 1];
-      final corner = points[index];
-      final next = points[index + 1];
-      final incoming = corner - previous;
-      final outgoing = next - corner;
-      if (incoming.distance < .01 || outgoing.distance < .01) {
-        path.lineTo(corner.dx, corner.dy);
-        continue;
-      }
-      final cornerRadius = math.min(
-        radius,
-        math.min(incoming.distance / 2, outgoing.distance / 2),
-      );
-      final before = corner - incoming / incoming.distance * cornerRadius;
-      final after = corner + outgoing / outgoing.distance * cornerRadius;
-      path
-        ..lineTo(before.dx, before.dy)
-        ..quadraticBezierTo(corner.dx, corner.dy, after.dx, after.dy);
-    }
-    return path..lineTo(points.last.dx, points.last.dy);
-  }
-
-  Offset _cubicPoint(
-    Offset start,
-    Offset firstControl,
-    Offset secondControl,
-    Offset end,
-    double t,
-  ) {
-    final inverse = 1 - t;
-    return start * (inverse * inverse * inverse) +
-        firstControl * (3 * inverse * inverse * t) +
-        secondControl * (3 * inverse * t * t) +
-        end * (t * t * t);
-  }
-
-  double get sizeCenterY {
-    if (positions.isEmpty) return 0;
-    return positions.values.map((point) => point.dy).reduce((a, b) => a + b) /
-        positions.length;
+    final middleY = (start.dy + end.dy) / 2;
+    final horizontalDirection = end.dx >= start.dx ? 1.0 : -1.0;
+    final radius = math.min(12.0, (end.dx - start.dx).abs() / 2);
+    return Path()
+      ..moveTo(start.dx, start.dy)
+      ..lineTo(start.dx, middleY - 8)
+      ..quadraticBezierTo(
+        start.dx,
+        middleY,
+        start.dx + radius * horizontalDirection,
+        middleY,
+      )
+      ..lineTo(end.dx - radius * horizontalDirection, middleY)
+      ..quadraticBezierTo(end.dx, middleY, end.dx, middleY + 8)
+      ..lineTo(end.dx, end.dy);
   }
 
   @override
@@ -641,21 +840,27 @@ class _MindMapEdgePainter extends CustomPainter {
       if (startCenter == null || endCenter == null) continue;
       final start = _boundaryPoint(startCenter, endCenter, edge.from);
       final end = _boundaryPoint(endCenter, startCenter, edge.to);
-      final highlighted = hoveredId == edge.from || hoveredId == edge.to;
-      final target = nodes[edge.to];
-      final color = _nodeColor(target?.status ?? 'unseen');
-      final path = _edgePath(start, end, edge.from, edge.to);
+      final connected =
+          hoveredId == edge.from ||
+          hoveredId == edge.to ||
+          selectedId == edge.from ||
+          selectedId == edge.to;
+      final color = connected
+          ? const Color(0xFFE2E2E7)
+          : const Color(0xFF68686F);
       canvas.drawPath(
-        path,
+        _edgePath(start, end),
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round
-          ..strokeWidth = highlighted ? 2.7 : 1.35
-          ..color = color.withValues(alpha: highlighted ? .92 : .44),
+          ..strokeWidth = connected ? 2.2 : 1.35
+          ..color = color.withValues(alpha: connected ? .94 : .58),
       );
-      if (highlighted) {
-        canvas.drawCircle(end, 2.8, Paint()..color = color);
-      }
+      canvas.drawCircle(
+        end,
+        connected ? 3 : 2,
+        Paint()..color = color.withValues(alpha: connected ? 1 : .72),
+      );
     }
   }
 
@@ -663,125 +868,497 @@ class _MindMapEdgePainter extends CustomPainter {
   bool shouldRepaint(covariant _MindMapEdgePainter oldDelegate) =>
       oldDelegate.positions != positions ||
       oldDelegate.hoveredId != hoveredId ||
+      oldDelegate.selectedId != selectedId ||
       oldDelegate.edges != edges ||
-      oldDelegate.compact != compact;
+      oldDelegate.direction != direction;
 }
 
 Color _nodeColor(String status) => switch (status) {
-  'course' => const Color(0xFFF1C75B),
-  'mastered' || 'good' => const Color(0xFF66C65A),
-  'weak' => const Color(0xFFFF981F),
-  'learning' => const Color(0xFF3478F6),
-  _ => const Color(0xFF8793A5),
+  'course' => const Color(0xFFE7E7EA),
+  'mastered' || 'good' => const Color(0xFF61AA67),
+  'weak' => const Color(0xFFD68A45),
+  'learning' => const Color(0xFFB6B6BD),
+  _ => const Color(0xFF77777F),
 };
+
+String _statusLabel(KnowledgeMapNode node) {
+  if (node.isCourse) return '课程中心';
+  return switch (node.status) {
+    'mastered' => '稳定掌握',
+    'good' => '掌握较好',
+    'weak' => '需要加强',
+    'learning' => '学习中',
+    _ => '未评估',
+  };
+}
 
 class _MindMapNode extends StatelessWidget {
   const _MindMapNode({
     required this.node,
-    required this.root,
+    required this.depth,
     required this.hovered,
     required this.selected,
+    required this.childCount,
+    required this.collapsed,
+    required this.direction,
+    required this.compact,
     required this.onTap,
+    required this.onOpen,
+    required this.onToggleCollapsed,
   });
 
   final KnowledgeMapNode node;
-  final bool root;
+  final int depth;
   final bool hovered;
   final bool selected;
+  final int childCount;
+  final bool collapsed;
+  final KnowledgeGraphLayoutDirection direction;
+  final bool compact;
   final VoidCallback onTap;
+  final VoidCallback onOpen;
+  final VoidCallback? onToggleCollapsed;
 
   @override
   Widget build(BuildContext context) {
     final color = _nodeColor(node.status);
-    final detail = node.isCourse
-        ? '课程节点'
-        : node.masteryLevel == null
-        ? '未评估'
-        : '${node.masteryLevel!.round()}%';
-    return AnimatedScale(
-      scale: hovered ? 1.08 : 1,
-      duration: const Duration(milliseconds: 130),
-      curve: Curves.easeOutCubic,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(root ? 20 : 14),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: EdgeInsets.symmetric(
-              horizontal: root ? 16 : 12,
-              vertical: 7,
-            ),
-            decoration: BoxDecoration(
-              color: hovered
-                  ? const Color(0xFF10233A)
-                  : const Color(0xFF081624),
-              borderRadius: BorderRadius.circular(root ? 20 : 14),
-              border: Border.all(
-                color: selected || hovered
-                    ? color
-                    : color.withValues(alpha: .72),
-                width: root || selected ? 2.1 : 1.25,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(
-                    alpha: hovered
-                        ? .40
-                        : root
-                        ? .24
-                        : .12,
-                  ),
-                  blurRadius: hovered ? 24 : 14,
-                  spreadRadius: hovered ? 2 : 0,
+    final root = depth == 0;
+    final firstLevel = depth == 1;
+    final foreground = root ? const Color(0xFF080808) : Colors.white;
+    final surface = root
+        ? const Color(0xFFE7E7EA)
+        : selected || hovered
+        ? const Color(0xFF18181B)
+        : firstLevel
+        ? const Color(0xFF111113)
+        : const Color(0xFF0B0B0C);
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(8),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                padding: EdgeInsets.fromLTRB(
+                  root ? 16 : 12,
+                  9,
+                  selected && !compact ? 38 : 12,
+                  9,
                 ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: root ? 11 : 8,
-                  height: root ? 11 : 8,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: root
+                        ? const Color(0xFFE7E7EA)
+                        : selected
+                        ? const Color(0xFFE7E7EA)
+                        : hovered
+                        ? const Color(0xFF66666D)
+                        : const Color(0xFF2A2A2E),
+                    width: selected || root ? 2 : 1,
                   ),
                 ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        node.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: root ? 15 : 12.5,
-                          fontWeight: root ? FontWeight.w700 : FontWeight.w600,
-                          height: 1.12,
+                child: Row(
+                  children: [
+                    if (!root) ...[
+                      Container(
+                        width: 3,
+                        height: firstLevel ? 34 : 28,
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                      if (root || hovered) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          detail,
-                          style: TextStyle(fontSize: 9.5, color: color),
-                        ),
-                      ],
+                      const SizedBox(width: 10),
                     ],
-                  ),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            node.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: foreground,
+                              fontSize: root
+                                  ? 16
+                                  : firstLevel
+                                  ? 13.5
+                                  : 12.5,
+                              fontWeight: root
+                                  ? FontWeight.w700
+                                  : FontWeight.w600,
+                              height: 1.18,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            node.masteryLevel == null
+                                ? _statusLabel(node)
+                                : '${_statusLabel(node)} · ${node.masteryLevel!.round()}%',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: root
+                                  ? const Color(0xFF4D4D52)
+                                  : color.withValues(alpha: .96),
+                              fontSize: root ? 10.5 : 9.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
+        if (selected && !compact)
+          Positioned(
+            right: 5,
+            top: 5,
+            child: _NodeActionButton(
+              tooltip: '查看详情',
+              icon: LucideIcons.panelRightOpen,
+              onPressed: onOpen,
+              darkIcon: root,
+            ),
+          ),
+        if (onToggleCollapsed != null)
+          Positioned(
+            key: ValueKey('knowledge-collapse-${node.id}'),
+            right: direction == KnowledgeGraphLayoutDirection.horizontal
+                ? 0
+                : null,
+            left: direction == KnowledgeGraphLayoutDirection.vertical
+                ? (compact ? 55 : 66)
+                : null,
+            bottom: direction == KnowledgeGraphLayoutDirection.vertical
+                ? 0
+                : null,
+            top: direction == KnowledgeGraphLayoutDirection.horizontal
+                ? (compact ? 18 : 21)
+                : null,
+            child: Tooltip(
+              message: collapsed ? '展开 $childCount 个分支' : '折叠分支',
+              child: Material(
+                color: const Color(0xFF171719),
+                shape: const CircleBorder(
+                  side: BorderSide(color: Color(0xFF3A3A3F)),
+                ),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: onToggleCollapsed,
+                  child: SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: Icon(
+                      collapsed ? LucideIcons.plus : LucideIcons.minus,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _NodeActionButton extends StatelessWidget {
+  const _NodeActionButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.darkIcon = false,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final bool darkIcon;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: Material(
+      color: darkIcon ? const Color(0x22000000) : const Color(0xFF242428),
+      borderRadius: BorderRadius.circular(5),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(5),
+        onTap: onPressed,
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: Icon(
+            icon,
+            size: 15,
+            color: darkIcon ? const Color(0xFF202024) : Colors.white,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _GraphToolbar extends StatelessWidget {
+  const _GraphToolbar({
+    required this.direction,
+    required this.onDirectionChanged,
+    required this.onAutoArrange,
+    required this.onCenterRoot,
+  });
+
+  final KnowledgeGraphLayoutDirection direction;
+  final ValueChanged<KnowledgeGraphLayoutDirection> onDirectionChanged;
+  final VoidCallback onAutoArrange;
+  final VoidCallback onCenterRoot;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 42,
+    padding: const EdgeInsets.all(4),
+    decoration: BoxDecoration(
+      color: const Color(0xF20A0A0B),
+      border: Border.all(color: const Color(0xFF29292D)),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ToolbarButton(
+          key: const ValueKey('knowledge-layout-horizontal'),
+          tooltip: '从左到右布局',
+          icon: LucideIcons.gitBranch,
+          selected: direction == KnowledgeGraphLayoutDirection.horizontal,
+          onPressed: () =>
+              onDirectionChanged(KnowledgeGraphLayoutDirection.horizontal),
+        ),
+        _ToolbarButton(
+          key: const ValueKey('knowledge-layout-vertical'),
+          tooltip: '从上到下布局',
+          icon: LucideIcons.listTree,
+          selected: direction == KnowledgeGraphLayoutDirection.vertical,
+          onPressed: () =>
+              onDirectionChanged(KnowledgeGraphLayoutDirection.vertical),
+        ),
+        const _ToolbarDivider(),
+        _ToolbarButton(
+          key: const ValueKey('knowledge-auto-layout'),
+          tooltip: '自动整理',
+          icon: LucideIcons.wandSparkles,
+          onPressed: onAutoArrange,
+        ),
+        _ToolbarButton(
+          tooltip: '定位中心主题',
+          icon: LucideIcons.locateFixed,
+          onPressed: onCenterRoot,
+        ),
+      ],
+    ),
+  );
+}
+
+class _ToolbarButton extends StatelessWidget {
+  const _ToolbarButton({
+    super.key,
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.selected = false,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: Material(
+      color: selected ? const Color(0xFF29292E) : Colors.transparent,
+      borderRadius: BorderRadius.circular(5),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(5),
+        onTap: onPressed,
+        child: SizedBox(
+          width: 34,
+          height: 34,
+          child: Icon(
+            icon,
+            size: 17,
+            color: selected ? Colors.white : const Color(0xFFAAAAAF),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _ToolbarDivider extends StatelessWidget {
+  const _ToolbarDivider();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(
+    width: 9,
+    height: 22,
+    child: Center(child: VerticalDivider(width: 1, color: Color(0xFF303034))),
+  );
+}
+
+class _NodeInspector extends StatelessWidget {
+  const _NodeInspector({
+    required this.node,
+    required this.depth,
+    required this.childCount,
+    required this.onOpen,
+    required this.onClose,
+  });
+
+  final KnowledgeMapNode node;
+  final int depth;
+  final int childCount;
+  final VoidCallback onOpen;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _nodeColor(node.status);
+    return Container(
+      width: 248,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xF20A0A0B),
+        border: Border.all(color: const Color(0xFF29292D)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  depth == 0 ? '中心主题' : '已选知识点',
+                  style: const TextStyle(
+                    color: Color(0xFF929299),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              InkResponse(
+                radius: 18,
+                onTap: onClose,
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(
+                    LucideIcons.x,
+                    size: 15,
+                    color: Color(0xFF929299),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            node.name,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _InspectorRow(label: '所属课程', value: node.course),
+          _InspectorRow(label: '层级', value: depth == 0 ? '根节点' : '$depth 级'),
+          _InspectorRow(label: '子节点', value: '$childCount'),
+          _InspectorRow(
+            label: '掌握状态',
+            value: node.masteryLevel == null
+                ? _statusLabel(node)
+                : '${node.masteryLevel!.round()}%',
+            valueColor: color,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onOpen,
+              icon: const Icon(LucideIcons.panelRightOpen, size: 16),
+              label: Text(node.isCourse ? '查看课程概览' : '查看学习详情'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE7E7EA),
+                foregroundColor: const Color(0xFF080808),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _InspectorRow extends StatelessWidget {
+  const _InspectorRow({
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 7),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 64,
+          child: Text(
+            label,
+            style: const TextStyle(color: Color(0xFF77777E), fontSize: 11),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: valueColor ?? const Color(0xFFD8D8DC),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _GraphLegend extends StatelessWidget {
@@ -792,19 +1369,19 @@ class _GraphLegend extends StatelessWidget {
     width: 124,
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: const Color(0xE60B1724),
-      border: Border.all(color: context.n.divider),
-      borderRadius: BorderRadius.circular(12),
+      color: const Color(0xF20A0A0B),
+      border: Border.all(color: const Color(0xFF29292D)),
+      borderRadius: BorderRadius.circular(8),
     ),
     child: const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('图例', style: TextStyle(fontSize: 12)),
+        Text('掌握状态', style: TextStyle(fontSize: 11)),
         SizedBox(height: 8),
-        _LegendDot(color: Color(0xFF66C65A), label: '已掌握'),
-        _LegendDot(color: Color(0xFF3478F6), label: '掌握中'),
-        _LegendDot(color: Color(0xFFFF981F), label: '薄弱'),
-        _LegendDot(color: Color(0xFF8793A5), label: '未评估'),
+        _LegendDot(color: Color(0xFF61AA67), label: '已掌握'),
+        _LegendDot(color: Color(0xFFB6B6BD), label: '掌握中'),
+        _LegendDot(color: Color(0xFFD68A45), label: '薄弱'),
+        _LegendDot(color: Color(0xFF77777F), label: '未评估'),
       ],
     ),
   );
@@ -847,11 +1424,11 @@ class _ZoomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     height: 42,
-    padding: const EdgeInsets.symmetric(horizontal: 9),
+    padding: const EdgeInsets.symmetric(horizontal: 4),
     decoration: BoxDecoration(
-      color: const Color(0xE60B1724),
-      border: Border.all(color: context.n.divider),
-      borderRadius: BorderRadius.circular(12),
+      color: const Color(0xF20A0A0B),
+      border: Border.all(color: const Color(0xFF29292D)),
+      borderRadius: BorderRadius.circular(8),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
@@ -862,7 +1439,7 @@ class _ZoomBar extends StatelessWidget {
           icon: const Icon(LucideIcons.minus, size: 16),
         ),
         SizedBox(
-          width: 48,
+          width: 46,
           child: Text(
             '${(value * 100).round()}%',
             textAlign: TextAlign.center,
@@ -872,10 +1449,10 @@ class _ZoomBar extends StatelessWidget {
         IconButton(
           tooltip: '放大',
           onPressed: () => onChanged(value + .1),
-          icon: const Icon(LucideIcons.zoomIn, size: 16),
+          icon: const Icon(LucideIcons.plus, size: 16),
         ),
         IconButton(
-          tooltip: '显示全部',
+          tooltip: '适应画布',
           onPressed: onFit,
           icon: const Icon(LucideIcons.scan, size: 16),
         ),

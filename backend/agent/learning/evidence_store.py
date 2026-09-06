@@ -313,6 +313,49 @@ class LearningEvidenceStore:
             results.append(item)
         return results
 
+    def count_by_kp(
+        self,
+        user_name: str,
+        kp_ids: set[str],
+        *,
+        limit_per_kp: int | None = None,
+    ) -> dict[str, int]:
+        """Return evidence counts for many knowledge points in one query batch.
+
+        The knowledge-map endpoint only needs a count.  Loading and reducing up
+        to 50 complete evidence rows once per node made the endpoint scale with
+        the number of knowledge points.  This method keeps the existing capped
+        display semantics while avoiding that N+1 query pattern.
+        """
+        normalized_user = user_name.strip()
+        normalized_ids = {value.strip() for value in kp_ids if value.strip()}
+        if not normalized_user or not normalized_ids:
+            return {}
+
+        counts: dict[str, int] = {}
+        ids = sorted(normalized_ids)
+        # Stay comfortably below SQLite's common 999-parameter limit.  One
+        # parameter is also used by user_name.
+        with self._connect() as connection:
+            for offset in range(0, len(ids), 500):
+                batch = ids[offset : offset + 500]
+                placeholders = ", ".join("?" for _ in batch)
+                rows = connection.execute(
+                    f"""
+                    SELECT kp_id, COUNT(*) AS evidence_count
+                    FROM learning_evidence
+                    WHERE user_name = ? AND kp_id IN ({placeholders})
+                    GROUP BY kp_id
+                    """,
+                    (normalized_user, *batch),
+                ).fetchall()
+                for row in rows:
+                    count = int(row["evidence_count"])
+                    if limit_per_kp is not None:
+                        count = min(count, max(0, int(limit_per_kp)))
+                    counts[str(row["kp_id"])] = count
+        return counts
+
     def get_summary(
         self,
         user_name: str,

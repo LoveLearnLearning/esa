@@ -51,12 +51,17 @@ class PersonalKnowledgeBaseRequestSizeMiddleware:
 
     @staticmethod
     def _applies(scope: dict[str, Any]) -> bool:
+        if scope.get("type") != "http" or scope.get("method") != "POST":
+            return False
+        path = str(scope.get("path", "")).rstrip("/")
+        if path.endswith("/me/knowledge-base/files"):
+            return True
+        segments = [segment for segment in path.split("/") if segment]
         return (
-            scope.get("type") == "http"
-            and scope.get("method") == "POST"
-            and str(scope.get("path", "")).rstrip("/").endswith(
-                "/me/knowledge-base/files"
-            )
+            len(segments) >= 3
+            and segments[-3] == "libraries"
+            and bool(segments[-2])
+            and segments[-1] == "files"
         )
 
     @staticmethod

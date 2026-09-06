@@ -414,20 +414,19 @@ class _FormulaPickerSurfaceState extends State<_FormulaPickerSurface> {
     );
   }
 
-  Widget _footer(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-    child: Row(
+  Widget _footer(BuildContext context) {
+    final mode = SegmentedButton<bool>(
+      segments: const [
+        ButtonSegment(value: false, label: Text('行内公式')),
+        ButtonSegment(value: true, label: Text('独立公式')),
+      ],
+      selected: {_display},
+      onSelectionChanged: (value) => setState(() => _display = value.first),
+      showSelectedIcon: false,
+    );
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(value: false, label: Text('行内公式')),
-            ButtonSegment(value: true, label: Text('独立公式')),
-          ],
-          selected: {_display},
-          onSelectionChanged: (value) => setState(() => _display = value.first),
-          showSelectedIcon: false,
-        ),
-        const Spacer(),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('取消'),
@@ -440,6 +439,19 @@ class _FormulaPickerSurfaceState extends State<_FormulaPickerSurface> {
           label: const Text('插入到输入框'),
         ),
       ],
-    ),
-  );
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      child: widget.compact
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Align(alignment: Alignment.centerLeft, child: mode),
+                const SizedBox(height: 8),
+                Align(alignment: Alignment.centerRight, child: actions),
+              ],
+            )
+          : Row(children: [mode, const Spacer(), actions]),
+    );
+  }
 }

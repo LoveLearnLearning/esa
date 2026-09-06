@@ -177,3 +177,61 @@ def test_skill_fingerprint_changes_when_body_changes(monkeypatch):
     second = ScopedSkillView.compile(frozenset({"common"})).fingerprint
 
     assert first != second
+
+
+def test_skill_bodies_match_runtime_capabilities():
+    """Skill 正文不能承诺运行时并不支持的能力。"""
+    skills = {
+        skill.name: skill.body
+        for skill in skill_catalog.list_skill_definitions()
+    }
+
+    problem_solver = skills["problem_solving_expert"]
+    assert len(problem_solver.splitlines()) <= 100
+    assert "本轮不能再加载第二个主 Skill" in problem_solver
+    assert "homework_review` + `error_diagnosis" not in problem_solver
+
+    research_writing = skills["research_writing"]
+    assert "只能处理已经存在" in research_writing
+    assert "不能创建新文档" in research_writing
+
+    for name in ("frontier_tracking", "dataset_analysis", "research_writing"):
+        body = skills[name]
+        assert "预计完成时间：[时间]" not in body
+        assert "完成后会通知" not in body
+        assert "不得承诺" in body
+
+
+def test_teaching_and_research_skills_use_conditional_retrieval():
+    """用户材料充分时，教师与科研工作流不能机械调用知识库。"""
+    skills = {
+        skill.name: skill.body
+        for skill in skill_catalog.list_skill_definitions()
+    }
+    conditional_names = (
+        "assignment_design",
+        "classroom_context_review",
+        "grading_feedback",
+        "teaching_plan",
+        "frontier_tracking",
+        "dataset_analysis",
+        "research_writing",
+    )
+
+    for name in conditional_names:
+        body = skills[name]
+        assert "本轮提供" in body
+        assert "retrieve_knowledge" in body
+        assert "机械检索" in body or "无条件检索" in body
+
+    definitions = {
+        skill.name: skill
+        for skill in skill_catalog.list_skill_definitions()
+    }
+    for name in conditional_names:
+        assert "retrieve_knowledge" not in definitions[name].requires_tools
+
+    grounding = skills["research_grounding"]
+    assert "citation_mode=verbatim_allowed" in grounding
+    assert "paraphrase_only_unverified" in grounding
+    assert "保留原始表述" not in grounding

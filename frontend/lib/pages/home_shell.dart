@@ -7,10 +7,12 @@ import '../api/api_client.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
+import '../theme/esa_mobile.dart';
 import '../theme/esa_theme.dart';
 import '../widgets/profile_sheet.dart';
 import '../widgets/memory_sheet.dart';
 import '../widgets/history_drawer.dart';
+import '../widgets/esa_mobile_controls.dart';
 import '../widgets/agent_action_sheet.dart';
 import '../widgets/composer.dart';
 import '../widgets/conversation_move_dialog.dart';
@@ -43,6 +45,7 @@ class _HomeShellState extends State<HomeShell> {
   final _composerKey = GlobalKey<ComposerState>();
   StudentSection _section = StudentSection.home;
   bool _sidebarCollapsed = false;
+  bool _contextCollapsed = false;
   bool _scheduleRequested = false;
   String _sidebarQuery = '';
   List<DocumentAttachment> _selectedAttachments = const [];
@@ -134,6 +137,10 @@ class _HomeShellState extends State<HomeShell> {
       onViewAssignments: _learningChatOpen
           ? null
           : () => unawaited(_select(StudentSection.assignments)),
+      onViewRecent:
+          _learningChatOpen || MediaQuery.sizeOf(context).width >= 1040
+          ? null
+          : () => _mobileScaffoldKey.currentState?.openDrawer(),
       onContinueLearning: _learningChatOpen
           ? null
           : () => unawaited(_continueLearning()),
@@ -311,24 +318,52 @@ class _HomeShellState extends State<HomeShell> {
                           setState(() => _sidebarCollapsed = true),
                     ),
             ),
-            if (_sidebarCollapsed && !knowledgeBase)
-              _RevealSidebarButton(
-                onTap: () => setState(() => _sidebarCollapsed = false),
-              ),
             Expanded(
-              child: _SurfaceFrame(key: ValueKey(_section), child: _page()),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _SurfaceFrame(key: ValueKey(_section), child: _page()),
+                  if (_sidebarCollapsed && !knowledgeBase)
+                    Positioned(
+                      left: 0,
+                      top: 64,
+                      child: _RevealSidebarHandle(
+                        onTap: () => setState(() => _sidebarCollapsed = false),
+                      ),
+                    ),
+                ],
+              ),
             ),
             if (showContext)
-              SizedBox(
-                width: 292,
-                child: _StudentContextRail(
-                  section: _section,
-                  researchProject: _activeResearchProject,
-                  selectedAttachments: _selectedAttachments,
-                  onAddAttachment: () =>
-                      unawaited(_composerKey.currentState?.pickAttachment()),
-                  onRemoveAttachment: () => unawaited(
-                    _composerKey.currentState?.removeSelectedAttachment(),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeInOut,
+                width: _contextCollapsed ? 0 : 292,
+                clipBehavior: Clip.hardEdge,
+                decoration: const BoxDecoration(),
+                child: _contextCollapsed
+                    ? const SizedBox.shrink()
+                    : _StudentContextRail(
+                        section: _section,
+                        researchProject: _activeResearchProject,
+                        selectedAttachments: _selectedAttachments,
+                        onAddAttachment: () => unawaited(
+                          _composerKey.currentState?.pickAttachment(),
+                        ),
+                        onRemoveAttachment: () => unawaited(
+                          _composerKey.currentState?.removeSelectedAttachment(),
+                        ),
+                        onCollapse: () =>
+                            setState(() => _contextCollapsed = true),
+                      ),
+              ),
+            if (showContext && _contextCollapsed)
+              Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 64),
+                  child: _RevealContextHandle(
+                    onTap: () => setState(() => _contextCollapsed = false),
                   ),
                 ),
               ),
@@ -376,10 +411,9 @@ class _HomeShellState extends State<HomeShell> {
                     : () => _showHome(),
                 onHistory: () => _mobileScaffoldKey.currentState?.openDrawer(),
               )
-            else if (!researchProjectActive)
+            else if (!researchProjectActive && !_inResearch)
               _MobileHeader(
                 section: _section,
-                onSelect: (section) => unawaited(_select(section)),
                 onProfile: () => showProfileSheet(context),
                 onMemory: () => showMemorySheet(context),
                 onActions: () => showAgentActionSheet(context),
@@ -529,13 +563,9 @@ class _RailButton extends StatelessWidget {
         onPressed: onTap,
         style: IconButton.styleFrom(
           minimumSize: const Size(42, 42),
-          backgroundColor: active
-              ? EsaColors.accent.withValues(alpha: 0.18)
-              : Colors.transparent,
-          foregroundColor: active ? const Color(0xFF66A0FF) : context.n.n600,
-          side: active
-              ? BorderSide(color: EsaColors.accent.withValues(alpha: 0.22))
-              : BorderSide.none,
+          backgroundColor: active ? context.n.n200 : Colors.transparent,
+          foregroundColor: active ? context.n.n700 : context.n.n600,
+          side: active ? BorderSide(color: context.n.n300) : BorderSide.none,
         ),
         icon: Icon(icon, size: 21),
       ),
@@ -984,17 +1014,56 @@ class _WorkspaceSidebar extends StatelessWidget {
   }
 }
 
-class _RevealSidebarButton extends StatelessWidget {
-  const _RevealSidebarButton({required this.onTap});
+class _RevealSidebarHandle extends StatelessWidget {
+  const _RevealSidebarHandle({required this.onTap});
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.center,
-    child: IconButton(
-      tooltip: '展开侧栏',
-      onPressed: onTap,
-      icon: const Icon(LucideIcons.chevronsRight, size: 17),
+  Widget build(BuildContext context) => Material(
+    key: const ValueKey('desktop-sidebar-reveal-handle'),
+    color: context.n.n100,
+    shape: RoundedRectangleBorder(
+      borderRadius: const BorderRadius.horizontal(right: Radius.circular(8)),
+      side: BorderSide(color: context.n.divider),
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: Tooltip(
+      message: '展开侧栏',
+      child: InkWell(
+        onTap: onTap,
+        child: const SizedBox(
+          width: 30,
+          height: 36,
+          child: Icon(LucideIcons.panelLeftOpen, size: 16),
+        ),
+      ),
+    ),
+  );
+}
+
+class _RevealContextHandle extends StatelessWidget {
+  const _RevealContextHandle({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    key: const ValueKey('desktop-context-reveal-handle'),
+    color: context.n.n100,
+    shape: RoundedRectangleBorder(
+      borderRadius: const BorderRadius.horizontal(left: Radius.circular(8)),
+      side: BorderSide(color: context.n.divider),
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: Tooltip(
+      message: '展开上下文',
+      child: InkWell(
+        onTap: onTap,
+        child: const SizedBox(
+          width: 30,
+          height: 36,
+          child: Icon(LucideIcons.panelRightOpen, size: 16),
+        ),
+      ),
     ),
   );
 }
@@ -1015,9 +1084,7 @@ class _SideEntry extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 3),
     child: Material(
-      color: selected
-          ? EsaColors.accent.withValues(alpha: 0.15)
-          : Colors.transparent,
+      color: selected ? context.n.n200 : Colors.transparent,
       borderRadius: BorderRadius.circular(7),
       child: InkWell(
         borderRadius: BorderRadius.circular(7),
@@ -1029,7 +1096,7 @@ class _SideEntry extends StatelessWidget {
               Icon(
                 icon,
                 size: 17,
-                color: selected ? const Color(0xFF5D98FF) : context.n.n600,
+                color: selected ? context.n.n700 : context.n.n600,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1039,7 +1106,8 @@ class _SideEntry extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 13,
-                    color: selected ? const Color(0xFF6EA3FF) : null,
+                    color: selected ? context.n.n700 : null,
+                    fontWeight: selected ? FontWeight.w600 : null,
                   ),
                 ),
               ),
@@ -1212,12 +1280,14 @@ class _StudentContextRail extends StatefulWidget {
     required this.selectedAttachments,
     required this.onAddAttachment,
     required this.onRemoveAttachment,
+    required this.onCollapse,
   });
   final StudentSection section;
   final ResearchProject? researchProject;
   final List<DocumentAttachment> selectedAttachments;
   final VoidCallback onAddAttachment;
   final VoidCallback onRemoveAttachment;
+  final VoidCallback onCollapse;
 
   @override
   State<_StudentContextRail> createState() => _StudentContextRailState();
@@ -1228,36 +1298,122 @@ class _StudentContextRailState extends State<_StudentContextRail> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final research = widget.section == StudentSection.research;
-    final recent = app.conversations.take(3).map((item) => item.title).toList();
-    final projects = app.researchProjects
-        .take(3)
-        .map((item) => item.name)
-        .toList();
+
+    final Widget body;
     if (research && widget.researchProject != null) {
-      return _ContextRailFrame(
-        child: _ResearchProjectContextRail(project: widget.researchProject!),
+      body = _ResearchProjectContextRail(project: widget.researchProject!);
+    } else if (research) {
+      final projects = app.researchProjects
+          .take(3)
+          .map((item) => item.name)
+          .toList();
+      final recent = app.conversations
+          .take(3)
+          .map((item) => item.title)
+          .toList();
+      body = ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+        children: [
+          _ContextCard(
+            icon: LucideIcons.clipboardList,
+            title: '研究项目',
+            lines: projects.isEmpty ? const ['还没有研究项目'] : projects,
+          ),
+          _ContextCard(
+            icon: LucideIcons.messageSquare,
+            title: '最近研究对话',
+            lines: recent.isEmpty ? const ['暂无研究对话'] : recent,
+          ),
+        ],
       );
-    }
-    if (research) {
-      return _ContextRailFrame(
-        child: ListView(
-          padding: const EdgeInsets.all(12),
-          children: [
-            _ContextCard(
-              icon: LucideIcons.clipboardList,
-              title: '研究项目',
-              lines: projects.isEmpty ? const ['还没有研究项目'] : projects,
-            ),
-            _ContextCard(
-              icon: LucideIcons.messageSquare,
-              title: '最近研究对话',
-              lines: recent.isEmpty ? const ['暂无研究对话'] : recent,
-            ),
-          ],
-        ),
+    } else {
+      body = _LearningContextPanel(
+        selectedAttachments: widget.selectedAttachments,
+        onAddAttachment: widget.onAddAttachment,
+        onRemoveAttachment: widget.onRemoveAttachment,
       );
     }
 
+    return _ContextRailFrame(
+      child: Column(
+        children: [
+          _ContextRailHeader(onCollapse: widget.onCollapse),
+          Expanded(child: body),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContextRailHeader extends StatelessWidget {
+  const _ContextRailHeader({required this.onCollapse});
+
+  final VoidCallback onCollapse;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 14, 8, 10),
+    child: Row(
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: context.accent.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(
+            LucideIcons.scanLine,
+            size: 16,
+            color: context.accent,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '当前上下文',
+                style: context.texts.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                '随当前对话自动更新',
+                style: context.texts.labelSmall?.copyWith(
+                  color: context.n.n500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: '收起上下文',
+          onPressed: onCollapse,
+          icon: const Icon(LucideIcons.chevronsRight, size: 17),
+        ),
+      ],
+    ),
+  );
+}
+
+class _LearningContextPanel extends StatelessWidget {
+  const _LearningContextPanel({
+    required this.selectedAttachments,
+    required this.onAddAttachment,
+    required this.onRemoveAttachment,
+  });
+
+  final List<DocumentAttachment> selectedAttachments;
+  final VoidCallback onAddAttachment;
+  final VoidCallback onRemoveAttachment;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final conversation = app.activeConversation;
     final courseName =
         app.learningCourses.firstOrNull?.name ??
         app.scheduleCourseNames.firstOrNull ??
@@ -1267,76 +1423,283 @@ class _StudentContextRailState extends State<_StudentContextRail> {
       ...?app.masteryReport?.weakPoints.map((item) => item.name),
     }.take(5).toList();
     final chapter = related.firstOrNull;
+    final groupName = conversation?.groupId == null
+        ? null
+        : app.groups
+              .where((group) => group.id == conversation!.groupId)
+              .map((group) => group.name)
+              .firstOrNull;
+    final projectName = conversation?.researchProjectId == null
+        ? null
+        : app.researchProjects
+              .where(
+                (project) => project.id == conversation?.researchProjectId,
+              )
+              .map((project) => project.name)
+              .firstOrNull;
 
-    return _ContextRailFrame(
-      child: ListView(
-        key: const ValueKey('learning-context-panel'),
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
-        children: [
-          Text(
-            '当前上下文',
-            style: context.texts.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 18),
-          _ContextSection(
-            title: '当前课程',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(courseName, style: context.texts.bodyMedium),
-                const SizedBox(height: 4),
-                Text(
-                  chapter == null ? '尚未选择章节' : '重点：$chapter',
-                  style: context.texts.bodySmall,
+    return ListView(
+      key: const ValueKey('learning-context-panel'),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+      children: [
+        _ConversationSummaryCard(
+          conversation: conversation,
+          workspaceLabel:
+              (conversation?.workspaceType ?? app.activeWorkspace).label,
+          messageCount: app.messages.length,
+          updatedAt: conversation?.updatedAt,
+        ),
+        const SizedBox(height: 18),
+        _ContextSection(
+          icon: LucideIcons.link2,
+          title: '对话绑定',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _BindingLine(
+                icon: LucideIcons.folder,
+                label: '分组',
+                value: groupName ?? '未分组',
+              ),
+              if (projectName != null)
+                _BindingLine(
+                  icon: LucideIcons.flaskConical,
+                  label: '项目',
+                  value: projectName,
                 ),
-              ],
-            ),
-          ),
-          _ContextSection(
-            title: '已选资料 ${widget.selectedAttachments.length}',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (widget.selectedAttachments.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text('暂未选择资料', style: context.texts.bodySmall),
-                  )
-                else
-                  for (final attachment in widget.selectedAttachments)
-                    _SelectedAttachmentRow(
-                      attachment: attachment,
-                      onRemove: widget.onRemoveAttachment,
-                    ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: widget.onAddAttachment,
-                    icon: const Icon(LucideIcons.plus, size: 15),
-                    label: const Text('添加资料'),
-                  ),
+              if (conversation?.className != null)
+                _BindingLine(
+                  icon: LucideIcons.users,
+                  label: '班级',
+                  value: conversation!.className!,
                 ),
-              ],
-            ),
+              if (conversation?.assignmentTitle != null)
+                _BindingLine(
+                  icon: LucideIcons.clipboardList,
+                  label: '作业',
+                  value: conversation!.assignmentTitle!,
+                ),
+            ],
           ),
-          _ContextSection(
-            title: '相关知识点',
-            child: related.isEmpty
-                ? Text('暂无相关知识点', style: context.texts.bodySmall)
-                : Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+        ),
+        _ContextSection(
+          icon: LucideIcons.bookOpen,
+          title: '当前课程',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                courseName,
+                style: context.texts.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                chapter == null ? '尚未选择章节' : '重点：$chapter',
+                style: context.texts.bodySmall?.copyWith(
+                  color: context.n.n600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        _ContextSection(
+          icon: LucideIcons.paperclip,
+          title: '已选资料 ${selectedAttachments.length}',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (selectedAttachments.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
                     children: [
-                      for (final item in related) _KnowledgeTag(label: item),
+                      Icon(
+                        LucideIcons.fileText,
+                        size: 15,
+                        color: context.n.n500,
+                      ),
+                      const SizedBox(width: 8),
+                      Text('暂未选择资料', style: context.texts.bodySmall),
                     ],
                   ),
+                )
+              else
+                for (final attachment in selectedAttachments)
+                  _SelectedAttachmentRow(
+                    attachment: attachment,
+                    onRemove: onRemoveAttachment,
+                  ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: onAddAttachment,
+                  icon: const Icon(LucideIcons.plus, size: 15),
+                  label: const Text('添加资料'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        _ContextSection(
+          icon: LucideIcons.sparkles,
+          title: '相关知识点',
+          child: related.isEmpty
+              ? Text('暂无相关知识点', style: context.texts.bodySmall)
+              : Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final item in related) _KnowledgeTag(label: item),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ConversationSummaryCard extends StatelessWidget {
+  const _ConversationSummaryCard({
+    required this.conversation,
+    required this.workspaceLabel,
+    required this.messageCount,
+    this.updatedAt,
+  });
+
+  final ChatConversation? conversation;
+  final String workspaceLabel;
+  final int messageCount;
+  final DateTime? updatedAt;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.accent.withValues(alpha: 0.07),
+        border: Border.all(color: context.accent.withValues(alpha: 0.16)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: context.accent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(
+                  LucideIcons.messageSquare,
+                  size: 15,
+                  color: context.accent,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  conversation?.title ?? '新对话',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.texts.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _MetaChip(icon: LucideIcons.boxes, label: workspaceLabel),
+              _MetaChip(
+                icon: LucideIcons.listOrdered,
+                label: '$messageCount 条消息',
+              ),
+              if (updatedAt != null)
+                _MetaChip(
+                  icon: LucideIcons.clock,
+                  label: _contextRelativeTime(updatedAt!),
+                ),
+            ],
           ),
         ],
       ),
     );
   }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({this.icon, required this.label});
+
+  final IconData? icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: context.n.n100,
+      border: Border.all(color: context.n.divider),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 12, color: context.n.n600),
+          const SizedBox(width: 4),
+        ],
+        Text(label, style: context.texts.labelSmall),
+      ],
+    ),
+  );
+}
+
+class _BindingLine extends StatelessWidget {
+  const _BindingLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      children: [
+        Icon(icon, size: 14, color: context.n.n500),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 36,
+          child: Text(
+            label,
+            style: context.texts.bodySmall?.copyWith(color: context.n.n600),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.texts.bodySmall,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _ContextRailFrame extends StatelessWidget {
@@ -1355,22 +1718,44 @@ class _ContextRailFrame extends StatelessWidget {
 }
 
 class _ContextSection extends StatelessWidget {
-  const _ContextSection({required this.title, required this.child});
+  const _ContextSection({
+    required this.title,
+    required this.child,
+    this.icon,
+  });
 
   final String title;
   final Widget child;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.only(bottom: 16),
-    margin: const EdgeInsets.only(bottom: 16),
+    padding: const EdgeInsets.only(bottom: 14),
+    margin: const EdgeInsets.only(bottom: 14),
     decoration: BoxDecoration(
       border: Border(bottom: BorderSide(color: context.n.divider)),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: context.texts.labelMedium),
+        Row(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: context.n.n600),
+              const SizedBox(width: 7),
+            ],
+            Expanded(
+              child: Text(
+                title,
+                style: context.texts.labelMedium?.copyWith(
+                  color: context.n.n600,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 10),
         child,
       ],
@@ -1430,13 +1815,32 @@ class _KnowledgeTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
     decoration: BoxDecoration(
-      color: context.n.n100,
-      border: Border.all(color: context.n.divider),
-      borderRadius: BorderRadius.circular(6),
+      color: context.accent.withValues(alpha: 0.08),
+      border: Border.all(color: context.accent.withValues(alpha: 0.18)),
+      borderRadius: BorderRadius.circular(999),
     ),
-    child: Text(label, style: context.texts.labelSmall),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 5,
+          height: 5,
+          decoration: BoxDecoration(
+            color: context.accent,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: context.texts.labelSmall?.copyWith(
+            color: context.accent,
+          ),
+        ),
+      ],
+    ),
   );
 }
 
@@ -1457,6 +1861,19 @@ String _dateLabel(DateTime value) =>
     '${value.year.toString().padLeft(4, '0')}-'
     '${value.month.toString().padLeft(2, '0')}-'
     '${value.day.toString().padLeft(2, '0')}';
+
+String _contextRelativeTime(DateTime value) {
+  final now = DateTime.now();
+  final local = value.toLocal();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(local.year, local.month, local.day);
+  final days = today.difference(day).inDays;
+  final time =
+      '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  if (days == 0) return '今天 $time';
+  if (days == 1) return '昨天 $time';
+  return '${local.month} 月 ${local.day} 日';
+}
 
 class _ResearchProjectContextRail extends StatefulWidget {
   const _ResearchProjectContextRail({required this.project});
@@ -1613,58 +2030,73 @@ class _ContextCard extends StatelessWidget {
 class _MobileHeader extends StatelessWidget {
   const _MobileHeader({
     required this.section,
-    required this.onSelect,
     required this.onProfile,
     required this.onMemory,
     required this.onActions,
     this.onHistory,
   });
   final StudentSection section;
-  final ValueChanged<StudentSection> onSelect;
   final VoidCallback onProfile;
   final VoidCallback onMemory;
   final VoidCallback onActions;
   final VoidCallback? onHistory;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 14, 14, 10),
-    child: Row(
-      children: [
-        const _EsaWordmark(),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Text(switch (section) {
-            StudentSection.home => '首页',
-            StudentSection.research => '研究空间',
-            StudentSection.knowledge => '知识地图',
-            StudentSection.knowledgeBase => '个人知识库',
-            StudentSection.assignments => '作业',
-            StudentSection.schedule => '日程',
-          }, style: context.texts.headlineSmall),
+  Widget build(BuildContext context) => SizedBox(
+    key: const ValueKey('mobile-app-bar'),
+    width: double.infinity,
+    height: 56,
+    child: ColoredBox(
+      color: context.scheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16, right: 6),
+        child: Row(
+          children: [
+            if (onHistory != null)
+              EsaMobileIconButton(
+                tooltip: '历史对话',
+                icon: LucideIcons.panelLeftOpen,
+                onPressed: onHistory,
+              ),
+            if (onHistory != null) const SizedBox(width: 4),
+            const _EsaWordmark(compact: true),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                switch (section) {
+                  StudentSection.home => '首页',
+                  StudentSection.research => '研究空间',
+                  StudentSection.knowledge => '知识地图',
+                  StudentSection.knowledgeBase => '个人知识库',
+                  StudentSection.assignments => '作业',
+                  StudentSection.schedule => '日程',
+                },
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.texts.titleMedium?.copyWith(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            EsaMobileIconButton(
+              tooltip: '长期记忆',
+              icon: LucideIcons.brain,
+              onPressed: onMemory,
+            ),
+            EsaMobileIconButton(
+              tooltip: '待确认动作',
+              icon: LucideIcons.shieldCheck,
+              onPressed: onActions,
+            ),
+            EsaMobileIconButton(
+              tooltip: '设置与账户',
+              icon: LucideIcons.settings,
+              onPressed: onProfile,
+            ),
+          ],
         ),
-        IconButton(
-          tooltip: '长期记忆',
-          onPressed: onMemory,
-          icon: const Icon(LucideIcons.brain),
-        ),
-        IconButton(
-          tooltip: '待确认动作',
-          onPressed: onActions,
-          icon: const Icon(LucideIcons.shieldCheck),
-        ),
-        if (onHistory != null)
-          IconButton(
-            tooltip: '历史对话',
-            onPressed: onHistory,
-            icon: const Icon(LucideIcons.panelLeftOpen),
-          ),
-        IconButton(
-          tooltip: '设置',
-          onPressed: onProfile,
-          icon: const Icon(LucideIcons.settings),
-        ),
-      ],
+      ),
     ),
   );
 }
@@ -1692,6 +2124,11 @@ class _MobileConversationHeader extends StatelessWidget {
             onPressed: onBack,
             icon: const Icon(LucideIcons.chevronLeft, size: 25),
           ),
+          IconButton(
+            tooltip: '历史对话',
+            onPressed: onHistory,
+            icon: const Icon(LucideIcons.panelLeftOpen, size: 21),
+          ),
           Expanded(
             child: Text(
               title,
@@ -1700,11 +2137,6 @@ class _MobileConversationHeader extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: context.texts.titleLarge?.copyWith(fontSize: 17),
             ),
-          ),
-          IconButton(
-            tooltip: '历史对话',
-            onPressed: onHistory,
-            icon: const Icon(LucideIcons.panelLeftOpen, size: 21),
           ),
         ],
       ),
@@ -1719,47 +2151,27 @@ class _MobileLearningTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const entries = [
-      (StudentSection.home, '首页'),
-      (StudentSection.assignments, '作业'),
-      (StudentSection.schedule, '日程'),
-      (StudentSection.knowledge, '知识'),
-      (StudentSection.knowledgeBase, '资料库'),
+    const entries = <EsaMobileTabEntry<StudentSection>>[
+      EsaMobileTabEntry(StudentSection.home, '首页'),
+      EsaMobileTabEntry(StudentSection.assignments, '作业'),
+      EsaMobileTabEntry(StudentSection.schedule, '日程'),
+      EsaMobileTabEntry(StudentSection.knowledge, '知识'),
+      EsaMobileTabEntry(StudentSection.knowledgeBase, '资料库'),
     ];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
-      child: SizedBox(
-        height: 40,
-        child: Row(
-          children: [
-            for (var index = 0; index < entries.length; index++) ...[
-              if (index > 0) const SizedBox(width: 4),
-              Expanded(
-                child: Builder(
-                  builder: (context) {
-                    final entry = entries[index];
-                    final active = section == entry.$1;
-                    return TextButton(
-                      onPressed: () => onSelect(entry.$1),
-                      style: TextButton.styleFrom(
-                        backgroundColor: active
-                            ? EsaColors.accent.withValues(alpha: 0.16)
-                            : Colors.transparent,
-                        foregroundColor: active
-                            ? const Color(0xFF70A3FF)
-                            : context.n.n600,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: Text(entry.$2),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ],
-        ),
+    return Container(
+      key: const ValueKey('mobile-primary-navigation'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      decoration: BoxDecoration(
+        color: context.scheme.surface,
+        border: Border(bottom: BorderSide(color: context.n.divider)),
+      ),
+      child: EsaMobileTabStrip<StudentSection>(
+        value: section,
+        entries: entries,
+        onChanged: onSelect,
+        padding: EdgeInsets.zero,
+        minItemWidth: 68,
       ),
     );
   }
@@ -1831,21 +2243,26 @@ class _BottomDestination extends StatelessWidget {
   Widget build(BuildContext context) => Expanded(
     child: InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minHeight: EsaMobile.bottomBarContentHeight,
+        ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              color: active ? const Color(0xFF4B8CFF) : context.n.n600,
+              size: 20,
+              color: active ? context.n.n700 : context.n.n600,
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
-                fontSize: 12,
-                color: active ? const Color(0xFF4B8CFF) : context.n.n600,
+                fontSize: 11.5,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                color: active ? context.n.n700 : context.n.n600,
               ),
             ),
           ],
@@ -1863,7 +2280,7 @@ class _EsaWordmark extends StatelessWidget {
   Widget build(BuildContext context) => Text(
     'ESA',
     style: TextStyle(
-      color: const Color(0xFF6B9DFF),
+      color: context.n.n700,
       fontSize: compact ? 15 : 26,
       fontWeight: FontWeight.w800,
       letterSpacing: 0,
@@ -1884,7 +2301,7 @@ class _UserAvatar extends StatelessWidget {
       height: 36,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        color: EsaColors.accent,
+        color: EsaColors.dN300,
       ),
       child: const Icon(LucideIcons.userRound, size: 19, color: Colors.white),
     ),

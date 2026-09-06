@@ -7,7 +7,6 @@ import '../api/api_client.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/esa_context.dart';
-import '../theme/esa_theme.dart';
 import '../widgets/profile_sheet.dart';
 import '../widgets/conversation_move_dialog.dart';
 import 'chat_page.dart';
@@ -581,9 +580,7 @@ class _TeacherRail extends StatelessWidget {
         const SizedBox(height: 18),
         Text(
           'ESA',
-          style: context.texts.titleMedium?.copyWith(
-            color: const Color(0xFF6EA3FF),
-          ),
+          style: context.texts.titleMedium?.copyWith(color: context.n.n700),
         ),
         const SizedBox(height: 24),
         _RailButton(
@@ -625,7 +622,7 @@ class _TeacherRail extends StatelessWidget {
               onTap: onProfile,
               child: CircleAvatar(
                 radius: 16,
-                backgroundColor: EsaColors.accent.withValues(alpha: .22),
+                backgroundColor: context.n.n300,
                 child: Text(
                   AppScope.of(context).username.characters.firstOrNull ?? '师',
                   style: context.texts.labelSmall,
@@ -661,10 +658,8 @@ class _RailButton extends StatelessWidget {
         onPressed: onTap,
         style: IconButton.styleFrom(
           minimumSize: const Size(42, 42),
-          backgroundColor: active
-              ? EsaColors.accent.withValues(alpha: .17)
-              : Colors.transparent,
-          foregroundColor: active ? const Color(0xFF6EA3FF) : context.n.n600,
+          backgroundColor: active ? context.n.n200 : Colors.transparent,
+          foregroundColor: active ? context.n.n700 : context.n.n600,
         ),
         icon: Icon(icon, size: 20),
       ),
@@ -955,9 +950,7 @@ class _SideEntry extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 3),
     child: Material(
-      color: selected
-          ? EsaColors.accent.withValues(alpha: .14)
-          : Colors.transparent,
+      color: selected ? context.n.n200 : Colors.transparent,
       borderRadius: BorderRadius.circular(8),
       child: ListTile(
         dense: true,
@@ -965,7 +958,7 @@ class _SideEntry extends StatelessWidget {
         leading: Icon(
           icon,
           size: 17,
-          color: selected ? const Color(0xFF6EA3FF) : context.n.n600,
+          color: selected ? context.n.n700 : context.n.n600,
         ),
         title: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
         onTap: onTap,
@@ -987,9 +980,7 @@ class _ClassEntry extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Material(
     key: ValueKey('teacher-class-${classroom.id}'),
-    color: selected
-        ? EsaColors.accent.withValues(alpha: .15)
-        : Colors.transparent,
+    color: selected ? context.n.n200 : Colors.transparent,
     borderRadius: BorderRadius.circular(8),
     child: ListTile(
       dense: true,

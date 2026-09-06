@@ -1081,14 +1081,14 @@ class _ResearchPanel extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: const Color(0xFF0B1724),
+      color: context.n.n100,
       border: Border.all(color: context.n.divider),
       borderRadius: BorderRadius.circular(12),
     ),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 20, color: const Color(0xFF4B8DFF)),
+        Icon(icon, size: 20, color: context.n.n700),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -1237,7 +1237,7 @@ class _FileChip extends StatelessWidget {
     ),
     child: Row(
       children: [
-        const Icon(LucideIcons.fileText, size: 18, color: Color(0xFF548EFF)),
+        Icon(LucideIcons.fileText, size: 18, color: context.n.n700),
         const SizedBox(width: 8),
         Expanded(
           child: Text(

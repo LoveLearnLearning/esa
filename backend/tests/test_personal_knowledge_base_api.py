@@ -428,6 +428,23 @@ def test_upload_request_size_is_rejected_before_multipart_parsing(tmp_path):
     assert quota.status_code == 413
 
 
+def test_named_library_upload_is_rejected_before_multipart_parsing(tmp_path):
+    client, user_one, _user_two = _client(tmp_path)
+    created = client.post(
+        "/api/me/knowledge-base/libraries",
+        headers=user_one,
+        json={"name": "课程资料"},
+    )
+    assert created.status_code == 201
+    library_id = created.json()["id"]
+    response = client.post(
+        f"/api/me/knowledge-base/libraries/{library_id}/files",
+        headers={**user_one, "Content-Length": str(2**40)},
+        content=b"",
+    )
+    assert response.status_code == 413
+
+
 def test_rebuild_returns_accepted_snapshot_for_existing_file(tmp_path):
     client, user_one, _user_two = _client(tmp_path)
     uploaded = client.post(

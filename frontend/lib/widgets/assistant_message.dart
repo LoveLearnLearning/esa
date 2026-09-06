@@ -166,7 +166,7 @@ class _AssistantMessageState extends State<AssistantMessage> {
             'ESA',
             style: TextStyle(
               fontSize: 9,
-              color: Color(0xFF5D97FF),
+              color: Color(0xFFD8D8DD),
               fontWeight: FontWeight.w700,
             ),
           ),

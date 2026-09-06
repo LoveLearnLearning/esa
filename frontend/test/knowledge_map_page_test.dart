@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/api/api_client.dart';
@@ -5,12 +7,28 @@ import 'package:frontend/models/models.dart';
 import 'package:frontend/pages/knowledge_map_page.dart';
 import 'package:frontend/state/app_state.dart';
 import 'package:frontend/theme/esa_theme.dart';
+import 'package:frontend/widgets/learning/knowledge_graph_canvas.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _RacingKnowledgeApi extends ApiClient {
+  _RacingKnowledgeApi() : super(baseUrl: 'http://test.invalid');
+
+  final List<Completer<KnowledgeMapData>> requests = [];
+
+  @override
+  Future<KnowledgeMapData> getKnowledgeMap(String course) {
+    final request = Completer<KnowledgeMapData>();
+    requests.add(request);
+    return request.future;
+  }
+}
 
 class _KnowledgeApi extends ApiClient {
   _KnowledgeApi() : super(baseUrl: 'http://test.invalid');
 
   int createdConversations = 0;
+  int courseRequests = 0;
+  int mapRequests = 0;
   final List<String> streamedInputs = [];
 
   @override
@@ -39,81 +57,86 @@ class _KnowledgeApi extends ApiClient {
   }
 
   @override
-  Future<List<LearningCourseSummary>> getLearningCourses() async => const [
-    LearningCourseSummary(
-      name: '数据结构',
-      totalPoints: 2,
-      evaluatedPoints: 1,
-      weakPoints: 1,
-      reviewPoints: 1,
-      averageMastery: 32,
-    ),
-  ];
+  Future<List<LearningCourseSummary>> getLearningCourses() async {
+    courseRequests++;
+    return const [
+      LearningCourseSummary(
+        name: '数据结构',
+        totalPoints: 2,
+        evaluatedPoints: 1,
+        weakPoints: 1,
+        reviewPoints: 1,
+        averageMastery: 32,
+      ),
+    ];
+  }
 
   @override
-  Future<KnowledgeMapData> getKnowledgeMap(String course) async =>
-      const KnowledgeMapData(
-        course: '数据结构',
-        nodes: [
-          KnowledgeMapNode(
-            id: 'course-data-structures',
-            name: '数据结构',
-            course: '数据结构',
-            category: 'course',
-            weight: 0,
-            external: false,
-            hasRecord: false,
-            status: 'course',
-            needsReview: false,
-            practiceCount: 0,
-            evidenceCount: 0,
-            weakPrerequisiteCount: 0,
-            level: 0,
-            nodeType: 'course',
-          ),
-          KnowledgeMapNode(
-            id: 'recursion',
-            name: '递归',
-            course: '数据结构',
-            category: 'base',
-            weight: 0.7,
-            external: false,
-            hasRecord: false,
-            status: 'unseen',
-            needsReview: false,
-            practiceCount: 0,
-            evidenceCount: 0,
-            weakPrerequisiteCount: 0,
-            level: 1,
-          ),
-          KnowledgeMapNode(
-            id: 'tree',
-            name: '二叉树遍历',
-            course: '数据结构',
-            category: 'tree',
-            weight: 0.9,
-            external: false,
-            hasRecord: true,
-            masteryLevel: 32,
-            status: 'weak',
-            retention: 0.5,
-            evidenceConfidence: 0.8,
-            needsReview: true,
-            practiceCount: 3,
-            evidenceCount: 3,
-            weakPrerequisiteCount: 1,
-            level: 2,
-          ),
-        ],
-        edges: [
-          KnowledgeMapEdge(
-            from: 'course-data-structures',
-            to: 'recursion',
-            type: 'course_root',
-          ),
-          KnowledgeMapEdge(from: 'recursion', to: 'tree', type: 'prerequisite'),
-        ],
-      );
+  Future<KnowledgeMapData> getKnowledgeMap(String course) async {
+    mapRequests++;
+    return const KnowledgeMapData(
+      course: '数据结构',
+      nodes: [
+        KnowledgeMapNode(
+          id: 'course-data-structures',
+          name: '数据结构',
+          course: '数据结构',
+          category: 'course',
+          weight: 0,
+          external: false,
+          hasRecord: false,
+          status: 'course',
+          needsReview: false,
+          practiceCount: 0,
+          evidenceCount: 0,
+          weakPrerequisiteCount: 0,
+          level: 0,
+          nodeType: 'course',
+        ),
+        KnowledgeMapNode(
+          id: 'recursion',
+          name: '递归',
+          course: '数据结构',
+          category: 'base',
+          weight: 0.7,
+          external: false,
+          hasRecord: false,
+          status: 'unseen',
+          needsReview: false,
+          practiceCount: 0,
+          evidenceCount: 0,
+          weakPrerequisiteCount: 0,
+          level: 1,
+        ),
+        KnowledgeMapNode(
+          id: 'tree',
+          name: '二叉树遍历',
+          course: '数据结构',
+          category: 'tree',
+          weight: 0.9,
+          external: false,
+          hasRecord: true,
+          masteryLevel: 32,
+          status: 'weak',
+          retention: 0.5,
+          evidenceConfidence: 0.8,
+          needsReview: true,
+          practiceCount: 3,
+          evidenceCount: 3,
+          weakPrerequisiteCount: 1,
+          level: 2,
+        ),
+      ],
+      edges: [
+        KnowledgeMapEdge(
+          from: 'course-data-structures',
+          to: 'recursion',
+          type: 'course_root',
+        ),
+        KnowledgeMapEdge(from: 'recursion', to: 'tree', type: 'prerequisite'),
+      ],
+    );
+  }
 
   @override
   Future<KnowledgePointDetail> getKnowledgePointDetail(String kpId) async =>
@@ -265,6 +288,48 @@ void _useDesktopViewport(WidgetTester tester) {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  testWidgets('reuses overview courses and cached graph when reopening', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    final api = _KnowledgeApi()
+      ..sessionId = 'session'
+      ..userId = 'user'
+      ..username = 'tester';
+    final state = AppState(api: api)
+      ..learningCourses = const [
+        LearningCourseSummary(
+          name: '数据结构',
+          totalPoints: 2,
+          evaluatedPoints: 1,
+          weakPoints: 1,
+          reviewPoints: 1,
+          averageMastery: 32,
+        ),
+      ];
+    addTearDown(state.dispose);
+
+    Widget app(Widget home) => AppScope(
+      state: state,
+      child: MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: home,
+      ),
+    );
+
+    await tester.pumpWidget(app(KnowledgeMapPage(onOpenChat: () {})));
+    await tester.pumpAndSettle();
+    expect(api.courseRequests, 0);
+    expect(api.mapRequests, 1);
+
+    await tester.pumpWidget(app(const SizedBox.shrink()));
+    await tester.pump();
+    await tester.pumpWidget(app(KnowledgeMapPage(onOpenChat: () {})));
+    await tester.pumpAndSettle();
+    expect(api.courseRequests, 0);
+    expect(api.mapRequests, 1);
+  });
+
   test('old knowledge-map payloads gain a connected course node', () {
     final data = KnowledgeMapData.fromJson({
       'course': '数据结构',
@@ -343,6 +408,129 @@ void main() {
     expect(find.text('课程概览'), findsOneWidget);
     expect(find.text('2'), findsWidgets);
     expect(find.text('知识子树'), findsOneWidget);
+  });
+
+  testWidgets('supports editor layout controls and branch folding', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    await _pumpPage(tester, _KnowledgeApi());
+
+    expect(
+      find.byKey(const ValueKey('knowledge-layout-horizontal')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('knowledge-layout-vertical')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('knowledge-auto-layout')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('knowledge-layout-vertical')));
+    await tester.pumpAndSettle();
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getString('esa.knowledge_graph.数据结构.direction'),
+      'vertical',
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('knowledge-collapse-recursion')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('递归'), findsOneWidget);
+    expect(find.text('二叉树遍历'), findsNothing);
+    expect(
+      preferences.getStringList('esa.knowledge_graph.数据结构.collapsed'),
+      contains('recursion'),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('knowledge-collapse-recursion')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('二叉树遍历'), findsOneWidget);
+  });
+
+  testWidgets('renders only the selected tree edges instead of cross links', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    const nodes = [
+      KnowledgeMapNode(
+        id: 'course',
+        name: '课程',
+        course: '测试课程',
+        category: 'course',
+        weight: 1,
+        external: false,
+        hasRecord: false,
+        status: 'course',
+        needsReview: false,
+        practiceCount: 0,
+        evidenceCount: 0,
+        weakPrerequisiteCount: 0,
+        level: 0,
+      ),
+      KnowledgeMapNode(
+        id: 'a',
+        name: '知识点 A',
+        course: '测试课程',
+        category: 'topic',
+        weight: 1,
+        external: false,
+        hasRecord: false,
+        status: 'learning',
+        needsReview: false,
+        practiceCount: 0,
+        evidenceCount: 0,
+        weakPrerequisiteCount: 0,
+        level: 1,
+      ),
+      KnowledgeMapNode(
+        id: 'b',
+        name: '知识点 B',
+        course: '测试课程',
+        category: 'topic',
+        weight: 1,
+        external: false,
+        hasRecord: false,
+        status: 'unseen',
+        needsReview: false,
+        practiceCount: 0,
+        evidenceCount: 0,
+        weakPrerequisiteCount: 0,
+        level: 2,
+      ),
+    ];
+    const edges = [
+      KnowledgeMapEdge(from: 'course', to: 'a', type: 'course_root'),
+      KnowledgeMapEdge(from: 'a', to: 'b', type: 'prerequisite'),
+      KnowledgeMapEdge(from: 'course', to: 'b', type: 'cross_link'),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: esaTheme(brightness: Brightness.dark),
+        home: Scaffold(
+          body: KnowledgeGraphCanvas(
+            visibleNodes: nodes,
+            edges: edges,
+            onNodeTap: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('knowledge-tree-edge-count-2')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('knowledge-tree-edge-count-3')),
+      findsNothing,
+    );
   });
 
   testWidgets('从知识点开始学习会建立独立新对话', (tester) async {
@@ -471,5 +659,28 @@ void main() {
 
     expect(api.bound, isTrue);
     expect(find.text('递归'), findsOneWidget);
+  });
+
+  test('does not let an older refresh overwrite the newest map', () async {
+    final api = _RacingKnowledgeApi()
+      ..sessionId = 'session-a'
+      ..userId = 'user-a';
+    final state = AppState(api: api);
+    addTearDown(state.dispose);
+
+    final older = state.loadKnowledgeMap('数据结构');
+    final newer = state.loadKnowledgeMap('数据结构', forceRefresh: true);
+    expect(api.requests, hasLength(2));
+
+    api.requests[1].complete(
+      const KnowledgeMapData(course: 'newest', nodes: [], edges: []),
+    );
+    await newer;
+    api.requests[0].complete(
+      const KnowledgeMapData(course: 'older', nodes: [], edges: []),
+    );
+    await older;
+
+    expect(state.cachedKnowledgeMap('数据结构')?.course, 'newest');
   });
 }
