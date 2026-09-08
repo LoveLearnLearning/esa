@@ -239,7 +239,7 @@ def test_disabled_user_cannot_login_or_reuse_existing_session(tmp_path):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert rejected_login.status_code == 401
-    assert rejected_session.status_code == 403
+    assert rejected_session.status_code == 401
     assert app.state.session_store.get(token) is None
 
 

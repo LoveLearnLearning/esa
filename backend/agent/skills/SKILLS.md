@@ -1,8 +1,5 @@
 # ESA Skill 规范
 
-> 最后核对：2026-09-08。`backend/agent/skills/**/*.md` 是运行时可执行配置，不是普通
-> 说明文档；修改正文或 frontmatter 后必须运行依赖校验与 Workspace 测试。
-
 每个 Skill 使用 YAML frontmatter 声明契约。`backend/agent/tools/skills.py`
 会在运行时校验 Skill -> Tool 和 Skill -> Skill 依赖，发现漂移时直接报错。
 
