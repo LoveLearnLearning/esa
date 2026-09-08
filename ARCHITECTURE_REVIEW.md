@@ -1,5 +1,10 @@
 # ESA 代码架构审查
 
+> 历史审查快照：本文结论基于 2026-08-13 的代码。此后 Core Router、Workspace
+> Runtime、分域 Skill/Tool、CoreMemory V2 和应用装配已发生较大变化，因此问题列表
+> 不能直接视为 2026-09-08 的当前缺陷。当前事实以源码、测试、
+> [TODO.md](TODO.md) 和 [COMPETITION_AUDIT.md](COMPETITION_AUDIT.md) 为准。
+
 > 审查日期：2026-08-13  
 > 审查范围：当前仓库中的 FastAPI 后端、Agent/记忆模块、SQLite Store、Flutter 前端及相关测试。  
 > 本文只记录架构问题与改进方向，不包含业务代码修改。

@@ -1,79 +1,99 @@
 # 竞赛交付前工程审查
 
-> 审查日期：2026-09-05
+> 最新审查：2026-09-08，代码基线 `main@6089606`。
 >
-> 范围：当前 `main` 分支 `5c8b652` 之后的未提交修复，以及后端和 Flutter 前端的可重复质量验证。
+> 本文只报告当前工作机实际执行结果。它不证明公网 Demo、模型服务、Qdrant、MinerU、邮件、沙箱或真实用户流程已经在比赛目标环境通过。
 
-## 结论
+## 1. 当前结论
 
-本轮审查修复了认证隔离、个人知识库永久清理、沙箱前置校验、Flutter 异步状态竞态和测试稳定性问题。修复后，后端质量门禁和非视觉前端测试均通过，Web release 构建成功。
+代码功能面已覆盖学习、教学、科研、附件、个人知识库、RAG、LSP、代码执行、记忆、数据集与 LoRA 评测主链路。当前阻断不是“模块不存在”，而是质量契约存在 1 项漂移、Flutter SDK 在本机不可用、条件性外部依赖尚未完成统一目标环境验收，以及比赛要求的真实用户与视频材料仍待人工完成。
 
-这份记录不等同于公网发布验收。真实模型、邮件、Qdrant、沙箱运行时、外部语料和部署链路仍需在比赛环境使用真实账号和配置执行人工验收。
+## 2. 2026-09-08 本机验证
 
-## 已修复问题
-
-### 后端与数据隔离
-
-- 个人知识库 API 测试夹具显式注入 `app.state.user_store`，避免测试绕过生产认证依赖。
-- 个人知识库用户永久清理现在删除 `personal_knowledge_base_catalogs`；对历史上已标记 `applied` 或 `completed` 的 purge 重试也会补清残留目录。
-- purge 完成后继续保留用户访问和重新创建知识库的隔离栅栏，避免删除完成后重新写入旧租户。
-- Qdrant 查询测试同时验证 `scope`、`visible` 和 `content_role`，不再依赖条件字典的顺序。
-- 迁移测试依据 `MIGRATIONS` 注册表计算预期数量，不再硬编码历史版本数。
-- 沙箱缺少 installer 时 fail-closed，并在启动子进程前返回明确错误；测试不再依赖当前 Python 环境是否恰好安装 pip。
-
-### Flutter 可靠性
-
-- 首页“继续学习”、注册验证码和教师新建班级按钮增加稳定测试 key，避免依赖 `FilledButton.icon` 等私有运行时类型。
-- 注册邮箱发生变化时使旧验证码失效，覆盖验证码请求先后于邮箱变化的两种时序。
-- `TeacherShell` 的概览加载、班级/分组/对话操作捕获会话身份，阻止登出或切换账号后的迟到响应回写。
-- 教师弹窗使用弹窗内部管理的 `TextFormField`，避免外部 controller 在关闭动画期间提前释放。
-- `AppState` 的分组创建、编辑、置顶、删除、对话移动、重命名和删除操作均阻止旧会话或已替换列表对象继续修改当前状态。
-- 失败的教师侧边栏操作统一显示错误提示，避免接口失败静默。
-
-## 验证证据
-
-以下命令均在 2026-09-05 执行；后端 CI 等价检查使用隔离的 Python 3.10.12 环境 `/tmp/esa-ci-verification`。
-
-### 后端
+### 后端测试收集
 
 ```text
-python -m ruff check .       -> All checks passed!
-python -m mypy              -> Success: no issues found in 5 source files
-python -m compileall -q backend -> passed
-python -m pytest -q         -> 711 passed, 70 skipped, 5 warnings
+python -m pytest --collect-only -q
+-> 786 tests collected
+-> 2 external MinerU regression tests skipped during collection summary
 ```
 
-跳过项是环境或外部材料依赖：MinerU 多格式/PDF fixture、真实 RAG 语料和评测材料、`clangd`。警告主要来自 FastAPI/Starlette/httpx 弃用提示，以及一个测试中 asyncio 子进程在事件循环关闭时的清理告警；没有失败测试。
-
-### 前端
+### 后端全量测试
 
 ```text
-flutter test --concurrency=1 [排除 visual_audit_test.dart] -> 222 tests passed
-flutter analyze                                      -> No issues found
-flutter build web --release                          -> Built build/web
+python -m pytest -q
+-> 717 passed, 70 skipped, 1 failed, 3 warnings
+-> 45.59s
 ```
 
-批量 Flutter 测试第一次受当前 shell 的 HTTP 代理变量影响，测试壳无法连接本机端口；清除 `http_proxy`、`https_proxy`、`HTTP_PROXY`、`HTTPS_PROXY` 和 `ALL_PROXY` 后串行执行通过。这是验证环境问题，不是应用测试失败。
-
-视觉 golden 测试的 8 个截图在原始 `HEAD` 和本工作树上完全相同地失败：
+唯一失败：
 
 ```text
-landing desktop 0.59%   landing mobile 1.44%
-conversation desktop 0.67%   conversation mobile 1.52%
-knowledge desktop 0.55%   knowledge mobile 0.66%
-research desktop 0.48%   research mobile 1.59%
+backend/tests/test_production_proxy.py::
+  test_disabled_user_cannot_login_or_reuse_existing_session
+
+implementation: disabled user's reused Session returns 401
+test expectation: 403
 ```
 
-因此本轮没有覆盖或更新 goldens；这些失败属于当前渲染环境与既有截图基线漂移，仍应在比赛目标浏览器和固定渲染环境重新验收。
+`backend/core/web/deps.py` 对不存在、过期、被停用账号的 Session 都撤销后返回 `401`；`API.md` 也使用这一统一认证语义。需要决定是修正测试，还是恢复“已认证但被禁用”为 `403` 的旧契约，决定前不能声称全量后端测试通过。
 
-## 仍需人工验收
+70 个跳过项主要来自：外部 MinerU 多格式 fixture、真实 RAG corpus/evaluation artifacts 和本机未安装 `clangd`。这意味着核心单元/契约测试覆盖较广，但不能替代真实文档、真实索引和语言服务器验收。
 
-- 使用真实学生和教师账号完成注册、登录、登出、验证码、班级邀请、作业提交、教师复核和反馈发布全流程。
-- 在配置真实邮件服务、主/辅模型、Qdrant 和附件存储后验证超时、错误降级、来源引用和数据隔离。
-- 在安装 bubblewrap、installer 和资源限制工具的目标机器上执行真实沙箱命令，验证 CPU、内存、时间、网络和文件系统边界。
-- 使用比赛要求的真实课程语料执行 MinerU、RAG 召回、重排和引用质量验收，并补齐当前跳过的外部 fixture。
-- 在目标公网域名、HTTPS、Nginx SSE 代理、Flutter Web 缓存更新和多浏览器/移动端上执行发布验收。
+3 个警告为 FastAPI/Starlette/httpx 弃用提示，不影响本轮执行结果，但应进入依赖升级计划。
 
-## 未宣称完成的事项
+### Flutter
 
-`TODO.md` 中的公网 Demo、备份恢复、日志告警、生产级 LMS、真实语料评测、部署固化等事项仍保持未完成。代码修复和本地自动化通过不代表这些运行环境工作已完成。
+```text
+flutter analyze
+flutter test --concurrency=1 --exclude-tags=visual
+-> 当前工作机 PATH 中没有 flutter，可执行文件未找到
+```
+
+因此本轮没有新的 Flutter analyze/test/build 结论。仓库中存在既有 `frontend/build/`，但构建产物不能证明当前源代码在本机重新构建成功。
+
+### 技术报告证据校验
+
+```text
+python deliverables/technical-report/verify_report_claims.py
+-> All report claims verified.
+```
+
+该脚本核验：知识库 V1 数量、运行时课程图谱数量、数据集/切分数量、人工拒绝裁定数量、440 道考卷指纹和 3 个真实评测 Case 的逐项得分。它不核验技术报告中的公网运行、截图、用户反馈或本轮测试总数。
+
+## 3. 可核验代码事实
+
+- OpenAPI：118 个 path、147 个 HTTP operation，另有 LSP WebSocket。
+- 来源对齐知识库 V1：16 门课程、215 个知识点、186 条前置关系、16 个登记源、48 条标准答案、430 条检索标注、645 道题。
+- 运行时完整课程图谱：47 门课程、479 个知识点、448 条前置关系。
+- Agent 数据：1,421 条 IR；候选训练池 1,094 条；训练/验证/测试 1,003/43/48；440 道主考卷、55 道补充集。
+- 评测考卷指纹：`d441611fb5556b53#440`。
+
+以上数量由仓库数据和校验脚本确认。目标环境是否加载同一模型、LoRA、manifest 和数据仍需运行时证明。
+
+## 4. 仍需目标环境验收
+
+- 主模型与 LoRA 是否按预期加载，辅助模型是否可用，模型/适配器/考卷指纹是否匹配。
+- MCP 包下载、`YDC_API_KEY`、arXiv、外网与超时降级。
+- Qdrant collection/deployment generation、Embedding 维度、RAG 来源定位与前端来源卡片。
+- MinerU、多格式 DocIR、视觉增强和大文件/异常文件路径。
+- 个人知识库 mutation、recovery、snapshot、删除和跨用户隔离。
+- 邮件验证码投递、限流、失败清理和临时评委账号。
+- Bubblewrap 沙箱的 CPU、内存、时间、网络、进程和文件边界。
+- `clangd`/`pyright` 的 LSP 认证、并发限额、断线和降级。
+- Nginx TLS、SSE、WebSocket、200 MiB 上传、Service Worker/缓存和多浏览器移动端。
+
+## 5. 比赛材料缺口
+
+- 盖章并审核通过的报名表。
+- 负责人签字或团队盖章的伦理与安全合规声明。
+- 可直接体验的临时账号及独立密码交付方式。
+- 模型适配器文件或 ServiceID 和校验信息。
+- 至少 2 名真实目标用户本人确认的试用记录。
+- 3 个典型问题的原始输出、来源截图和人工判定归档。
+- 不超过 3 分钟的真实应用交互视频。
+- 赛题 9 月 5 日/9 月 15 日日期冲突的赛事方确认。
+
+## 6. 历史验证记录
+
+2026-09-05 的历史审查曾在隔离 Python 3.10.12 环境报告 `711 passed, 70 skipped`，并报告 222 项非视觉 Flutter 测试、`flutter analyze` 和 Web release 构建通过。该结果只对当日代码和工具链成立；当前测试集合已增长到 786 项，不能继续把 711/222 当作 2026-09-08 的现状。

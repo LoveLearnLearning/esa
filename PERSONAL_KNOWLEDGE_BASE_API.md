@@ -1,5 +1,10 @@
 # ESA 个人知识库前后端接口契约
 
+> 当前状态（2026-09-08）：多知识库管理、文件上传/删除、异步构建、重建、统一检索、
+> 原文件下载和受控在线预览均已接入。本文是接口语义说明；准确路径和字段以当前
+> FastAPI OpenAPI Schema、`backend/core/web/routers/personal_knowledge_base.py` 与
+> `frontend/lib/api/api_client.dart` 为准。
+
 本文档对应前端“个人知识库”页面。学生和教师共用同一组接口，数据必须按当前登录用户隔离。前端不传 `user_id`，后端只能从 Bearer Session 中解析用户身份。一个用户可以创建多个命名个人知识库；每轮对话至多选择其中一个，并可独立叠加系统公共知识库。
 
 ## 1. 通用约定

@@ -1,6 +1,6 @@
 # ESA 工程优化与修复记录
 
-> 最后核对：2026-08-09。本文合并原 `CHANGED_FILES.md`、`FIXED_ISSUES.md`
+> 最后核对：2026-09-08。本文合并原 `CHANGED_FILES.md`、`FIXED_ISSUES.md`
 > 和旧版优化说明，只保留当前代码仍然有效的设计与验证结论。
 
 ## Learning Engine v2

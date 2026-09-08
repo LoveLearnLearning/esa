@@ -1,5 +1,8 @@
 # RAG 内部独立 Chunk 子模块
 
+> 最后核对：2026-09-08。本文描述当前 `rag.chunk` 代码契约；本地 `artifacts/` 下的
+> collection 是未版本化运行工件，数量随语料和配置变化。
+
 依赖方向固定为 `DocIR ← rag.chunk ← RAG 检索链`。本子模块读取当前唯一 DocIR contract，生成可复用的 ChunkDocument 和 ChunkCollection；不导入 RAG 的召回、融合、重排或服务模块，也不调用模型、Qdrant 或 VLM。
 
 默认策略：正文目标 800 字、硬上限 1200 字、短块治理阈值 120 字；长 Element 会向前调整可避免的短尾，同 Section、同内容角色的普通草稿会先整块合并、再移动完整 Fragment 重平衡。相邻普通 Chunk 重叠一个完整元素；表格按连续行组切分并重复表头，数据行不重叠；无文字 Figure 不生成占位 Chunk。

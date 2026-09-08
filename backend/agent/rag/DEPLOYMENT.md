@@ -1,5 +1,9 @@
 # Unified Qdrant deployment and Agent contracts
 
+> Status checked 2026-09-08. The identifiers below are a historical rebuild
+> input, not the active deployment. Runtime manifests and health checks are the
+> only authority for a running environment.
+
 The following identity describes the historical public-only baseline. It is
 input to a rebuild, not the name or schema that a new deployment must preserve.
 Runtime artifacts remain outside Git and must be provisioned before

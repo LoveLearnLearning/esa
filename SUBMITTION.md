@@ -1,6 +1,8 @@
 # 在这里 submit 更改
 
-> 本文件是按时间记录的开发日志，早期“当前注意事项”保留当时语境，不代表 2026-08-04 的现状；最新状态请看 [README.md](README.md)、[API.md](API.md) 和 [TODO.md](TODO.md)。
+> 历史开发日志：本文件只保留各时间点的提交说明，早期“当前注意事项”、测试数量和
+> 架构描述不代表 2026-09-08 的现状。最新状态请看 [README.md](README.md)、
+> [API.md](API.md)、[TODO.md](TODO.md) 和 [COMPETITION_AUDIT.md](COMPETITION_AUDIT.md)。
 
 ## 2026-07-19 第一次大提交
 

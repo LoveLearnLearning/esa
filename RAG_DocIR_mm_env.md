@@ -1,5 +1,10 @@
 # ESA DocIR、RAG 与 mm 统一环境安装指南
 
+> 当前状态（2026-09-08）：安装路径已按当前代码、`.env.example` 和 CLI 再核对。
+> DocIR、公共/个人知识库 RAG 与多模态附件摄取均有实现，但仓库默认关闭 RAG、个人
+> 知识库和 mm；目标环境必须显式启用并完成 MinerU、Qdrant、Embedding、Reranker、
+> 视觉模型与真实语料的端到端验收。
+
 本文整合当前 ESA 仓库中 DocIR、RAG（Retrieval-Augmented Generation）和 mm
 （多模态附件摄取）的环境安装、配置、数据准备、启动与验证流程。
 
@@ -107,9 +112,10 @@ PyTorch wheel 必须根据目标驱动/CUDA 选择；上面的 cu128 是参考�
 python -m pip install "httpx[socks]"
 ```
 
-### 3.2 参考部署的实测状态
+### 3.2 历史参考部署的实测状态
 
-2026-08-11 按当前 checkout 重新只读检查，而不是仅引用历史，得到：
+以下是 2026-08-11 当日 checkout 的只读检查结果，只能用于复现和差异排查，不能代表
+2026-09-08 或新机器的当前环境：
 
 | 项目 | 当前只读检查结果 |
 | --- | --- |
@@ -463,7 +469,7 @@ MM_ENABLED=true
 MM_ARTIFACT_ROOT=runtime/mm
 MM_MINERU_COMMAND=bin/run-mineru
 MINERU_BIN=/path/to/esa-mineru/bin/mineru
-MM_DIRECT_CONTEXT_TOKEN_LIMIT=48000
+MM_DIRECT_CONTEXT_TOKEN_LIMIT=80000
 MM_TOKENIZER_PATH=/path/to/tokenizer-or-model
 MM_VLM_BASE_URL=http://127.0.0.1:8000/v1
 MM_VLM_MODEL=Qwen3-VL

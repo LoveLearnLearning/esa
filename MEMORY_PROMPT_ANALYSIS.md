@@ -1,5 +1,10 @@
 # 记忆功能与提示词系统 — 行业对标分析报告
 
+> 历史对标快照：正文评分表基于 2026-08-04，部分“全量注入”“无管理界面”等描述
+> 已被后续实现替代。2026-09-08 的当前状态请优先查看
+> [MEMORY_PROMPT_ANALYSIS_fix.md](MEMORY_PROMPT_ANALYSIS_fix.md)、
+> [CORE_MEMORY_DESIGN.md](CORE_MEMORY_DESIGN.md) 和 [TODO.md](TODO.md)。
+
 > 当前状态（2026-08-09）：CoreMemory 已改为 Tool 按需检索，Prompt 与 Skill 已收口，
 > Profile V2 已实现；容量预算、冲突/过期策略和系统化评测仍待完成。本文评分表保留
 > 2026-08-04 的基线快照，不代表当前实现得分。最新任务以 [TODO.md](TODO.md) 为准，

@@ -1,5 +1,7 @@
 # MM 附件摄取
 
+> 最后核对：2026-09-08，代码基线 `main@6089606`。本模块代码默认关闭；是否可用还取决于 MinerU、辅助视觉模型和目标运行环境。
+
 `backend.agent.mm` 把单个用户附件转换成可直接注入或可检索的独立上下文：
 
 ```text
@@ -8,7 +10,7 @@ source → MinerU → DocIR → VLM descriptions → final DocIR → Markdown
                                                         └─ > token limit: in-memory RAG
 ```
 
-- 默认直注上限是 `MM_DIRECT_CONTEXT_TOKEN_LIMIT=48000`，由
+- 默认直注上限是 `MM_DIRECT_CONTEXT_TOKEN_LIMIT=80000`，由
   `MM_TOKENIZER_PATH` 指向的真实 tokenizer 精确计数。
 - VLM 使用 OpenAI-compatible `/chat/completions`，配置为 `MM_VLM_BASE_URL`、
   `MM_VLM_MODEL` 和可选的 `MM_VLM_API_KEY`。

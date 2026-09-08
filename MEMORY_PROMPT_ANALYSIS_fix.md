@@ -1,5 +1,9 @@
 # 记忆功能与提示词系统分析报告（资源约束修订版）
 
+> 状态说明（2026-09-08）：本文是针对 2026-08-13 代码与 6 张 A800 约束形成的设计
+> 评估。CoreMemory V2、Workspace Runtime、数据集和 LoRA 主评测均已有后续实现；正文
+> 中的阶段建议保留为决策背景，不等同于当前待办。当前任务以 [TODO.md](TODO.md) 为准。
+
 > 修订日期：2026-08-13  
 > 修订依据：原 [MEMORY_PROMPT_ANALYSIS.md](MEMORY_PROMPT_ANALYSIS.md)、当前代码、
 > [TODO.md](TODO.md)、[OPTIMIZATION_NOTES.md](OPTIMIZATION_NOTES.md)，以及项目方提供的

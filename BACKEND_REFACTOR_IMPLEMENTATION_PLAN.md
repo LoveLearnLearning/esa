@@ -1,5 +1,10 @@
 # ESA 后端重构实施总方案
 
+> 当前状态（2026-09-08）：本文所述 Core Router、Workspace Runtime、分域
+> Skill/Tool、CoreMemory V2、Research Workflow 和 Agent Action 主体已经进入当前
+> 代码。本文保留为架构决策与实施顺序记录，不再作为未完成任务清单；剩余工作以
+> [TODO.md](TODO.md) 和当前测试结果为准。
+
 > 状态：已确认架构的实施基线
 >
 > 日期：2026-08-14

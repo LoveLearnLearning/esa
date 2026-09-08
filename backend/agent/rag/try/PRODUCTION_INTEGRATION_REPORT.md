@@ -1,5 +1,9 @@
 # Metadata / Context Projection 生产接入报告
 
+> 历史接入记录：本文记录 Metadata/Context Projection 这一轮改造时的生产链路与验证
+> 结论，不是 RAG 全模块的当前入口文档。2026-09-08 的部署和运行契约以
+> `backend/agent/rag/README.md`、`backend/agent/rag/DEPLOYMENT.md`、当前代码和测试为准。
+
 ## 1. Production Flow Before
 
 改造前的真实生产链路如下：

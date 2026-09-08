@@ -1,8 +1,13 @@
 # ESA 个人知识库后端实现清单
 
+> 当前状态（2026-09-08）：清单中的 MVP、Agent 检索和在线预览阶段已实现。本文保留
+> 作为实现与验收记录，不再表示仍需从零开发；后续工作以 [TODO.md](TODO.md) 为准。
+
 本文档把 [PERSONAL_KNOWLEDGE_BASE_API.md](PERSONAL_KNOWLEDGE_BASE_API.md) 转换为可实施、可测试、可验收的任务清单。MVP 的 4 个管理接口、聊天 Agent 个人资料检索闭环，以及后续原文件/在线预览阶段均已进入同一验收记录。
 
-部署事实和路径基线以 [SUPERCOMPUTER_ENVIRONMENT.md](SUPERCOMPUTER_ENVIRONMENT.md) 为准。该文档记录的是 2026-08-16 至 2026-08-17 的宿主机实测历史值；每个新 Slurm Job 仍须在宿主机执行只读检查，不能把历史 PID、GPU 分配或 `/tmp` 路径当作当前事实。
+部署事实和路径基线必须由目标机器的只读检查、`.env` 和作业脚本共同确认。仓库不再
+包含旧的 `SUPERCOMPUTER_ENVIRONMENT.md` 快照；每个新 Slurm Job 都不能把历史 PID、
+GPU 分配或 `/tmp` 路径当作当前事实。
 
 ## 1. 范围与结论
 
@@ -164,7 +169,11 @@ backend/agent/rag/tests/test_personal_knowledge_base_index.py
 
 推荐共享全局 RAG 的 Embedding 模型配置与维度，但个人库使用独立 Qdrant collection，避免改变冻结的全局部署身份。
 
-超算当前基线为 Qdrant `1.18.3`、`127.0.0.1:6333`、Embedding 模型 `/remote_dir/home/chenxuzhao/models/Qwen3-Embedding-4B`、维度 `2560`。这些值应作为部署默认参考而不是写死在代码中，启动时仍要校验模型路径、向量维度和服务可达性。
+2026-08-16 至 2026-08-17 的历史超算快照使用 Qdrant `1.18.3`、
+`127.0.0.1:6333`、Embedding 模型
+`/remote_dir/home/chenxuzhao/models/Qwen3-Embedding-4B` 和维度 `2560`。这些值只可作为
+参考，不能视为当前机器事实或写死在代码中；每次启动仍要校验版本、模型路径、向量维度
+和服务可达性。
 
 ## 5. 数据库与状态模型
 
