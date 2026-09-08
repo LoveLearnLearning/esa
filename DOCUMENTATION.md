@@ -1,6 +1,6 @@
 # ESA 文档索引与可信级别
 
-> 最后核对：2026-09-08，代码基线 `main@6089606`。
+> 最后核对：2026-09-08，代码基线 `main@c485941`。
 >
 > 本索引用于解决仓库中“现状文档、设计方案、历史审查和竞赛材料混在一起”的问题。判断系统当前行为时，优先顺序始终是：可执行代码与测试 > 运行配置 > 当前契约文档 > 历史记录。
 
@@ -39,6 +39,8 @@
 | `TEACHING_STUDENT_DEMO.md` | 教师/学生双账号教学闭环 |
 | `DATASET_GENERATION.md` | 数据工程方法与当前定版产物索引 |
 | `backend/scripts/dataset/docs/06-效果验证材料.md` | LoRA 固定考卷评测结果 |
+| `deliverables/technical-report/星知智链技术报告.md` | 可重建的技术报告正文与证据口径 |
+| `deliverables/competition/README.md` | 按赛题 `01—07` 整理的提交材料、生成命令与人工交接状态 |
 | `documents/md/掌握度算法理论依据.md` | 历史算法研究记录；当前参数以 Student Model V2 源码为准 |
 | `documents/md/文献综述.md` | 2026-07-31 文献整理；参赛引用前需重新核对原文 |
 

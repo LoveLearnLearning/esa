@@ -1,6 +1,6 @@
 # ESA Language Server deployment
 
-> Last verified against `main@6089606` on 2026-09-08. The application-level LSP switch is currently enabled in code; each language remains conditionally available based on its configured executable.
+> Last verified against `main@c485941` on 2026-09-08. The application-level LSP switch is currently enabled in code; each language remains conditionally available based on its configured executable.
 
 The browser connects to `wss://<frontend-host>/api/lsp/<language>`. Nginx
 upgrades that endpoint and the ESA backend authenticates the first WebSocket

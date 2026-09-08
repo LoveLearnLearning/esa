@@ -2,7 +2,7 @@
 
 ESA（Efficient Study Agent）是面向计算机学科教学、学习与科研协作的可信智能体平台。系统以课程知识图谱、学习证据、可追溯检索、受控工具和人工复核为基础，把学生个性化学习、教师作业诊断和科研项目辅助组织在明确的身份与资源边界内。
 
-> 文档最后核对：2026-09-08，代码基线 `main@6089606`。请先阅读 [DOCUMENTATION.md](DOCUMENTATION.md) 了解文档可信级别。当前接口以 [API.md](API.md) 为导航、以 FastAPI OpenAPI 与 Router 代码为最终事实；当前待办只看 [TODO.md](TODO.md)。
+> 文档最后核对：2026-09-08，代码基线 `main@c485941`。请先阅读 [DOCUMENTATION.md](DOCUMENTATION.md) 了解文档可信级别。当前接口以 [API.md](API.md) 为导航、以 FastAPI OpenAPI 与 Router 代码为最终事实；当前待办只看 [TODO.md](TODO.md)。
 
 ## 当前可运行能力
 
@@ -107,7 +107,8 @@ Web release：
 → 学生继续针对性学习，教师查看班级诊断
 ```
 
-具体操作与权限边界见 [TEACHING_STUDENT_DEMO.md](TEACHING_STUDENT_DEMO.md)。
+具体操作与权限边界见 [TEACHING_STUDENT_DEMO.md](TEACHING_STUDENT_DEMO.md)。比赛提交材料、
+双角色体验说明和 3 分钟视频脚本见 [deliverables/competition/README.md](deliverables/competition/README.md)。
 
 ## 质量检查
 
@@ -116,7 +117,7 @@ python -m pip install -r requirements-dev.txt
 make quality
 ```
 
-2026-09-08 在当前 Python 3.13 环境实测：`786` 项收集，`717 passed, 70 skipped, 1 failed`。唯一失败是停用用户复用旧 Session 的状态码测试：实现返回 `401`，测试仍期待 `403`；详见 [COMPETITION_AUDIT.md](COMPETITION_AUDIT.md)。当前环境没有 Flutter SDK，因此本轮未复跑 Flutter analyze/test/build，不沿用旧结果冒充本轮验证。
+2026-09-08 在当前 Python 3.13 环境实测：`718 passed, 70 skipped, 3 warnings`，Ruff 与 mypy 同时通过。停用用户复用旧 Session 的测试已统一到 API 的 `401` 认证失败契约。当前环境没有 Flutter SDK，因此本轮未复跑 Flutter analyze/test/build；前端只保留 2026-09-05 的历史验证记录，详见 [COMPETITION_AUDIT.md](COMPETITION_AUDIT.md)。
 
 ## 开发约定
 

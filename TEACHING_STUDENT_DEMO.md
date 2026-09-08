@@ -143,9 +143,8 @@ flutter test
 
 2026-09-08 本机验证结果：
 
-- Pytest 收集到 786 项；完整运行结果为 `717 passed, 70 skipped, 1 failed`。
-- 唯一失败是禁用用户复用旧 Session 时测试期待 `403`，而当前实现撤销 Session 并返回
-  `401`；该契约漂移必须修正后再作为全绿证据。
+- 2026-09-08 后端完整运行结果为 `718 passed, 70 skipped, 3 warnings`。
+- 停用用户复用旧 Session 的测试已与当前 `401` 认证失败契约统一，修复提交为 `c485941`。
 - 当前机器没有可用 Flutter SDK，因此本轮未重跑 `flutter analyze` 或 `flutter test`。
 - RAG、Qdrant、vLLM、MinerU、视觉模型、邮件和 Bubblewrap 等条件性依赖仍需目标环境
   端到端验证。

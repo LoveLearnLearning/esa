@@ -1,6 +1,6 @@
 # ESA 移动端设计系统与实现规范
 
-> 最后核对：2026-09-08，代码基线 `main@6089606`。结构尺寸来自 `lib/theme/esa_mobile.dart`，颜色必须以 `lib/theme/esa_theme.dart` 为准。
+> 最后核对：2026-09-08，代码基线 `main@c485941`。结构尺寸来自 `lib/theme/esa_mobile.dart`，颜色必须以 `lib/theme/esa_theme.dart` 为准。
 
 本规范适用于 ESA 的 Flutter iOS、Android 与移动 Web 界面。目标是形成克制、专业、可长期高频使用的 AI 学习工作台，而不是营销页面。现有业务路由与数据逻辑优先保留，移动端通过响应式组件调整信息优先级。
 
