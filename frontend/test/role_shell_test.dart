@@ -137,6 +137,15 @@ class _RoleShellApi extends ApiClient {
   };
 
   @override
+  Future<List<Map<String, dynamic>>> getTeachingClassKnowledgePoints(
+    String classId,
+  ) async => const [
+    {'kp_id': '链表', 'name': '链表'},
+    {'kp_id': '顺序表', 'name': '顺序表'},
+    {'kp_id': '栈', 'name': '栈'},
+  ];
+
+  @override
   Future<List<TeachingSubmission>> listTeachingSubmissions(String id) async =>
       const [];
 

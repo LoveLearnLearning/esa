@@ -139,6 +139,43 @@ def class_detail(class_id: str, request: Request, session: CurrentSession) -> di
     }
 
 
+@router.get("/classes/{class_id}/knowledge-points")
+def class_knowledge_points(
+    class_id: str, request: Request, session: CurrentSession
+) -> dict:
+    """返回班级 canonical course 的完整知识点目录，供教师创建作业时选择。
+
+    数据直接来自课程知识图谱，与班级是否已有正式教学证据无关，
+    因此全新班级也能在第一份作业中关联真实知识点。
+
+    Args:
+        class_id: str => 班级 ID。
+        request: Request => 当前 HTTP 请求。
+        session: CurrentSession => `session` 参数。
+
+    Returns:
+        dict => 处理结果。
+    """
+    user, store = _context(request, session)
+    classroom = _owned_class(store, class_id, user.id)
+    points = request.app.state.knowledge_graph_store.get_course_points(
+        classroom["canonical_course"]
+    )
+    return {
+        "class_id": class_id,
+        "course": classroom["canonical_course"],
+        "knowledge_points": [
+            {
+                "kp_id": point["id"],
+                "name": point["name"],
+                "weight": point["weight"],
+                "category": point["category"],
+            }
+            for point in points
+        ],
+    }
+
+
 @router.post("/classes/{class_id}/invitations", status_code=status.HTTP_201_CREATED)
 def invite(
     class_id: str, body: InviteStudentRequest, request: Request, session: CurrentSession

@@ -2674,6 +2674,25 @@ class ApiClient {
     return Map<String, dynamic>.from(_decode(response) as Map);
   }
 
+  /// 班级 canonical course 的完整课程知识点目录，供教师创建作业时选择。
+  ///
+  /// 与班级 dashboard 的 knowledge_points 不同：这里来自课程知识图谱，
+  /// 不依赖班级是否已有正式教学证据。
+  Future<List<Map<String, dynamic>>> getTeachingClassKnowledgePoints(
+    String classId,
+  ) async {
+    final response = await _get(
+      _uri('/teaching/classes/$classId/knowledge-points'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode != 200) _fail(response);
+    final data = Map<String, dynamic>.from(_decode(response) as Map);
+    return (data['knowledge_points'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
   Future<void> inviteStudent(String classId, String username) async {
     final response = await _post(
       _uri('/teaching/classes/$classId/invitations'),

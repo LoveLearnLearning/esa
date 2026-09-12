@@ -311,8 +311,10 @@ class _TeachingClassPageState extends State<TeachingClassPage> {
     final draft = await showDialog<_AssignmentDraftResult>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) =>
-          _CreateAssignmentDialog(knowledge: _knowledge),
+      builder: (dialogContext) => _CreateAssignmentDialog(
+        classId: widget.classroom.id,
+        course: widget.classroom.course,
+      ),
     );
     if (draft != null && mounted) {
       try {
@@ -770,8 +772,9 @@ class _QuestionDraft {
 }
 
 class _CreateAssignmentDialog extends StatefulWidget {
-  const _CreateAssignmentDialog({required this.knowledge});
-  final List<Map<String, dynamic>> knowledge;
+  const _CreateAssignmentDialog({required this.classId, required this.course});
+  final String classId;
+  final String course;
 
   @override
   State<_CreateAssignmentDialog> createState() =>
@@ -784,6 +787,10 @@ class _CreateAssignmentDialogState extends State<_CreateAssignmentDialog> {
   final List<_QuestionDraft> _questions = [_QuestionDraft()];
   DateTime? _dueAt;
   String? _error;
+  List<Map<String, dynamic>> _knowledge = const [];
+  bool _loadingKnowledge = true;
+  String? _knowledgeError;
+  bool _knowledgeRequested = false;
 
   @override
   void dispose() {
@@ -795,14 +802,102 @@ class _CreateAssignmentDialogState extends State<_CreateAssignmentDialog> {
     super.dispose();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_knowledgeRequested) {
+      _knowledgeRequested = true;
+      _loadKnowledge();
+    }
+  }
+
+  /// 加载班级 canonical course 的完整知识点目录。
+  ///
+  /// 数据来自课程知识图谱而非班级 dashboard 的已有证据聚合，
+  /// 因此全新班级也能在第一份作业中关联真实知识点。
+  Future<void> _loadKnowledge() async {
+    setState(() {
+      _loadingKnowledge = true;
+      _knowledgeError = null;
+    });
+    try {
+      final points = await AppScope.of(
+        context,
+      ).api.getTeachingClassKnowledgePoints(widget.classId);
+      if (!mounted) return;
+      setState(() {
+        _knowledge = points;
+        _loadingKnowledge = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadingKnowledge = false;
+        _knowledgeError = error.detail;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loadingKnowledge = false;
+        _knowledgeError = '无法连接教学服务，请稍后重试';
+      });
+    }
+  }
+
   List<MapEntry<String, String>> get _knowledgeOptions {
     final values = <String, String>{};
-    for (final item in widget.knowledge) {
+    for (final item in _knowledge) {
       final id = item['kp_id']?.toString() ?? item['id']?.toString() ?? '';
       if (id.isEmpty) continue;
       values[id] = item['name']?.toString() ?? id;
     }
     return values.entries.toList();
+  }
+
+  /// 知识点目录的加载状态提示。网络失败与“课程确实没有知识点”分开提示。
+  Widget? get _knowledgeStatus {
+    if (_loadingKnowledge) {
+      return Row(
+        children: [
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '正在加载《${widget.course}》知识点…',
+              style: context.texts.bodySmall,
+            ),
+          ),
+        ],
+      );
+    }
+    if (_knowledgeError != null) {
+      return Row(
+        children: [
+          Expanded(
+            child: Text(
+              '知识点加载失败：$_knowledgeError',
+              style: TextStyle(color: context.scheme.error, fontSize: 12),
+            ),
+          ),
+          TextButton(
+            key: const ValueKey('reload-knowledge-points'),
+            onPressed: _loadKnowledge,
+            child: const Text('重试'),
+          ),
+        ],
+      );
+    }
+    if (_knowledge.isEmpty) {
+      return Text(
+        '《${widget.course}》课程暂无知识点，可先创建不关联知识点的题目。',
+        style: context.texts.bodySmall,
+      );
+    }
+    return null;
   }
 
   Future<void> _pickDueAt() async {
@@ -882,6 +977,7 @@ class _CreateAssignmentDialogState extends State<_CreateAssignmentDialog> {
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).width < 680;
+    final knowledgeStatus = _knowledgeStatus;
     return AlertDialog(
       title: const Text('新建诊断作业'),
       content: SizedBox(
@@ -930,6 +1026,8 @@ class _CreateAssignmentDialogState extends State<_CreateAssignmentDialog> {
               maxLines: 2,
               decoration: const InputDecoration(labelText: '作业说明（可选）'),
             ),
+            const SizedBox(height: 10),
+            ?knowledgeStatus,
             const SizedBox(height: 12),
             Row(
               children: [

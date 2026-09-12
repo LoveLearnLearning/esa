@@ -1,6 +1,6 @@
 # ESA API 契约与路由目录
 
-> 最后核对：2026-09-08，代码基线 `main@c485941`。
+> 最后核对：2026-09-13，代码基线 `main@41cfff0`。
 >
 > 本文是人工导航，不复制全部 Pydantic 字段。精确请求体、响应体、枚举、必填项和状态码以运行中的 `/docs`、`/openapi.json`、`backend/core/web/routers/` 与 `backend/core/web/schemas.py` 为最终事实。
 
@@ -16,7 +16,7 @@
 - 流式响应：`text/event-stream`
 - LSP：WebSocket `/api/lsp/{language}`
 
-2026-09-08 由 `app.openapi()` 生成的目录包含 `118` 个 path、`147` 个 HTTP operation；LSP WebSocket 不计入 OpenAPI operation 数。
+2026-09-13 由 `app.openapi()` 生成的目录包含 `119` 个 path、`148` 个 HTTP operation；LSP WebSocket 不计入 OpenAPI operation 数。
 
 ## 2. 错误与权限
 
@@ -211,6 +211,7 @@ SSE 事件由 `backend/core/web/sse.py` 和前端 `ApiClient` 共同定义。客
 | `GET` | `/teaching/overview` | 教学概览 |
 | `GET/POST` | `/teaching/classes` | 班级列表/创建 |
 | `GET` | `/teaching/classes/{class_id}` | 班级详情 |
+| `GET` | `/teaching/classes/{class_id}/knowledge-points` | 班级 canonical course 完整知识点目录；来自课程知识图谱，不依赖班级已有证据；仅班级教师可读，不暴露学生数据 |
 | `POST` | `/teaching/classes/{class_id}/invitations` | 按精确用户名邀请 |
 | `DELETE` | `/teaching/classes/{class_id}/members/{student_id}` | 移除学生 |
 | `POST` | `/teaching/classes/{class_id}/assignments` | 创建草稿作业 |

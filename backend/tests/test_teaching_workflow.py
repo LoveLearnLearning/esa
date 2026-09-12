@@ -7,6 +7,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from backend.agent.learning.pedagogy_router import PedagogyRouter
+from backend.agent.memories.kg_loader import ensure_knowledge_graph_seeded
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 from backend.agent.learning.evidence_store import LearningEvidenceStore
 from backend.agent.learning.learning_state_service import LearningStateService
@@ -386,3 +387,117 @@ def test_published_homework_feedback_refreshes_cached_student_profile(
     assert PedagogyRouter.route(
         "讲讲链表", profile=after
     ).teaching_depth == "foundation"
+
+
+def test_fresh_class_knowledge_points_come_from_course_graph(tmp_path, monkeypatch):
+    """场景 A：全新班级首次创建作业时，知识点目录来自课程知识图谱而非已有证据。"""
+    app = _app(tmp_path, monkeypatch)
+    ensure_knowledge_graph_seeded(app.state.knowledge_graph_store)
+    client = TestClient(app)
+    _, teacher_headers = _identity(client, "teacher", "teacher")
+    _, student_headers = _identity(client, "student", "student")
+
+    classroom = client.post(
+        "/api/teaching/classes",
+        headers=teacher_headers,
+        json={"name": "数据结构 2026 班", "canonical_course": "数据结构"},
+    )
+    assert classroom.status_code == 201
+    class_id = classroom.json()["class_id"]
+
+    # 全新班级：没有任何提交、反馈，dashboard evidence 为空。
+    dashboard = client.get(
+        f"/api/teaching/classes/{class_id}/dashboard", headers=teacher_headers
+    )
+    assert dashboard.status_code == 200
+    assert dashboard.json()["published_evidence_count"] == 0
+    assert dashboard.json()["knowledge_points"] == []
+
+    # 作业创建器的知识点目录来自课程知识图谱，不依赖班级已有证据。
+    catalog = client.get(
+        f"/api/teaching/classes/{class_id}/knowledge-points",
+        headers=teacher_headers,
+    )
+    assert catalog.status_code == 200
+    assert catalog.json()["course"] == "数据结构"
+    points = catalog.json()["knowledge_points"]
+    kp_ids = {item["kp_id"] for item in points}
+    names = {item["name"] for item in points}
+    for expected in ["链表", "顺序表", "栈", "队列", "算法复杂度"]:
+        assert expected in kp_ids
+        assert expected in names
+
+    # 使用 kp_id="链表" 创建第一份作业成功。
+    first = client.post(
+        f"/api/teaching/classes/{class_id}/assignments",
+        headers=teacher_headers,
+        json={
+            "title": "链表入门诊断",
+            "questions": [
+                {
+                    "question_type": "short_answer",
+                    "prompt": "链表结点包含哪些域？",
+                    "max_points": 10,
+                    "reference_answer": "数据域和指针域",
+                    "kp_id": "链表",
+                }
+            ],
+        },
+    )
+    assert first.status_code == 201
+    assert first.json()["questions"][0]["kp_id"] == "链表"
+
+    # 权限边界：学生 403，非本班教师 404。
+    assert client.get(
+        f"/api/teaching/classes/{class_id}/knowledge-points",
+        headers=student_headers,
+    ).status_code == 403
+    _, other_headers = _identity(client, "other", "teacher")
+    assert client.get(
+        f"/api/teaching/classes/{class_id}/knowledge-points",
+        headers=other_headers,
+    ).status_code == 404
+
+
+def test_assignment_rejects_foreign_course_knowledge_point(tmp_path, monkeypatch):
+    """场景 B：班级不能关联其他课程的知识点，课程归属校验保持不变。"""
+    app = _app(tmp_path, monkeypatch)
+    ensure_knowledge_graph_seeded(app.state.knowledge_graph_store)
+    client = TestClient(app)
+    _, teacher_headers = _identity(client, "teacher", "teacher")
+
+    classroom = client.post(
+        "/api/teaching/classes",
+        headers=teacher_headers,
+        json={"name": "数据结构 2026 班", "canonical_course": "数据结构"},
+    )
+    assert classroom.status_code == 201
+    class_id = classroom.json()["class_id"]
+
+    # 操作系统的知识点对数据结构班级返回课程归属错误。
+    rejected = client.post(
+        f"/api/teaching/classes/{class_id}/assignments",
+        headers=teacher_headers,
+        json={
+            "title": "跨课程知识点",
+            "questions": [
+                {
+                    "question_type": "short_answer",
+                    "prompt": "进程与线程的区别？",
+                    "max_points": 10,
+                    "kp_id": "进程与线程",
+                }
+            ],
+        },
+    )
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == "知识点不属于班级课程"
+
+    # 知识点目录本身也不包含其他课程的点，前后端目录与校验口径一致。
+    catalog = client.get(
+        f"/api/teaching/classes/{class_id}/knowledge-points",
+        headers=teacher_headers,
+    )
+    assert "进程与线程" not in {
+        item["kp_id"] for item in catalog.json()["knowledge_points"]
+    }
