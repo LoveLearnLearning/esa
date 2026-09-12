@@ -1,6 +1,6 @@
 # ESA API 契约与路由目录
 
-> 最后核对：2026-09-13，代码基线 `main@41cfff0`。
+> 最后核对：2026-09-13，代码基线 `main@b6708a7`。
 >
 > 本文是人工导航，不复制全部 Pydantic 字段。精确请求体、响应体、枚举、必填项和状态码以运行中的 `/docs`、`/openapi.json`、`backend/core/web/routers/` 与 `backend/core/web/schemas.py` 为最终事实。
 
