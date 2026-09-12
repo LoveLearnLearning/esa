@@ -391,13 +391,17 @@ def publish_feedback(submission_id: str, request: Request, session: CurrentSessi
     published = store.mark_feedback_published(submission_id=submission_id, teacher_id=user.id)
     student = request.app.state.user_store.get_by_id(submission["student_id"])
     if student is not None:
+        # 统一走 LearningStateService 这一学习状态唯一写入路径：
+        # 正式作业反馈写入 learning evidence + mastery 的同时，
+        # 会立即失效该学生已缓存的 ProfileSnapshot。
+        service = request.app.state.learning_state_service
         for answer in published["answers"]:
             kp_id = answer.get("final_kp_id") or answer.get("kp_id")
             if not kp_id or store.has_evidence(answer["answer_id"]):
                 continue
             ratio = float(answer["final_score"]) / max(0.001, float(answer["max_points"]))
             correct = ratio >= 0.6
-            evidence = request.app.state.learning_evidence_store.record(
+            result = service.record_event(
                 user_name=student.username,
                 kp_id=kp_id,
                 activity_type="homework",
@@ -407,15 +411,7 @@ def publish_feedback(submission_id: str, request: Request, session: CurrentSessi
                 error_type=None if correct else (answer.get("final_error_type") or "unknown"),
                 misconception=None if correct else answer.get("final_feedback"),
             )
-            request.app.state.mastery_store.apply_evidence(
-                user_name=student.username,
-                kp_id=kp_id,
-                activity_type="homework",
-                correct=correct,
-                evidence_reliability=0.95,
-                independent=True,
-            )
-            store.mark_evidence_written(answer["answer_id"], evidence["id"])
+            store.mark_evidence_written(answer["answer_id"], result["evidence"]["id"])
     return published
 
 

@@ -144,6 +144,16 @@ class ProfileBuilder:
         """处理 `invalidate` 相关逻辑。"""
         self._cache.pop(user_id, None)
 
+    def invalidate_by_username(self, username: str) -> None:
+        """按 username 失效画像缓存。
+
+        MasteryStore / LearningEvidenceStore 以 username 记录学情，而画像缓存
+        以 user_id 为键；这里集中完成映射，避免学习状态写入方混用两种标识。
+        """
+        user = self._user_store.get_by_username(username.strip())
+        if user is not None:
+            self.invalidate(user.id)
+
     def build(self, query: ProfileQuery) -> ProfileSnapshot:
         """构建 `build` 相关数据。
 

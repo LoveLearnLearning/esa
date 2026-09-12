@@ -4,9 +4,14 @@
 
 from __future__ import annotations
 
+import logging
+from typing import Callable
+
 from backend.agent.learning.evidence_store import LearningEvidenceStore
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 from backend.agent.memories.mastery_store import MasteryStore
+
+logger = logging.getLogger(__name__)
 
 
 class LearningStateService:
@@ -22,6 +27,29 @@ class LearningStateService:
         self.kg_store = kg_store
         self.mastery_store = mastery_store
         self.evidence_store = evidence_store
+        self._profile_invalidators: list[Callable[[str], None]] = []
+
+    def register_profile_invalidator(
+        self,
+        invalidator: Callable[[str], None],
+    ) -> None:
+        """注册画像缓存失效回调，回调参数为 user_name。
+
+        只有真实且可评价的学习证据成功写入并更新 Student Model 后才会触发；
+        出题、提示、普通聊天等不产生学习证据的行为不会调用本服务的写入路径，
+        因此不会误触发失效。
+        """
+        self._profile_invalidators.append(invalidator)
+
+    def _invalidate_profile_cache(self, user_name: str) -> None:
+        """学习状态真实更新后，通知所有画像缓存失效回调。"""
+        for invalidator in self._profile_invalidators:
+            try:
+                invalidator(user_name)
+            except Exception:
+                logger.warning(
+                    "画像缓存失效回调执行失败 user_name=%s", user_name, exc_info=True
+                )
 
     def resolve_kp_id(self, raw_kp_id: str) -> str:
         """解析 `kp id` 相关数据。"""
@@ -108,4 +136,7 @@ class LearningStateService:
             explanation_score=explanation_score,
             transfer_score=transfer_score,
         )
+        # 真实学习证据已写入且 Student Model 已更新：立即失效该用户的画像缓存，
+        # 保证下一轮 ProfileBuilder.build 读取最新学情而不是 60 秒 TTL 内的旧快照。
+        self._invalidate_profile_cache(user_name)
         return {"evidence": evidence, "state": state, "duplicate": False}

@@ -587,6 +587,11 @@ async def lifespan(app: FastAPI):
         profile_store=app.state.profile_store,
         evidence_store=app.state.learning_evidence_store,
     )
+    # 学习状态唯一写入路径：真实学习证据写入并更新 Student Model 后，
+    # 立即失效对应学生的画像缓存，避免下一轮对话读到 60 秒 TTL 内的旧学情。
+    app.state.learning_state_service.register_profile_invalidator(
+        app.state.profile_builder.invalidate_by_username
+    )
     app.state.conversation_compression_service = ConversationCompressionService(
         llm_client=app.state.auxiliary_llm_client,
         summary_store=app.state.conversation_summary_store,

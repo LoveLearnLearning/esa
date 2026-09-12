@@ -6,11 +6,16 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from backend.agent.learning.pedagogy_router import PedagogyRouter
 from backend.agent.memories.knowledge_graph import KnowledgeGraphStore
 from backend.agent.learning.evidence_store import LearningEvidenceStore
+from backend.agent.learning.learning_state_service import LearningStateService
+from backend.agent.memories.memory_models import ProfileQuery
 from backend.agent.memories.mastery_store import MasteryStore
+from backend.agent.memories.profile_builder import ProfileBuilder
 from backend.core.services.auth_service import AuthService
 from backend.core.services.teaching_analysis_service import TeachingAnalysisService
+from backend.core.stores.profile_store import ProfileStore
 from backend.core.stores.session_store import SessionStore
 from backend.core.stores.teaching_store import TeachingStore
 from backend.core.stores.user_presence_store import UserPresenceStore
@@ -31,14 +36,32 @@ def _app(tmp_path, monkeypatch):
     app.state.session_store = SessionStore(database)
     app.state.user_presence_store = UserPresenceStore(database)
     app.state.teaching_store = TeachingStore(database)
+    app.state.profile_store = ProfileStore(database)
     app.state.teaching_analysis_service = TeachingAnalysisService(app.state.teaching_store)
     app.state.auth = AuthService(app.state.user_store, app.state.session_store)
 
     kg = KnowledgeGraphStore(tmp_path / "kg.db")
     kg.add_point("binary_search", "二分查找", "数据结构", 1.0, "algorithm")
+    kg.add_point("链表", "链表", "数据结构", 0.08)
     app.state.knowledge_graph_store = kg
     app.state.learning_evidence_store = LearningEvidenceStore(tmp_path / "evidence.db")
     app.state.mastery_store = MasteryStore(tmp_path / "mastery.db")
+    app.state.profile_builder = ProfileBuilder(
+        user_store=app.state.user_store,
+        mastery_store=app.state.mastery_store,
+        kg_store=app.state.knowledge_graph_store,
+        profile_store=app.state.profile_store,
+        evidence_store=app.state.learning_evidence_store,
+    )
+    # 与 webAPI.create_app 保持一致：学习状态唯一写入路径 + 画像缓存失效回调。
+    app.state.learning_state_service = LearningStateService(
+        kg_store=app.state.knowledge_graph_store,
+        mastery_store=app.state.mastery_store,
+        evidence_store=app.state.learning_evidence_store,
+    )
+    app.state.learning_state_service.register_profile_invalidator(
+        app.state.profile_builder.invalidate_by_username
+    )
     return app
 
 
@@ -250,3 +273,116 @@ def test_teacher_student_homework_vertical_slice(tmp_path, monkeypatch):
         headers=student_headers,
         json={"answers": [{"question_id": new_question_id, "answer_text": "有序"}]},
     ).status_code == 404
+
+
+def test_published_homework_feedback_refreshes_cached_student_profile(
+    tmp_path, monkeypatch
+):
+    """教师发布正式反馈后，下一轮画像立即读取新的链表掌握度。"""
+    client = TestClient(_app(tmp_path, monkeypatch))
+    _, teacher_headers = _identity(client, "teacher", "teacher")
+    student, student_headers = _identity(client, "student", "student")
+
+    classroom = client.post(
+        "/api/teaching/classes",
+        headers=teacher_headers,
+        json={"name": "数据结构 1 班", "canonical_course": "数据结构"},
+    ).json()
+    invitation = client.post(
+        f"/api/teaching/classes/{classroom['class_id']}/invitations",
+        headers=teacher_headers,
+        json={"username": "student"},
+    ).json()
+    assert client.post(
+        f"/api/student/invitations/{invitation['membership_id']}/respond",
+        headers=student_headers,
+        json={"accept": True},
+    ).status_code == 200
+
+    assignment = client.post(
+        f"/api/teaching/classes/{classroom['class_id']}/assignments",
+        headers=teacher_headers,
+        json={
+            "title": "链表诊断",
+            "questions": [
+                {
+                    "question_type": "short_answer",
+                    "prompt": "链表结点包含什么？",
+                    "max_points": 10,
+                    "reference_answer": "数据域和指针域",
+                    "kp_id": "链表",
+                },
+                {
+                    "question_type": "short_answer",
+                    "prompt": "单链表如何访问第 k 个结点？",
+                    "max_points": 10,
+                    "reference_answer": "从头结点沿指针顺序遍历",
+                    "kp_id": "链表",
+                },
+            ],
+        },
+    ).json()
+    assignment_id = assignment["assignment_id"]
+    assert client.post(
+        f"/api/teaching/assignments/{assignment_id}/publish",
+        headers=teacher_headers,
+    ).status_code == 200
+
+    submitted = client.post(
+        f"/api/student/assignments/{assignment_id}/submissions",
+        headers=student_headers,
+        json={
+            "answers": [
+                {"question_id": item["question_id"], "answer_text": "不知道"}
+                for item in assignment["questions"]
+            ]
+        },
+    ).json()
+    submission_id = submitted["submission_id"]
+    analyzed = client.post(
+        f"/api/teaching/submissions/{submission_id}/analyze",
+        headers=teacher_headers,
+    ).json()
+
+    query = ProfileQuery(
+        user_id=student.id,
+        username=student.username,
+        current_message="讲讲链表",
+        resolved_kp_ids=["链表"],
+    )
+    before = client.app.state.profile_builder.build(query)
+    before_state = before.relevant_learning_state[0].value
+    assert before_state["mastery"]["has_record"] is False
+    assert before_state["mastery"]["status"] == "unseen"
+
+    reviewed = client.post(
+        f"/api/teaching/submissions/{submission_id}/review",
+        headers=teacher_headers,
+        json={
+            "reviews": [
+                {
+                    "answer_id": answer["answer_id"],
+                    "score": 0,
+                    "feedback": "需要重新学习链表基础。",
+                    "kp_id": "链表",
+                }
+                for answer in analyzed["answers"]
+            ]
+        },
+    )
+    assert reviewed.status_code == 200
+    published = client.post(
+        f"/api/teaching/submissions/{submission_id}/publish-feedback",
+        headers=teacher_headers,
+    )
+    assert published.status_code == 200
+
+    after = client.app.state.profile_builder.build(query)
+    after_state = after.relevant_learning_state[0].value
+    assert after_state["mastery"]["has_record"] is True
+    assert after_state["mastery"]["level"] < 50
+    assert after_state["mastery"]["practice_count"] == 2
+    assert after_state["evidence"]["count"] == 2
+    assert PedagogyRouter.route(
+        "讲讲链表", profile=after
+    ).teaching_depth == "foundation"
