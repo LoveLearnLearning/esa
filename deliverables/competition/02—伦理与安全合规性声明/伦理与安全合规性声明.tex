@@ -1,0 +1,101 @@
+% !TeX program = xelatex
+% UTF-8; compile twice with XeLaTeX. Requires ctex and Fandol fonts.
+\documentclass[UTF8,a4paper,zihao=-4,fontset=fandol]{ctexart}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{enumitem,booktabs,tabularx,fancyhdr,xcolor}
+\usepackage[hidelinks]{hyperref}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.35em}
+\setlist[enumerate]{leftmargin=2em,itemsep=0.25em,topsep=0.3em}
+\setlist[itemize]{leftmargin=2em,itemsep=0.25em,topsep=0.3em}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small 星知智链｜伦理与安全合规性声明}
+\fancyhead[R]{\small 草稿・待核对签署}
+\fancyfoot[C]{\thepage}
+\setlength{\headheight}{15pt}
+\newcommand{\pending}[1]{\textbf{【待确认：#1】}}
+\begin{document}
+\begin{center}
+  {\LARGE\bfseries 02—伦理与安全合规性声明}\par\vspace{0.7em}
+  {\large 星知智链——多源知识融合与智能推理平台}\par
+  2026年度中国青年科技创新“揭榜挂帅”擂台赛（学生赛道）
+\end{center}
+\noindent\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+作品编码 & 592374 \\
+赛题编号 & XH-202620 \\
+揭榜榜题 & 面向一流学科建设的学科垂类大模型与创新应用开发 \\
+发榜单位 & 科大讯飞股份有限公司 \\
+推报学校 & 武汉大学 \\
+申报者 & 赵晨旭 \\
+编制日期 & 2026年9月11日 \\
+\bottomrule
+\end{tabularx}
+
+\section{声明范围}
+本作品简称“星知智链（ESA）”，面向计算机学科教学、学习与科研辅助，提供学习对话、知识地图、教师作业诊断、科研项目组织及条件性启用的文档检索、工具调用等能力。我们承诺在参赛提交、演示及后续试用中，坚持必要的数据使用、可核验的内容来源、明确的权限边界和人工最终决策。
+
+本声明为团队核对与签署用草稿。文中“承诺”是团队应履行的责任，不代表相关事项均已完成；“现有机制”仅指仓库可核对的实现，不代表目标部署已通过全面安全验收。本文件不作为第三方安全认证、伦理审查批准或法律合规鉴定。
+
+\section{数据使用、脱敏与隐私保护承诺}
+\begin{enumerate}
+  \item 参赛演示优先使用团队自编的合成题目、虚拟班级与虚拟作答；使用外部材料前核对来源、许可和用途。公开可获取不等同于允许训练、再分发或建立可公开访问的知识库。
+  \item 不将真实学生姓名、学号、联系方式、身份凭证、私人对话、未授权作业、学习档案及未公开科研资料放入演示账号、截图、录屏或对外提交包。报名信息仅用于必要的身份标识，本声明不重复披露报名表中的学号、出生日期和电话。
+  \item 真实用户试用前说明处理目的、数据范围、保存期限和反馈用途，并取得相应授权；拒绝试用或拒绝提供非必要信息不应影响其正常学习与评价。若涉及需要另行审查的研究或对象，先完成相应程序，不以比赛演示替代审批。
+  \item 密码、验证码、Session、API Key、模型服务 Token、生产数据库和原始运行日志不进入公开材料。评审使用与生产用户隔离的临时账号，凭证通过赛事允许的独立安全渠道交付。
+  \item 提交前核对外部模型、检索、邮件及文档解析服务的数据流向。调用第三方服务前明确接收方与传输范围，不将“可本地部署”表述为“所有运行路径均不出域”。
+  \item 演示结束后按约定期限停用账号、处理演示数据，并核对文件、索引、缓存和备份的保留范围；不将界面删除或记忆遗忘功能等同于所有副本即时永久擦除。
+\end{enumerate}
+
+\section{学术诚信与生成内容标识承诺}
+\begin{enumerate}
+  \item 不伪造论文、作者、题名、年份、DOI、参考文献、实验数据、用户评价或研究结论。来源不足时明确标注“待补来源”或“本次未获得可核验检索证据”，不把模型推测包装成权威事实。
+  \item 保留对话中的“AI 生成”和教学分析中的“AI 建议”标识；对外材料明确区分模型原始输出、确定性降级结果、人工标准答案与教师复核结果。新增展示页面应在发布前核对标识覆盖情况。
+  \item AI 分析仅作为教师参考，不用于绕过教师复核自动决定或发布成绩；不把掌握度估计等同于考试成绩，不凭单次作答形成固定能力标签，不据此作出惩罚性决定。
+  \item 指标注明测试条件、数据范围、时间与局限。不将检索指标冒充端到端问答准确率，不把小样本 Demo 试用写成规模化教学效果或统计显著的成绩提升。
+  \item 不将人工润色内容冒充模型原始回答，不将预置画面冒充实时运行；录屏中的失败、服务降级和剪辑边界应如实说明。真实用户意见须由本人核对，不代签或虚构评价。
+\end{enumerate}
+
+\section{现有安全机制与适用边界}
+\begin{enumerate}
+  \item \textbf{身份与资源权限。}仓库提供身份认证及用户、Workspace、班级、项目等资源校验。教学流程中，教师仅管理本人班级，学生仅访问本人提交与已发布反馈；参考答案、评分规则和未发布的 AI 建议不返回学生端。提示词不能替代服务端授权。
+  \item \textbf{教师复核后发布。}AI 分析、教师复核、正式反馈发布为分离步骤；发布后的作业反馈才形成正式学习证据。班级诊断聚合已发布反馈，教师不能据此获得学生的私人对话、个人记忆或无关科研资料。
+  \item \textbf{降级透明。}辅助模型不可用或结果无效时，教学分析可返回低置信度确定性建议，仍须人工复核。该结果不是模型成功推理的证明，也不能作为教学正确性的独立保证。
+  \item \textbf{受控工具。}仓库提供审批动作、记忆读写约束及关键教学操作审计。代码沙箱默认关闭；只有目标环境完成隔离与依赖验收后才启用，不宣称所有工具天然具备相同的审批或隔离能力。
+  \item \textbf{检索与上传边界。}附件及知识库访问应受用户和资源范围约束。对检索材料或上传文档中的指令性文本，不应授予其系统指令权限；提示注入、恶意文件与跨用户访问仍需专项验证，不承诺已彻底消除风险。
+\end{enumerate}
+
+\section{知识产权、风险处置与责任承诺}
+我们承诺核对团队自主成果的权属，并为第三方模型、开源依赖、字体、图片和数据保留必要的来源及许可说明。权属或授权用途不清的材料，不随包分发或进入演示索引；不将采用第三方基础模型表述为完全自主训练的基础模型。
+
+对发现的数据泄露、越权访问、错误反馈或不当生成内容，团队将暂停受影响功能或账号，限制传播范围，保留必要且最小化的排查证据，完成修复与复测，并根据实际影响履行必要告知与后续处理。用户应有提出异议和申请人工复核的渠道，AI 不作为最终责任主体。
+
+\section{签署前核对事项}
+\begin{itemize}
+  \item \pending{第三方资源清单、许可及真实用户授权记录已核对。}
+  \item \pending{演示数据脱敏、临时账号隔离、目标环境权限与 AI 标识已验收。}
+  \item \pending{外部服务数据流向、演示数据保留期限及清理负责人已明确。}
+  \item \pending{风险反馈渠道、联系人及所需审批程序已确认。}
+\end{itemize}
+
+经核对，签署人代表参赛团队确认本声明与实际提交版本一致，并承诺按上述要求开展参赛与演示活动；未核实事项不作已完成声明。
+
+\vspace{1em}
+\noindent 团队负责人（亲笔签字）：\underline{\hspace{6cm}}\par
+\noindent 指导教师／单位核对（如要求）：\underline{\hspace{5cm}}\par
+\noindent 团队或单位盖章（如要求）：\underline{\hspace{5.5cm}}\par
+\noindent 签署日期：\underline{\hspace{1.4cm}}年\underline{\hspace{1cm}}月\underline{\hspace{1cm}}日
+
+\appendix
+\section{编制依据（内部核对用，提交时可移除）}
+\small
+作品身份信息取自用户提供的《“揭榜挂帅”报名表》，不将其中签字盖章栏视为已完成审核的证据。代码核对基线为2026年9月11日工作区的提交 \texttt{0c1da87}；本次未执行线上验收或安全测评。
+\begin{itemize}
+  \item \path{backend/tests/test_teaching_workflow.py}：教学闭环、学生字段隐藏及其他教师访问限制的测试。
+  \item \path{backend/core/services/teaching_analysis_service.py}：模型结构化建议与确定性降级来源。
+  \item \path{frontend/lib/widgets/assistant_message.dart}、\path{frontend/lib/pages/teaching_workspace_page.dart}：AI 标识与教师复核发布入口。
+  \item \path{backend/tests/test_sandbox.py}、\path{backend/tests/test_memory_mode_guards.py}：沙箱关闭与隔离、记忆模式边界的测试代码；测试存在不等于生产验收通过。
+  \item \path{README.md}、\path{REQUEST.md}、\path{TEACHING_STUDENT_DEMO.md}：功能边界及交付要求的仓库说明。
+\end{itemize}
+\end{document}
