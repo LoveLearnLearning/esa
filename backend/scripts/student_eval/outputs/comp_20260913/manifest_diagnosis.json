@@ -1,0 +1,16 @@
+{
+  "run_id": "comp_20260913",
+  "seed": 20260913,
+  "students": 30,
+  "knowledge_points": [
+    "线性表",
+    "栈",
+    "队列",
+    "图",
+    "深度优先搜索",
+    "广度优先搜索"
+  ],
+  "profiles_sha256": "995934a467caa740f0cd73fb4e6817bde8d645d6d2ca24b0537b204961fdb599",
+  "questions_sha256": "410ee99a40dcac3d24c7b12a2b48c43f42c7ecde2c0a959c2620cd39a295fb35",
+  "resource_mode": "CPU-only; temporary SQLite; zero ESA model calls"
+}

@@ -1,0 +1,782 @@
+[
+  {
+    "student_id": "S001",
+    "ability_group": "weak",
+    "target_kp": "队列",
+    "hidden_profile": {
+      "student_id": "S001",
+      "ability_group": "weak",
+      "knowledge_state": {
+        "队列": {
+          "level": "weak",
+          "misconception": "把队列误认为后进先出的栈。"
+        },
+        "图": {
+          "level": "weak",
+          "misconception": "认为一个图必须整体连通。"
+        },
+        "广度优先搜索": {
+          "level": "weak",
+          "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+        },
+        "栈": {
+          "level": "partial"
+        },
+        "深度优先搜索": {
+          "level": "partial"
+        },
+        "线性表": {
+          "level": "mastered"
+        }
+      },
+      "ground_truth_weak_kps": [
+        "队列",
+        "图",
+        "广度优先搜索"
+      ]
+    },
+    "prompt": "我刚才做关于“队列”的题一直出错，我还是没太搞懂。\n请根据我之前的学习情况来讲，不要只给通用定义：\n1. 先判断我最可能卡在哪里；\n2. 如果存在更基础的前置薄弱点，先指出并补一下；\n3. 再针对当前问题分步讲解；\n4. 最后告诉我下一步最应该练什么。\n请尽量简洁。",
+    "response_a": "根据学情数据，你之前关于「队列」的练习记录目前显示为未见过，系统里还没有积累到有效的练习证据。\n\n另外检查发现，「队列」的一个基础前置「线性表」也处于未见过状态。建议你先花点时间把「线性表」这个根基补上，再回头攻克「队列」，这样理解起来会顺畅很多。\n\n接下来我们直接开始：我先讲解「队列」的核心机制，过程中会穿插提问确认你的理解；讲完后请你复述一遍，我再根据情况决定是继续推进还是回头补充。",
+    "response_b": "你在「队列」上的掌握度目前只有 34.4，属于比较薄弱的状态。之前做过 2 次练习，正确率是 0，最近一次练习是在 2026-09-13T03:10:47.474427。\n\n不过好消息是，检查发现你没有更基础的前置知识需要补，可以直接开始针对「队列」本身进行练习。\n\n接下来建议你立刻再做一次「队列」的专项练习，争取把正确率提上来。",
+    "rubric": {
+      "targeting": "薄弱点针对性 0-2",
+      "prerequisite": "前置知识处理 0-2",
+      "difficulty": "难度匹配 0-2",
+      "scaffolding": "教学脚手架 0-2",
+      "redundancy": "冗余控制 0-2"
+    },
+    "required_output": {
+      "response_a": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "response_b": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "winner": "A|B|tie",
+      "reason": "brief reason"
+    }
+  },
+  {
+    "student_id": "S002",
+    "ability_group": "weak",
+    "target_kp": "线性表",
+    "hidden_profile": {
+      "student_id": "S002",
+      "ability_group": "weak",
+      "knowledge_state": {
+        "深度优先搜索": {
+          "level": "weak",
+          "misconception": "误认为 DFS 能保证无权图最短路径。"
+        },
+        "栈": {
+          "level": "weak",
+          "misconception": "把栈误认为先进先出的队列。"
+        },
+        "线性表": {
+          "level": "weak",
+          "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+        },
+        "队列": {
+          "level": "partial"
+        },
+        "广度优先搜索": {
+          "level": "partial"
+        },
+        "图": {
+          "level": "mastered"
+        }
+      },
+      "ground_truth_weak_kps": [
+        "线性表",
+        "栈",
+        "深度优先搜索"
+      ]
+    },
+    "prompt": "我刚才做关于“线性表”的题一直出错，我还是没太搞懂。\n请根据我之前的学习情况来讲，不要只给通用定义：\n1. 先判断我最可能卡在哪里；\n2. 如果存在更基础的前置薄弱点，先指出并补一下；\n3. 再针对当前问题分步讲解；\n4. 最后告诉我下一步最应该练什么。\n请尽量简洁。",
+    "response_a": "你目前对**线性表**的掌握度是 **34.4**，属于薄弱状态。\n\n**卡在哪里**：你之前做过 2 次练习，正确率是 0，说明基础概念还没吃透。\n\n**前置检查**：相关的前置知识点目前没有发现薄弱点，可以直接开始复习线性表本身。\n\n**下一步**：建议先回顾线性表的基本定义和常见操作（如插入、删除、查找），然后重新做一遍之前的练习题，重点理解每道题的解题思路。",
+    "response_b": "你之前关于「线性表」还没有练习记录，所以我不做猜测，直接从定义开始讲，然后出一道题请你当场做。\n\n**线性表**是 n 个数据元素的有限序列，元素之间有且仅有一个前驱和一个后继（首尾除外）。\n\n举个例：`[1, 3, 5, 7]` 是线性表，1 的前驱没有、后继是 3；3 的前驱是 1、后继是 5。\n\n现在请你判断：`[1, (2,3), 5]` 算不算线性表？为什么？",
+    "rubric": {
+      "targeting": "薄弱点针对性 0-2",
+      "prerequisite": "前置知识处理 0-2",
+      "difficulty": "难度匹配 0-2",
+      "scaffolding": "教学脚手架 0-2",
+      "redundancy": "冗余控制 0-2"
+    },
+    "required_output": {
+      "response_a": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "response_b": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "winner": "A|B|tie",
+      "reason": "brief reason"
+    }
+  },
+  {
+    "student_id": "S003",
+    "ability_group": "weak",
+    "target_kp": "线性表",
+    "hidden_profile": {
+      "student_id": "S003",
+      "ability_group": "weak",
+      "knowledge_state": {
+        "广度优先搜索": {
+          "level": "weak",
+          "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+        },
+        "线性表": {
+          "level": "weak",
+          "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+        },
+        "队列": {
+          "level": "weak",
+          "misconception": "把队列误认为后进先出的栈。"
+        },
+        "深度优先搜索": {
+          "level": "partial"
+        },
+        "栈": {
+          "level": "partial"
+        },
+        "图": {
+          "level": "mastered"
+        }
+      },
+      "ground_truth_weak_kps": [
+        "线性表",
+        "队列",
+        "广度优先搜索"
+      ]
+    },
+    "prompt": "我刚才做关于“线性表”的题一直出错，我还是没太搞懂。\n请根据我之前的学习情况来讲，不要只给通用定义：\n1. 先判断我最可能卡在哪里；\n2. 如果存在更基础的前置薄弱点，先指出并补一下；\n3. 再针对当前问题分步讲解；\n4. 最后告诉我下一步最应该练什么。\n请尽量简洁。",
+    "response_a": "根据记录，你之前还没做过「线性表」相关的练习，所以目前还没有积累学习证据；另外，它的前置知识点目前都没有发现薄弱点，基础是扎实的。\n\n既然没有历史错题作为参考，我们直接从零开始：你先试着做一道「线性表」的入门题，做完告诉我你的思路和答案，我再帮你定位具体是哪里卡住了。",
+    "response_b": "根据你之前的学习记录，你最近两次练习都出错了，而且都是概念理解上的问题。\n\n你卡住的核心点很明确：把「逻辑上的线性关系」和「物理存储必须连续」混为一谈了。\n\n**先补一个前置概念：**\n「逻辑结构」讲的是数据元素之间**是什么关系**（比如谁在谁后面）；「存储结构」讲的是这些关系在计算机里**怎么存**（比如是挨着存还是用指针连）。两者是两回事，没有绑定关系。\n\n**再讲回「线性表」：**\n它的逻辑定义只有一个：除了第一个和最后一个，每个元素都有且仅有一个直接前驱和一个直接后继。至于它在内存里是挨着存（顺序表）还是散着存（链表），那是实现细节，不改变它作为线性表的逻辑本质。\n\n**下一步怎么练：**\n先别急着做新题。找一道让你把「逻辑关系」和「物理存储」分开描述的题，确认你能把这两层说清楚，再继续。",
+    "rubric": {
+      "targeting": "薄弱点针对性 0-2",
+      "prerequisite": "前置知识处理 0-2",
+      "difficulty": "难度匹配 0-2",
+      "scaffolding": "教学脚手架 0-2",
+      "redundancy": "冗余控制 0-2"
+    },
+    "required_output": {
+      "response_a": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "response_b": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "winner": "A|B|tie",
+      "reason": "brief reason"
+    }
+  },
+  {
+    "student_id": "S004",
+    "ability_group": "weak",
+    "target_kp": "栈",
+    "hidden_profile": {
+      "student_id": "S004",
+      "ability_group": "weak",
+      "knowledge_state": {
+        "队列": {
+          "level": "weak",
+          "misconception": "把队列误认为后进先出的栈。"
+        },
+        "深度优先搜索": {
+          "level": "weak",
+          "misconception": "误认为 DFS 能保证无权图最短路径。"
+        },
+        "栈": {
+          "level": "weak",
+          "misconception": "把栈误认为先进先出的队列。"
+        },
+        "图": {
+          "level": "partial"
+        },
+        "线性表": {
+          "level": "partial"
+        },
+        "广度优先搜索": {
+          "level": "mastered"
+        }
+      },
+      "ground_truth_weak_kps": [
+        "栈",
+        "队列",
+        "深度优先搜索"
+      ]
+    },
+    "prompt": "我刚才做关于“栈”的题一直出错，我还是没太搞懂。\n请根据我之前的学习情况来讲，不要只给通用定义：\n1. 先判断我最可能卡在哪里；\n2. 如果存在更基础的前置薄弱点，先指出并补一下；\n3. 再针对当前问题分步讲解；\n4. 最后告诉我下一步最应该练什么。\n请尽量简洁。",
+    "response_a": "你目前对「栈」的掌握度是 34.4，属于薄弱状态。之前练习过 2 次，正确次数为 0，最近一次练习在 2026-09-13T03:10:49.596690。\n\n好，我们从头理一下「栈」：它是一种**后进先出**（LIFO）的线性表，操作只在一端进行——这一端叫栈顶。\n\n你之前 2 次练习都没做对，说明对「什么时候能进、什么时候能出」这个基本规则还没形成直觉。\n\n我们拿一道最典型的题来走一遍：给定入栈序列 1、2、3，问哪些出栈序列是合法的？\n\n你先试着想两个例子，说一句你是怎么判断的，我再看你的思路卡在哪。",
+    "response_b": "根据检查结果，你在「数据结构」上目前还没有积累学习记录，而「栈」这个知识点的前置基础「线性表」目前处于尚未学习的状态。\n\n这直接解释了为什么你做「栈」的题会一直出错：你是在尝试搭建二楼，但一楼的地基还没打牢。\n\n接下来的行动建议很明确：请先回头把「线性表」这个基础概念补上，等它学扎实了，再回来重新练习「栈」，那时候理解起来会顺畅很多。",
+    "rubric": {
+      "targeting": "薄弱点针对性 0-2",
+      "prerequisite": "前置知识处理 0-2",
+      "difficulty": "难度匹配 0-2",
+      "scaffolding": "教学脚手架 0-2",
+      "redundancy": "冗余控制 0-2"
+    },
+    "required_output": {
+      "response_a": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "response_b": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "winner": "A|B|tie",
+      "reason": "brief reason"
+    }
+  },
+  {
+    "student_id": "S011",
+    "ability_group": "medium",
+    "target_kp": "线性表",
+    "hidden_profile": {
+      "student_id": "S011",
+      "ability_group": "medium",
+      "knowledge_state": {
+        "队列": {
+          "level": "weak",
+          "misconception": "把队列误认为后进先出的栈。"
+        },
+        "线性表": {
+          "level": "weak",
+          "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+        },
+        "图": {
+          "level": "partial"
+        },
+        "栈": {
+          "level": "partial"
+        },
+        "深度优先搜索": {
+          "level": "mastered"
+        },
+        "广度优先搜索": {
+          "level": "mastered"
+        }
+      },
+      "ground_truth_weak_kps": [
+        "线性表",
+        "队列"
+      ]
+    },
+    "prompt": "我刚才做关于“线性表”的题一直出错，我还是没太搞懂。\n请根据我之前的学习情况来讲，不要只给通用定义：\n1. 先判断我最可能卡在哪里；\n2. 如果存在更基础的前置薄弱点，先指出并补一下；\n3. 再针对当前问题分步讲解；\n4. 最后告诉我下一步最应该练什么。\n请尽量简洁。",
+    "response_a": "根据你之前的学习记录，你在「线性表」上做了 2 次练习，正确率是 0.0，而且两次都是**概念性错误**。\n\n你最可能卡在这里：把「逻辑上的线性关系」误认为「物理存储必须连续」。\n\n**先补一个关键区分**：线性表定义的是逻辑结构——元素之间「前驱后继」的一对一关系；至于在内存里是挨着存（顺序表）还是挂着指针（链表），是**实现方式**，不影响它是不是线性表。\n\n**现在请你试一次**：抛开「连续存储」这个前提，用自己的话说一遍——什么样的数据结构才算线性表？",
+    "response_b": "你之前的学习记录里还没有「线性表」的练习数据，所以我没法参考历史情况。\n\n不过你提到做题一直出错，那我们先确认一下卡在哪里：你做的是哪一类题？是顺序表的插入删除、链表的指针操作，还是遍历和查找？\n\n我先给你出一道对应的基础题，你试着做，做完我告诉你问题出在哪。",
+    "rubric": {
+      "targeting": "薄弱点针对性 0-2",
+      "prerequisite": "前置知识处理 0-2",
+      "difficulty": "难度匹配 0-2",
+      "scaffolding": "教学脚手架 0-2",
+      "redundancy": "冗余控制 0-2"
+    },
+    "required_output": {
+      "response_a": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "response_b": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "winner": "A|B|tie",
+      "reason": "brief reason"
+    }
+  },
+  {
+    "student_id": "S012",
+    "ability_group": "medium",
+    "target_kp": "队列",
+    "hidden_profile": {
+      "student_id": "S012",
+      "ability_group": "medium",
+      "knowledge_state": {
+        "深度优先搜索": {
+          "level": "weak",
+          "misconception": "误认为 DFS 能保证无权图最短路径。"
+        },
+        "队列": {
+          "level": "weak",
+          "misconception": "把队列误认为后进先出的栈。"
+        },
+        "图": {
+          "level": "partial"
+        },
+        "栈": {
+          "level": "partial"
+        },
+        "线性表": {
+          "level": "mastered"
+        },
+        "广度优先搜索": {
+          "level": "mastered"
+        }
+      },
+      "ground_truth_weak_kps": [
+        "队列",
+        "深度优先搜索"
+      ]
+    },
+    "prompt": "我刚才做关于“队列”的题一直出错，我还是没太搞懂。\n请根据我之前的学习情况来讲，不要只给通用定义：\n1. 先判断我最可能卡在哪里；\n2. 如果存在更基础的前置薄弱点，先指出并补一下；\n3. 再针对当前问题分步讲解；\n4. 最后告诉我下一步最应该练什么。\n请尽量简洁。",
+    "response_a": "根据你之前的学习记录，你在\"队列\"上的掌握度是 34.4，目前练习了 2 次，正确率是 0。\n\n你之前有一个比较典型的误区：把队列误认为后进先出的栈。这说明你可能对队列\"先进先出\"（FIFO）的核心特性理解还不够牢固。\n\n既然你的前置知识点没有发现薄弱点，我们可以直接针对队列本身进行强化。建议你接下来继续练习队列相关的题目，重点区分队列和栈的进出规则。\n\n需要我出一道题帮你巩固一下吗？",
+    "response_b": "你「队列」的掌握度目前还没有练习记录，系统判断你之前没接触过这个知识点。\n\n更关键的是，它的前置基础「线性表」目前也是未学习状态。这意味着你直接开始练「队列」可能会因为基础不牢而反复出错。\n\n建议你先回头把「线性表」这个基础补上，等有了练习记录，我们再针对「队列」进行专项训练。",
+    "rubric": {
+      "targeting": "薄弱点针对性 0-2",
+      "prerequisite": "前置知识处理 0-2",
+      "difficulty": "难度匹配 0-2",
+      "scaffolding": "教学脚手架 0-2",
+      "redundancy": "冗余控制 0-2"
+    },
+    "required_output": {
+      "response_a": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "response_b": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "winner": "A|B|tie",
+      "reason": "brief reason"
+    }
+  },
+  {
+    "student_id": "S013",
+    "ability_group": "medium",
+    "target_kp": "队列",
+    "hidden_profile": {
+      "student_id": "S013",
+      "ability_group": "medium",
+      "knowledge_state": {
+        "队列": {
+          "level": "weak",
+          "misconception": "把队列误认为后进先出的栈。"
+        },
+        "深度优先搜索": {
+          "level": "weak",
+          "misconception": "误认为 DFS 能保证无权图最短路径。"
+        },
+        "线性表": {
+          "level": "partial"
+        },
+        "图": {
+          "level": "partial"
+        },
+        "栈": {
+          "level": "mastered"
+        },
+        "广度优先搜索": {
+          "level": "mastered"
+        }
+      },
+      "ground_truth_weak_kps": [
+        "队列",
+        "深度优先搜索"
+      ]
+    },
+    "prompt": "我刚才做关于“队列”的题一直出错，我还是没太搞懂。\n请根据我之前的学习情况来讲，不要只给通用定义：\n1. 先判断我最可能卡在哪里；\n2. 如果存在更基础的前置薄弱点，先指出并补一下；\n3. 再针对当前问题分步讲解；\n4. 最后告诉我下一步最应该练什么。\n请尽量简洁。",
+    "response_a": "根据学情数据，你在「队列」上还没有练习记录，目前处于未接触的初始状态。\n\n更关键的是，它的前置基础「线性表」你也同样没有建立，这意味着直接开始学队列可能会因为基础不牢而吃力。\n\n建议你先从「线性表」入手，把最底层的数据结构概念理顺；等这个基础打扎实了，再回头攻克「队列」，整个学习路径会顺畅很多。",
+    "response_b": "根据你之前的学习情况，我帮你分析一下：\n\n**1. 最可能卡在哪里**\n你最近两次练习正确率是 0.0，而且都错在**概念理解**上——最典型的一个误区是把队列当成了\"后进先出\"的栈。\n\n**2. 前置基础**\n你学\"队列\"需要的基础都扎实，没有发现更薄弱的环节，可以直接开始讲。\n\n**3. 分步讲解**\n既然你刚才一直出错，咱们就针对\"队列\"这个概念来理一下：\n- 队列是**先进先出**（FIFO），就像排队买票，先到的人先买到；\n- 栈才是**后进先出**（LIFO），像叠盘子，最后放上去的得最先拿下来。\n你之前就是把这两个搞混了，所以做题的时候顺序全反了。\n\n**4. 下一步练什么**\n你目前掌握度只有 34.4 分，而且两次练习都错了，说明这个概念还没过手。\n接下来最该做的是：先把\"先进先出\"和\"后进先出\"的区别彻底搞清楚，然后再做几道专门区分队列和栈的题来巩固。\n\n你愿意现在试着复述一下队列的特点吗？或者咱们直接开始做题？",
+    "rubric": {
+      "targeting": "薄弱点针对性 0-2",
+      "prerequisite": "前置知识处理 0-2",
+      "difficulty": "难度匹配 0-2",
+      "scaffolding": "教学脚手架 0-2",
+      "redundancy": "冗余控制 0-2"
+    },
+    "required_output": {
+      "response_a": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "response_b": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "winner": "A|B|tie",
+      "reason": "brief reason"
+    }
+  },
+  {
+    "student_id": "S014",
+    "ability_group": "medium",
+    "target_kp": "栈",
+    "hidden_profile": {
+      "student_id": "S014",
+      "ability_group": "medium",
+      "knowledge_state": {
+        "栈": {
+          "level": "weak",
+          "misconception": "把栈误认为先进先出的队列。"
+        },
+        "图": {
+          "level": "weak",
+          "misconception": "认为一个图必须整体连通。"
+        },
+        "深度优先搜索": {
+          "level": "partial"
+        },
+        "线性表": {
+          "level": "partial"
+        },
+        "队列": {
+          "level": "mastered"
+        },
+        "广度优先搜索": {
+          "level": "mastered"
+        }
+      },
+      "ground_truth_weak_kps": [
+        "栈",
+        "图"
+      ]
+    },
+    "prompt": "我刚才做关于“栈”的题一直出错，我还是没太搞懂。\n请根据我之前的学习情况来讲，不要只给通用定义：\n1. 先判断我最可能卡在哪里；\n2. 如果存在更基础的前置薄弱点，先指出并补一下；\n3. 再针对当前问题分步讲解；\n4. 最后告诉我下一步最应该练什么。\n请尽量简洁。",
+    "response_a": "目前你关于「栈」还没有任何练习记录，系统还判断不出你具体卡在哪里。\n\n先做几道基础题，我再帮你定位问题——现在猜你哪里不会，和做完题再定位，结果完全不同。",
+    "response_b": "你目前对「栈」的掌握度是 34.4，属于薄弱状态。之前练习过 2 次，正确次数为 0，最近一次练习是在 2026-09-13T03:10:52.901415。\n\n好消息是，你学习「栈」所需的前置知识点都很扎实，没有发现需要补漏的基础。这意味着我们可以直接针对「栈」本身进行强化，不用回头去补前面的内容。\n\n接下来建议你针对「栈」的核心概念和典型题型进行专项练习，通过反复实操来巩固理解。",
+    "rubric": {
+      "targeting": "薄弱点针对性 0-2",
+      "prerequisite": "前置知识处理 0-2",
+      "difficulty": "难度匹配 0-2",
+      "scaffolding": "教学脚手架 0-2",
+      "redundancy": "冗余控制 0-2"
+    },
+    "required_output": {
+      "response_a": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "response_b": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "winner": "A|B|tie",
+      "reason": "brief reason"
+    }
+  },
+  {
+    "student_id": "S021",
+    "ability_group": "strong",
+    "target_kp": "图",
+    "hidden_profile": {
+      "student_id": "S021",
+      "ability_group": "strong",
+      "knowledge_state": {
+        "图": {
+          "level": "weak",
+          "misconception": "认为一个图必须整体连通。"
+        },
+        "队列": {
+          "level": "partial"
+        },
+        "栈": {
+          "level": "partial"
+        },
+        "广度优先搜索": {
+          "level": "mastered"
+        },
+        "深度优先搜索": {
+          "level": "mastered"
+        },
+        "线性表": {
+          "level": "mastered"
+        }
+      },
+      "ground_truth_weak_kps": [
+        "图"
+      ]
+    },
+    "prompt": "我刚才做关于“图”的题一直出错，我还是没太搞懂。\n请根据我之前的学习情况来讲，不要只给通用定义：\n1. 先判断我最可能卡在哪里；\n2. 如果存在更基础的前置薄弱点，先指出并补一下；\n3. 再针对当前问题分步讲解；\n4. 最后告诉我下一步最应该练什么。\n请尽量简洁。",
+    "response_a": "你目前在「图」这个知识点上的掌握度是 **34.4%**，属于比较薄弱的状态。之前练习过 2 次，但两次都出错了，这说明基础概念可能还没完全建立起来。\n\n好在前置知识点都很扎实，没有发现需要补漏的地方，我们可以直接针对「图」本身进行讲解。\n\n接下来建议你重点练习「图」相关的题目，通过实战来巩固理解。如果需要，我可以随时提供分步提示来帮你理清思路。",
+    "response_b": "根据你在「数据结构」的学习情况，目前「图」这个知识点还没有练习记录，掌握度尚未形成判断。\n\n更关键的是，它的前置基础「线性表」也处于未学习状态，这很可能是你做题出错的根源。\n\n建议你先从「线性表」开始补起，把基础打牢后再回头练习「图」，这样理解会更顺畅。",
+    "rubric": {
+      "targeting": "薄弱点针对性 0-2",
+      "prerequisite": "前置知识处理 0-2",
+      "difficulty": "难度匹配 0-2",
+      "scaffolding": "教学脚手架 0-2",
+      "redundancy": "冗余控制 0-2"
+    },
+    "required_output": {
+      "response_a": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "response_b": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "winner": "A|B|tie",
+      "reason": "brief reason"
+    }
+  },
+  {
+    "student_id": "S022",
+    "ability_group": "strong",
+    "target_kp": "广度优先搜索",
+    "hidden_profile": {
+      "student_id": "S022",
+      "ability_group": "strong",
+      "knowledge_state": {
+        "广度优先搜索": {
+          "level": "weak",
+          "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+        },
+        "图": {
+          "level": "partial"
+        },
+        "队列": {
+          "level": "partial"
+        },
+        "线性表": {
+          "level": "mastered"
+        },
+        "深度优先搜索": {
+          "level": "mastered"
+        },
+        "栈": {
+          "level": "mastered"
+        }
+      },
+      "ground_truth_weak_kps": [
+        "广度优先搜索"
+      ]
+    },
+    "prompt": "我刚才做关于“广度优先搜索”的题一直出错，我还是没太搞懂。\n请根据我之前的学习情况来讲，不要只给通用定义：\n1. 先判断我最可能卡在哪里；\n2. 如果存在更基础的前置薄弱点，先指出并补一下；\n3. 再针对当前问题分步讲解；\n4. 最后告诉我下一步最应该练什么。\n请尽量简洁。",
+    "response_a": "你目前对「广度优先搜索」的掌握度是 34.4%，属于比较薄弱的状态，之前练习过 2 次，正确次数为 0。\n\n好在我们查了一下它的前置知识点，发现你这些基础都打得很牢，没有需要回头补的漏洞，所以可以直接针对「广度优先搜索」本身进行讲解。\n\n接下来我们分两步走：我先带你把核心思路理一遍，然后你试着做一道题，我们随时停下来讨论卡住的地方。",
+    "response_b": "先确认一件事：系统里你关于「广度优先搜索」的练习记录还是 0 次，所以目前判断不出具体卡在哪一步。\n\n另外，它的前置「图」和「队列」也还没建立练习记录。BFS 的核心就是「用队列一层层扩展图上的节点」，如果这两个基础没打牢，后面会一直卡。\n\n建议你先把「图」和「队列」各做几道基础题，确认能独立写出来，再回头练 BFS。",
+    "rubric": {
+      "targeting": "薄弱点针对性 0-2",
+      "prerequisite": "前置知识处理 0-2",
+      "difficulty": "难度匹配 0-2",
+      "scaffolding": "教学脚手架 0-2",
+      "redundancy": "冗余控制 0-2"
+    },
+    "required_output": {
+      "response_a": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "response_b": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "winner": "A|B|tie",
+      "reason": "brief reason"
+    }
+  },
+  {
+    "student_id": "S023",
+    "ability_group": "strong",
+    "target_kp": "深度优先搜索",
+    "hidden_profile": {
+      "student_id": "S023",
+      "ability_group": "strong",
+      "knowledge_state": {
+        "深度优先搜索": {
+          "level": "weak",
+          "misconception": "误认为 DFS 能保证无权图最短路径。"
+        },
+        "队列": {
+          "level": "partial"
+        },
+        "栈": {
+          "level": "partial"
+        },
+        "线性表": {
+          "level": "mastered"
+        },
+        "图": {
+          "level": "mastered"
+        },
+        "广度优先搜索": {
+          "level": "mastered"
+        }
+      },
+      "ground_truth_weak_kps": [
+        "深度优先搜索"
+      ]
+    },
+    "prompt": "我刚才做关于“深度优先搜索”的题一直出错，我还是没太搞懂。\n请根据我之前的学习情况来讲，不要只给通用定义：\n1. 先判断我最可能卡在哪里；\n2. 如果存在更基础的前置薄弱点，先指出并补一下；\n3. 再针对当前问题分步讲解；\n4. 最后告诉我下一步最应该练什么。\n请尽量简洁。",
+    "response_a": "工具调用失败了，所以我没法做完整的错因诊断。不过你之前的学习记录我这边是有的：「深度优先搜索」的掌握度目前只有 34.4，正确率是 0.0，而且你之前练习时出现过「误认为 DFS 能保证无权图最短路径」这个误区。\n\n基于这些已有的记录，我们直接针对这个误区来梳理一下 DFS 的适用场景和边界，之后你可以再做几道针对性的练习来巩固。",
+    "response_b": "已取得 2 次有效工具结果，相同失败工具调用已达到重复上限。下面只能基于已取得的信息给出阶段性结论；如需继续查证，请缩小问题范围后重试。",
+    "rubric": {
+      "targeting": "薄弱点针对性 0-2",
+      "prerequisite": "前置知识处理 0-2",
+      "difficulty": "难度匹配 0-2",
+      "scaffolding": "教学脚手架 0-2",
+      "redundancy": "冗余控制 0-2"
+    },
+    "required_output": {
+      "response_a": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "response_b": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "winner": "A|B|tie",
+      "reason": "brief reason"
+    }
+  },
+  {
+    "student_id": "S024",
+    "ability_group": "strong",
+    "target_kp": "栈",
+    "hidden_profile": {
+      "student_id": "S024",
+      "ability_group": "strong",
+      "knowledge_state": {
+        "栈": {
+          "level": "weak",
+          "misconception": "把栈误认为先进先出的队列。"
+        },
+        "队列": {
+          "level": "partial"
+        },
+        "线性表": {
+          "level": "partial"
+        },
+        "图": {
+          "level": "mastered"
+        },
+        "广度优先搜索": {
+          "level": "mastered"
+        },
+        "深度优先搜索": {
+          "level": "mastered"
+        }
+      },
+      "ground_truth_weak_kps": [
+        "栈"
+      ]
+    },
+    "prompt": "我刚才做关于“栈”的题一直出错，我还是没太搞懂。\n请根据我之前的学习情况来讲，不要只给通用定义：\n1. 先判断我最可能卡在哪里；\n2. 如果存在更基础的前置薄弱点，先指出并补一下；\n3. 再针对当前问题分步讲解；\n4. 最后告诉我下一步最应该练什么。\n请尽量简洁。",
+    "response_a": "**你目前的掌握情况**\n\n- 栈：41.0（练习 1 次，正确 0 次）\n- 线性表：41.0（练习 1 次，正确 0 次）\n\n**诊断**\n\n「栈」的掌握度从 50 降到了 41，说明刚才的练习没做对；它的前置「线性表」也同步降到了 41，这两个都刚练过一次且都错了。\n\n**下一步**\n\n先回头把「线性表」补扎实，再回头练「栈」——基础不牢的时候硬刷上层，掌握度会持续往下掉。",
+    "response_b": "你「栈」这个知识点目前掌握度是 34.4，之前练过 2 次，两次都错了。\n\n好，既然两次都没做对，那咱们就针对「栈」本身的操作规则来梳理，你之前卡在哪一步？是入栈出栈的顺序，还是应用场景的判断？\n\n另外，我查了一下，你学习「栈」所需的前置知识点目前都没有薄弱项，基础是扎实的，所以问题应该就出在「栈」这个概念本身的理解上。\n\n接下来，你挑一道刚才做错的题，把题目和你的思路说给我，我帮你定位具体是哪里想偏了。",
+    "rubric": {
+      "targeting": "薄弱点针对性 0-2",
+      "prerequisite": "前置知识处理 0-2",
+      "difficulty": "难度匹配 0-2",
+      "scaffolding": "教学脚手架 0-2",
+      "redundancy": "冗余控制 0-2"
+    },
+    "required_output": {
+      "response_a": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "response_b": {
+        "targeting": 0,
+        "prerequisite": 0,
+        "difficulty": 0,
+        "scaffolding": 0,
+        "redundancy": 0,
+        "total": 0
+      },
+      "winner": "A|B|tie",
+      "reason": "brief reason"
+    }
+  }
+]

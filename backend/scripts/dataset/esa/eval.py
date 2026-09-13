@@ -30,6 +30,7 @@ import os
 import pathlib
 import re
 import sys
+import time
 import unicodedata
 import urllib.parse
 import urllib.request
@@ -165,7 +166,8 @@ def _opener_for(endpoint: str) -> urllib.request.OpenerDirector:
 
 def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
                   timeout: int = 1800, api_key: str | None = None,
-                  retries: int = 1, temperature: float = 0.0) -> str:
+                  retries: int = 1, temperature: float = 0.0,
+                  max_tokens: int = 8192) -> str:
     """OpenAI 兼容的 chat/completions。返回原始文本，不让服务端替我们解析工具调用
     —— 评测要考的正是模型自己产出的格式对不对。
 
@@ -189,7 +191,7 @@ def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
         # 就被砍断（实测 5 条里有 2 条断在 markdown 表格中间）。
         # 评测集里 160 道题考「工具返回后怎么说」，被截断的话
         # 「结果响应率」「结果忠实度」测出来的是**我们的取数设置，不是模型能力**。
-        "max_tokens": 8192,
+        "max_tokens": max_tokens,
     }
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -248,6 +250,45 @@ def call_endpoint(endpoint: str, model: str, messages: list[dict], tools: list,
     return msg.get("content") or ""
 
 
+def _load_resume_predictions(out_path: pathlib.Path, fingerprint: str,
+                             run_fingerprint: str | None) -> dict[str, str]:
+    """Load valid completed rows and reject checkpoints from another run."""
+    lines = out_path.read_text(encoding="utf-8").splitlines()
+    already: dict[str, str] = {}
+    metadata: dict = {}
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if "id" not in row:
+            metadata.update(row.get("_meta", {}))
+            continue
+        if row.get("raw", "").strip():
+            already[row["id"]] = row["raw"]
+
+    seen_fp = metadata.get("eval_fingerprint")
+    if seen_fp != fingerprint:
+        raise ValueError(
+            f"❌ 拒绝续跑：{out_path.name} 不是对着当前评测集跑的。\n"
+            f"   它的指纹：{seen_fp or '（没有 —— 旧版 predict 产出的）'}\n"
+            f"   当前评测集：{fingerprint}\n"
+            "   评测集改动后 id 往往不变，不能把旧输出混进新考卷。"
+        )
+
+    seen_run_fp = metadata.get("run_fingerprint")
+    if run_fingerprint is not None and seen_run_fp != run_fingerprint:
+        raise ValueError(
+            f"❌ 拒绝续跑：{out_path.name} 属于另一套模型或推理配置。\n"
+            f"   文件运行指纹：{seen_run_fp or '（没有）'}\n"
+            f"   本次运行指纹：{run_fingerprint}\n"
+            "   adapter、thinking 模式或生成参数变化后必须重新跑，不能拼接结果。"
+        )
+    return already
+
+
 def cmd_predict(args) -> int:
     """处理 `cmd_predict` 相关逻辑。
 
@@ -258,6 +299,10 @@ def cmd_predict(args) -> int:
         int => 处理结果。
     """
     suite = getattr(args, "suite", "main")
+    if args.max_tokens <= 0:
+        sys.exit("--max-tokens 必须大于 0")
+    if args.progress_every <= 0:
+        sys.exit("--progress-every 必须大于 0")
     paths = suite_paths(suite, args.tag)
     print(f"评测集：{paths['label']}（{paths['eval'].name}）")
     recs = load_eval(suite)
@@ -281,34 +326,12 @@ def cmd_predict(args) -> int:
     # 把失败结果当成功跳过，正是"数据是错的、仪表盘是绿的"那类 bug。
     fingerprint = eval_fingerprint(suite)
     already: dict[str, str] = {}
+    run_fingerprint = getattr(args, "run_fingerprint", None)
     if getattr(args, "resume", False) and out_path.exists():
-        lines = out_path.read_text(encoding="utf-8").splitlines()
-        seen_fp = None
-        for line in lines:
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError:
-                continue        # 上次被 kill 时写了半行，丢掉重跑
-            if "id" not in row:
-                seen_fp = row.get("_meta", {}).get("eval_fingerprint")
-                continue
-            if row.get("raw", "").strip():
-                already[row["id"]] = row["raw"]
-
-        # 🔴 续跑闸门：这份 pred 必须是对着**同一版评测集**跑出来的。
-        # 判据不能是「id 对得上」—— 改标注/改对话正文时 id 根本不变。
-        if seen_fp != fingerprint:
-            sys.exit(
-                f"❌ 拒绝续跑：{out_path.name} 不是对着当前评测集跑的。\n"
-                f"   它的指纹：{seen_fp or '（没有 —— 旧版 predict 产出的）'}\n"
-                f"   当前评测集：{fingerprint}\n"
-                "   续跑的判据是「这个 id 已有非空预测就跳过」，而评测集改了之后 id 往往不变，\n"
-                "   所以硬续会**瞬间「跑完」全部题目、一条都不真跑**，再拿旧输出和新评测集判分 ——\n"
-                "   数字是错的，报告却长得和正常的一模一样。\n"
-                f"   要重跑就先删掉它：rm {out_path}"
-            )
+        try:
+            already = _load_resume_predictions(out_path, fingerprint, run_fingerprint)
+        except ValueError as exc:
+            sys.exit(str(exc))
         todo = [r for r in recs if r["gold"]["id"] not in already]
         print(f"↻ 续跑：指纹一致（{fingerprint}），"
               f"已有 {len(already)} 条有效预测，本次还要跑 {len(todo)} 条")
@@ -323,16 +346,19 @@ def cmd_predict(args) -> int:
         # 指纹行写在最前面：下次续跑靠它判断「这份预测配不配得上当前评测集」。
         # `load_preds` 会跳过没有 `id` 的行，所以判分不受影响。
         fh.write(json.dumps(
-            {"_meta": {"eval_fingerprint": fingerprint, "tag": args.tag}},
+            {"_meta": {"eval_fingerprint": fingerprint, "tag": args.tag,
+                       "run_fingerprint": run_fingerprint,
+                       "max_tokens": args.max_tokens}},
             ensure_ascii=False) + "\n")
         for sid, raw in already.items():
             fh.write(json.dumps({"id": sid, "raw": raw}, ensure_ascii=False) + "\n")
         fh.flush()
+        predict_started = time.monotonic()
         for i, rec in enumerate(todo, 1):
             tools = json.loads(rec["tools"])
             try:
                 raw = call_endpoint(args.endpoint, args.model, build_messages(rec), tools,
-                                    api_key=api_key)
+                                    api_key=api_key, max_tokens=args.max_tokens)
             except Exception as exc:  # noqa: BLE001
                 print(f"  ⚠️  第 {i} 条请求失败：{exc}")
                 errors.append((rec["gold"]["id"], str(exc)[:120]))
@@ -340,8 +366,12 @@ def cmd_predict(args) -> int:
             fh.write(json.dumps({"id": rec["gold"]["id"], "raw": raw}, ensure_ascii=False) + "\n")
             fh.flush()      # 每条落盘：作业被 kill 时文件仍是完整可续跑的
             done += 1
-            if done % 20 == 0:
-                print(f"  已完成 {done}/{len(recs)}", flush=True)
+            if done % args.progress_every == 0 or i == len(todo):
+                elapsed = time.monotonic() - predict_started
+                rate = i / elapsed if elapsed else 0.0
+                remaining = (len(todo) - i) / rate if rate else 0.0
+                print(f"  已完成 {done}/{len(recs)}，本轮 {rate * 60:.2f} 条/分，"
+                      f"预计剩余 {remaining / 60:.1f} 分钟", flush=True)
     print(f"预测完成 {done} 条 → {out_path}")
     if done < total:
         print(f"   （评测集共 {total} 条，这份只有 {done} 条，是试跑产物）")
@@ -1555,6 +1585,12 @@ def main(argv=None) -> int:
     p.add_argument("--resume", action="store_true",
                    help="接着上次的 pred_<tag>.jsonl 往下跑，跳过已有且非空的预测。"
                         "空预测（上次请求失败的产物）会重试。")
+    p.add_argument("--run-fingerprint",
+                   help="模型、adapter 和推理配置的稳定指纹；续跑时必须一致。")
+    p.add_argument("--max-tokens", type=int, default=8192,
+                   help="每题最大生成 token 数，默认 8192。")
+    p.add_argument("--progress-every", type=int, default=10,
+                   help="每 N 题打印一次吞吐和 ETA，默认 10。")
     p.add_argument("--limit", type=int, help="只跑前 N 条，用于试通端点。"
                                              "产出的 pred 文件不完整，score 会拒绝判分")
     p.set_defaults(func=cmd_predict)

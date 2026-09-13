@@ -336,15 +336,15 @@ SANDBOX_PYTHON_PACKAGE_ALLOWLIST: tuple[str, ...] = _csv_from_env(
 # subprocess lifetime. Only the audited You.com search tool is exposed.
 MCP_ENABLED: bool = True
 MCP_YOU_SERVER_NAME: str = "you"
-MCP_YOU_COMMAND: str = "npx"
+MCP_YOU_COMMAND: str = "/persist_data/home/chenxuzhao/esa-npx-wrapper"
 MCP_YOU_ARGS: tuple[str, ...] = (
     "--yes",
     "@youdotcom-oss/mcp@3.5.0",
 )
 MCP_YOU_ALLOWED_TOOLS: frozenset[str] = frozenset({"you-search"})
 MCP_YOU_API_KEY: str | None = _optional_str_from_env("YDC_API_KEY")
-MCP_STARTUP_TIMEOUT_SECONDS: float = 45.0
-MCP_CALL_TIMEOUT_SECONDS: float = 20.0
+MCP_STARTUP_TIMEOUT_SECONDS: float = 120.0
+MCP_CALL_TIMEOUT_SECONDS: float = 60.0
 MCP_MAX_RESULT_CHARS: int = 120_000
 
 

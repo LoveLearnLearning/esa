@@ -1,0 +1,902 @@
+[
+  {
+    "student_id": "S001",
+    "ability_group": "weak",
+    "knowledge_state": {
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "图": {
+        "level": "weak",
+        "misconception": "认为一个图必须整体连通。"
+      },
+      "广度优先搜索": {
+        "level": "weak",
+        "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+      },
+      "栈": {
+        "level": "partial"
+      },
+      "深度优先搜索": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "队列",
+      "图",
+      "广度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S002",
+    "ability_group": "weak",
+    "knowledge_state": {
+      "深度优先搜索": {
+        "level": "weak",
+        "misconception": "误认为 DFS 能保证无权图最短路径。"
+      },
+      "栈": {
+        "level": "weak",
+        "misconception": "把栈误认为先进先出的队列。"
+      },
+      "线性表": {
+        "level": "weak",
+        "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+      },
+      "队列": {
+        "level": "partial"
+      },
+      "广度优先搜索": {
+        "level": "partial"
+      },
+      "图": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "线性表",
+      "栈",
+      "深度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S003",
+    "ability_group": "weak",
+    "knowledge_state": {
+      "广度优先搜索": {
+        "level": "weak",
+        "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+      },
+      "线性表": {
+        "level": "weak",
+        "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+      },
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "深度优先搜索": {
+        "level": "partial"
+      },
+      "栈": {
+        "level": "partial"
+      },
+      "图": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "线性表",
+      "队列",
+      "广度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S004",
+    "ability_group": "weak",
+    "knowledge_state": {
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "深度优先搜索": {
+        "level": "weak",
+        "misconception": "误认为 DFS 能保证无权图最短路径。"
+      },
+      "栈": {
+        "level": "weak",
+        "misconception": "把栈误认为先进先出的队列。"
+      },
+      "图": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "partial"
+      },
+      "广度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "栈",
+      "队列",
+      "深度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S005",
+    "ability_group": "weak",
+    "knowledge_state": {
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "栈": {
+        "level": "weak",
+        "misconception": "把栈误认为先进先出的队列。"
+      },
+      "线性表": {
+        "level": "weak",
+        "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+      },
+      "深度优先搜索": {
+        "level": "partial"
+      },
+      "广度优先搜索": {
+        "level": "partial"
+      },
+      "图": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "线性表",
+      "栈",
+      "队列"
+    ]
+  },
+  {
+    "student_id": "S006",
+    "ability_group": "weak",
+    "knowledge_state": {
+      "图": {
+        "level": "weak",
+        "misconception": "认为一个图必须整体连通。"
+      },
+      "深度优先搜索": {
+        "level": "weak",
+        "misconception": "误认为 DFS 能保证无权图最短路径。"
+      },
+      "栈": {
+        "level": "weak",
+        "misconception": "把栈误认为先进先出的队列。"
+      },
+      "队列": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "partial"
+      },
+      "广度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "栈",
+      "图",
+      "深度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S007",
+    "ability_group": "weak",
+    "knowledge_state": {
+      "广度优先搜索": {
+        "level": "weak",
+        "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+      },
+      "深度优先搜索": {
+        "level": "weak",
+        "misconception": "误认为 DFS 能保证无权图最短路径。"
+      },
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "线性表": {
+        "level": "partial"
+      },
+      "栈": {
+        "level": "partial"
+      },
+      "图": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "队列",
+      "深度优先搜索",
+      "广度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S008",
+    "ability_group": "weak",
+    "knowledge_state": {
+      "线性表": {
+        "level": "weak",
+        "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+      },
+      "广度优先搜索": {
+        "level": "weak",
+        "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+      },
+      "栈": {
+        "level": "weak",
+        "misconception": "把栈误认为先进先出的队列。"
+      },
+      "深度优先搜索": {
+        "level": "partial"
+      },
+      "图": {
+        "level": "partial"
+      },
+      "队列": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "线性表",
+      "栈",
+      "广度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S009",
+    "ability_group": "weak",
+    "knowledge_state": {
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "广度优先搜索": {
+        "level": "weak",
+        "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+      },
+      "图": {
+        "level": "weak",
+        "misconception": "认为一个图必须整体连通。"
+      },
+      "栈": {
+        "level": "partial"
+      },
+      "深度优先搜索": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "队列",
+      "图",
+      "广度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S010",
+    "ability_group": "weak",
+    "knowledge_state": {
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "线性表": {
+        "level": "weak",
+        "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+      },
+      "深度优先搜索": {
+        "level": "weak",
+        "misconception": "误认为 DFS 能保证无权图最短路径。"
+      },
+      "栈": {
+        "level": "partial"
+      },
+      "广度优先搜索": {
+        "level": "partial"
+      },
+      "图": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "线性表",
+      "队列",
+      "深度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S011",
+    "ability_group": "medium",
+    "knowledge_state": {
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "线性表": {
+        "level": "weak",
+        "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+      },
+      "图": {
+        "level": "partial"
+      },
+      "栈": {
+        "level": "partial"
+      },
+      "深度优先搜索": {
+        "level": "mastered"
+      },
+      "广度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "线性表",
+      "队列"
+    ]
+  },
+  {
+    "student_id": "S012",
+    "ability_group": "medium",
+    "knowledge_state": {
+      "深度优先搜索": {
+        "level": "weak",
+        "misconception": "误认为 DFS 能保证无权图最短路径。"
+      },
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "图": {
+        "level": "partial"
+      },
+      "栈": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "mastered"
+      },
+      "广度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "队列",
+      "深度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S013",
+    "ability_group": "medium",
+    "knowledge_state": {
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "深度优先搜索": {
+        "level": "weak",
+        "misconception": "误认为 DFS 能保证无权图最短路径。"
+      },
+      "线性表": {
+        "level": "partial"
+      },
+      "图": {
+        "level": "partial"
+      },
+      "栈": {
+        "level": "mastered"
+      },
+      "广度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "队列",
+      "深度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S014",
+    "ability_group": "medium",
+    "knowledge_state": {
+      "栈": {
+        "level": "weak",
+        "misconception": "把栈误认为先进先出的队列。"
+      },
+      "图": {
+        "level": "weak",
+        "misconception": "认为一个图必须整体连通。"
+      },
+      "深度优先搜索": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "partial"
+      },
+      "队列": {
+        "level": "mastered"
+      },
+      "广度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "栈",
+      "图"
+    ]
+  },
+  {
+    "student_id": "S015",
+    "ability_group": "medium",
+    "knowledge_state": {
+      "广度优先搜索": {
+        "level": "weak",
+        "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+      },
+      "图": {
+        "level": "weak",
+        "misconception": "认为一个图必须整体连通。"
+      },
+      "队列": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "partial"
+      },
+      "栈": {
+        "level": "mastered"
+      },
+      "深度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "图",
+      "广度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S016",
+    "ability_group": "medium",
+    "knowledge_state": {
+      "栈": {
+        "level": "weak",
+        "misconception": "把栈误认为先进先出的队列。"
+      },
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "深度优先搜索": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "partial"
+      },
+      "广度优先搜索": {
+        "level": "mastered"
+      },
+      "图": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "栈",
+      "队列"
+    ]
+  },
+  {
+    "student_id": "S017",
+    "ability_group": "medium",
+    "knowledge_state": {
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "广度优先搜索": {
+        "level": "weak",
+        "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+      },
+      "栈": {
+        "level": "partial"
+      },
+      "深度优先搜索": {
+        "level": "partial"
+      },
+      "图": {
+        "level": "mastered"
+      },
+      "线性表": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "队列",
+      "广度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S018",
+    "ability_group": "medium",
+    "knowledge_state": {
+      "深度优先搜索": {
+        "level": "weak",
+        "misconception": "误认为 DFS 能保证无权图最短路径。"
+      },
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "广度优先搜索": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "partial"
+      },
+      "图": {
+        "level": "mastered"
+      },
+      "栈": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "队列",
+      "深度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S019",
+    "ability_group": "medium",
+    "knowledge_state": {
+      "栈": {
+        "level": "weak",
+        "misconception": "把栈误认为先进先出的队列。"
+      },
+      "深度优先搜索": {
+        "level": "weak",
+        "misconception": "误认为 DFS 能保证无权图最短路径。"
+      },
+      "图": {
+        "level": "partial"
+      },
+      "广度优先搜索": {
+        "level": "partial"
+      },
+      "队列": {
+        "level": "mastered"
+      },
+      "线性表": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "栈",
+      "深度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S020",
+    "ability_group": "medium",
+    "knowledge_state": {
+      "图": {
+        "level": "weak",
+        "misconception": "认为一个图必须整体连通。"
+      },
+      "队列": {
+        "level": "weak",
+        "misconception": "把队列误认为后进先出的栈。"
+      },
+      "广度优先搜索": {
+        "level": "partial"
+      },
+      "栈": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "mastered"
+      },
+      "深度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "队列",
+      "图"
+    ]
+  },
+  {
+    "student_id": "S021",
+    "ability_group": "strong",
+    "knowledge_state": {
+      "图": {
+        "level": "weak",
+        "misconception": "认为一个图必须整体连通。"
+      },
+      "队列": {
+        "level": "partial"
+      },
+      "栈": {
+        "level": "partial"
+      },
+      "广度优先搜索": {
+        "level": "mastered"
+      },
+      "深度优先搜索": {
+        "level": "mastered"
+      },
+      "线性表": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "图"
+    ]
+  },
+  {
+    "student_id": "S022",
+    "ability_group": "strong",
+    "knowledge_state": {
+      "广度优先搜索": {
+        "level": "weak",
+        "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+      },
+      "图": {
+        "level": "partial"
+      },
+      "队列": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "mastered"
+      },
+      "深度优先搜索": {
+        "level": "mastered"
+      },
+      "栈": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "广度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S023",
+    "ability_group": "strong",
+    "knowledge_state": {
+      "深度优先搜索": {
+        "level": "weak",
+        "misconception": "误认为 DFS 能保证无权图最短路径。"
+      },
+      "队列": {
+        "level": "partial"
+      },
+      "栈": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "mastered"
+      },
+      "图": {
+        "level": "mastered"
+      },
+      "广度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "深度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S024",
+    "ability_group": "strong",
+    "knowledge_state": {
+      "栈": {
+        "level": "weak",
+        "misconception": "把栈误认为先进先出的队列。"
+      },
+      "队列": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "partial"
+      },
+      "图": {
+        "level": "mastered"
+      },
+      "广度优先搜索": {
+        "level": "mastered"
+      },
+      "深度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "栈"
+    ]
+  },
+  {
+    "student_id": "S025",
+    "ability_group": "strong",
+    "knowledge_state": {
+      "线性表": {
+        "level": "weak",
+        "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+      },
+      "图": {
+        "level": "partial"
+      },
+      "队列": {
+        "level": "partial"
+      },
+      "广度优先搜索": {
+        "level": "mastered"
+      },
+      "栈": {
+        "level": "mastered"
+      },
+      "深度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "线性表"
+    ]
+  },
+  {
+    "student_id": "S026",
+    "ability_group": "strong",
+    "knowledge_state": {
+      "线性表": {
+        "level": "weak",
+        "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+      },
+      "队列": {
+        "level": "partial"
+      },
+      "广度优先搜索": {
+        "level": "partial"
+      },
+      "图": {
+        "level": "mastered"
+      },
+      "深度优先搜索": {
+        "level": "mastered"
+      },
+      "栈": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "线性表"
+    ]
+  },
+  {
+    "student_id": "S027",
+    "ability_group": "strong",
+    "knowledge_state": {
+      "广度优先搜索": {
+        "level": "weak",
+        "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+      },
+      "图": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "partial"
+      },
+      "栈": {
+        "level": "mastered"
+      },
+      "队列": {
+        "level": "mastered"
+      },
+      "深度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "广度优先搜索"
+    ]
+  },
+  {
+    "student_id": "S028",
+    "ability_group": "strong",
+    "knowledge_state": {
+      "栈": {
+        "level": "weak",
+        "misconception": "把栈误认为先进先出的队列。"
+      },
+      "线性表": {
+        "level": "partial"
+      },
+      "广度优先搜索": {
+        "level": "partial"
+      },
+      "图": {
+        "level": "mastered"
+      },
+      "深度优先搜索": {
+        "level": "mastered"
+      },
+      "队列": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "栈"
+    ]
+  },
+  {
+    "student_id": "S029",
+    "ability_group": "strong",
+    "knowledge_state": {
+      "图": {
+        "level": "weak",
+        "misconception": "认为一个图必须整体连通。"
+      },
+      "深度优先搜索": {
+        "level": "partial"
+      },
+      "队列": {
+        "level": "partial"
+      },
+      "栈": {
+        "level": "mastered"
+      },
+      "线性表": {
+        "level": "mastered"
+      },
+      "广度优先搜索": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "图"
+    ]
+  },
+  {
+    "student_id": "S030",
+    "ability_group": "strong",
+    "knowledge_state": {
+      "广度优先搜索": {
+        "level": "weak",
+        "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+      },
+      "深度优先搜索": {
+        "level": "partial"
+      },
+      "线性表": {
+        "level": "partial"
+      },
+      "栈": {
+        "level": "mastered"
+      },
+      "图": {
+        "level": "mastered"
+      },
+      "队列": {
+        "level": "mastered"
+      }
+    },
+    "ground_truth_weak_kps": [
+      "广度优先搜索"
+    ]
+  }
+]

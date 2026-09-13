@@ -1,0 +1,42 @@
+{
+  "overall": {
+    "n_students": 30,
+    "tp": 60,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "exact_set_match_rate": 1.0
+  },
+  "weak": {
+    "n_students": 10,
+    "tp": 30,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "exact_set_match_rate": 1.0
+  },
+  "medium": {
+    "n_students": 10,
+    "tp": 20,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "exact_set_match_rate": 1.0
+  },
+  "strong": {
+    "n_students": 10,
+    "tp": 10,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "exact_set_match_rate": 1.0
+  }
+}

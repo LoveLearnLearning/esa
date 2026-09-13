@@ -19,6 +19,7 @@ import http.server
 import os
 import re
 import sys
+import tempfile
 import threading
 import urllib.request
 from pathlib import Path
@@ -27,7 +28,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from esa.eval import EVAL_DIR, score  # noqa: E402
 from esa.ir import load_schemas, schemas_by_name  # noqa: E402
-from esa.eval import _opener_for, bypass_proxy, call_endpoint  # noqa: E402
+from esa.eval import (  # noqa: E402
+    _load_resume_predictions,
+    _opener_for,
+    bypass_proxy,
+    call_endpoint,
+)
 from esa.stats import macro_rate, mcnemar_exact, wilson  # noqa: E402
 from esa.validate import is_clarification_request, is_refusal  # noqa: E402
 
@@ -686,6 +692,63 @@ def main() -> int:
                     os.environ[k] = v
             srv.shutdown()
 
+    def _max_tokens_reaches_endpoint() -> bool:
+        captured = {}
+
+        class _H(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers["Content-Length"])
+                captured.update(json.loads(self.rfile.read(length)))
+                body = json.dumps(
+                    {"choices": [{"message": {"content": "ok"}}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.HTTPServer(("127.0.0.1", 0), _H)
+        port = srv.server_address[1]
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            call_endpoint(f"http://127.0.0.1:{port}/v1", "m",
+                          [{"role": "user", "content": "hi"}], [],
+                          timeout=5, max_tokens=321)
+            return captured.get("max_tokens") == 321
+        finally:
+            srv.shutdown()
+
+    def _resume_rejects_other_run() -> bool:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pred.jsonl"
+            path.write_text(
+                json.dumps({"_meta": {"eval_fingerprint": "eval-a",
+                                       "run_fingerprint": "run-a"}}) + "\n"
+                + json.dumps({"id": "done", "raw": "ok"}) + "\n",
+                encoding="utf-8",
+            )
+            try:
+                _load_resume_predictions(path, "eval-a", "run-b")
+            except ValueError as exc:
+                return "另一套模型或推理配置" in str(exc)
+            return False
+
+    def _resume_keeps_valid_rows() -> bool:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pred.jsonl"
+            path.write_text(
+                json.dumps({"_meta": {"eval_fingerprint": "eval-a",
+                                       "run_fingerprint": "run-a"}}) + "\n"
+                + json.dumps({"id": "done", "raw": "ok"}) + "\n"
+                + json.dumps({"id": "empty", "raw": ""}) + "\n"
+                + "{broken\n",
+                encoding="utf-8",
+            )
+            return _load_resume_predictions(path, "eval-a", "run-a") == {"done": "ok"}
+
     checks = [
         ("perfect: 格式合法率 100%",        p["格式合法率"] == 100.0),
         ("perfect: 工具选择准确率 100%",     p["工具选择准确率"] == 100.0),
@@ -811,6 +874,9 @@ def main() -> int:
          _no_live_proxy("http://127.0.0.1:8000/v1")),
         ("**端到端**：环境里有坏代理时仍能打通本机端点",
          _end_to_end_through_bad_proxy()),
+        ("max_tokens 参数真实传到推理端点", _max_tokens_reaches_endpoint()),
+        ("续跑拒绝混入另一套推理配置", _resume_rejects_other_run()),
+        ("续跑只保留完整且非空的预测", _resume_keeps_valid_rows()),
         # ---- 补充评测集必须完全隔离（2026-08-19 新增）----
         ("补充集非空且一条一个模板", _supp[0]),
         ("补充集不与主评测集/训练集共享 template（不泄题）", _supp[1]),

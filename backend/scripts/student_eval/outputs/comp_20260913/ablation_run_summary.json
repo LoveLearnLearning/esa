@@ -1,0 +1,10 @@
+{
+  "run_id": "comp_20260913",
+  "expected_pairs": 12,
+  "completed_full": 12,
+  "completed_baseline": 12,
+  "esa_calls_attempted": 24,
+  "concurrency": 1,
+  "cooldown_seconds": 2.0,
+  "base_url": "http://127.0.0.1:51024/api"
+}

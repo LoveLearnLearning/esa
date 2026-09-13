@@ -1,0 +1,85 @@
+{
+  "n": 12,
+  "full_mean": 7.417,
+  "baseline_mean": 4.417,
+  "paired_mean_difference": 3,
+  "full_median": 7.5,
+  "baseline_median": 4.5,
+  "full_wins": 11,
+  "ties": 1,
+  "baseline_wins": 0,
+  "per_student": [
+    {
+      "student_id": "S001",
+      "full": 7,
+      "baseline": 4,
+      "diff": 3
+    },
+    {
+      "student_id": "S002",
+      "full": 6,
+      "baseline": 6,
+      "diff": 0
+    },
+    {
+      "student_id": "S003",
+      "full": 9,
+      "baseline": 5,
+      "diff": 4
+    },
+    {
+      "student_id": "S004",
+      "full": 8,
+      "baseline": 4,
+      "diff": 4
+    },
+    {
+      "student_id": "S011",
+      "full": 8,
+      "baseline": 5,
+      "diff": 3
+    },
+    {
+      "student_id": "S012",
+      "full": 7,
+      "baseline": 4,
+      "diff": 3
+    },
+    {
+      "student_id": "S013",
+      "full": 8,
+      "baseline": 4,
+      "diff": 4
+    },
+    {
+      "student_id": "S014",
+      "full": 7,
+      "baseline": 5,
+      "diff": 2
+    },
+    {
+      "student_id": "S021",
+      "full": 7,
+      "baseline": 4,
+      "diff": 3
+    },
+    {
+      "student_id": "S022",
+      "full": 8,
+      "baseline": 5,
+      "diff": 3
+    },
+    {
+      "student_id": "S023",
+      "full": 6,
+      "baseline": 2,
+      "diff": 4
+    },
+    {
+      "student_id": "S024",
+      "full": 8,
+      "baseline": 5,
+      "diff": 3
+    }
+  ]
+}

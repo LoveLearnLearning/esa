@@ -1,0 +1,42 @@
+{
+  "experiment_name": "ESA轻量化认知约束虚拟学生补充验证",
+  "seed": 20260913,
+  "course": "数据结构",
+  "knowledge_points": [
+    "线性表",
+    "栈",
+    "队列",
+    "图",
+    "深度优先搜索",
+    "广度优先搜索"
+  ],
+  "diagnosis": {
+    "students": 30,
+    "groups": {
+      "weak": 10,
+      "medium": 10,
+      "strong": 10
+    },
+    "questions_per_kp": 2,
+    "activity_type": "practice",
+    "evidence_reliability": 1.0,
+    "hint_level": 0,
+    "attempts": 1,
+    "independent": true
+  },
+  "ablation": {
+    "students": 12,
+    "per_group": 4,
+    "esa_concurrency": 1,
+    "cooldown_seconds": 2,
+    "base_url": "http://127.0.0.1:51024/api",
+    "knowledge_sources": []
+  },
+  "resource_policy": {
+    "start_new_local_llm": false,
+    "use_local_student_llm": false,
+    "use_local_judge_llm": false,
+    "experiment_a_gpu_calls": 0,
+    "experiment_b_target_esa_calls": 24
+  }
+}

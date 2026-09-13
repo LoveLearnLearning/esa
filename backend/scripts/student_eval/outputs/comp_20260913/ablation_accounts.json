@@ -1,0 +1,546 @@
+{
+  "run_id": "comp_20260913",
+  "prefix": "eval26_comp_20260913_",
+  "accounts": [
+    {
+      "student_id": "S001",
+      "ability_group": "weak",
+      "target_kp": "队列",
+      "hidden_profile": {
+        "student_id": "S001",
+        "ability_group": "weak",
+        "knowledge_state": {
+          "队列": {
+            "level": "weak",
+            "misconception": "把队列误认为后进先出的栈。"
+          },
+          "图": {
+            "level": "weak",
+            "misconception": "认为一个图必须整体连通。"
+          },
+          "广度优先搜索": {
+            "level": "weak",
+            "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+          },
+          "栈": {
+            "level": "partial"
+          },
+          "深度优先搜索": {
+            "level": "partial"
+          },
+          "线性表": {
+            "level": "mastered"
+          }
+        },
+        "ground_truth_weak_kps": [
+          "队列",
+          "图",
+          "广度优先搜索"
+        ]
+      },
+      "full": {
+        "username": "eval26_comp_20260913_full_s001",
+        "user_id": "57b0880c7ce14763b6ae13c1908456e8",
+        "session_id": "eval_9f4eaaa12b8d4236990a9531fbc25f88"
+      },
+      "baseline": {
+        "username": "eval26_comp_20260913_base_s001",
+        "user_id": "50d486c1adb648fbae23b71631a9ca85",
+        "session_id": "eval_3311dcc9e1124051b29dc3019dd55fd7"
+      }
+    },
+    {
+      "student_id": "S002",
+      "ability_group": "weak",
+      "target_kp": "线性表",
+      "hidden_profile": {
+        "student_id": "S002",
+        "ability_group": "weak",
+        "knowledge_state": {
+          "深度优先搜索": {
+            "level": "weak",
+            "misconception": "误认为 DFS 能保证无权图最短路径。"
+          },
+          "栈": {
+            "level": "weak",
+            "misconception": "把栈误认为先进先出的队列。"
+          },
+          "线性表": {
+            "level": "weak",
+            "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+          },
+          "队列": {
+            "level": "partial"
+          },
+          "广度优先搜索": {
+            "level": "partial"
+          },
+          "图": {
+            "level": "mastered"
+          }
+        },
+        "ground_truth_weak_kps": [
+          "线性表",
+          "栈",
+          "深度优先搜索"
+        ]
+      },
+      "full": {
+        "username": "eval26_comp_20260913_full_s002",
+        "user_id": "1b20a22a6a8043d194a714bc5eb3ca09",
+        "session_id": "eval_319e3c6f155147d890e8fba821086dd1"
+      },
+      "baseline": {
+        "username": "eval26_comp_20260913_base_s002",
+        "user_id": "31c9c51544e747fb84bc512477258290",
+        "session_id": "eval_c048e985f0fb4d58a48c9fdbecf1a63e"
+      }
+    },
+    {
+      "student_id": "S003",
+      "ability_group": "weak",
+      "target_kp": "线性表",
+      "hidden_profile": {
+        "student_id": "S003",
+        "ability_group": "weak",
+        "knowledge_state": {
+          "广度优先搜索": {
+            "level": "weak",
+            "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+          },
+          "线性表": {
+            "level": "weak",
+            "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+          },
+          "队列": {
+            "level": "weak",
+            "misconception": "把队列误认为后进先出的栈。"
+          },
+          "深度优先搜索": {
+            "level": "partial"
+          },
+          "栈": {
+            "level": "partial"
+          },
+          "图": {
+            "level": "mastered"
+          }
+        },
+        "ground_truth_weak_kps": [
+          "线性表",
+          "队列",
+          "广度优先搜索"
+        ]
+      },
+      "full": {
+        "username": "eval26_comp_20260913_full_s003",
+        "user_id": "46e7cfc534424b7f9b4db5f8fefa42e0",
+        "session_id": "eval_95099b1382e64d6cbc5a28f9ca84d777"
+      },
+      "baseline": {
+        "username": "eval26_comp_20260913_base_s003",
+        "user_id": "8d29a46fd720459e99275a390e5a2cd4",
+        "session_id": "eval_70d91193be9a4aa9bc925aac8d794ad0"
+      }
+    },
+    {
+      "student_id": "S004",
+      "ability_group": "weak",
+      "target_kp": "栈",
+      "hidden_profile": {
+        "student_id": "S004",
+        "ability_group": "weak",
+        "knowledge_state": {
+          "队列": {
+            "level": "weak",
+            "misconception": "把队列误认为后进先出的栈。"
+          },
+          "深度优先搜索": {
+            "level": "weak",
+            "misconception": "误认为 DFS 能保证无权图最短路径。"
+          },
+          "栈": {
+            "level": "weak",
+            "misconception": "把栈误认为先进先出的队列。"
+          },
+          "图": {
+            "level": "partial"
+          },
+          "线性表": {
+            "level": "partial"
+          },
+          "广度优先搜索": {
+            "level": "mastered"
+          }
+        },
+        "ground_truth_weak_kps": [
+          "栈",
+          "队列",
+          "深度优先搜索"
+        ]
+      },
+      "full": {
+        "username": "eval26_comp_20260913_full_s004",
+        "user_id": "fca3d64ced844ed997cdfbd95ecf1ba8",
+        "session_id": "eval_55bed8c41baa42ad896068110dfb9d95"
+      },
+      "baseline": {
+        "username": "eval26_comp_20260913_base_s004",
+        "user_id": "fe401709f3fc43ba81fd2fd0fa182eba",
+        "session_id": "eval_781704bb79774cb1ac880421bd899fc7"
+      }
+    },
+    {
+      "student_id": "S011",
+      "ability_group": "medium",
+      "target_kp": "线性表",
+      "hidden_profile": {
+        "student_id": "S011",
+        "ability_group": "medium",
+        "knowledge_state": {
+          "队列": {
+            "level": "weak",
+            "misconception": "把队列误认为后进先出的栈。"
+          },
+          "线性表": {
+            "level": "weak",
+            "misconception": "把逻辑上的线性关系误认为物理存储必须连续。"
+          },
+          "图": {
+            "level": "partial"
+          },
+          "栈": {
+            "level": "partial"
+          },
+          "深度优先搜索": {
+            "level": "mastered"
+          },
+          "广度优先搜索": {
+            "level": "mastered"
+          }
+        },
+        "ground_truth_weak_kps": [
+          "线性表",
+          "队列"
+        ]
+      },
+      "full": {
+        "username": "eval26_comp_20260913_full_s011",
+        "user_id": "cdc81d935be54eeabdada56c32425d50",
+        "session_id": "eval_2508b65dc8f940ed9159e1852e4e960e"
+      },
+      "baseline": {
+        "username": "eval26_comp_20260913_base_s011",
+        "user_id": "357359ddf9b04e10a03eaedf3c69e6b9",
+        "session_id": "eval_78091f213b904b209c459212b7eb12c7"
+      }
+    },
+    {
+      "student_id": "S012",
+      "ability_group": "medium",
+      "target_kp": "队列",
+      "hidden_profile": {
+        "student_id": "S012",
+        "ability_group": "medium",
+        "knowledge_state": {
+          "深度优先搜索": {
+            "level": "weak",
+            "misconception": "误认为 DFS 能保证无权图最短路径。"
+          },
+          "队列": {
+            "level": "weak",
+            "misconception": "把队列误认为后进先出的栈。"
+          },
+          "图": {
+            "level": "partial"
+          },
+          "栈": {
+            "level": "partial"
+          },
+          "线性表": {
+            "level": "mastered"
+          },
+          "广度优先搜索": {
+            "level": "mastered"
+          }
+        },
+        "ground_truth_weak_kps": [
+          "队列",
+          "深度优先搜索"
+        ]
+      },
+      "full": {
+        "username": "eval26_comp_20260913_full_s012",
+        "user_id": "7178137a7a794898b8f0666096e31596",
+        "session_id": "eval_24674621f8c5454b855189e1bf3d4984"
+      },
+      "baseline": {
+        "username": "eval26_comp_20260913_base_s012",
+        "user_id": "3705577287e44d57acb5db5d5afb4ec3",
+        "session_id": "eval_f6bbe2c0e81d4d7daef481dd750d2cb8"
+      }
+    },
+    {
+      "student_id": "S013",
+      "ability_group": "medium",
+      "target_kp": "队列",
+      "hidden_profile": {
+        "student_id": "S013",
+        "ability_group": "medium",
+        "knowledge_state": {
+          "队列": {
+            "level": "weak",
+            "misconception": "把队列误认为后进先出的栈。"
+          },
+          "深度优先搜索": {
+            "level": "weak",
+            "misconception": "误认为 DFS 能保证无权图最短路径。"
+          },
+          "线性表": {
+            "level": "partial"
+          },
+          "图": {
+            "level": "partial"
+          },
+          "栈": {
+            "level": "mastered"
+          },
+          "广度优先搜索": {
+            "level": "mastered"
+          }
+        },
+        "ground_truth_weak_kps": [
+          "队列",
+          "深度优先搜索"
+        ]
+      },
+      "full": {
+        "username": "eval26_comp_20260913_full_s013",
+        "user_id": "e27ef2df09c94b23a13a34eb200249e8",
+        "session_id": "eval_8c1937e99bba40e0b032ac51e5018d9a"
+      },
+      "baseline": {
+        "username": "eval26_comp_20260913_base_s013",
+        "user_id": "462f53634acf429e96c1a9cd40e0ce5e",
+        "session_id": "eval_ebb24b85cfc04dba9fb10ad648735f72"
+      }
+    },
+    {
+      "student_id": "S014",
+      "ability_group": "medium",
+      "target_kp": "栈",
+      "hidden_profile": {
+        "student_id": "S014",
+        "ability_group": "medium",
+        "knowledge_state": {
+          "栈": {
+            "level": "weak",
+            "misconception": "把栈误认为先进先出的队列。"
+          },
+          "图": {
+            "level": "weak",
+            "misconception": "认为一个图必须整体连通。"
+          },
+          "深度优先搜索": {
+            "level": "partial"
+          },
+          "线性表": {
+            "level": "partial"
+          },
+          "队列": {
+            "level": "mastered"
+          },
+          "广度优先搜索": {
+            "level": "mastered"
+          }
+        },
+        "ground_truth_weak_kps": [
+          "栈",
+          "图"
+        ]
+      },
+      "full": {
+        "username": "eval26_comp_20260913_full_s014",
+        "user_id": "8800dd0a854a4417a5546ebed801320e",
+        "session_id": "eval_5ffc2f894e6a467595d87f229f986855"
+      },
+      "baseline": {
+        "username": "eval26_comp_20260913_base_s014",
+        "user_id": "395e3b65869d41ea9afc5bc44b74f842",
+        "session_id": "eval_7faee6a7dd3b4791ad6b01a00a155fe2"
+      }
+    },
+    {
+      "student_id": "S021",
+      "ability_group": "strong",
+      "target_kp": "图",
+      "hidden_profile": {
+        "student_id": "S021",
+        "ability_group": "strong",
+        "knowledge_state": {
+          "图": {
+            "level": "weak",
+            "misconception": "认为一个图必须整体连通。"
+          },
+          "队列": {
+            "level": "partial"
+          },
+          "栈": {
+            "level": "partial"
+          },
+          "广度优先搜索": {
+            "level": "mastered"
+          },
+          "深度优先搜索": {
+            "level": "mastered"
+          },
+          "线性表": {
+            "level": "mastered"
+          }
+        },
+        "ground_truth_weak_kps": [
+          "图"
+        ]
+      },
+      "full": {
+        "username": "eval26_comp_20260913_full_s021",
+        "user_id": "b1dc861b7b60437890bc911c0b20f164",
+        "session_id": "eval_27ad7632615b453d966d0070365728d1"
+      },
+      "baseline": {
+        "username": "eval26_comp_20260913_base_s021",
+        "user_id": "5cc02dfac0be417fa3aa6d688764b003",
+        "session_id": "eval_da4ef78568844addbaff35ce0c016b0a"
+      }
+    },
+    {
+      "student_id": "S022",
+      "ability_group": "strong",
+      "target_kp": "广度优先搜索",
+      "hidden_profile": {
+        "student_id": "S022",
+        "ability_group": "strong",
+        "knowledge_state": {
+          "广度优先搜索": {
+            "level": "weak",
+            "misconception": "不知道 BFS 依赖队列并可保证无权图最少边数路径。"
+          },
+          "图": {
+            "level": "partial"
+          },
+          "队列": {
+            "level": "partial"
+          },
+          "线性表": {
+            "level": "mastered"
+          },
+          "深度优先搜索": {
+            "level": "mastered"
+          },
+          "栈": {
+            "level": "mastered"
+          }
+        },
+        "ground_truth_weak_kps": [
+          "广度优先搜索"
+        ]
+      },
+      "full": {
+        "username": "eval26_comp_20260913_full_s022",
+        "user_id": "5e2281fdae3d4c2d9ebc0a1bd24208ac",
+        "session_id": "eval_f46d744f32074fd9b3f2aff8ff101b62"
+      },
+      "baseline": {
+        "username": "eval26_comp_20260913_base_s022",
+        "user_id": "2392bde192f9484a8e8b116e5b43b003",
+        "session_id": "eval_9147ee570e604a4fa80b76552b6e7c16"
+      }
+    },
+    {
+      "student_id": "S023",
+      "ability_group": "strong",
+      "target_kp": "深度优先搜索",
+      "hidden_profile": {
+        "student_id": "S023",
+        "ability_group": "strong",
+        "knowledge_state": {
+          "深度优先搜索": {
+            "level": "weak",
+            "misconception": "误认为 DFS 能保证无权图最短路径。"
+          },
+          "队列": {
+            "level": "partial"
+          },
+          "栈": {
+            "level": "partial"
+          },
+          "线性表": {
+            "level": "mastered"
+          },
+          "图": {
+            "level": "mastered"
+          },
+          "广度优先搜索": {
+            "level": "mastered"
+          }
+        },
+        "ground_truth_weak_kps": [
+          "深度优先搜索"
+        ]
+      },
+      "full": {
+        "username": "eval26_comp_20260913_full_s023",
+        "user_id": "0c6a7a0df5a34988a067e7173b405c21",
+        "session_id": "eval_786d076a4e3a4452b1b88e5c1260a23c"
+      },
+      "baseline": {
+        "username": "eval26_comp_20260913_base_s023",
+        "user_id": "d1f4a10f690b4a518b25e70dead8f09c",
+        "session_id": "eval_8355e0a2c3bc46bea3d5cd9db8157426"
+      }
+    },
+    {
+      "student_id": "S024",
+      "ability_group": "strong",
+      "target_kp": "栈",
+      "hidden_profile": {
+        "student_id": "S024",
+        "ability_group": "strong",
+        "knowledge_state": {
+          "栈": {
+            "level": "weak",
+            "misconception": "把栈误认为先进先出的队列。"
+          },
+          "队列": {
+            "level": "partial"
+          },
+          "线性表": {
+            "level": "partial"
+          },
+          "图": {
+            "level": "mastered"
+          },
+          "广度优先搜索": {
+            "level": "mastered"
+          },
+          "深度优先搜索": {
+            "level": "mastered"
+          }
+        },
+        "ground_truth_weak_kps": [
+          "栈"
+        ]
+      },
+      "full": {
+        "username": "eval26_comp_20260913_full_s024",
+        "user_id": "e33b2682d5894a5e8a1f3ef5fe939fa8",
+        "session_id": "eval_a59748835ac340a189b7b8f6be03a207"
+      },
+      "baseline": {
+        "username": "eval26_comp_20260913_base_s024",
+        "user_id": "db8708e41eee476f9344a30616f8a4bd",
+        "session_id": "eval_f204d915d0ea447abaa6ec0f012dd529"
+      }
+    }
+  ]
+}

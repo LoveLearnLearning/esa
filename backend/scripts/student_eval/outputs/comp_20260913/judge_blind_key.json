@@ -1,0 +1,50 @@
+{
+  "S001": {
+    "A": "baseline",
+    "B": "full"
+  },
+  "S002": {
+    "A": "full",
+    "B": "baseline"
+  },
+  "S003": {
+    "A": "baseline",
+    "B": "full"
+  },
+  "S004": {
+    "A": "full",
+    "B": "baseline"
+  },
+  "S011": {
+    "A": "full",
+    "B": "baseline"
+  },
+  "S012": {
+    "A": "full",
+    "B": "baseline"
+  },
+  "S013": {
+    "A": "baseline",
+    "B": "full"
+  },
+  "S014": {
+    "A": "baseline",
+    "B": "full"
+  },
+  "S021": {
+    "A": "full",
+    "B": "baseline"
+  },
+  "S022": {
+    "A": "full",
+    "B": "baseline"
+  },
+  "S023": {
+    "A": "full",
+    "B": "baseline"
+  },
+  "S024": {
+    "A": "baseline",
+    "B": "full"
+  }
+}
